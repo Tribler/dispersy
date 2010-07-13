@@ -27,11 +27,17 @@ def _a_encode_bytes(value, mapping):
     'foo-bar' --> ('7', 'b', 'foo-bar')
     """
     assert isinstance(value, bytes), "VALUE has invalid type: %s" % type(value)
-    return (str(len(value)).encode("UTF-8"), "", value)
+    return (str(len(value)).encode("UTF-8"), "b", value)
 
+def _a_encode_buffer(value, mapping):
+    """
+    Convert the buffer to a binary string
+    """
+    return _a_encode_bytes(value[:], mapping)
+    
 def _a_encode_iterable(values, mapping):
     """
-    [1,2,3] --> ['3', 'l', '1', 'i', '1', '1', 'i', '2', '1', 'i', '3']
+    [1,2,3] --> ['3', 't', '1', 'i', '1', '1', 'i', '2', '1', 'i', '3']
     (1,2) --> ['2', 't', '1', 'i', '1', '1', 'i', '2']
     """
     assert isinstance(values, list) or isinstance(values, tuple), "VALUE has invalid type: %s" % type(value)
@@ -57,6 +63,7 @@ _a_encode_mapping = {int:_a_encode_int,
                      float:_a_encode_float,
                      unicode:_a_encode_unicode,
                      str:_a_encode_bytes,
+                     type(buffer("")):_a_encode_buffer,
                      list:_a_encode_iterable,
                      tuple:_a_encode_iterable,
                      dict:_a_encode_dictionary}
@@ -94,11 +101,11 @@ def _a_decode_unicode(stream, offset, count, _):
     """
     return offset+count, stream[offset:offset+count].decode("UTF-8")
 
-def _a_decode_bytes(value, mapping):
+def _a_decode_bytes(stream, offset, count, _):
     """
     '7bfoo-bar',2,7 --> 9,'foo-bar'
     """
-    return offset+count, stream[offset:offset+count]
+    return offset+count, buffer(stream[offset:offset+count])
 
 def _a_decode_iterable(stream, offset, count, mapping):
     """
@@ -109,8 +116,13 @@ def _a_decode_iterable(stream, offset, count, mapping):
     for _ in range(count):
 
         index = offset
-        while 48 <= stream[index] <= 57:
+        while 48 <= ord(stream[index]) <= 57:
             index += 1
+        # print
+        # print offset, index
+        # print stream[:100]
+        # print stream[offset:100]
+        # print
         offset, value = mapping[stream[index]](stream, index+1, int(stream[offset:index]), mapping)
         container.append(value)
 
@@ -124,12 +136,12 @@ def _a_decode_dictionary(stream, offset, count, mapping):
     for _ in range(count):
 
         index = offset
-        while 48 <= stream[index] <= 57:
+        while 48 <= ord(stream[index]) <= 57:
             index += 1
         offset, key = mapping[stream[index]](stream, index+1, int(stream[offset:index]), mapping)
 
         index = offset
-        while 48 <= stream[index] <= 57:
+        while 48 <= ord(stream[index]) <= 57:
             index += 1
         offset, value = mapping[stream[index]](stream, index+1, int(stream[offset:index]), mapping)
 
@@ -139,12 +151,12 @@ def _a_decode_dictionary(stream, offset, count, mapping):
         raise ValueError("Duplicate key in dictionary")
     return offset, container
 
-_a_decode_mapping = {ord("i"):_a_decode_int,
-                     ord("f"):_a_decode_float,
-                     ord("s"):_a_decode_unicode,
-                     ord("b"):_a_decode_bytes,
-                     ord("t"):_a_decode_iterable,
-                     ord("d"):_a_decode_dictionary}
+_a_decode_mapping = {"i":_a_decode_int,
+                     "f":_a_decode_float,
+                     "s":_a_decode_unicode,
+                     "b":_a_decode_bytes,
+                     "t":_a_decode_iterable,
+                     "d":_a_decode_dictionary}
 
 def decode(stream, offset=0):
     """
@@ -158,7 +170,7 @@ def decode(stream, offset=0):
     assert isinstance(offset, int), "OFFSET has invalif type: %s" % type(offset)
     if stream[offset] == "a":
         index = offset + 1
-        while 48 <= stream[index] <= 57:
+        while 48 <= ord(stream[index]) <= 57:
             index += 1
         return _a_decode_mapping[stream[index]](stream, index+1, int(stream[offset+1:index]), _a_decode_mapping)[1]
 

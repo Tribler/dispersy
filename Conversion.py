@@ -1,39 +1,31 @@
-from .Permission import AuthorizePermission, RevokePermission, GrantPermission
-from .Community import Community
-from .Encoding import encode, decode
-from .Message import Message
+from hashlib import sha1
 
-def sign(key, value):
-    """
-    Sign VALUE using KEY.  Returns a binary string.
-    """
-    # todo!
-    return encode(value)
+from Permission import AuthorizePermission, RevokePermission, PermitPermission
+from Encoding import encode, decode
+from Message import SyncMessage, DirectMessage
+from Message import FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
+from Message import UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination
 
-def verify(key, value):
+class DelayMessage(Exception):
     """
-    Verify that VALUE was signed with KEY.  Returns decrypted VALUE or
-    raises ValueError.
+    When it is not possible to process a message (yet) because we are
+    missing permission information, this exception is raised.
     """
-    # todo!
-    return decode(value)
+    pass
 
-class Conversion(object):
+class ConversionBase(object):
     """
     A Conversion object is used to convert incoming packets to a
     different, often more recent, community version.  If also allows
     outgoing messages to be converted to a different, often older,
     community version.
     """ 
-    RUNNING_VID = "00001"
-    assert isinstance(CURRENT_VID, str)
-    assert len(CURRENT_VID) == 5
-    
     def __init__(self, community, vid):
         """
         COMMUNITY instance that this conversion belongs to.
         VID is the conversion identifyer (on the wire version).
         """
+        if __debug__: from Community import Community
         assert isinstance(community, Community)
         assert isinstance(vid, str)
         assert len(vid) == 5
@@ -51,169 +43,259 @@ class Conversion(object):
     def get_vid(self):
         return self._prefix[20:25]
 
-    def decode_packet(self, data):
+    def get_prefix(self):
+        return self._prefix
+
+    def decode_message(self, data):
         """
-        DATA is a string, where the first 20 bytes indicate the CID
-        and the rest forms a CID dependent message payload.
+        DATA is a string, where the first 20 bytes indicate the CID,
+        the next 5 byres the VID, and the rest forms a CID and VID
+        dependent message payload.
         
         Returns a Message instance.
         """
         assert isinstance(data, str)
-        assert len(data) >= 20
+        assert len(data) >= 25
         assert data[:25] == self._prefix
         raise NotImplemented
 
-    def encode_packet(self, message):
+    def encode_message(self, message):
         """
         Encode a Message instance into a binary string.
         """
         assert isinstance(message, Message)
         raise NotImplemented
 
-class Conversion00001(Conversion):
+class Conversion00001(ConversionBase):
     """
     On-The-Wire version 00001.
+
+    USER-DESTINATION + DIRECT-MESSAGE
+    =================================
+    20 byte CID (community identifier)
+     5 byte VID (on-the-wire protocol version)
+    [
+       signer public key, in PEM format
+       'user-destination'
+       'direct-message'
+       global time
+       payload
+    ]
+    20 byte signature of entire message (including CID and VID)
+
+    COMMUNITY-DESTINATION + FULL-SYNC
+    =================================
+    20 byte CID (community identifier)
+     5 byte VID (on-the-wire protocol version)
+    [
+       signer public key, in PEM format
+       'community-destination'
+       'full-sync'
+       global time
+       sequence number
+       permission ('permit', 'authorize', or 'revoke')
+       payload
+    ]
+    20 byte signature of entire message (including CID and VID)
     """
-    def __init__(self, cid):
-        Conversion.__init__(self, cid, "00001")
-    
-    def decode_packet(self, data):
+    def __init__(self, community):
+        ConversionBase.__init__(self, community, "00001")
+
+    def decode_message(self, data):
         """
         Convert version 00001 DATA into an internal data structure.
         """
         assert isinstance(data, str)
-        assert len(data) >= 20
+        assert len(data) >= 25
         assert data[:25] == self._prefix
 
-        # data[25:] == encode([public_key, signed_container])
-        payload = decode(data, 25)
-        if not isinstance(payload, list):
+        signature = data[-20:]
+        container = decode(data, 25)
+        if not isinstance(container, tuple):
             raise ValueError
-        if not len(payload) == 2:
-            raise ValueError
-
-        public_key = payload[0]
-        if not isinstance(public_key, str):
+        if not len(container) >= 6:
             raise ValueError
 
-        signed_container = payload[2]
-        if not isinstance(signed_container, str):
+        #
+        # member (signer of the message)
+        #
+        index = 0
+        public_key = container[index]
+        if not isinstance(public_key, buffer):
+            raise ValueError
+        try:
+            member = self._community.get_member(public_key)
+        except KeyError:
+            # the user is not known in this community.  delay message
+            # processing for a while
+            raise DelayMessage()
+        if not member.verify_pair(data):
             raise ValueError
 
-        # signed_container == private_key.sign(encode([global_counter, local_counter, in_state, embedded_public_key, encoded_action_i, ..., encoded_action_n]))
-        type_, container = decode(verify(public_key, signed_container))
-        if not isinstance(container, list):
-            raise ValueError
-        if not len(container) > 4:
-            raise ValueError
+        #
+        # destination
+        #
+        index += 1
+        if container[index] == u"user-destination":
+            destination = UserDestination()
 
-        global_counter = container[0]
-        if not isinstance(global_counter, (int, long)):
-            raise ValueError
+        elif container[index] == u"community-destination":
+            destination = CommunityDestination()
 
-        local_counter = container[1]
-        if not isinstance(local_counter, (int, long)):
+        else:
             raise ValueError
 
-        in_state = container[2]
-        if not isinstance(in_state, bool):
-            raise ValueError
-
-        embedded_public_key = container[3]
-        if not isinstance(embedded_public_key, str):
-            raise ValueError
-        if not embedded_public_key == public_key:
-            raise ValueError # SECURITY VIOLATION!
-
-        actions = []
-
-        # container[3:] == [encoded_action_i, ..., encoded_action_n]
-        for encoded_action in container[3:]:
-
-            # encoded_action == encode([action_key, signed_action])
-            decoded_action = decode(encoded_action)
-            if not isinstance(decoded_action, list):
+        #
+        # distribution
+        #
+        index += 1
+        if container[index] == u"full-sync":
+            # global_time
+            index += 1
+            global_time = container[index]
+            if not isinstance(global_time, (int, long)):
                 raise ValueError
-            if not len(decoded_action) == 2:
+
+            # sequence_number
+            index += 1
+            sequence_number = container[index]
+            if not isinstance(sequence_number, (int, long)):
                 raise ValueError
+
+            distribution = FullSyncDistribution(global_time, sequence_number)
+
+            index += 1
+            if container[index] == u"authorize":
+                # privilege
+                index += 1
+                privilege = container[index]
+                if not isinstance(privilege, buffer):
+                    raise ValueError
+                try:
+                    privilege = self._community.get_privilege(privilege)
+                except KeyError:
+                    # the privilege is not known in this community.  delay
+                    # message processing for a while
+                    raise DelayMessage()
+
+                # authorized_permission
+                index += 1
+                authorized_permission = container[index]
+                if not isinstance(authorized_permission, buffer):
+                    raise ValueError
+                if authorized_permission == buffer("permit"):
+                    authorized_permission = PermitPermission
+                elif authorized_permission == buffer("authorize"):
+                    authorized_permission = AuthorizePermission
+                elif authorized_permission == buffer("revoke"):
+                    authorized_permission = RevokePermission
+                else:
+                    raise ValueError
+
+                # to_member
+                index += 1
+                public_key = container[index]
+                if not isinstance(public_key, buffer):
+                    raise ValueError
+                try:
+                    to_member = self._community.get_member(public_key)
+                except KeyError:
+                    # the user is not known in this community.  delay
+                    # message processing for a while
+                    raise DelayMessage()
+
+                # message payload
+                permission = AuthorizePermission(privilege, to_member, authorized_permission)
+
+            elif container[index] == u"permit":
+                # privilege
+                index += 1
+                privilege = container[index]
+                if not isinstance(privilege, buffer):
+                    raise ValueError
+                try:
+                    privilege = self._community.get_privilege(privilege)
+                except KeyError:
+                    # the privilege is not known in this community.  delay
+                    # message processing for a while
+                    raise DelayMessage()
+
+                # message payload
+                index += 1
+                permission = PermitPermission(privilege, container[index:])
+
+            else:
+                raise NotImplemented()
+
+            message = SyncMessage(self._community, member, distribution, destination, permission)
+
+        elif container[index] == u"direct-message":
+            # global_time
+            index += 1
+            global_time = container[index]
+            if not isinstance(global_time, (int, long)):
+                raise ValueError
+
+            # todo
+            raise NotImplemented()
             
-            action_key = decoded_action[0]
-            if not isinstance(action_key, str):
-                raise ValueError
+        else:
+            raise NotImplemented()
 
-            signed_action = decoded_action[1]
-            if not isinstance(signed_action, str):
-                raise ValueError
-
-            permission = self._community.get_permission(action_key)
-            assert isinstance(permission, (AuthorizePermission, RevokePermission, GrantPermission))
-
-            action_data = permission.verify(signed_action)
-            assert isinstance(action_data, str)
-
-            if isinstance(permission, AuthorizePermission):
-                container = decode(action_data)
-                if not isinstance(container, list):
-                    raise ValueError
-                if not len(container) > 1:
-                    raise ValueError
-
-                # action[0] is the target user's public key
-                # action[1:] are the permissions that this user is given
-                if filter(lambda x: isinstance(x, str), action):
-                    raise ValueError
-
-                permissions = [self._community.get_permission(key) for key in container[1:]]
-                actions.append(AuthorizeAction(permission, User(action[0]), permissions))
-
-                # todo
-                # 1. check that action[1:] are subsets of permission
-                # 2. send to state change to community
-
-            elif isinstance(permission, RevokePermission):
-                container = decode(action_data)
-                if not isinstance(container, list):
-                    raise ValueError
-                if not len(container) > 1:
-                    raise ValueError
-
-                # action[0] is the target user's public key
-                # action[1:] are the permissions that are revoked
-                if filter(lambda x: isinstance(x, str), action):
-                    raise ValueError
-
-                permissions = [self._community.get_permission(key) for key in container[1:]]
-                actions.append(RevokeAction(permission, User(action[0]), permissions))
-
-                # todo
-                # 1. check that action[1:] are subsets of permission
-                # 2. send to state change to community
-                
-            elif isinstance(permission, GrantPermission):
-                actions.append(GrantAction(permission, action_data))
-
-        message = Message()
-        message.cid = self._community.get_cid()
-        message.signed_by = public_key
-        message.global_counter = global_counter
-        message.local_counter = local_counter
-        message.in_state = in_state
-        message.actions = actions
-                                    
         return message
 
-    def encode_packet(self, message):
-        def encode_action(self, action):
-            assert isinstance(action, Action)
-            if isinstance(action, AuthorizeAction):
-                permission = action.get_permission()
-                return encode((permission.get_key(), permission.sign(encode([action.get_user().get_key()] + [permission.get_key() for permission in action.get_permissions()]))))
+    def encode_message(self, message):
+        assert isinstance(message, (SyncMessage, DirectMessage))
 
-        assert isinstance(message, Message)
-        container = [message.global_couner, message.local_counter, message.in_state]
-        container.extend([encode_action(action) for action in message.get_actions()])
+        container = [message.signed_by.get_pem()]
 
-        member = self._community.get_member()
-        return self._prefix + encode((member.get_key(), member.sign(encode(container))))
+        #
+        # destination
+        #
+        if isinstance(message.destination, UserDestination):
+            container.append(u"user-destination")
+        elif isinstance(message.destination, CommunityDestination):
+            container.append(u"community-destination")
+        else:
+            raise NotImplemented()
+
+        #
+        # gossip message
+        #
+        if isinstance(message, SyncMessage):
+            if isinstance(message.distribution, FullSyncDistribution):
+                container.extend((u"full-sync", message.distribution.global_time, message.distribution.sequence_number))
+            else:
+                raise NotImplemented()
+
+            if isinstance(message.permission, AuthorizePermission):
+                container.extend((u"authorize", message.permission.get_privilege().get_name(), message.permission.get_permission().get_name(), message.permission.get_to().get_pem()))
+
+            elif isinstance(message.permission, PermitPermission):
+                container.extend((u"permit", message.permission.get_privilege().get_name()))
+                container.extend(message.permission.get_container())
+
+            else:
+                raise NotImplemented()
+
+        #
+        # direct message
+        #
+        elif isinstance(message, DirectMessage):
+            if isinstance(message.distribution, DirectDistribution):
+                container.extend((u"direct-message", message.distribution.global_time))
+            else:
+                raise NotImplemented()
+
+            container.extend(message.payload)
+
+        #
+        # encode and sign message
+        #
+        return message.signed_by.generate_pair(self._prefix + encode(container))
     
-        
+class Conversion(Conversion00001, ConversionBase):
+    """
+    Conversion subclasses the current ConversionXXXXX class.
+    """
+    pass
