@@ -5,7 +5,7 @@ A simple forum community
 from hashlib import sha1
 from time import time
 
-from Privilege import PrivilegeBase, LinearPrivilege
+from Privilege import PrivilegeBase, PublicPrivilege, LinearPrivilege
 from Crypto import *
 from Encoding import encode, decode
 from Dispersy import Dispersy
@@ -13,71 +13,9 @@ from DispersyDatabase import DispersyDatabase
 from Community import Community
 from Conversion import Conversion00001
 from Database import Database
-from Message import SyncMessage, FullSyncDistribution, CommunityDestination
+from Message import DelayMessage, SyncMessage, FullSyncDistribution, CommunityDestination
 from Permission import AuthorizePermission, RevokePermission, PermitPermission
-from Member import Member
-
-class ForumDatabase(Database):
-    def check_database(self, database_version):
-        if database_version == "0":
-            self.execute(u"""
-CREATE TABLE thread(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- key BLOB,
- member INTEGER,
- title STRING,
- comment STRING);
-
-CREATE TABLE post(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- thread INTEGER REFERENCES thread(id),
- member INTEGER,
- comment STRING);
- 
-CREATE TABLE option(key STRING PRIMARY KEY, value BLOB);
-INSERT INTO option (key, value) VALUES('database_version', '1');
-""")
-
-        elif database_version == "1":
-            # current version requires no action
-            pass
-                         
-        else:
-            # unknown database version
-            raise ValueError
-
-class ForumCommunity(Community):
-    # static privilege settings
-    _privileges = {buffer("thread"):LinearPrivilege("thread"),
-                   buffer("post"):LinearPrivilege("post")}
-
-    @classmethod
-    def create_community(cls, my_member):
-        return Community.create_community(cls, cls._privileges.values(), my_member)
-
-    def __init__(self, cid, my_member):
-        Community.__init__(self, cid, my_member)
-        # forum storage
-        self._database = ForumDatabase.get_instance(":memory:")
-
-    def get_privilege(self, name):
-        assert isinstance(name, buffer)
-        return self._privileges[name]
-
-    def create_thread(self, title, comment):
-        assert isinstance(title, unicode)
-        assert isinstance(comment, unicode)
-        key = buffer(sha1(u"%d %s %s %s" % (time(), title, comment, self.get_my_member().get_pem())).digest())
-        self.permit(PermitPermission(self.get_privilege(buffer("thread")), (key, title, comment)))
-        return key
-
-    def create_post(self, key, comment):
-        assert isinstance(key, buffer)
-        assert isinstance(comment, unicode)
-        self.permit(PermitPermission(self.get_privilege(buffer("post")), (key, comment)))
-
-    def on_incoming_message(self, address, packet, message):
-        print message
+from Member import Member, MyMember
 
 def test_crypto():
     rsa = rsa_generate_key()
@@ -92,7 +30,7 @@ def test_crypto():
     rsa = rsa_from_public_pem(pub)
 
 def test_create():
-    dispersy = Dispersy.get_instance()
+    dispersy = Dispersy.get_instance(":memory:")
     database = DispersyDatabase.get_instance()
 
     community = ForumCommunity.create_community(dispersy.get_my_member())
@@ -102,24 +40,77 @@ def test_create():
     return community
 
 def test_timeline():
-    dispersy = Dispersy.get_instance()
+    def create_thread_for(rsa, global_time, sequence_number, title, comment):
+        member = MyMember(rsa_to_private_pem(rsa))
+        key = buffer(sha1(u"%d %s %s %s" % (time(), title, comment, member.get_pem())).digest())
+        distribution = FullSyncDistribution(global_time, sequence_number)
+        destination = CommunityDestination()
+        permission = PermitPermission(community.get_privilege(u"thread"), (key, title, comment))
+
+        message = SyncMessage(community, member, distribution, destination, permission)
+        packet = community.get_conversion().encode_message(message)
+        
+        return key, message, packet
+
+    def create_post_for(rsa, global_time, sequence_number, key, comment):
+        member = MyMember(rsa_to_private_pem(rsa))
+        distribution = FullSyncDistribution(global_time, sequence_number)
+        destination = CommunityDestination()
+        permission = PermitPermission(community.get_privilege(u"post"), (key, comment))
+
+        message = SyncMessage(community, member, distribution, destination, permission)
+        packet = community.get_conversion().encode_message(message)
+        
+        return message, packet
+
+    def create_metadata_for(rsa, global_time, sequence_number, name):
+        member = MyMember(rsa_to_private_pem(rsa))
+        distribution = FullSyncDistribution(global_time, sequence_number)
+        destination = CommunityDestination()
+        permission = PermitPermission(community.get_privilege(u"metadata"), (name,))
+
+        message = SyncMessage(community, member, distribution, destination, permission)
+        packet = community.get_conversion().encode_message(message)
+        
+        return message, packet
+
+    dispersy = Dispersy.get_instance(":memory:")
     database = DispersyDatabase.get_instance()
     community = test_create()
 
-    my_member = community.get_my_member()
-    conversion = community.get_conversion()
+    # Alice
+    community.create_metadata(u"Alice")
+    key = community.create_thread(u"Welcome all!", u"Please leave a message in this thread if you are alive!")
+    community.create_post(key, u"Alice was here!")
 
+    # Bob
     bob_address = ("localhost", 1)
     bob_rsa = rsa_generate_key(512)
     bob = Member(rsa_to_public_pem(bob_rsa))
+    pairs = [(community.get_privilege(u"thread"), PermitPermission), (community.get_privilege(u"post"), PermitPermission)]
+    community.authorize(bob, pairs)
 
-    pair = (community.get_privilege(buffer("thread")), PermitPermission)
-    community.authorize(bob, [pair])
+    time = community._timeline._global_time + 1
 
-    key = community.create_thread(u"Hello all!", u"Bob was here!")
-    community.create_post(key, u"Bob has gone now...")
+    # bob puts something on the forum
+    message, packet = create_metadata_for(bob_rsa, time, 1, u"Bob")
+    dispersy.on_incoming_packets([(bob_address, packet)])
+    message, packet = create_post_for(bob_rsa, time, 2, key, u"Bob was here...")
+    dispersy.on_incoming_packets([(bob_address, packet)])
 
-    print database    
+    time = community._timeline._global_time
+    time = 1
+
+    # Carol
+    carol_address = ("localhost", 2)
+    carol_rsa = rsa_generate_key(512)
+    message, packet = create_post_for(carol_rsa, time, 1, key, u"Carol was here...")
+    dispersy.on_incoming_packets([(carol_address, packet)])
+    message, packet = create_metadata_for(carol_rsa, time, 2, u"Carol")
+    dispersy.on_incoming_packets([(carol_address, packet)])
+
+    database.screen_dump()
+    community._database.screen_dump()
         
 if __name__ == "__main__":
     # test_crypto()

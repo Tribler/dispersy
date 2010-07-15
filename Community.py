@@ -1,13 +1,14 @@
 from hashlib import sha1
 
 from Timeline import Timeline
+from Privilege import PublicPrivilege
 from Permission import AuthorizePermission, RevokePermission, PermitPermission
-from Conversion import Conversion, DelayMessage
+from Conversion import Conversion
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Member import MasterMember, MyMember, Member
-from Message import SyncMessage, DirectMessage, FullSyncDistribution, DirectDistribution, CommunityDestination, UserDestination
+from Message import SyncMessage, DirectMessage, FullSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
 from Encoding import encode
 
 class Community(object):
@@ -47,9 +48,11 @@ class Community(object):
 
         permission_pairs = []
         for privilege in privileges:
-            for permission in (AuthorizePermission, RevokePermission, PermitPermission):
-                permission_pairs.append((privilege, permission))
-        community.authorize(my_member, permission_pairs, True)
+            if not isinstance(privilege, PublicPrivilege):
+                for permission in (AuthorizePermission, RevokePermission, PermitPermission):
+                    permission_pairs.append((privilege, permission))
+        if permission_pairs:
+            community.authorize(my_member, permission_pairs, True)
 
         return community
 
@@ -125,25 +128,6 @@ class Community(object):
         # todo: add parameter to specify the conversion version
         return self._conversions[prefix]
 
-    # def authorize(self, member, privilege, permissions, sign_with_master=False):
-    #     """
-    #     Grant MEMBER the PERMISSIONS for PRIVILEGE.
-
-    #     MEMBER is the Member who will obtain the new permissions.
-    #     PRIVILEGE is the Privilege that the Member will obtain.
-    #     PERMISSIONS is a list with Permissions for the Privilege that Member will obtain.
-    #     SIGN_WITH_MASTER when True the MasterMember is used to sign the authosize message.
-    #     """
-    #     if __debug__:
-    #         from Privilege import PrivilegeBase
-    #         from Permission import PermissionBase
-    #     assert isinstance(member, Member)
-    #     assert isinstance(privilege, PrivilegeBase)
-    #     assert isinstance(permissions, (tuple, list))
-    #     assert not filter(lambda x: not issubclass(x, PermissionBase), permissions)
-    #     assert isinstance(sign_with_master, bool)
-    #     return self._authorize(member, [(privilege, permission) for permission in permissions], sign_with_master)
-
     def authorize(self, member, permission_pairs, sign_with_master=False):
         """
         Grant MEMBER the PERMISSION_PAIRS.
@@ -172,6 +156,12 @@ class Community(object):
         for privilege, permission in permission_pairs:
             messages.append(SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
 
+        # update locally
+        for message in messages:
+            assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+            self.on_dispersy_message(message)
+
+        # distribute messages so others can update their timeline
         self._dispersy.queue_outgoing_messages(messages)
 
     def permit(self, permission, sign_with_master=False):
@@ -185,38 +175,68 @@ class Community(object):
         global_time = self._timeline.claim_global_time()
         message = SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), permission)
 
+        # update locally
+        assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+        self.on_message(message)
+
+        # distribute messages
         self._dispersy.queue_outgoing_messages([message])
 
     def on_incoming_dispersy_message(self, address, packet, message):
+        """
+        A Dispersy message was received from an external source.
+        """
         assert isinstance(address, tuple)
         assert isinstance(message, SyncMessage)
         assert isinstance(message.permission, (AuthorizePermission, RevokePermission))
-        if self._timeline.update(message):
-            # the message is valid.  we should distribute it as
-            # defined by the distribution policy
-
-            # todo: store in DB
-
-            # todo: start distribution
-            pass
+        if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
+            return self.on_dispersy_message(message)
 
         else:
-            raise DelayMessage()
+            raise DelayMessageByProof()
+
+    def on_dispersy_message(self, message):
+        """
+        A Dispersy message was received, it was either locally
+        generated or received from an external source.
+        """
+        assert isinstance(message, SyncMessage)
+        # update our timeline
+        self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
+        # we should distribute the message as defined by the
+        # distribution policy
+        self._dispersy.queue_outgoing_messages([message])
 
     def on_incoming_message(self, address, packet, message):
         """
-        Must be implemented in community specific code.
+        A message was received from an external source.
         """
         if __debug__:
             from Message import MessageBase
         assert isinstance(address, tuple)
         assert isinstance(message, MessageBase)
-        raise NotImplemented()
+        if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
+            return self.on_message(message)
 
+        else:
+            raise DelayMessageByProof()
+
+    def on_message(self, message):
+        """
+        A message was received, it was either locally generated or
+        received from an external source.
+
+        Must be implemented in community specific code.
+        """
+        if __debug__:
+            from Message import MessageBase
+        assert isinstance(message, MessageBase)
+        raise NotImplemented()
+        
     def get_privilege(self, name):
         """
         Must be implemented in community specific code.
         """
-        assert isinstance(name, buffer)
+        assert isinstance(name, unicode)
         raise NotImplemented()
 

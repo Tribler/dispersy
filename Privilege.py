@@ -1,10 +1,16 @@
 class PrivilegeBase(object):
     def __init__(self, name):
-        assert isinstance(name, str)
+        assert isinstance(name, unicode)
         self._name = name
 
     def get_name(self):
         return self._name
+
+class PublicPrivilege(PrivilegeBase):
+    """
+    Privilege that everyone always has.
+    """
+    pass
 
 class LinearPrivilege(PrivilegeBase):
     """

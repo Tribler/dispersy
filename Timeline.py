@@ -4,8 +4,8 @@ queried as to who had what permissions at some point in time.
 """
 
 from Member import Member, MasterMember
-from Permission import PermissionBase, AuthorizePermission
-from Privilege import LinearPrivilege
+from Permission import AuthorizePermission, RevokePermission
+from Privilege import PublicPrivilege, LinearPrivilege
 
 class Timeline(object):
     class Node(object):
@@ -37,56 +37,57 @@ class Timeline(object):
         self._global_time += 1
         return self._global_time
 
-    def check(self, member, permission, global_time):
+    def check(self, signed_by, permission, global_time):
         """
-        Check is MEMBER has PERMISSION at GLOBAL_TIME.
+        Check is SIGNED_BY has PERMISSION at GLOBAL_TIME.
         """
-        assert isinstance(member, Member)
+        if __debug__:
+            from Permission import PermissionBase
+        assert isinstance(signed_by, Member)
         assert isinstance(permission, PermissionBase)
         assert isinstance(global_time, (int, long))
-        if isinstance(member, MasterMember):
+        if isinstance(signed_by, MasterMember):
             return True
 
-        node = self._get_node(member, False)
-        if node:
-            pair = (permission.get_privilege().get_name(), permission.get_name())
-            _, allowed_permissions = node.get_privileges(global_time)
-            if pair in allowed_permissions:
-                self._global_time = max(self._global_time, global_time)
+        privilege = permission.get_privilege()
+        if isinstance(privilege, PublicPrivilege):
+            return True
+        elif isinstance(privilege, LinearPrivilege):
+            node = self._get_node(signed_by, False)
+            if node:
+                pair = (privilege.get_name(), permission.get_name())
+                _, allowed_permissions = node.get_privileges(global_time)
+                if pair in allowed_permissions:
+                    self._global_time = max(self._global_time, global_time)
                 return True
+        print "FAIL: Check", signed_by.get_database_id(), permission, "@", global_time
         return False
 
-    def update(self, message):
+    def update(self, signed_by, permission, global_time):
         """
         Add a new edge, and possibly a new node, to the privilege
         tree.
 
         Returns True on success, otherwise False is returned.
         """
-        if __debug__:
-            from Message import SyncMessage
-        assert isinstance(message, SyncMessage)
+        assert isinstance(signed_by, Member)
+        assert isinstance(permission, (AuthorizePermission, RevokePermission))
+        assert isinstance(global_time, (int, long))
+        assert self.check(signed_by, permission, global_time)
 
-        # check if this action is allowed
-        if self.check(message.signed_by, message.permission, message.distribution.global_time):
-            print "YES", message
+        privilege = permission.get_privilege()
+        if isinstance(privilege, LinearPrivilege):
+            return self._update_linear_privilege(signed_by, permission, global_time)
+        else:
+            raise NotImplementedError
 
-            privilege = message.permission.get_privilege()
-            if isinstance(privilege, LinearPrivilege):
-                return self._update_linear_privilege(message.signed_by, message.permission, message.distribution.global_time)
-            else:
-                raise NotImplemented()
-
-        print "NO", message
-        return False
-
-    def _get_node(self, member, create_new):
+    def _get_node(self, signed_by, create_new):
         """
-        Get a Node from a member.get_pem().
+        Get a Node from a signed_by.get_pem().
         """
-        isinstance(member, Member)
+        isinstance(signed_by, Member)
         isinstance(create_new, bool)
-        pem = member.get_pem()
+        pem = signed_by.get_pem()
         if create_new and not pem in self._nodes:
             self._nodes[pem] = self.Node()
         return self._nodes.get(pem, None)
@@ -106,8 +107,7 @@ class Timeline(object):
                 else:
                     node.timeline.append((global_time + 1, allowed_permissions + [pair]))
 
-            print node
             return True
 
         else:
-            raise NotImplemented()
+            raise NotImplementedError

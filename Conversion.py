@@ -2,16 +2,10 @@ from hashlib import sha1
 
 from Permission import AuthorizePermission, RevokePermission, PermitPermission
 from Encoding import encode, decode
+from Message import DelayPacket, DropPacket
 from Message import SyncMessage, DirectMessage
 from Message import FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
 from Message import UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination
-
-class DelayMessage(Exception):
-    """
-    When it is not possible to process a message (yet) because we are
-    missing permission information, this exception is raised.
-    """
-    pass
 
 class ConversionBase(object):
     """
@@ -112,9 +106,9 @@ class Conversion00001(ConversionBase):
         signature = data[-20:]
         container = decode(data, 25)
         if not isinstance(container, tuple):
-            raise ValueError
+            raise DropPacket("Invalid container type")
         if not len(container) >= 6:
-            raise ValueError
+            raise DropPacket("Invalid container length")
 
         #
         # member (signer of the message)
@@ -122,15 +116,16 @@ class Conversion00001(ConversionBase):
         index = 0
         public_key = container[index]
         if not isinstance(public_key, buffer):
-            raise ValueError
+            raise DropPacket("Invalid public key type")
         try:
             member = self._community.get_member(public_key)
+
         except KeyError:
-            # the user is not known in this community.  delay message
-            # processing for a while
-            raise DelayMessage()
+            # todo: delay + retrieve user public key
+            raise DelayPacket("Unable to find member in community")
+
         if not member.verify_pair(data):
-            raise ValueError
+            raise DropPacket("Invalid signature")
 
         #
         # destination
@@ -143,7 +138,7 @@ class Conversion00001(ConversionBase):
             destination = CommunityDestination()
 
         else:
-            raise ValueError
+            raise DropPacket("Invalid destination")
 
         #
         # distribution
@@ -154,13 +149,17 @@ class Conversion00001(ConversionBase):
             index += 1
             global_time = container[index]
             if not isinstance(global_time, (int, long)):
-                raise ValueError
+                raise DropPacket("Invalid global time type")
+            if global_time <= 0:
+                raise DropPacket("Invalid global time value")
 
             # sequence_number
             index += 1
             sequence_number = container[index]
             if not isinstance(sequence_number, (int, long)):
-                raise ValueError
+                raise DropPacket("Invalid sequence number type")
+            if sequence_number <= 0:
+                raise DropPacket("Invalid sequence number value")
 
             distribution = FullSyncDistribution(global_time, sequence_number)
 
@@ -169,40 +168,40 @@ class Conversion00001(ConversionBase):
                 # privilege
                 index += 1
                 privilege = container[index]
-                if not isinstance(privilege, buffer):
-                    raise ValueError
+                if not isinstance(privilege, unicode):
+                    raise DropPacket("Invalid privilege type")
                 try:
                     privilege = self._community.get_privilege(privilege)
                 except KeyError:
                     # the privilege is not known in this community.  delay
                     # message processing for a while
-                    raise DelayMessage()
+                    raise DropPacket("Invalid privilege")
 
                 # authorized_permission
                 index += 1
                 authorized_permission = container[index]
-                if not isinstance(authorized_permission, buffer):
-                    raise ValueError
-                if authorized_permission == buffer("permit"):
+                if not isinstance(authorized_permission, unicode):
+                    raise DropPacket("Invalid authorized permission type")
+                if authorized_permission == u"permit":
                     authorized_permission = PermitPermission
-                elif authorized_permission == buffer("authorize"):
+                elif authorized_permission == u"authorize":
                     authorized_permission = AuthorizePermission
-                elif authorized_permission == buffer("revoke"):
+                elif authorized_permission == u"revoke":
                     authorized_permission = RevokePermission
                 else:
-                    raise ValueError
+                    raise DropPacket("Invalid permission")
 
                 # to_member
                 index += 1
                 public_key = container[index]
                 if not isinstance(public_key, buffer):
-                    raise ValueError
+                    raise DropPacket("Invalid to-member type")
                 try:
                     to_member = self._community.get_member(public_key)
                 except KeyError:
                     # the user is not known in this community.  delay
                     # message processing for a while
-                    raise DelayMessage()
+                    raise DelayPacket("Unable to find to-member in community")
 
                 # message payload
                 permission = AuthorizePermission(privilege, to_member, authorized_permission)
@@ -211,14 +210,14 @@ class Conversion00001(ConversionBase):
                 # privilege
                 index += 1
                 privilege = container[index]
-                if not isinstance(privilege, buffer):
-                    raise ValueError
+                if not isinstance(privilege, unicode):
+                    raise DropPacket("Invalid target privilege type")
                 try:
                     privilege = self._community.get_privilege(privilege)
                 except KeyError:
                     # the privilege is not known in this community.  delay
                     # message processing for a while
-                    raise DelayMessage()
+                    raise DropPacket("Invalid target privilege")
 
                 # message payload
                 index += 1
@@ -234,7 +233,9 @@ class Conversion00001(ConversionBase):
             index += 1
             global_time = container[index]
             if not isinstance(global_time, (int, long)):
-                raise ValueError
+                raise DropPacket("Invalid global time type")
+            if global_time <= 0:
+                raise DropPacket("Invalid global time value")
 
             # todo
             raise NotImplemented()
@@ -287,6 +288,7 @@ class Conversion00001(ConversionBase):
             else:
                 raise NotImplemented()
 
+            container.append(message.identifier)
             container.extend(message.payload)
 
         #

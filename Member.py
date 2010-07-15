@@ -9,14 +9,14 @@ class _Public(object):
         assert len(rsa) % 8 == 0
         self._pem = pem
         self._rsa = rsa
-        self._mid = sha1(pem).digest()
+        self._mid = buffer(sha1(pem).digest())
 
         # sync with database
         database = DispersyDatabase.get_instance()
         try:
             self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (self._pem,)).next()[0]
         except StopIteration:
-            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), self._pem))
+            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (self._mid, self._pem))
             self._database_id = database.get_last_insert_rowid()
 
     def get_pem(self):
@@ -76,6 +76,19 @@ class Member(_Public):
         assert pem[:26] == "-----BEGIN PUBLIC KEY-----"
         _Public.__init__(self, pem, rsa_from_public_pem(pem))
 
+        # The last_sequence_number and last_global_time contains the
+        # respective values from the last valid message received by
+        # this Member.  
+        self._last_received = (0, 0)
+
+    def get_last_received(self):
+        return self._last_received
+
+    def set_last_received(self, global_time, sequence_number):
+        assert isinstance(global_time, (int, long))
+        assert isinstance(sequence_number, (int, long))
+        self._last_received = (global_time, sequence_number)
+        
 class MasterMember(Member, _Private):
     def __init__(self, pem):
         assert isinstance(pem, buffer)

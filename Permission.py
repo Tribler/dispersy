@@ -36,7 +36,7 @@ class AuthorizePermission(PermissionBase):
 
     @staticmethod
     def get_name():
-        return "authorize"
+        return u"authorize"
 
     def get_to(self):
         return self._to
@@ -68,7 +68,7 @@ class RevokePermission(PermissionBase):
 
     @staticmethod
     def get_name():
-        return "revoke"
+        return u"revoke"
 
     def get_to(self):
         return self._to
@@ -87,7 +87,7 @@ class PermitPermission(PermissionBase):
         
     @staticmethod
     def get_name():
-        return "permit"
+        return u"permit"
 
     def get_container(self):
         return self._container
