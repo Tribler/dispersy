@@ -5,17 +5,18 @@ A simple forum community
 from hashlib import sha1
 from time import time
 
-from Privilege import PrivilegeBase, PublicPrivilege, LinearPrivilege
-from Crypto import *
-from Encoding import encode, decode
-from Dispersy import Dispersy
-from DispersyDatabase import DispersyDatabase
-from Community import Community
-from Conversion import Conversion00001
-from Database import Database
-from Message import DelayMessage, SyncMessage, FullSyncDistribution, CommunityDestination
-from Permission import AuthorizePermission, RevokePermission, PermitPermission
-from Member import Member, MyMember
+from Tribler.Community.Forum.Forum import ForumCommunity
+from Tribler.Core.Dispersy.Privilege import PrivilegeBase, PublicPrivilege, LinearPrivilege
+from Tribler.Core.Dispersy.Crypto import *
+from Tribler.Core.Dispersy.Encoding import encode, decode
+from Tribler.Core.Dispersy.Dispersy import Dispersy
+from Tribler.Core.Dispersy.DispersyDatabase import DispersyDatabase
+from Tribler.Core.Dispersy.Community import Community
+from Tribler.Core.Dispersy.Conversion import Conversion00001
+from Tribler.Core.Dispersy.Database import Database
+from Tribler.Core.Dispersy.Message import DelayMessage, SyncMessage, FullSyncDistribution, CommunityDestination
+from Tribler.Core.Dispersy.Permission import AuthorizePermission, RevokePermission, PermitPermission
+from Tribler.Core.Dispersy.Member import Member, MyMember
 
 def test_crypto():
     rsa = rsa_generate_key()
@@ -31,18 +32,14 @@ def test_crypto():
 
 def test_create():
     dispersy = Dispersy.get_instance(":memory:")
-    database = DispersyDatabase.get_instance()
-
     community = ForumCommunity.create_community(dispersy.get_my_member())
-    dispersy.add_community(community)
     assert community.get_my_member() == dispersy.get_my_member()
-
     return community
 
 def test_timeline():
     def create_thread_for(rsa, global_time, sequence_number, title, comment):
-        member = MyMember(rsa_to_private_pem(rsa))
-        key = buffer(sha1(u"%d %s %s %s" % (time(), title, comment, member.get_pem())).digest())
+        member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa))
+        key = sha1(u"%d %s %s %s" % (time(), title, comment, member.get_pem())).digest()
         distribution = FullSyncDistribution(global_time, sequence_number)
         destination = CommunityDestination()
         permission = PermitPermission(community.get_privilege(u"thread"), (key, title, comment))
@@ -53,7 +50,7 @@ def test_timeline():
         return key, message, packet
 
     def create_post_for(rsa, global_time, sequence_number, key, comment):
-        member = MyMember(rsa_to_private_pem(rsa))
+        member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa))
         distribution = FullSyncDistribution(global_time, sequence_number)
         destination = CommunityDestination()
         permission = PermitPermission(community.get_privilege(u"post"), (key, comment))
@@ -64,7 +61,7 @@ def test_timeline():
         return message, packet
 
     def create_metadata_for(rsa, global_time, sequence_number, name):
-        member = MyMember(rsa_to_private_pem(rsa))
+        member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa))
         distribution = FullSyncDistribution(global_time, sequence_number)
         destination = CommunityDestination()
         permission = PermitPermission(community.get_privilege(u"metadata"), (name,))
@@ -74,7 +71,7 @@ def test_timeline():
         
         return message, packet
 
-    dispersy = Dispersy.get_instance(":memory:")
+    dispersy = Dispersy.get_instance(u".")
     database = DispersyDatabase.get_instance()
     community = test_create()
 
@@ -86,7 +83,8 @@ def test_timeline():
     # Bob
     bob_address = ("localhost", 1)
     bob_rsa = rsa_generate_key(512)
-    bob = Member(rsa_to_public_pem(bob_rsa))
+    bob_pem = rsa_to_public_pem(bob_rsa)
+    bob = Member.get_instance(bob_pem, bob_rsa)
     pairs = [(community.get_privilege(u"thread"), PermitPermission), (community.get_privilege(u"post"), PermitPermission)]
     community.authorize(bob, pairs)
 
@@ -109,8 +107,8 @@ def test_timeline():
     message, packet = create_metadata_for(carol_rsa, time, 2, u"Carol")
     dispersy.on_incoming_packets([(carol_address, packet)])
 
-    database.screen_dump()
-    community._database.screen_dump()
+    # database.screen_dump()
+    # community._database.screen_dump()
         
 if __name__ == "__main__":
     # test_crypto()

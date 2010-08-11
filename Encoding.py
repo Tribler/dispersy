@@ -29,12 +29,6 @@ def _a_encode_bytes(value, mapping):
     assert isinstance(value, bytes), "VALUE has invalid type: %s" % type(value)
     return (str(len(value)).encode("UTF-8"), "b", value)
 
-def _a_encode_buffer(value, mapping):
-    """
-    Convert the buffer to a binary string
-    """
-    return _a_encode_bytes(value[:], mapping)
-    
 def _a_encode_iterable(values, mapping):
     """
     [1,2,3] --> ['3', 't', '1', 'i', '1', '1', 'i', '2', '1', 'i', '3']
@@ -63,7 +57,6 @@ _a_encode_mapping = {int:_a_encode_int,
                      float:_a_encode_float,
                      unicode:_a_encode_unicode,
                      str:_a_encode_bytes,
-                     type(buffer("")):_a_encode_buffer,
                      list:_a_encode_iterable,
                      tuple:_a_encode_iterable,
                      dict:_a_encode_dictionary}
@@ -105,7 +98,7 @@ def _a_decode_bytes(stream, offset, count, _):
     """
     '7bfoo-bar',2,7 --> 9,'foo-bar'
     """
-    return offset+count, buffer(stream[offset:offset+count])
+    return offset+count, stream[offset:offset+count]
 
 def _a_decode_iterable(stream, offset, count, mapping):
     """

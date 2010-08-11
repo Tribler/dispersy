@@ -6,6 +6,7 @@ queried as to who had what permissions at some point in time.
 from Member import Member, MasterMember
 from Permission import AuthorizePermission, RevokePermission
 from Privilege import PublicPrivilege, LinearPrivilege
+from Print import dprint
 
 class Timeline(object):
     class Node(object):
@@ -60,7 +61,7 @@ class Timeline(object):
                 if pair in allowed_permissions:
                     self._global_time = max(self._global_time, global_time)
                 return True
-        print "FAIL: Check", signed_by.get_database_id(), permission, "@", global_time
+        dprint("FAIL: Check ", signed_by.get_database_id(), "; ", permission, "@", global_time, level="warning")
         return False
 
     def update(self, signed_by, permission, global_time):

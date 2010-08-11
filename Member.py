@@ -1,29 +1,35 @@
 from hashlib import sha1
 
+from Singleton import Parameterized1Singleton
 from DispersyDatabase import DispersyDatabase
 from Crypto import rsa_from_private_pem, rsa_from_public_pem, rsa_to_public_pem
 from Encoding import encode, decode
 
-class _Public(object):
-    def __init__(self, pem, rsa):
-        assert len(rsa) % 8 == 0
-        self._pem = pem
-        self._rsa = rsa
-        self._mid = buffer(sha1(pem).digest())
+class Member(Parameterized1Singleton):
+    def __init__(self, public_pem, rsa=None):
+        assert isinstance(public_pem, str)
+        assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
+        assert rsa is None or len(rsa) % 8 == 0
+        self._public_pem = public_pem
+        if rsa is None:
+            self._rsa = rsa_from_public_pem(public_pem)
+        else:
+            self._rsa = rsa
+        self._mid = sha1(public_pem).digest()
 
         # sync with database
         database = DispersyDatabase.get_instance()
         try:
-            self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (self._pem,)).next()[0]
+            self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
         except StopIteration:
-            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (self._mid, self._pem))
+            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
             self._database_id = database.get_last_insert_rowid()
 
     def get_pem(self):
         """
         Returns the public PEM.
         """
-        return self._pem
+        return self._public_pem
 
     def get_database_id(self):
         return self._database_id
@@ -39,7 +45,7 @@ class _Public(object):
 
         Returns True or False.
         """
-        assert isinstance(data, (str, buffer))
+        assert isinstance(data, str)
         assert isinstance(offset, (int, long))
         assert isinstance(length, (int, long))
         if not length: length = len(data)
@@ -47,13 +53,30 @@ class _Public(object):
         return bool(self._rsa.verify(sha1(data[offset:length-signature_length]).digest(), data[length-signature_length:length]))
 
     def __str__(self):
-        return "<%s>" % (self.__class__.__name__)
+        return "<%s %d %s %d>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"), id(self))
 
-class _Private(_Public):
-    def __init__(self, pem, rsa):
-        assert len(rsa) % 8 == 0
-        _Public.__init__(self, rsa_to_public_pem(rsa), rsa)
-        self._private_pem = pem
+class PrivateMemberBase(Member):
+    def __init__(self, public_pem, private_pem=None):
+        assert isinstance(public_pem, str)
+        assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
+        assert isinstance(private_pem, (type(None), str))
+        assert private_pem is None or private_pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
+
+        if private_pem is None:
+            # get private pem
+            database = DispersyDatabase.get_instance()
+            try:
+                private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
+            except StopIteration:
+                raise ValueError(u"Unable to find associated private key")
+
+        else:
+            # set private pem
+            database = DispersyDatabase.get_instance()
+            database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
+
+        Member.__init__(self, public_pem, rsa_from_private_pem(private_pem))
+        self._private_pem = private_pem
         self._sequence_number = 0
 
     def claim_sequence_number(self):
@@ -70,33 +93,8 @@ class _Private(_Public):
         """
         return data[offset:length or len(data)] + self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
 
-class Member(_Public):
-    def __init__(self, pem):
-        assert isinstance(pem, buffer)
-        assert pem[:26] == "-----BEGIN PUBLIC KEY-----"
-        _Public.__init__(self, pem, rsa_from_public_pem(pem))
+class MasterMember(PrivateMemberBase):
+    pass
 
-        # The last_sequence_number and last_global_time contains the
-        # respective values from the last valid message received by
-        # this Member.  
-        self._last_received = (0, 0)
-
-    def get_last_received(self):
-        return self._last_received
-
-    def set_last_received(self, global_time, sequence_number):
-        assert isinstance(global_time, (int, long))
-        assert isinstance(sequence_number, (int, long))
-        self._last_received = (global_time, sequence_number)
-        
-class MasterMember(Member, _Private):
-    def __init__(self, pem):
-        assert isinstance(pem, buffer)
-        assert pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
-        _Private.__init__(self,  pem, rsa_from_private_pem(pem))
-
-class MyMember(Member, _Private):
-    def __init__(self, pem):
-        assert isinstance(pem, buffer)
-        assert pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
-        _Private.__init__(self,  pem, rsa_from_private_pem(pem))
+class MyMember(PrivateMemberBase):
+    pass

@@ -8,14 +8,12 @@ When a user has obtained all permission rules the current state of the
 community is revealed.
 """
 
-from os import path
-from traceback import print_exc
-
-from Crypto import rsa_generate_key, rsa_to_private_pem
+from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from DispersyDatabase import DispersyDatabase
 from Singleton import Singleton
 from Member import MyMember
-from Message import DelayPacket, DelayMessage, DelayMessageBySequence, DropMessage, FullSyncDistribution
+from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, FullSyncDistribution
+from Print import dprint
 
 class DummySocket(object):
     def send(address, data):
@@ -28,26 +26,35 @@ class Dispersy(Singleton):
     multiple communities.
     """
 
-    def __init__(self, statedir):
+    def __init__(self, working_directory):
+        # where we store all data
+        self._working_directory = working_directory
+
         # our data storage
-        self._database = DispersyDatabase.get_instance(path.join(statedir, u"dispersy.db"))
+        self._database = DispersyDatabase.get_instance(working_directory)
 
         try:
-            pem = self._database.execute(u"SELECT value FROM option WHERE key == 'my_key_pair' LIMIT 1").next()[0]
+            public_pem = str(self._database.execute(u"SELECT value FROM option WHERE key == 'my_public_pem' LIMIT 1").next()[0])
+            private_pem = None
         except StopIteration:
             # one of the keys was not found in the database, we need
             # to generate a new one
-            pem = rsa_to_private_pem(rsa_generate_key(512))
-            self._database.execute(u"INSERT INTO option VALUES('my_key_pair', ?)", (pem,))
+            rsa = rsa_generate_key(512)
+            public_pem = rsa_to_public_pem(rsa)
+            private_pem = rsa_to_private_pem(rsa)
+            self._database.execute(u"INSERT INTO option VALUES('my_public_pem', ?)", (buffer(public_pem),))
             
         # this is yourself
-        self._my_member = MyMember(pem)
+        self._my_member = MyMember.get_instance(public_pem, private_pem)
 
         # all available communities.  cid:Community pairs.
         self._communities = {}
 
         # outgoing communication
         self._socket = DummySocket()
+
+    def get_working_directory(self):
+        return self._working_directory
 
     def set_socket(self, socket):
         self._socket = socket
@@ -59,18 +66,19 @@ class Dispersy(Singleton):
         """
         Returns the Dispersy database.
 
-        This is the same as: DispersyDatabase.get_instance()
+        This is the same as: DispersyDatabase.get_instance([working_directory])
         """
         return self._database
 
     def add_community(self, community):
         if __debug__:
             from Community import Community
-            assert isinstance(community, Community)
+        assert isinstance(community, Community)
+        assert not community.get_cid() in self._communities
         self._communities[community.get_cid()] = community
 
     def get_community(self, cid):
-        assert isinstance(cid, buffer)
+        assert isinstance(cid, str)
         return self._communities[cid]
 
     def _delay_packet(self, address, packet, delay):
@@ -80,7 +88,7 @@ class Dispersy(Singleton):
         assert isinstance(address[1], int)
         assert isinstance(packet, str)
         assert isinstance(delay, DelayPacket)
-        print "Dispersy._delay_packet:", delay
+        dprint(delay)
 
     def _delay_message(self, address, packet, message, delay):
         if __debug__:
@@ -92,7 +100,7 @@ class Dispersy(Singleton):
         assert isinstance(packet, str)
         assert isinstance(message, MessageBase)
         assert isinstance(delay, DelayMessage)
-        print "Dispersy._delay_message:", delay
+        dprint(delay)
 
     def _drop_message(self, address, packet, message, drop):
         if __debug__:
@@ -104,27 +112,7 @@ class Dispersy(Singleton):
         assert isinstance(packet, str)
         assert isinstance(message, MessageBase)
         assert isinstance(delay, DropMessage)
-        print "Dispersy.on_incoming_packets: drop a %d byte message. %s" % (len(packet), exception)
-
-    def _check_sequence_numbers(self, message):
-        """
-        Raises an exception when the sequence_number or global_time is
-        invalid.
-
-        DropMessage when values are invalid.
-        DelayMessage when value can't be verified (yet).
-        """
-            
-        # last_global_time, last_sequence_number = message.signed_by.get_last_received()
-
-        # if message.distribution.sequence_number <= last_sequence_number:
-        #     raise DropMessage("Duplicate message")
-
-        # if message.distribution.sequence_number > last_sequence_number + 1:
-        #     raise DelayMessageBySequence(last_sequence_number + 1)
-
-        # if not (message.distribution.global_time >= last_global_time):
-        #     raise DropMessage("Manipulating global time")
+        dprint("drop a ", len(packet), " byte message")
 
     def on_incoming_packets(self, packets):
         """
@@ -147,9 +135,9 @@ class Dispersy(Singleton):
             # Find associated community
             #
             try:
-                community = self.get_community(buffer(packet[:20]))
+                community = self.get_community(packet[:20])
             except KeyError:
-                print "Dispersy.on_incoming_packets: received packet for unknown community"
+                dprint("received packet for unknown community")
                 continue
 
             #
@@ -158,7 +146,7 @@ class Dispersy(Singleton):
             try:
                 conversion = community.get_conversion(packet[:25])
             except KeyError:
-                print "Dispersy.on_incoming_packets: received packet for unknown conversion"
+                dprint("received packet for unknown conversion")
                 continue
 
             #
@@ -168,7 +156,7 @@ class Dispersy(Singleton):
                 message = conversion.decode_message(packet)
 
             except DropPacket as exception:
-                print "Dispersy.on_incoming_packets: drop a %d byte packet. %s" % (len(packet), exception)
+                dprint("drop a ", len(packet), " byte packet", exception=True)
                 continue
 
             except DelayPacket as exception:
@@ -178,14 +166,16 @@ class Dispersy(Singleton):
             #
             # Drop duplicate messages
             #
+
+            # todo: message.distribution specific!
             try:
-                self._database.execute(u"SELECT 1 FROM sync WHERE user = ? and community = ? and sequence = ? LIMIT 1",
+                self._database.execute(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and sequence = ? LIMIT 1",
                                        (message.signed_by.get_database_id(), message.community.get_database_id(), message.distribution.sequence_number)).next()
             except StopIteration:
                 # We have not received this message yet, this is good.
                 pass
             else:
-                print "Dispersy.on_incoming_packets: drop a %d byte message. %s" % (len(packet), exception)
+                dprint("drop a ", len(packet), " byte message. %s")
                 continue
 
             #
@@ -226,7 +216,7 @@ class Dispersy(Singleton):
             distribution = message.distribution
 
             if isinstance(distribution, FullSyncDistribution):
-                self._database.execute(u"INSERT INTO sync(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
+                self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
                                        (message.signed_by.get_database_id(),
                                         message.community.get_database_id(),
                                         distribution.global_time,
@@ -237,3 +227,15 @@ class Dispersy(Singleton):
                 raise NotImplemented()
 
             # todo: use self._socket so send
+
+    def periodically_disperse(self):
+        while True:
+            for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time"):
+                dprint("Try: ", host, ":", port)
+                # message = DirectMessage
+
+                yield 1.0
+
+            yield 5.0
+
+

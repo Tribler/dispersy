@@ -43,7 +43,7 @@ def rsa_to_private_pem(rsa, cipher="aes_128_cbc", password=None):
         return password or "-empty-"
     bio = M2Crypto.BIO.MemoryBuffer()
     rsa.save_key_bio(bio, cipher, get_password)
-    return buffer(bio.read_all())
+    return bio.read_all()
 
 def rsa_to_public_pem(rsa, cipher="aes_128_cbc", password=None):
     """
@@ -57,13 +57,13 @@ def rsa_to_public_pem(rsa, cipher="aes_128_cbc", password=None):
     assert password is None or isinstance(password, str)
     bio = M2Crypto.BIO.MemoryBuffer()
     rsa.save_pub_key_bio(bio)
-    return buffer(bio.read_all())
+    return bio.read_all()
 
 def rsa_from_private_pem(pem, password=None):
     """
     Create a RSA public / private key pair from a PEM binary string.
     """
-    assert isinstance(pem, buffer)
+    assert isinstance(pem, str)
     assert password is None or isinstance(password, str)
     def get_password(*args):
         return password or "-empty-"
@@ -73,7 +73,7 @@ def rsa_from_public_pem(pem):
     """
     Create a RSA public part from a PEM binary string.
     """
-    assert isinstance(pem, buffer)
+    assert isinstance(pem, str)
     return M2Crypto.RSA.load_pub_key_bio(M2Crypto.BIO.MemoryBuffer(pem))
 
 def rsa_encrypt(rsa, data):
@@ -104,37 +104,22 @@ def rsa_decrypt(rsa, data):
     # TODO: use standard!
     assert isinstance(rsa, M2Crypto.RSA.RSA)
     assert len(rsa) % 8 == 0
-    assert isinstance(data, (str, buffer))
+    assert isinstance(data, str)
     chunk_length = len(rsa) / 8
     data = "".join((rsa.public_decrypt(data[offset:offset+chunk_length], M2Crypto.RSA.no_padding) for offset in xrange(0, len(data), chunk_length)))
     return data[2:_binary16_to_uint(data)+2]
 
-# def rsa_sign(rsa, data, offset=0, length=0):
-#     """
-#     RSA can only sign data that is the same length, or smaller, than
-#     it has bits.  This function makes a sha1 digest from DATA and
-#     signes this digest.
+if __name__ == "__main__":
+    bits = 1024
+    exponent = 5
+    rsa = rsa_generate_key(bits, exponent)
+    public_pem = rsa_to_public_pem(rsa)
+    private_pem = rsa_to_private_pem(rsa)
 
-#     Returning the signature.
-#     """
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     assert len(rsa) % 8 == 0
-#     assert isinstance(data, (str, buffer))
-#     assert isinstance(offset, (int, long))
-#     assert isinstance(length, (int, long))
-#     if not length:
-#         length = len(data)
-#     return rsa.sign(sha1(data[offset:length]).digest())
-
-# def rsa_verify(rsa, data, offset=0, length=0):
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     assert len(rsa) % 8 == 0
-#     assert isinstance(data, (str, buffer))
-#     assert isinstance(offset, (int, long))
-#     assert isinstance(length, (int, long))
-#     if not length:
-#         length = len(data)
-#     signature = data[:len(rsa) / 8]
-#     payload = data[len(rsa) / 8:]
-#     return bool(rsa.verify(sha1(payload).digest(), signature)), payload
-    
+    print "Generating public / private key pair"
+    print "Bits:", bits
+    print "Exponent:", exponent
+    print "SHA1(pub).HEX:", sha1(public_pem).digest().encode("HEX")
+    print "SHA1(prv).HEX:", sha1(private_pem).digest().encode("HEX")
+    print public_pem
+    print private_pem

@@ -115,7 +115,7 @@ class Conversion00001(ConversionBase):
         #
         index = 0
         public_key = container[index]
-        if not isinstance(public_key, buffer):
+        if not isinstance(public_key, str):
             raise DropPacket("Invalid public key type")
         try:
             member = self._community.get_member(public_key)
@@ -194,7 +194,7 @@ class Conversion00001(ConversionBase):
                 # to_member
                 index += 1
                 public_key = container[index]
-                if not isinstance(public_key, buffer):
+                if not isinstance(public_key, str):
                     raise DropPacket("Invalid to-member type")
                 try:
                     to_member = self._community.get_member(public_key)

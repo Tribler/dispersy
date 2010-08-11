@@ -17,13 +17,15 @@ class Community(object):
     of the current state of a distributed community.
     """
     @staticmethod
-    def create_community(cls, privileges, my_member):
+    def create_community(cls, privileges, my_member, *args, **kargs):
         """
         Create a new CLS community with PRIVILEGES owned by MY_MEMBER.
 
         CLS is a Community subclass.  A new instance of this is returned.
         PRIVILEGES is a list with Privileges that will be created.
         MY_MEMBER is a Member that will be granted all Permissions for PRIVILEGES.
+        *ARGS are passed along to __init__
+        **KARGS are passed along to __init__
         """
         if __debug__:
             from Privilege import PrivilegeBase
@@ -35,16 +37,14 @@ class Community(object):
         rsa = rsa_generate_key(512)
         public_pem = rsa_to_public_pem(rsa)
         private_pem = rsa_to_private_pem(rsa)
-        cid = buffer(sha1(public_pem).digest())
-        master_member = MasterMember(private_pem)
+        cid = sha1(public_pem).digest()
 
         database = DispersyDatabase.get_instance()
-        database.execute(u"INSERT INTO community(cid, pem) VALUES(?, ?)", (cid, private_pem))
+        database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)", (my_member.get_database_id(), buffer(cid), buffer(public_pem)))
+        database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         # new community instance
-        community = cls(cid, my_member)
-        dispersy = Dispersy.get_instance()
-        dispersy.add_community(community)
+        community = cls(cid, *args, **kargs)
 
         permission_pairs = []
         for privilege in privileges:
@@ -56,46 +56,74 @@ class Community(object):
 
         return community
 
-    def __init__(self, cid, my_member):
+    @staticmethod
+    def join_community(cls, master_pem, my_member, *args, **kargs):
+        """
+        Joins a discovered community.  Returns a Community subclass
+        instance.
+        """
+        assert isinstance(master_pem, str)
+        assert isinstance(my_member, MyMember)
+        cid = sha1(master_pem).digest()
+        database = DispersyDatabase.get_instance()
+        database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)",
+                         (my_member.get_database_id(), buffer(cid), master_pem))
+
+        # new community instance
+        return cls(cid, *args, **kargs)
+
+    @staticmethod
+    def load_communities():
+        """
+        Load existing communities.  Returns a list with zero or more
+        Community subclass instances.
+        """
+        raise NotImplementedError()
+
+    def __init__(self, cid):
         """
         CID is the community identifier.
-        MY_MEMBER is the person participating in the community.
         """
-        assert isinstance(cid, buffer)
+        assert isinstance(cid, str)
         assert len(cid) == 20
-        assert isinstance(my_member, MyMember)
 
         # community identifier
         self._cid = cid
 
-        # the person participating in the community
-        self._my_member = my_member
+        # dispersy
+        self._dispersy_database = DispersyDatabase.get_instance()
+
+        try:
+            community_id, master_pem, user_pem = self._dispersy_database.execute(u"""
+            SELECT community.id, community.master_pem, user.pem
+            FROM community
+            LEFT JOIN user ON community.user = user.id
+            WHERE cid == ?
+            LIMIT 1""", (buffer(self._cid),)).next()
+            master_pem = str(master_pem)
+            user_pem = str(user_pem)
+            
+        except StopIteration:
+            raise ValueError(u"Community not found in database")
+        self._database_id = community_id
+        self._my_member = MyMember.get_instance(user_pem)
+        self._master_member = MasterMember.get_instance(master_pem)
 
         # dictionary containing available conversions.  currently only
         # contains one conversion (the default 00001)
         default_conversion = Conversion(self)
         self._conversions = {None:default_conversion, default_conversion.get_prefix():default_conversion}
 
-        # dispersy
-        self._dispersy = Dispersy.get_instance()
-        
-        # community database id and master key
-        self._dispersy_database = DispersyDatabase.get_instance()
-        try:
-            id_, pem = self._dispersy_database.execute(u"SELECT id, pem FROM community WHERE cid == ? LIMIT 1", (self._cid,)).next()
-        except StopIteration:
-            # community not found in database
-            raise ValueError
-        self._database_id = id_
-        self._master_member = MasterMember(pem)
-
-        # dictionary with all community members
+        # dictionary with in-memory community members
         # todo: load from database
         self._members = {self._master_member.get_pem():self._master_member,
                          self._my_member.get_pem():self._my_member}
 
         # initial timeline containing all known privileges
         self._timeline = Timeline(self)
+
+        self._dispersy = Dispersy.get_instance()
+        self._dispersy.add_community(self)
 
     def get_cid(self):
         return self._cid
@@ -107,9 +135,9 @@ class Community(object):
         """
         Returns a Member instance associated with PUBLIC_KEY.
         """
-        assert isinstance(public_key, buffer)
+        assert isinstance(public_key, str)
         if not public_key in self._members:
-            self._members[public_key] = Member(public_key)
+            self._members[public_key] = Member.get_instance(public_key)
         return self._members[public_key]
 
     def get_master_member(self):
