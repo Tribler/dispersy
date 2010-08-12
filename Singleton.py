@@ -28,7 +28,18 @@ class Singleton(object):
     _singleton_lock = RLock()
 
     @classmethod
+    def has_instance(cls):
+        """
+        Returns the existing singleton instance or None
+        """
+        if hasattr(cls, "_singleton_instance"):
+            return getattr(cls, "_singleton_instance")
+
+    @classmethod
     def get_instance(cls, *args, **kargs):
+        """
+        Returns the existing singleton instance or create one
+        """
         if hasattr(cls, "_singleton_instance"):
             return getattr(cls, "_singleton_instance")
         
@@ -60,7 +71,19 @@ class Parameterized1Singleton(object):
     _singleton_lock = RLock()
 
     @classmethod
+    def has_instance(cls, arg):
+        """
+        Returns the existing singleton instance or None
+        """
+        assert isinstance(arg, (str, unicode, int, long, float))
+        if hasattr(cls, "_singleton_instances") and arg in getattr(cls, "_singleton_instances"):
+            return getattr(cls, "_singleton_instances")[arg]
+
+    @classmethod
     def get_instance(cls, *args, **kargs):
+        """
+        Returns the existing singleton instance or create one
+        """
         assert len(args) > 0
         assert isinstance(args[0], (str, unicode, int, long, float))
         

@@ -53,7 +53,7 @@ class Member(Parameterized1Singleton):
         return bool(self._rsa.verify(sha1(data[offset:length-signature_length]).digest(), data[length-signature_length:length]))
 
     def __str__(self):
-        return "<%s %d %s %d>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"), id(self))
+        return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
 
 class PrivateMemberBase(Member):
     def __init__(self, public_pem, private_pem=None):
@@ -68,18 +68,24 @@ class PrivateMemberBase(Member):
             try:
                 private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
             except StopIteration:
-                raise ValueError(u"Unable to find associated private key")
+                pass
 
         else:
             # set private pem
             database = DispersyDatabase.get_instance()
             database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
-        Member.__init__(self, public_pem, rsa_from_private_pem(private_pem))
+        if private_pem is None:
+            rsa = rsa_from_public_pem(public_pem)
+        else:
+            rsa = rsa_from_private_pem(private_pem)
+
+        Member.__init__(self, public_pem, rsa)
         self._private_pem = private_pem
         self._sequence_number = 0
 
     def claim_sequence_number(self):
+        assert not self._private_pem is None
         self._sequence_number += 1
         return self._sequence_number
         
@@ -91,6 +97,7 @@ class PrivateMemberBase(Member):
         Sign DATA using our private key.  Returns a binary string
         concatenated with the signature.
         """
+        assert not self._private_pem is None
         return data[offset:length or len(data)] + self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
 
 class MasterMember(PrivateMemberBase):

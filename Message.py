@@ -98,9 +98,9 @@ class DistributionBase(object):
         self.global_time = global_time
 
     def __str__(self):
-        return "<%s>" % (self.__class__.__name__)
+        return "<{0} {1}:->".format(self.__class__.__name__, self.global_time)
 
-class SyncDistributionBase(DistributionBase):
+class FullSyncDistribution(DistributionBase):
     def __init__(self, global_time, sequence_number):
         assert isinstance(global_time, (int, long))
         assert isinstance(sequence_number, (int, long))
@@ -112,13 +112,13 @@ class SyncDistributionBase(DistributionBase):
         self.sequence_number = sequence_number
 
     def __str__(self):
-        return "<%s %d:%d>" % (self.__class__.__name__, self.global_time, self.sequence_number)
+        return "<{0} {1}:{2}>".format(self.__class__.__name__, self.global_time, self.sequence_number)
 
-class FullSyncDistribution(SyncDistributionBase):
+class LastSyncDistribution(DistributionBase):
     pass
 
-class MinimalSyncDistribution(SyncDistributionBase):
-    def __init__(self, global_time, sequence_number, minimal_count):
+class MinimalSyncDistribution(DistributionBase):
+    def __init__(self, global_time, minimal_count):
         assert isinstance(global_time, (int, long))
         assert isinstance(sequence_number, (int, long))
         assert isinstance(minimal_count, (int, long))
@@ -129,6 +129,9 @@ class MinimalSyncDistribution(SyncDistributionBase):
         # the minimal number of nodes online that should have the
         # message
         self.minimal_count = minimal_count
+
+    def __str__(self):
+        return "<{0} {1}:- {2}>".format(self.__class__.__name__, self.global_time, self.minimal_count)
 
 class DirectDistribution(DistributionBase):
     pass
@@ -193,7 +196,7 @@ class SyncMessage(MessageBase):
     def __init__(self, community, signed_by, distribution, destination, permission):
         if __debug__:
             from Permission import PermissionBase
-        assert isinstance(distribution, (FullSyncDistribution, MinimalSyncDistribution))
+        assert isinstance(distribution, (FullSyncDistribution, MinimalSyncDistribution, LastSyncDistribution))
         assert isinstance(destination, (CommunityDestination, PrivilegedDestination))
         assert isinstance(permission, PermissionBase)
 

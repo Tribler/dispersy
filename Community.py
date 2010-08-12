@@ -8,7 +8,7 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Member import MasterMember, MyMember, Member
-from Message import SyncMessage, DirectMessage, FullSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
+from Message import SyncMessage, DirectMessage, FullSyncDistribution, LastSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
 from Encoding import encode
 
 class Community(object):
@@ -41,6 +41,7 @@ class Community(object):
 
         database = DispersyDatabase.get_instance()
         database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)", (my_member.get_database_id(), buffer(cid), buffer(public_pem)))
+        database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(cid), buffer(public_pem)))
         database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         # new community instance
@@ -100,6 +101,9 @@ class Community(object):
             LEFT JOIN user ON community.user = user.id
             WHERE cid == ?
             LIMIT 1""", (buffer(self._cid),)).next()
+
+            # the database returns <buffer> types, we use the binary
+            # <str> type internally
             master_pem = str(master_pem)
             user_pem = str(user_pem)
             
@@ -192,8 +196,10 @@ class Community(object):
         # distribute messages so others can update their timeline
         self._dispersy.queue_outgoing_messages(messages)
 
-    def permit(self, permission, sign_with_master=False):
+    def permit(self, permission, sign_with_master=False, distribution=FullSyncDistribution):
         assert isinstance(permission, PermitPermission)
+        assert isinstance(sign_with_master, bool)
+        assert issubclass(distribution, (FullSyncDistribution, LastSyncDistribution))
 
         if sign_with_master:
             signer = self.get_master_member()
@@ -201,7 +207,14 @@ class Community(object):
             signer = self.get_my_member()
 
         global_time = self._timeline.claim_global_time()
-        message = SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), permission)
+        if issubclass(distribution, FullSyncDistribution):
+            message = SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), permission)
+
+        elif issubclass(distribution, LastSyncDistribution):
+            message = SyncMessage(self, signer, LastSyncDistribution(global_time), CommunityDestination(), permission)
+
+        else:
+            raise ValueError("Unknown distribution")
 
         # update locally
         assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)

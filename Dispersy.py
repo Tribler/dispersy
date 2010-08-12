@@ -12,7 +12,7 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from DispersyDatabase import DispersyDatabase
 from Singleton import Singleton
 from Member import MyMember
-from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, FullSyncDistribution
+from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, FullSyncDistribution, LastSyncDistribution
 from Print import dprint
 
 class DummySocket(object):
@@ -55,6 +55,9 @@ class Dispersy(Singleton):
 
     def get_working_directory(self):
         return self._working_directory
+
+    def get_socket(self):
+        return self._socket
 
     def set_socket(self, socket):
         self._socket = socket
@@ -223,8 +226,15 @@ class Dispersy(Singleton):
                                         distribution.sequence_number,
                                         buffer(packet)))
 
+            elif isinstance(distribution, LastSyncDistribution):
+                self._database.execute(u"INSERT INTO sync_last(user, community, global, packet) VALUES(?, ?, ?, ?)",
+                                       (message.signed_by.get_database_id(),
+                                        message.community.get_database_id(),
+                                        distribution.global_time,
+                                        buffer(packet)))
+
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
             # todo: use self._socket so send
 

@@ -4,7 +4,7 @@ from Permission import AuthorizePermission, RevokePermission, PermitPermission
 from Encoding import encode, decode
 from Message import DelayPacket, DropPacket
 from Message import SyncMessage, DirectMessage
-from Message import FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
+from Message import FullSyncDistribution, LastSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
 from Message import UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination
 
 class ConversionBase(object):
@@ -224,7 +224,7 @@ class Conversion00001(ConversionBase):
                 permission = PermitPermission(privilege, container[index:])
 
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
             message = SyncMessage(self._community, member, distribution, destination, permission)
 
@@ -238,10 +238,10 @@ class Conversion00001(ConversionBase):
                 raise DropPacket("Invalid global time value")
 
             # todo
-            raise NotImplemented()
+            raise NotImplementedError()
             
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
         return message
 
@@ -258,7 +258,7 @@ class Conversion00001(ConversionBase):
         elif isinstance(message.destination, CommunityDestination):
             container.append(u"community-destination")
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
         #
         # gossip message
@@ -266,8 +266,12 @@ class Conversion00001(ConversionBase):
         if isinstance(message, SyncMessage):
             if isinstance(message.distribution, FullSyncDistribution):
                 container.extend((u"full-sync", message.distribution.global_time, message.distribution.sequence_number))
+
+            elif isinstance(message.distribution, LastSyncDistribution):
+                container.extend((u"last-sync", message.distribution.global_time))
+
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
             if isinstance(message.permission, AuthorizePermission):
                 container.extend((u"authorize", message.permission.get_privilege().get_name(), message.permission.get_permission().get_name(), message.permission.get_to().get_pem()))
@@ -277,7 +281,7 @@ class Conversion00001(ConversionBase):
                 container.extend(message.permission.get_container())
 
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
         #
         # direct message
@@ -286,7 +290,7 @@ class Conversion00001(ConversionBase):
             if isinstance(message.distribution, DirectDistribution):
                 container.extend((u"direct-message", message.distribution.global_time))
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
             container.append(message.identifier)
             container.extend(message.payload)
