@@ -242,7 +242,7 @@ class Dispersy(Singleton):
         while True:
             for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time"):
                 dprint("Try: ", host, ":", port)
-                # message = DirectMessage
+                self._socket.send((host, port), "hello world")
 
                 yield 1.0
 
