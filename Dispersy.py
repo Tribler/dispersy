@@ -167,28 +167,11 @@ class Dispersy(Singleton):
                 continue
 
             #
-            # Drop duplicate messages
-            #
-
-            # todo: message.distribution specific!
-            try:
-                self._database.execute(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and sequence = ? LIMIT 1",
-                                       (message.signed_by.get_database_id(), message.community.get_database_id(), message.distribution.sequence_number)).next()
-            except StopIteration:
-                # We have not received this message yet, this is good.
-                pass
-            else:
-                dprint("drop a ", len(packet), " byte message. %s")
-                continue
-
-            #
             # Update routing table.  We know that some peer (not
             # necessarily message.signed_by) exists at this address.
             #
-            self._database.execute(u"INSERT OR REPLACE INTO routing(user, host, port, time) VALUES(?, ?, ?, DATETIME())",
-                                   (message.signed_by.get_database_id(),
-                                    unicode(address[0]),
-                                    address[1]))
+            self._database.execute(u"INSERT OR REPLACE INTO routing(community, user, host, port, time) VALUES(?, ?, ?, ?, DATETIME())",
+                                   (message.community.get_database_id(), message.signed_by.get_database_id(), unicode(address[0]), address[1]))
 
             try:
                 if message.is_dispersy_specific:
@@ -204,7 +187,7 @@ class Dispersy(Singleton):
                 self._delay_message(address, packet, message, exception)
                 continue
 
-    def queue_outgoing_messages(self, messages):
+    def store_and_forward(self, messages):
         """
         Queue MESSAGES to be dispersed to other nodes and oneself.
         """
@@ -214,10 +197,15 @@ class Dispersy(Singleton):
         assert len(messages) > 0
         assert not filter(lambda x: not isinstance(x, MessageBase), messages)
 
+        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time LIMIT 10")]
+
         for message in messages:
             packet = message.community.get_conversion().encode_message(message)
             distribution = message.distribution
 
+            #
+            # Store
+            #
             if isinstance(distribution, FullSyncDistribution):
                 self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
                                        (message.signed_by.get_database_id(),
@@ -236,15 +224,49 @@ class Dispersy(Singleton):
             else:
                 raise NotImplementedError()
 
-            # todo: use self._socket so send
+            #
+            # Forward
+            #
+            for address in addresses:
+                dprint("Try sending ", len(packet), " bytes to ", address[0], ":", address[1])
+                self._socket.send(address, packet)
 
     def periodically_disperse(self):
         while True:
-            for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time"):
-                dprint("Try: ", host, ":", port)
-                self._socket.send((host, port), "hello world")
 
-                yield 1.0
+            addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time LIMIT 10")]
+
+            sending_global_time = 0
+            sending_packet = None
+
+            try:
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_full ORDER BY global LIMIT 1").next()
+            except StopIteration:
+                global_time = 0
+            if global_time > sending_global_time:
+                sending_global_time = global_time
+                sending_packet = packet
+
+            try:
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_minimal ORDER BY global LIMIT 1").next()
+            except StopIteration:
+                global_time = 0
+            if global_time > sending_global_time:
+                sending_global_time = global_time
+                sending_packet = packet
+
+            try:
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_last ORDER BY global LIMIT 1").next()
+            except StopIteration:
+                global_time = 0
+            if global_time > sending_global_time:
+                sending_global_time = global_time
+                sending_packet = packet
+
+            if sending_global_time > 0:
+                for address in addresses:
+                    dprint("Try sending ", len(packet), " bytes to ", address[0], ":", address[1])
+                    self._socket.send(address, packet)
 
             yield 5.0
 

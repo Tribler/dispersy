@@ -28,6 +28,7 @@ CREATE TABLE key(
  private_pem BLOB);                             -- private part
 
 CREATE TABLE routing(
+ community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
  host TEXT,                                     -- IP address
  port INTEGER,                                  -- port number

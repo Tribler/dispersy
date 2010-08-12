@@ -6,6 +6,8 @@ from Message import DelayPacket, DropPacket
 from Message import SyncMessage, DirectMessage
 from Message import FullSyncDistribution, LastSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
 from Message import UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination
+from DispersyDatabase import DispersyDatabase
+from Print import dprint
 
 class ConversionBase(object):
     """
@@ -23,6 +25,9 @@ class ConversionBase(object):
         assert isinstance(community, Community)
         assert isinstance(vid, str)
         assert len(vid) == 5
+
+        # the dispersy database
+        self._dispersy_database = DispersyDatabase.get_instance()
 
         # the community that this conversion belongs to.
         self._community = community
@@ -95,6 +100,70 @@ class Conversion00001(ConversionBase):
     def __init__(self, community):
         ConversionBase.__init__(self, community, "00001")
 
+    def _check_dupplicate(self, statements, sequenceofbindings):
+        try:
+            self._dispersy_database.execute(statements, sequenceofbindings).next()
+            raise DropPacket("Duplicate packet")
+        except StopIteration:
+            pass
+        
+    @staticmethod
+    def _decode_global_time(container, index):
+        global_time = container[index]
+        if not isinstance(global_time, (int, long)):
+            raise DropPacket("Invalid global time type")
+        if global_time <= 0:
+            raise DropPacket("Invalid global time value")
+        return index+1, global_time
+
+    @staticmethod
+    def _decode_sequence_number(container, index):
+        sequence_number = container[index]
+        if not isinstance(sequence_number, (int, long)):
+            raise DropPacket("Invalid sequence number type")
+        if sequence_number <= 0:
+            raise DropPacket("Invalid sequence number value")
+        return index+1, sequence_number
+    
+    def _decode_privilege(self, container, index):
+        privilege = container[index]
+        if not isinstance(privilege, unicode):
+            raise DropPacket("Invalid privilege type")
+        try:
+            privilege = self._community.get_privilege(privilege)
+        except KeyError:
+            # the privilege is not known in this community.  delay
+            # message processing for a while
+            raise DropPacket("Invalid privilege")
+        return index+1, privilege
+
+    @staticmethod
+    def _decode_permission(container, index):
+        permission = container[index]
+        if not isinstance(permission, unicode):
+            raise DropPacket("Invalid authorized permission type")
+        if permission == u"permit":
+            permission = PermitPermission
+        elif permission == u"authorize":
+            permission = AuthorizePermission
+        elif permission == u"revoke":
+            permission = RevokePermission
+        else:
+            raise DropPacket("Invalid permission")
+        return index+1, permission
+
+    def _decode_member(self, container, index):
+        public_key = container[index]
+        if not isinstance(public_key, str):
+            raise DropPacket("Invalid to-member type")
+        try:
+            member = self._community.get_member(public_key)
+        except KeyError:
+            # the user is not known in this community.  delay
+            # message processing for a while
+            raise DelayPacket("Unable to find to-member in community")
+        return index+1, member
+
     def decode_message(self, data):
         """
         Convert version 00001 DATA into an internal data structure.
@@ -145,82 +214,35 @@ class Conversion00001(ConversionBase):
         #
         index += 1
         if container[index] == u"full-sync":
-            # global_time
-            index += 1
-            global_time = container[index]
-            if not isinstance(global_time, (int, long)):
-                raise DropPacket("Invalid global time type")
-            if global_time <= 0:
-                raise DropPacket("Invalid global time value")
-
-            # sequence_number
-            index += 1
-            sequence_number = container[index]
-            if not isinstance(sequence_number, (int, long)):
-                raise DropPacket("Invalid sequence number type")
-            if sequence_number <= 0:
-                raise DropPacket("Invalid sequence number value")
-
+            index, global_time = self._decode_global_time(container, index+1)
+            index, sequence_number = self._decode_sequence_number(container, index)
+            self._check_dupplicate(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and global = ? and sequence = ?",
+                                   (member.get_database_id(), self._community.get_database_id(), global_time, sequence_number))
             distribution = FullSyncDistribution(global_time, sequence_number)
 
-            index += 1
             if container[index] == u"authorize":
-                # privilege
-                index += 1
-                privilege = container[index]
-                if not isinstance(privilege, unicode):
-                    raise DropPacket("Invalid privilege type")
-                try:
-                    privilege = self._community.get_privilege(privilege)
-                except KeyError:
-                    # the privilege is not known in this community.  delay
-                    # message processing for a while
-                    raise DropPacket("Invalid privilege")
-
-                # authorized_permission
-                index += 1
-                authorized_permission = container[index]
-                if not isinstance(authorized_permission, unicode):
-                    raise DropPacket("Invalid authorized permission type")
-                if authorized_permission == u"permit":
-                    authorized_permission = PermitPermission
-                elif authorized_permission == u"authorize":
-                    authorized_permission = AuthorizePermission
-                elif authorized_permission == u"revoke":
-                    authorized_permission = RevokePermission
-                else:
-                    raise DropPacket("Invalid permission")
-
-                # to_member
-                index += 1
-                public_key = container[index]
-                if not isinstance(public_key, str):
-                    raise DropPacket("Invalid to-member type")
-                try:
-                    to_member = self._community.get_member(public_key)
-                except KeyError:
-                    # the user is not known in this community.  delay
-                    # message processing for a while
-                    raise DelayPacket("Unable to find to-member in community")
-
-                # message payload
+                index, privilege = self._decode_privilege(container, index+1)
+                index, authorized_permission = self._decode_permission(container, index)
+                index, to_member = self._decode_member(container, index)
                 permission = AuthorizePermission(privilege, to_member, authorized_permission)
 
             elif container[index] == u"permit":
-                # privilege
-                index += 1
-                privilege = container[index]
-                if not isinstance(privilege, unicode):
-                    raise DropPacket("Invalid target privilege type")
-                try:
-                    privilege = self._community.get_privilege(privilege)
-                except KeyError:
-                    # the privilege is not known in this community.  delay
-                    # message processing for a while
-                    raise DropPacket("Invalid target privilege")
+                index, privilege = self._decode_privilege(container, index+1)
+                permission = PermitPermission(privilege, container[index:])
 
-                # message payload
-                index += 1
+            else:
+                raise NotImplementedError()
+
+            message = SyncMessage(self._community, member, distribution, destination, permission)
+
+        if container[index] == u"last-sync":
+            index, global_time = self._decode_global_time(container, index+1)
+            self._check_dupplicate(u"SELECT 1 FROM sync_last WHERE user = ? and community = ? and global = ?",
+                                   (member.get_database_id(), self._community.get_database_id(), global_time))
+            distribution = LastSyncDistribution(global_time)
+
+            if container[index] == u"permit":
+                index, privilege = self._decode_privilege(container, index+1)
                 permission = PermitPermission(privilege, container[index:])
 
             else:
@@ -229,13 +251,7 @@ class Conversion00001(ConversionBase):
             message = SyncMessage(self._community, member, distribution, destination, permission)
 
         elif container[index] == u"direct-message":
-            # global_time
-            index += 1
-            global_time = container[index]
-            if not isinstance(global_time, (int, long)):
-                raise DropPacket("Invalid global time type")
-            if global_time <= 0:
-                raise DropPacket("Invalid global time value")
+            index, global_time = self._decode_global_time(container, index+1)
 
             # todo
             raise NotImplementedError()

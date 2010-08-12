@@ -194,7 +194,7 @@ class Community(object):
             self.on_dispersy_message(message)
 
         # distribute messages so others can update their timeline
-        self._dispersy.queue_outgoing_messages(messages)
+        self._dispersy.store_and_forward(messages)
 
     def permit(self, permission, sign_with_master=False, distribution=FullSyncDistribution):
         assert isinstance(permission, PermitPermission)
@@ -221,7 +221,7 @@ class Community(object):
         self.on_message(message)
 
         # distribute messages
-        self._dispersy.queue_outgoing_messages([message])
+        self._dispersy.store_and_forward([message])
 
     def on_incoming_dispersy_message(self, address, packet, message):
         """
@@ -246,7 +246,7 @@ class Community(object):
         self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
         # we should distribute the message as defined by the
         # distribution policy
-        self._dispersy.queue_outgoing_messages([message])
+        self._dispersy.store_and_forward([message])
 
     def on_incoming_message(self, address, packet, message):
         """
