@@ -239,6 +239,8 @@ class Dispersy(Singleton):
 
 
     def periodically_disperse(self):
+        yield False
+
         while True:
 
             addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]

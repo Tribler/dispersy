@@ -42,10 +42,10 @@ class DiscoverScript(ScriptBase):
         permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-01"))
         message01 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
 
-        permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-02"))
+        permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-02--"))
         message02 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
 
-        permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-03"))
+        permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-03----"))
         message03 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
 
         self._dispersy._store(message01.community.get_conversion().encode_message(message01), message01)
