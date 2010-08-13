@@ -239,7 +239,7 @@ class Dispersy(Singleton):
 
 
     def periodically_disperse(self):
-        yield False
+        # yield False
 
         while True:
 
