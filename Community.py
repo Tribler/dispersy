@@ -160,7 +160,7 @@ class Community(object):
         # todo: add parameter to specify the conversion version
         return self._conversions[prefix]
 
-    def authorize(self, member, permission_pairs, sign_with_master=False):
+    def authorize(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
         """
         Grant MEMBER the PERMISSION_PAIRS.
 
@@ -177,6 +177,8 @@ class Community(object):
         assert isinstance(permission_pairs, (tuple, list))
         assert not filter(lambda x: not (isinstance(x, tuple) and len(x) == 2 and isinstance(x[0], PrivilegeBase) and issubclass(x[1], PermissionBase)), permission_pairs)
         assert isinstance(sign_with_master, bool)
+        assert isinstance(update_locally, bool)
+        assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
             signer = self.get_master_member()
@@ -188,18 +190,23 @@ class Community(object):
         for privilege, permission in permission_pairs:
             messages.append(SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
 
-        # update locally
-        for message in messages:
-            assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
-            self.on_dispersy_message(message)
+        if update_locally:
+            for message in messages:
+                assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+                self.on_dispersy_message(message)
 
-        # distribute messages so others can update their timeline
-        self._dispersy.store_and_forward(messages)
+        if store_and_forward:
+            self._dispersy.store_and_forward(messages)
 
-    def permit(self, permission, sign_with_master=False, distribution=FullSyncDistribution):
+        return messages
+
+    def permit(self, permission, distribution=FullSyncDistribution, destination=CommunityDestination, sign_with_master=False, update_locally=True, store_and_forward=True):
         assert isinstance(permission, PermitPermission)
-        assert isinstance(sign_with_master, bool)
         assert issubclass(distribution, (FullSyncDistribution, LastSyncDistribution))
+        assert issubclass(destination, CommunityDestination)
+        assert isinstance(sign_with_master, bool)
+        assert isinstance(update_locally, bool)
+        assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
             signer = self.get_master_member()
@@ -216,12 +223,14 @@ class Community(object):
         else:
             raise ValueError("Unknown distribution")
 
-        # update locally
-        assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
-        self.on_message(message)
+        if update_locally:
+            assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+            self.on_message(message)
 
-        # distribute messages
-        self._dispersy.store_and_forward([message])
+        if store_and_forward:
+            self._dispersy.store_and_forward([message])
+
+        return message
 
     def on_incoming_dispersy_message(self, address, packet, message):
         """
@@ -242,11 +251,7 @@ class Community(object):
         generated or received from an external source.
         """
         assert isinstance(message, SyncMessage)
-        # update our timeline
         self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
-        # we should distribute the message as defined by the
-        # distribution policy
-        self._dispersy.store_and_forward([message])
 
     def on_incoming_message(self, address, packet, message):
         """

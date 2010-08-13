@@ -100,7 +100,10 @@ class DistributionBase(object):
     def __str__(self):
         return "<{0} {1}:->".format(self.__class__.__name__, self.global_time)
 
-class FullSyncDistribution(DistributionBase):
+class SyncDistribution(DistributionBase):
+    pass
+
+class FullSyncDistribution(SyncDistribution):
     def __init__(self, global_time, sequence_number):
         assert isinstance(global_time, (int, long))
         assert isinstance(sequence_number, (int, long))
@@ -114,10 +117,10 @@ class FullSyncDistribution(DistributionBase):
     def __str__(self):
         return "<{0} {1}:{2}>".format(self.__class__.__name__, self.global_time, self.sequence_number)
 
-class LastSyncDistribution(DistributionBase):
+class LastSyncDistribution(SyncDistribution):
     pass
 
-class MinimalSyncDistribution(DistributionBase):
+class MinimalSyncDistribution(SyncDistribution):
     def __init__(self, global_time, minimal_count):
         assert isinstance(global_time, (int, long))
         assert isinstance(sequence_number, (int, long))

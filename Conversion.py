@@ -262,7 +262,11 @@ class Conversion00001(ConversionBase):
         return message
 
     def encode_message(self, message):
+        if __debug__:
+            from Member import PrivateMemberBase
         assert isinstance(message, (SyncMessage, DirectMessage))
+        assert isinstance(message.signed_by, PrivateMemberBase)
+        assert not message.signed_by.get_private_pem() is None
 
         container = [message.signed_by.get_pem()]
 

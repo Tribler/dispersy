@@ -12,7 +12,7 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from DispersyDatabase import DispersyDatabase
 from Singleton import Singleton
 from Member import MyMember
-from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, FullSyncDistribution, LastSyncDistribution
+from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, SyncDistribution, FullSyncDistribution, LastSyncDistribution
 from Print import dprint
 
 class DummySocket(object):
@@ -105,17 +105,17 @@ class Dispersy(Singleton):
         assert isinstance(delay, DelayMessage)
         dprint(delay)
 
-    def _drop_message(self, address, packet, message, drop):
-        if __debug__:
-            from Message import MessageBase
-        assert isinstance(address, tuple)
-        assert len(address) == 2
-        assert isinstance(address[0], str)
-        assert isinstance(address[1], int)
-        assert isinstance(packet, str)
-        assert isinstance(message, MessageBase)
-        assert isinstance(delay, DropMessage)
-        dprint("drop a ", len(packet), " byte message")
+    # def _drop_message(self, address, packet, message, drop):
+    #     if __debug__:
+    #         from Message import MessageBase
+    #     assert isinstance(address, tuple)
+    #     assert len(address) == 2
+    #     assert isinstance(address[0], str)
+    #     assert isinstance(address[1], int)
+    #     assert isinstance(packet, str)
+    #     assert isinstance(message, MessageBase)
+    #     assert isinstance(delay, DropMessage)
+    #     dprint("drop a ", len(packet), " byte message")
 
     def on_incoming_packets(self, packets):
         """
@@ -158,11 +158,11 @@ class Dispersy(Singleton):
             try:
                 message = conversion.decode_message(packet)
 
-            except DropPacket as exception:
-                dprint("drop a ", len(packet), " byte packet", exception=True)
+            except DropPacket:
+                dprint("drop a ", len(packet), " byte packet")
                 continue
 
-            except DelayPacket as exception:
+            except DelayPacket:
                 self._delay_packet(address, packet, exception)
                 continue
 
@@ -180,12 +180,39 @@ class Dispersy(Singleton):
                     community.on_incoming_message(address, packet, message)
 
             except DropMessage as exception:
-                self._drop_message(address, packet, message, exception)
+                dprint("drop a ", len(packet), " byte message")
+                # self._drop_message(address, packet, message, exception)
                 continue
                                 
             except DelayMessage as exception:
                 self._delay_message(address, packet, message, exception)
                 continue
+
+            #
+            # Sync messages need to be stored and forwarded
+            #
+            if isinstance(message.distribution, SyncDistribution):
+                self._store(packet, message)
+
+    def _store(self, packet, message):
+        distribution = message.distribution
+        if isinstance(distribution, FullSyncDistribution):
+            self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
+                                   (message.signed_by.get_database_id(),
+                                    message.community.get_database_id(),
+                                    distribution.global_time,
+                                    distribution.sequence_number,
+                                    buffer(packet)))
+
+        elif isinstance(distribution, LastSyncDistribution):
+            self._database.execute(u"INSERT INTO sync_last(user, community, global, packet) VALUES(?, ?, ?, ?)",
+                                   (message.signed_by.get_database_id(),
+                                    message.community.get_database_id(),
+                                    distribution.global_time,
+                                    buffer(packet)))
+
+        else:
+            raise NotImplementedError()
 
     def store_and_forward(self, messages):
         """
@@ -197,44 +224,24 @@ class Dispersy(Singleton):
         assert len(messages) > 0
         assert not filter(lambda x: not isinstance(x, MessageBase), messages)
 
-        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time LIMIT 10")]
+        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
 
         for message in messages:
             packet = message.community.get_conversion().encode_message(message)
-            distribution = message.distribution
 
-            #
             # Store
-            #
-            if isinstance(distribution, FullSyncDistribution):
-                self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
-                                       (message.signed_by.get_database_id(),
-                                        message.community.get_database_id(),
-                                        distribution.global_time,
-                                        distribution.sequence_number,
-                                        buffer(packet)))
+            self._store(packet, message)
 
-            elif isinstance(distribution, LastSyncDistribution):
-                self._database.execute(u"INSERT INTO sync_last(user, community, global, packet) VALUES(?, ?, ?, ?)",
-                                       (message.signed_by.get_database_id(),
-                                        message.community.get_database_id(),
-                                        distribution.global_time,
-                                        buffer(packet)))
-
-            else:
-                raise NotImplementedError()
-
-            #
             # Forward
-            #
             for address in addresses:
                 dprint("Try sending ", len(packet), " bytes to ", address[0], ":", address[1])
                 self._socket.send(address, packet)
 
+
     def periodically_disperse(self):
         while True:
 
-            addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT host, port FROM routing ORDER BY time LIMIT 10")]
+            addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
 
             sending_global_time = 0
             sending_packet = None
