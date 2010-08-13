@@ -239,7 +239,7 @@ class Dispersy(Singleton):
 
 
     def periodically_disperse(self):
-        # yield False
+        yield False
 
         while True:
 
@@ -249,7 +249,7 @@ class Dispersy(Singleton):
             sending_packet = None
 
             try:
-                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_full ORDER BY global LIMIT 1").next()
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_full ORDER BY global DESC LIMIT 1").next()
             except StopIteration:
                 global_time = 0
             if global_time > sending_global_time:
@@ -257,7 +257,7 @@ class Dispersy(Singleton):
                 sending_packet = packet
 
             try:
-                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_minimal ORDER BY global LIMIT 1").next()
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_minimal ORDER BY global DESC LIMIT 1").next()
             except StopIteration:
                 global_time = 0
             if global_time > sending_global_time:
@@ -265,7 +265,7 @@ class Dispersy(Singleton):
                 sending_packet = packet
 
             try:
-                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_last ORDER BY global LIMIT 1").next()
+                global_time, packet = self._database.execute(u"SELECT global, packet FROM sync_last ORDER BY global DESC LIMIT 1").next()
             except StopIteration:
                 global_time = 0
             if global_time > sending_global_time:
