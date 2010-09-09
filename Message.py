@@ -1,5 +1,3 @@
-from Permission import AuthorizePermission, RevokePermission
-
 #
 # Exceptions
 #
@@ -42,10 +40,14 @@ class DelayMessageBySequence(DelayMessage):
     def __init__(self, missing_sequence_number):
         assert isinstance(missing_sequence_number, (int, long))
         DelayMessage.__init__(self, "Missing sequence number")
-        self.missing_sequence_number = missing_sequence_number
+        self._missing_sequence_number = missing_sequence_number
+
+    @property
+    def missing_sequence_number(self):
+        return self._missing_sequence_number
 
     def __str__(self):
-        return "%s #%d" % (DelayMessage.__str__(self), self.missing_sequence_number)
+        return "%s #%d" % (DelayMessage.__str__(self), self._missing_sequence_number)
 
 class DelayMessageByProof(DelayMessage):
     """
@@ -85,7 +87,11 @@ class DropMessageByProof(DropMessage):
     """
     def __init__(self, message):
         DropMessage.__init__(self, "Provide proof")
-        self.proof = message
+        self._proof = message
+
+    @property
+    def proof(self):
+        return self._proof
         
 #
 # Distribution
@@ -95,10 +101,14 @@ class DistributionBase(object):
         assert isinstance(global_time, (int, long))
         # the last known global time + 1 (from the user who signed the
         # message)
-        self.global_time = global_time
+        self._global_time = global_time
+
+    @property
+    def global_time(self):
+        return self._global_time
 
     def __str__(self):
-        return "<{0} {1}:->".format(self.__class__.__name__, self.global_time)
+        return "<{0} {1}:->".format(self.__class__.__name__, self._global_time)
 
 class SyncDistribution(DistributionBase):
     pass
@@ -112,10 +122,14 @@ class FullSyncDistribution(SyncDistribution):
         DistributionBase.__init__(self, global_time)
 
         # the sequence number (from the user who signed the messaged)
-        self.sequence_number = sequence_number
+        self._sequence_number = sequence_number
+
+    @property
+    def sequence_number(self):
+        return self._sequence_number
 
     def __str__(self):
-        return "<{0} {1}:{2}>".format(self.__class__.__name__, self.global_time, self.sequence_number)
+        return "<{0} {1}:{2}>".format(self.__class__.__name__, self._global_time, self._sequence_number)
 
 class LastSyncDistribution(SyncDistribution):
     pass
@@ -131,10 +145,14 @@ class MinimalSyncDistribution(SyncDistribution):
 
         # the minimal number of nodes online that should have the
         # message
-        self.minimal_count = minimal_count
+        self._minimal_count = minimal_count
+
+    @property
+    def minimal_count(self):
+        return self._minimal_count
 
     def __str__(self):
-        return "<{0} {1}:- {2}>".format(self.__class__.__name__, self.global_time, self.minimal_count)
+        return "<{0} {1}:- {2}>".format(self.__class__.__name__, self._global_time, self._minimal_count)
 
 class DirectDistribution(DistributionBase):
     pass
@@ -166,69 +184,55 @@ class PrivilegedDestination(DestinationBase):
 #
 # Message
 #
-class MessageBase(object):
-    def __init__(self, community, signed_by, distribution, destination, is_dispersy_specific):
+class Message(object):
+    def __init__(self, community, signed_by, distribution, destination, permission):
         if __debug__:
             from Member import Member
             from Community import Community
+            from Permission import PermitPermission, AuthorizePermission, RevokePermission
         assert isinstance(community, Community)
         assert isinstance(signed_by, Member)
-        assert isinstance(distribution, DistributionBase)
+        assert isinstance(distribution, (FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution, LastSyncDistribution)), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
         assert isinstance(destination, DestinationBase)
+        assert isinstance(permission, (AuthorizePermission, RevokePermission, PermitPermission))
 
         # the community
-        self.community = community
+        self._community = community
 
         # the member who signed the message
-        self.signed_by = signed_by
+        self._signed_by = signed_by
 
-        # the distribution policy {FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution}
-        self.distribution = distribution
+        # the distribution policy
+        self._distribution = distribution
 
-        # the destination type {UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination}
-        self.destination = destination
+        # the destination type
+        self._destination = destination
 
-        # is it a dispersy specific message
-        self.is_dispersy_specific = is_dispersy_specific
+        # the permission that is used
+        self._permission = permission
+
+    @property
+    def community(self):
+        return self._community
+
+    @property
+    def signed_by(self):
+        return self._signed_by
+
+    @property
+    def distribution(self):
+        return self._distribution
+
+    @property
+    def destination(self):
+        return self._destination
+
+    @property
+    def permission(self):
+        return self._permission
 
     def __str__(self):
         return "<%s>" % (self.__class__.__name__)
 
 
-class SyncMessage(MessageBase):
-    def __init__(self, community, signed_by, distribution, destination, permission):
-        if __debug__:
-            from Permission import PermissionBase
-        assert isinstance(distribution, (FullSyncDistribution, MinimalSyncDistribution, LastSyncDistribution))
-        assert isinstance(destination, (CommunityDestination, PrivilegedDestination))
-        assert isinstance(permission, PermissionBase)
 
-        is_dispersy_specific = isinstance(permission, (AuthorizePermission, RevokePermission))
-
-        # super
-        MessageBase.__init__(self, community, signed_by, distribution, destination, is_dispersy_specific)
-
-        # the permission that is used
-        self.permission = permission
-
-    def __str__(self):
-        return "<%s %s %s %s>" % (self.__class__.__name__, self.distribution, self.destination, self.permission)
-
-class DirectMessage(MessageBase):
-    def __init__(self, community, signed_by, distribution, destination, identifier, payload):
-        assert isinstance(distribution, (DirectDistribution, RelayDistribution))
-        assert isinstance(destination, (UserDestination, MemberDestination))
-        assert isinstance(identifier, unicode)
-        assert isinstance(payload, (tuple, list))
-        assert len(payload) > 0
-
-        is_dispersy_specific = isinstance(payload[0], unicode) and payload[0].startswith(u"dispersy_")
-
-        # super
-        MessageBase.__init__(self, community, signed_by, distribution, destination, is_dispersy_specific)
-
-        # the message identifier
-        self.identifier = identifier
-
-        # the payload
-        self.payload = payload

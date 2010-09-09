@@ -8,7 +8,7 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Member import MasterMember, MyMember, Member
-from Message import SyncMessage, DirectMessage, FullSyncDistribution, LastSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
+from Message import Message, FullSyncDistribution, LastSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
 from Encoding import encode
 
 class Community(object):
@@ -90,6 +90,11 @@ class Community(object):
 
         # community identifier
         self._cid = cid
+
+        # incoming message map
+        self._incoming_message_map = {type(PermitPermission):self.on_message,
+                                      type(AuthorizePermission):self.on_authorize_message,
+                                      type(RevokePermission):self.on_revoke_message}
 
         # dispersy
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -188,7 +193,7 @@ class Community(object):
         messages = []
         global_time = self._timeline.claim_global_time()
         for privilege, permission in permission_pairs:
-            messages.append(SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
+            messages.append(Message(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
 
         if update_locally:
             for message in messages:
@@ -209,19 +214,23 @@ class Community(object):
         assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
-            signer = self.get_master_member()
+            signed_by = self.get_master_member()
         else:
-            signer = self.get_my_member()
+            signed_by = self.get_my_member()
 
-        global_time = self._timeline.claim_global_time()
         if issubclass(distribution, FullSyncDistribution):
-            message = SyncMessage(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), permission)
-
+            distribution = FullSyncDistribution(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
         elif issubclass(distribution, LastSyncDistribution):
-            message = SyncMessage(self, signer, LastSyncDistribution(global_time), CommunityDestination(), permission)
-
+            distribution = LastSyncDistribution(self._timeline.claim_global_time())
         else:
             raise ValueError("Unknown distribution")
+
+        if issubclass(destination, CommunityDestination):
+            destination = CommunityDestination()
+        else:
+            raise ValueError("Unknown destination")
+
+        message = Message(self, signed_by, distribution, destination, permission)
 
         if update_locally:
             assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
@@ -232,25 +241,20 @@ class Community(object):
 
         return message
 
-    def on_incoming_dispersy_message(self, address, packet, message):
+    def on_authorize_message(self, message):
         """
-        A Dispersy message was received from an external source.
+        A AuthorizePermission message was received, it was either
+        locally generated or received from an external source.
         """
-        assert isinstance(address, tuple)
-        assert isinstance(message, SyncMessage)
-        assert isinstance(message.permission, (AuthorizePermission, RevokePermission))
-        if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
-            return self.on_dispersy_message(message)
+        assert isinstance(message, Message)
+        self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
 
-        else:
-            raise DelayMessageByProof()
-
-    def on_dispersy_message(self, message):
+    def on_revoke_message(self, message):
         """
-        A Dispersy message was received, it was either locally
+        A RevokePermission message was received, it was either locally
         generated or received from an external source.
         """
-        assert isinstance(message, SyncMessage)
+        assert isinstance(message, Message)
         self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
 
     def on_incoming_message(self, address, packet, message):
@@ -258,11 +262,11 @@ class Community(object):
         A message was received from an external source.
         """
         if __debug__:
-            from Message import MessageBase
+            from Message import Message
         assert isinstance(address, tuple)
-        assert isinstance(message, MessageBase)
+        assert isinstance(message, Message)
         if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
-            return self.on_message(message)
+            self._incoming_message_map.get(type(message.permission), self.on_message)(message)
 
         else:
             raise DelayMessageByProof()
@@ -275,8 +279,8 @@ class Community(object):
         Must be implemented in community specific code.
         """
         if __debug__:
-            from Message import MessageBase
-        assert isinstance(message, MessageBase)
+            from Message import Message
+        assert isinstance(message, Message)
         raise NotImplemented()
         
     def get_privilege(self, name):

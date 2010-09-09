@@ -95,27 +95,15 @@ class Dispersy(Singleton):
 
     def _delay_message(self, address, packet, message, delay):
         if __debug__:
-            from Message import MessageBase
+            from Message import Message
         assert isinstance(address, tuple)
         assert len(address) == 2
         assert isinstance(address[0], str)
         assert isinstance(address[1], int)
         assert isinstance(packet, str)
-        assert isinstance(message, MessageBase)
+        assert isinstance(message, Message)
         assert isinstance(delay, DelayMessage)
         dprint(delay)
-
-    # def _drop_message(self, address, packet, message, drop):
-    #     if __debug__:
-    #         from Message import MessageBase
-    #     assert isinstance(address, tuple)
-    #     assert len(address) == 2
-    #     assert isinstance(address[0], str)
-    #     assert isinstance(address[1], int)
-    #     assert isinstance(packet, str)
-    #     assert isinstance(message, MessageBase)
-    #     assert isinstance(delay, DropMessage)
-    #     dprint("drop a ", len(packet), " byte message")
 
     def on_incoming_packets(self, packets):
         """
@@ -140,7 +128,7 @@ class Dispersy(Singleton):
             try:
                 community = self.get_community(packet[:20])
             except KeyError:
-                dprint("received packet for unknown community")
+                dprint("drop a ", len(packet), " byte packet (received packet for unknown community) from ", address[0], ":", address[1])
                 continue
 
             #
@@ -149,7 +137,7 @@ class Dispersy(Singleton):
             try:
                 conversion = community.get_conversion(packet[:25])
             except KeyError:
-                dprint("received packet for unknown conversion")
+                dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", address[0], ":", address[1])
                 continue
 
             #
@@ -158,8 +146,8 @@ class Dispersy(Singleton):
             try:
                 message = conversion.decode_message(packet)
 
-            except DropPacket:
-                dprint("drop a ", len(packet), " byte packet")
+            except DropPacket as exception:
+                dprint("drop a ", len(packet), " byte packet (", exception, ") from ", address[0], ":", address[1])
                 continue
 
             except DelayPacket:
@@ -174,14 +162,10 @@ class Dispersy(Singleton):
                                    (message.community.get_database_id(), message.signed_by.get_database_id(), unicode(address[0]), address[1]))
 
             try:
-                if message.is_dispersy_specific:
-                    community.on_incoming_dispersy_message(address, packet, message)
-                else:
-                    community.on_incoming_message(address, packet, message)
+                community.on_incoming_message(address, packet, message)
 
             except DropMessage as exception:
-                dprint("drop a ", len(packet), " byte message")
-                # self._drop_message(address, packet, message, exception)
+                dprint("drop a ", len(packet), " byte message (", exception, ") from ", address[0], ":", address[1])
                 continue
                                 
             except DelayMessage as exception:
@@ -216,13 +200,13 @@ class Dispersy(Singleton):
 
     def store_and_forward(self, messages):
         """
-        Queue MESSAGES to be dispersed to other nodes and oneself.
+        Queue MESSAGES to be dispersed to other nodes.
         """
         if __debug__:
-            from Message import MessageBase
+            from Message import Message
         assert isinstance(messages, (tuple, list))
         assert len(messages) > 0
-        assert not filter(lambda x: not isinstance(x, MessageBase), messages)
+        assert not filter(lambda x: not isinstance(x, Message), messages)
 
         addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
 
@@ -277,6 +261,6 @@ class Dispersy(Singleton):
                     dprint("Try sending ", len(packet), " bytes to ", address[0], ":", address[1])
                     self._socket.send(address, packet)
 
-            yield 5.0
+            yield 30.0
 
 
