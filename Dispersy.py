@@ -77,8 +77,8 @@ class Dispersy(Singleton):
         if __debug__:
             from Community import Community
         assert isinstance(community, Community)
-        assert not community.get_cid() in self._communities
-        self._communities[community.get_cid()] = community
+        assert not community.cid in self._communities
+        self._communities[community.cid] = community
 
     def get_community(self, cid):
         assert isinstance(cid, str)
@@ -158,8 +158,8 @@ class Dispersy(Singleton):
             # Update routing table.  We know that some peer (not
             # necessarily message.signed_by) exists at this address.
             #
-            self._database.execute(u"INSERT OR REPLACE INTO routing(community, user, host, port, time) VALUES(?, ?, ?, ?, DATETIME())",
-                                   (message.community.get_database_id(), message.signed_by.get_database_id(), unicode(address[0]), address[1]))
+            self._database.execute(u"INSERT OR REPLACE INTO routing(community, host, port, time) VALUES(?, ?, ?, DATETIME())",
+                                   (message.community.database_id, unicode(address[0]), address[1]))
 
             try:
                 community.on_incoming_message(address, packet, message)
@@ -182,16 +182,17 @@ class Dispersy(Singleton):
         distribution = message.distribution
         if isinstance(distribution, FullSyncDistribution):
             self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
-                                   (message.signed_by.get_database_id(),
-                                    message.community.get_database_id(),
+                                   (message.signed_by.database_id,
+                                    message.community.database_id,
                                     distribution.global_time,
                                     distribution.sequence_number,
                                     buffer(packet)))
 
         elif isinstance(distribution, LastSyncDistribution):
-            self._database.execute(u"INSERT INTO sync_last(user, community, global, packet) VALUES(?, ?, ?, ?)",
-                                   (message.signed_by.get_database_id(),
-                                    message.community.get_database_id(),
+            self._database.execute(u"INSERT OR REPLACE INTO sync_last(community, user, privilege, global, packet) VALUES(?, ?, ?, ?, ?)",
+                                   (message.community.database_id,
+                                    message.signed_by.database_id,
+                                    message.permission.privilege.name,
                                     distribution.global_time,
                                     buffer(packet)))
 

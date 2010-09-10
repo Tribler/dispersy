@@ -3,7 +3,8 @@ class PrivilegeBase(object):
         assert isinstance(name, unicode)
         self._name = name
 
-    def get_name(self):
+    @property
+    def name(self):
         return self._name
 
 class PublicPrivilege(PrivilegeBase):

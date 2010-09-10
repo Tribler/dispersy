@@ -50,13 +50,13 @@ class Timeline(object):
         if isinstance(signed_by, MasterMember):
             return True
 
-        privilege = permission.get_privilege()
+        privilege = permission.privilege
         if isinstance(privilege, PublicPrivilege):
             return True
         elif isinstance(privilege, LinearPrivilege):
             node = self._get_node(signed_by, False)
             if node:
-                pair = (privilege.get_name(), permission.get_name())
+                pair = (privilege.name, permission.name)
                 _, allowed_permissions = node.get_privileges(global_time)
                 if pair in allowed_permissions:
                     self._global_time = max(self._global_time, global_time)

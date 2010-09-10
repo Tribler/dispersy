@@ -36,7 +36,7 @@ class ConversionBase(object):
 
         # the messages that this instance can handle, and that this
         # instance produces, is identified by _prefix.
-        self._prefix = community.get_cid() + vid
+        self._prefix = community.cid + vid
 
     def get_community(self):
         return self._community
@@ -96,13 +96,6 @@ class Conversion00001(ConversionBase):
         self._encode_permission_map = {PermitPermission:self._encode_permit_permission,
                                        AuthorizePermission:self._encode_authorize_permission}
 
-    def _check_dupplicate(self, statements, sequenceofbindings):
-        try:
-            self._dispersy_database.execute(statements, sequenceofbindings).next()
-            raise DropPacket("Duplicate packet")
-        except StopIteration:
-            pass
-        
     @staticmethod
     def _decode_global_time(container, index):
         global_time = container.get(index)
@@ -198,6 +191,22 @@ class Conversion00001(ConversionBase):
             raise DropPacket("Invalid signature")
 
         #
+        # permission
+        #
+        d = container.get("permission")
+        if not isinstance(d, dict):
+            raise DropPacket("Invalid permission type")
+        t = d.get("type")
+        if t == "permit":
+            permission = PermitPermission(self._decode_privilege(d, "privilege_name"), self._decode_container(d, "container"))
+
+        elif t == "authorize":
+            permission = AuthorizePermission(self._decode_privilege(d, "privilege_name", self._decode_member(d, "to"), self._decode_permission(d, "permission_name")))
+
+        else:
+            raise NotImplementedError()
+
+        #
         # destination
         #
         d = container.get("destination")
@@ -223,14 +232,22 @@ class Conversion00001(ConversionBase):
         if t == "full-sync":
             global_time = self._decode_global_time(d, "global_time")
             sequence_number = self._decode_sequence_number(d, "sequence_number")
-            self._check_dupplicate(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and global = ? and sequence = ?",
-                                   (member.get_database_id(), self._community.get_database_id(), global_time, sequence_number))
+            try:
+                self._dispersy_database.execute(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and global = ? and sequence = ?",
+                                                (member.database_id, self._community.database_id, global_time, sequence_number)).next()
+                raise DropPacket("Duplicate packet")
+            except StopIteration:
+                pass
             distribution = FullSyncDistribution(global_time, sequence_number)
 
         if t == "last-sync":
             global_time = self._decode_global_time(d, "global_time")
-            self._check_dupplicate(u"SELECT 1 FROM sync_last WHERE user = ? and community = ? and global = ?",
-                                   (member.get_database_id(), self._community.get_database_id(), global_time))
+            try:
+                self._dispersy_database.execute(u"SELECT 1 FROM sync_last WHERE user = ? and community = ? and global > ? and privilege = ?",
+                                                (member.database_id, self._community.database_id, global_time, permission.privilege.name)).next()
+                raise DropPacket("Duplicate or older packet")
+            except StopIteration:
+                pass
             distribution = LastSyncDistribution(global_time)
 
         elif container[index] == u"direct-message":
@@ -239,22 +256,6 @@ class Conversion00001(ConversionBase):
             # todo
             raise NotImplementedError()
             
-        else:
-            raise NotImplementedError()
-
-        #
-        # permission
-        #
-        d = container.get("permission")
-        if not isinstance(d, dict):
-            raise DropPacket("Invalid permission type")
-        t = d.get("type")
-        if t == "permit":
-            permission = PermitPermission(self._decode_privilege(d, "privilege_name"), self._decode_container(d, "container"))
-
-        elif t == "authorize":
-            permission = AuthorizePermission(self._decode_privilege(d, "privilege_name", self._decode_member(d, "to"), self._decode_permission(d, "permission_name")))
-
         else:
             raise NotImplementedError()
 
@@ -279,20 +280,20 @@ class Conversion00001(ConversionBase):
         container["distribution"] = {"type":"direct-message", "global_time":distribution.global_time}
 
     def _encode_permit_permission(self, container, permission):
-        container["permission"] = {"type":"permit", "privilege_name":permission.get_privilege().get_name(), "container":permission.get_container()}
+        container["permission"] = {"type":"permit", "privilege_name":permission.privilege.name, "container":permission.payload}
 
     def _encode_authorize_permission(self, container, permission):
-        container["permission"] = {"type":"authorize", "privilege_name":permission.get_privilege().get_name(), "permission_name":permission.get_permission().get_name(), "to":permission.get_to().get_pem()}
+        container["permission"] = {"type":"authorize", "privilege_name":permission.privilege.name, "permission_name":permission.permission.name, "to":permission.to.pem}
 
     def encode_message(self, message):
         if __debug__:
             from Member import PrivateMemberBase
         assert isinstance(message, Message)
         assert isinstance(message.signed_by, PrivateMemberBase)
-        assert not message.signed_by.get_private_pem() is None
+        assert not message.signed_by.private_pem is None
 
         # stuff message in a container
-        container = {"signed_by":message.signed_by.get_pem()}
+        container = {"signed_by":message.signed_by.pem}
         self._encode_destination_map.get(type(message.destination), self._encode_not_implemented)(container, message.destination)
         self._encode_distribution_map.get(type(message.distribution), self._encode_not_implemented)(container, message.distribution)
         self._encode_permission_map.get(type(message.permission), self._encode_not_implemented)(container, message.permission)

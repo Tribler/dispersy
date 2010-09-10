@@ -108,7 +108,7 @@ class DistributionBase(object):
         return self._global_time
 
     def __str__(self):
-        return "<{0} {1}:->".format(self.__class__.__name__, self._global_time)
+        return "<{0} {1}>".format(self.__class__.__name__, self._global_time)
 
 class SyncDistribution(DistributionBase):
     pass
@@ -232,7 +232,7 @@ class Message(object):
         return self._permission
 
     def __str__(self):
-        return "<%s>" % (self.__class__.__name__)
+        return "<{0} {1} {2} {3}>".format(self.__class__.__name__, self._distribution, self._destination, self._permission)
 
 
 

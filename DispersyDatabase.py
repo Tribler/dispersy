@@ -29,11 +29,10 @@ CREATE TABLE key(
 
 CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
- user INTEGER REFERENCES user(id),
  host TEXT,                                     -- IP address
  port INTEGER,                                  -- port number
  time TEXT,                                     -- time when received data
- UNIQUE(user, host, port));
+ UNIQUE(host, port));
  
 CREATE TABLE sync_full(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,10 +52,12 @@ CREATE TABLE sync_minimal(
 
 CREATE TABLE sync_last(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
- user INTEGER REFERENCES user(id),
  community INTEGER REFERENCES community(id),
+ user INTEGER REFERENCES user(id),
+ privilege TEXT,
  global INTEGER,
- packet BLOB);
+ packet BLOB,
+ UNIQUE(community, user, privilege));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');
@@ -81,8 +82,8 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 # -----END PUBLIC KEY-----
 # """
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(user, host, port, time) VALUES(?, ?, ?, '0000-0-0 0:0:0')",
-#                      (self.get_last_insert_rowid(), host, port))
+#         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')",
+#                      (host, port))
 
 #         host = u"mughal.tribler.org"
 #         port = 6712
@@ -95,8 +96,8 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 # -----END PUBLIC KEY-----
 # """
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(user, host, port, time) VALUES(?, ?, ?, '0000-0-0 0:0:0')",
-#                      (self.get_last_insert_rowid(), host, port))
+#         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')",
+#                      (host, port))
 
         host = u"masaq.st.ewi.tudelft.nl"
         port = 12345
@@ -109,5 +110,5 @@ ddbv3NkHuZ+G0HrjRQIBBQ==
 -----END PUBLIC KEY-----
 """
         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-        self.execute(u"INSERT INTO routing(user, host, port, time) VALUES(?, ?, ?, '0000-0-0 0:0:0')",
-                     (self.get_last_insert_rowid(), host, port))
+        self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')",
+                     (host, port))

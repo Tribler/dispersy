@@ -125,8 +125,8 @@ class Community(object):
 
         # dictionary with in-memory community members
         # todo: load from database
-        self._members = {self._master_member.get_pem():self._master_member,
-                         self._my_member.get_pem():self._my_member}
+        self._members = {self._master_member.pem:self._master_member,
+                         self._my_member.pem:self._my_member}
 
         # initial timeline containing all known privileges
         self._timeline = Timeline(self)
@@ -134,12 +134,28 @@ class Community(object):
         self._dispersy = Dispersy.get_instance()
         self._dispersy.add_community(self)
 
-    def get_cid(self):
+    @property
+    def cid(self):
         return self._cid
 
-    def get_database_id(self):
+    @property
+    def database_id(self):
         return self._database_id
 
+    @property
+    def master_member(self):
+        """
+        Returns the community MasterMember instance.
+        """
+        return self._master_member
+
+    @property
+    def my_member(self):
+        """
+        Returns our own MyMember instance.
+        """
+        return self._my_member
+        
     def get_member(self, public_key):
         """
         Returns a Member instance associated with PUBLIC_KEY.
@@ -149,18 +165,6 @@ class Community(object):
             self._members[public_key] = Member.get_instance(public_key)
         return self._members[public_key]
 
-    def get_master_member(self):
-        """
-        Returns the community MasterMember instance.
-        """
-        return self._master_member
-
-    def get_my_member(self):
-        """
-        Returns our own MyMember instance.
-        """
-        return self._my_member
-        
     def get_conversion(self, prefix=None):
         # todo: add parameter to specify the conversion version
         return self._conversions[prefix]
@@ -214,9 +218,9 @@ class Community(object):
         assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
-            signed_by = self.get_master_member()
+            signed_by = self.master_member
         else:
-            signed_by = self.get_my_member()
+            signed_by = self.my_member
 
         if issubclass(distribution, FullSyncDistribution):
             distribution = FullSyncDistribution(self._timeline.claim_global_time(), signed_by.claim_sequence_number())

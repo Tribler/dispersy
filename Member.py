@@ -6,7 +6,7 @@ from Crypto import rsa_from_private_pem, rsa_from_public_pem, rsa_to_public_pem
 from Encoding import encode, decode
 
 class Member(Parameterized1Singleton):
-    def __init__(self, public_pem, rsa=None):
+    def __init__(self, public_pem, rsa=None, sync=True):
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
         assert rsa is None or len(rsa) % 8 == 0
@@ -18,20 +18,20 @@ class Member(Parameterized1Singleton):
         self._mid = sha1(public_pem).digest()
 
         # sync with database
-        database = DispersyDatabase.get_instance()
-        try:
-            self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
-        except StopIteration:
-            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
-            self._database_id = database.get_last_insert_rowid()
+        if sync:
+            database = DispersyDatabase.get_instance()
+            try:
+                self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
+            except StopIteration:
+                database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
+                self._database_id = database.get_last_insert_rowid()
 
-    def get_pem(self):
-        """
-        Returns the public PEM.
-        """
+    @property
+    def pem(self):
         return self._public_pem
 
-    def get_database_id(self):
+    @property
+    def database_id(self):
         return self._database_id
 
     def verify_pair(self, data, offset=0, length=0):
@@ -56,31 +56,33 @@ class Member(Parameterized1Singleton):
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
 
 class PrivateMemberBase(Member):
-    def __init__(self, public_pem, private_pem=None):
+    def __init__(self, public_pem, private_pem=None, sync=True):
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
         assert isinstance(private_pem, (type(None), str))
         assert private_pem is None or private_pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
+        assert isinstance(sync, bool)
 
-        if private_pem is None:
-            # get private pem
-            database = DispersyDatabase.get_instance()
-            try:
-                private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
-            except StopIteration:
-                pass
+        if sync:
+            if private_pem is None:
+                # get private pem
+                database = DispersyDatabase.get_instance()
+                try:
+                    private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
+                except StopIteration:
+                    pass
 
-        else:
-            # set private pem
-            database = DispersyDatabase.get_instance()
-            database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
+            else:
+                # set private pem
+                database = DispersyDatabase.get_instance()
+                database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         if private_pem is None:
             rsa = rsa_from_public_pem(public_pem)
         else:
             rsa = rsa_from_private_pem(private_pem)
 
-        Member.__init__(self, public_pem, rsa)
+        Member.__init__(self, public_pem, rsa, sync)
         self._private_pem = private_pem
         self._sequence_number = 0
 
@@ -88,8 +90,9 @@ class PrivateMemberBase(Member):
         assert not self._private_pem is None
         self._sequence_number += 1
         return self._sequence_number
-        
-    def get_private_pem(self):
+
+    @property
+    def private_pem(self):
         return self._private_pem
 
     def generate_pair(self, data, offset=0, length=0):
