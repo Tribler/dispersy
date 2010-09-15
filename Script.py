@@ -9,7 +9,7 @@ from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Permission import PermitPermission
-from Message import LastSyncDistribution
+from Distribution import LastSyncDistribution
 from Print import dprint
 from Debug import DiscoveryNode
 
@@ -56,9 +56,14 @@ class ScriptBase(object):
 
 class DiscoverNode(ScriptBase):
     def run(self):
+        self.caller(self.my_metadata)
         self.caller(self.alice)
         self.caller(self.bob)
 
+    def my_metadata(self):
+        address = self._dispersy.get_socket().get_address()
+        self._discovery.create_user_metadata(address, u"my alias", u"my comment")
+        
     def alice(self):
         node = DiscoveryNode()
         node.init_socket(6661)

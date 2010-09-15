@@ -1,3 +1,7 @@
+if __debug__:
+    from Distribution import LastSyncDistribution, FullSyncDistribution, DirectDistribution, RelayDistribution
+    from Destination import DestinationBase
+
 #
 # Exceptions
 #
@@ -47,7 +51,7 @@ class DelayMessageBySequence(DelayMessage):
         return self._missing_sequence_number
 
     def __str__(self):
-        return "%s #%d" % (DelayMessage.__str__(self), self._missing_sequence_number)
+        return "<{0.__class__.__name__} missing_sequence_number:{0.missing_sequence_number}>".format(self)
 
 class DelayMessageByProof(DelayMessage):
     """
@@ -94,94 +98,6 @@ class DropMessageByProof(DropMessage):
         return self._proof
         
 #
-# Distribution
-#
-class DistributionBase(object):
-    def __init__(self, global_time):
-        assert isinstance(global_time, (int, long))
-        # the last known global time + 1 (from the user who signed the
-        # message)
-        self._global_time = global_time
-
-    @property
-    def global_time(self):
-        return self._global_time
-
-    def __str__(self):
-        return "<{0} {1}>".format(self.__class__.__name__, self._global_time)
-
-class SyncDistribution(DistributionBase):
-    pass
-
-class FullSyncDistribution(SyncDistribution):
-    def __init__(self, global_time, sequence_number):
-        assert isinstance(global_time, (int, long))
-        assert isinstance(sequence_number, (int, long))
-
-        # super
-        DistributionBase.__init__(self, global_time)
-
-        # the sequence number (from the user who signed the messaged)
-        self._sequence_number = sequence_number
-
-    @property
-    def sequence_number(self):
-        return self._sequence_number
-
-    def __str__(self):
-        return "<{0} {1}:{2}>".format(self.__class__.__name__, self._global_time, self._sequence_number)
-
-class LastSyncDistribution(SyncDistribution):
-    pass
-
-class MinimalSyncDistribution(SyncDistribution):
-    def __init__(self, global_time, minimal_count):
-        assert isinstance(global_time, (int, long))
-        assert isinstance(sequence_number, (int, long))
-        assert isinstance(minimal_count, (int, long))
-
-        # super
-        SyncDistributionBase.__init__(self, sequence_number)
-
-        # the minimal number of nodes online that should have the
-        # message
-        self._minimal_count = minimal_count
-
-    @property
-    def minimal_count(self):
-        return self._minimal_count
-
-    def __str__(self):
-        return "<{0} {1}:- {2}>".format(self.__class__.__name__, self._global_time, self._minimal_count)
-
-class DirectDistribution(DistributionBase):
-    pass
-
-class RelayDistribution(DistributionBase):
-    pass
-
-
-#
-# Destination
-#
-class DestinationBase(object):
-    def __str__(self):
-        return "<%s>" % (self.__class__.__name__)
-
-class UserDestination(DestinationBase):
-    pass
-
-class MemberDestination(DestinationBase):
-    pass
-
-class CommunityDestination(DestinationBase):
-    pass
-
-class PrivilegedDestination(DestinationBase):
-    pass
-
-
-#
 # Message
 #
 class Message(object):
@@ -192,8 +108,11 @@ class Message(object):
             from Permission import PermitPermission, AuthorizePermission, RevokePermission
         assert isinstance(community, Community)
         assert isinstance(signed_by, Member)
-        assert isinstance(distribution, (FullSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution, LastSyncDistribution)), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
-        assert isinstance(destination, DestinationBase)
+        assert isinstance(distribution, (FullSyncDistribution.Implementation,
+                                         DirectDistribution.Implementation,
+                                         RelayDistribution.Implementation,
+                                         LastSyncDistribution.Implementation)), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
+        assert isinstance(destination, DestinationBase.Implementation)
         assert isinstance(permission, (AuthorizePermission, RevokePermission, PermitPermission))
 
         # the community
@@ -232,7 +151,7 @@ class Message(object):
         return self._permission
 
     def __str__(self):
-        return "<{0} {1} {2} {3}>".format(self.__class__.__name__, self._distribution, self._destination, self._permission)
+        return "<{0.__class__.__name__} {0.distribution} {0.destination} {0.permission}>".format(self)
 
 
 

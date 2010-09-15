@@ -1,5 +1,6 @@
 from hashlib import sha1
 
+from Bloomfilter import BloomFilter
 from Timeline import Timeline
 from Privilege import PublicPrivilege
 from Permission import AuthorizePermission, RevokePermission, PermitPermission
@@ -8,7 +9,9 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Member import MasterMember, MyMember, Member
-from Message import Message, FullSyncDistribution, LastSyncDistribution, DirectDistribution, CommunityDestination, UserDestination, DelayMessageByProof
+from Message import Message, DelayMessageByProof
+from Destination import CommunityDestination
+from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Encoding import encode
 
 class Community(object):
@@ -134,6 +137,12 @@ class Community(object):
         self._dispersy = Dispersy.get_instance()
         self._dispersy.add_community(self)
 
+        # bloomfilters
+        self._full_sync_bloomfilter_stepping = 100
+        self._full_sync_bloomfilter_capacity = 100
+        self._full_sync_bloomfilter_error_rate = 0.001
+        self._full_sync_bloomfilter = []
+
     @property
     def cid(self):
         return self._cid
@@ -179,40 +188,40 @@ class Community(object):
          where Permission is the Permission for that Privilege that the Member will obtain.
         SIGN_WITH_MASTER when True the MasterMember is used to sign the authorize message.
         """
-        if __debug__:
-            from Privilege import PrivilegeBase
-            from Permission import PermissionBase
-        assert isinstance(member, Member)
-        assert isinstance(permission_pairs, (tuple, list))
-        assert not filter(lambda x: not (isinstance(x, tuple) and len(x) == 2 and isinstance(x[0], PrivilegeBase) and issubclass(x[1], PermissionBase)), permission_pairs)
-        assert isinstance(sign_with_master, bool)
-        assert isinstance(update_locally, bool)
-        assert isinstance(store_and_forward, bool)
+        # if __debug__:
+        #     from Privilege import PrivilegeBase
+        #     from Permission import PermissionBase
+        # assert isinstance(member, Member)
+        # assert isinstance(permission_pairs, (tuple, list))
+        # assert not filter(lambda x: not (isinstance(x, tuple) and len(x) == 2 and isinstance(x[0], PrivilegeBase) and issubclass(x[1], PermissionBase)), permission_pairs)
+        # assert isinstance(sign_with_master, bool)
+        # assert isinstance(update_locally, bool)
+        # assert isinstance(store_and_forward, bool)
 
-        if sign_with_master:
-            signer = self.get_master_member()
-        else:
-            signer = self.get_my_member()
+        # if sign_with_master:
+        #     signer = self.get_master_member()
+        # else:
+        #     signer = self.get_my_member()
 
-        messages = []
-        global_time = self._timeline.claim_global_time()
-        for privilege, permission in permission_pairs:
-            messages.append(Message(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
+        # messages = []
+        # global_time = self._timeline.claim_global_time()
+        # for privilege, permission in permission_pairs:
+        #     messages.append(Message(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
 
-        if update_locally:
-            for message in messages:
-                assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
-                self.on_dispersy_message(message)
+        # if update_locally:
+        #     for message in messages:
+        #         assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+        #         self.on_dispersy_message(message)
 
-        if store_and_forward:
-            self._dispersy.store_and_forward(messages)
+        # if store_and_forward:
+        #     self._dispersy.store_and_forward(messages)
 
-        return messages
+        # return messages
+        pass
 
-    def permit(self, permission, distribution=FullSyncDistribution, destination=CommunityDestination, sign_with_master=False, update_locally=True, store_and_forward=True):
+    def permit(self, permission, destination=(), sign_with_master=False, update_locally=True, store_and_forward=True):
         assert isinstance(permission, PermitPermission)
-        assert issubclass(distribution, (FullSyncDistribution, LastSyncDistribution))
-        assert issubclass(destination, CommunityDestination)
+        assert isinstance(destination, tuple)
         assert isinstance(sign_with_master, bool)
         assert isinstance(update_locally, bool)
         assert isinstance(store_and_forward, bool)
@@ -222,19 +231,17 @@ class Community(object):
         else:
             signed_by = self.my_member
 
-        if issubclass(distribution, FullSyncDistribution):
-            distribution = FullSyncDistribution(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
-        elif issubclass(distribution, LastSyncDistribution):
-            distribution = LastSyncDistribution(self._timeline.claim_global_time())
+        distribution = permission.privilege.distribution
+        if isinstance(distribution, FullSyncDistribution):
+            distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
+        elif isinstance(distribution, LastSyncDistribution):
+            distribution_impl = distribution.implement(self._timeline.claim_global_time())
         else:
             raise ValueError("Unknown distribution")
 
-        if issubclass(destination, CommunityDestination):
-            destination = CommunityDestination()
-        else:
-            raise ValueError("Unknown destination")
+        destination_impl = permission.privilege.destination.implement(*destination)
 
-        message = Message(self, signed_by, distribution, destination, permission)
+        message = Message(self, signed_by, distribution_impl, destination_impl, permission)
 
         if update_locally:
             assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)

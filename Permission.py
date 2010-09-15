@@ -4,8 +4,8 @@ class PermissionBase(object):
             from Privilege import PrivilegeBase
         assert isinstance(name, unicode)
         assert isinstance(privilege, PrivilegeBase)
-        self._privilege = privilege
         self._name = name
+        self._privilege = privilege
 
     @property
     def name(self):
@@ -16,7 +16,7 @@ class PermissionBase(object):
         return self._privilege
 
     def __str__(self):
-        return "<%s %s>" % (self.__class__.__name__, self._privilege.name)
+        return "<{0.__class__.__name__} privilege.name:{0.privilege.name}>".format(self)
 
 class AuthorizePermission(PermissionBase):
     def __init__(self, privilege, to, permission):
@@ -33,7 +33,7 @@ class AuthorizePermission(PermissionBase):
         assert isinstance(privilege, PrivilegeBase)
         assert isinstance(to, Member)
         assert issubclass(permission, PermissionBase)
-        PermissionBase.__init__(self, u"authorize", privilege)
+        super(AuthorizePermission, self).__init__(u"authorize", privilege)
         self._to = to
         self._permission = permission
 
@@ -46,7 +46,7 @@ class AuthorizePermission(PermissionBase):
         return self._permission
 
     def __str__(self):
-        return "<%s %s:%s>" % (self.__class__.__name__, self._privilege.name, self._permission.name)
+        return "<{0.__class__.__name__} privilege.name:{0.privilege.name} permission.name:{0.permission.name}>".format(self)
 
 class RevokePermission(PermissionBase):
     def __init__(self, privilege, by, to, permission):
@@ -63,7 +63,7 @@ class RevokePermission(PermissionBase):
         assert isinstance(privilege, PrivilegeBase)
         assert isinstance(to, Member)
         assert issubclass(permission, PermissionBase)
-        PermissionBase.__init__(self, u"revoke", privilege)
+        super(RevokePermission, self).__init__(u"revoke", privilege)
         self._to = to
         self._permission = permission
 
@@ -81,7 +81,7 @@ class PermitPermission(PermissionBase):
             from Privilege import PrivilegeBase
         assert isinstance(privilege, PrivilegeBase)
         assert isinstance(payload, (tuple, dict, str, unicode, int, long, bool, float))
-        PermissionBase.__init__(self, u"permit", privilege)
+        super(PermitPermission, self).__init__(u"permit", privilege)
         self._payload = payload
         
     @property
@@ -89,4 +89,4 @@ class PermitPermission(PermissionBase):
         return self._payload
 
     def __str__(self):
-        return "<%s %s %s>" % (self.__class__.__name__, self._privilege.name, repr(self._payload))
+        return "<{0.__class__.__name__} privilege.name:{0.privilege.name} payload:{0.payload!r}>".format(self)

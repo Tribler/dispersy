@@ -4,8 +4,8 @@ from Permission import AuthorizePermission, RevokePermission, PermitPermission
 from Encoding import encode, decode
 from Message import DelayPacket, DropPacket
 from Message import Message
-from Message import FullSyncDistribution, LastSyncDistribution, MinimalSyncDistribution, DirectDistribution, RelayDistribution
-from Message import UserDestination, MemberDestination, CommunityDestination, PrivilegedDestination
+from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
+from Destination import UserDestination, CommunityDestination
 from DispersyDatabase import DispersyDatabase
 
 if __debug__:
@@ -86,12 +86,12 @@ class Conversion00001(ConversionBase):
     def __init__(self, community):
         ConversionBase.__init__(self, community, "00001")
 
-        self._encode_destination_map = {UserDestination:self._encode_user_destination,
-                                        CommunityDestination:self._encode_community_destination}
+        self._encode_destination_map = {UserDestination.Implementation:self._encode_user_destination,
+                                        CommunityDestination.Implementation:self._encode_community_destination}
 
-        self._encode_distribution_map = {FullSyncDistribution:self._encode_full_sync_distribution,
-                                         LastSyncDistribution:self._encode_last_sync_distribution,
-                                         DirectDistribution:self._encode_direct_distribution}
+        self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
+                                         LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
+                                         DirectDistribution.Implementation:self._encode_direct_distribution}
 
         self._encode_permission_map = {PermitPermission:self._encode_permit_permission,
                                        AuthorizePermission:self._encode_authorize_permission}
@@ -172,8 +172,6 @@ class Conversion00001(ConversionBase):
         container = decode(data, 25)
         if not isinstance(container, dict):
             raise DropPacket("Invalid container type")
-        if not len(container) == 4:
-            raise DropPacket("Invalid container length")
 
         #
         # member (signer of the message)
@@ -194,14 +192,15 @@ class Conversion00001(ConversionBase):
         # permission
         #
         d = container.get("permission")
+        privilege = self._decode_privilege(d, "privilege_name")
         if not isinstance(d, dict):
             raise DropPacket("Invalid permission type")
         t = d.get("type")
         if t == "permit":
-            permission = PermitPermission(self._decode_privilege(d, "privilege_name"), self._decode_container(d, "container"))
+            permission = PermitPermission(privilege, self._decode_container(d, "container"))
 
         elif t == "authorize":
-            permission = AuthorizePermission(self._decode_privilege(d, "privilege_name", self._decode_member(d, "to"), self._decode_permission(d, "permission_name")))
+            permission = AuthorizePermission(privilege, self._decode_member(d, "to"), self._decode_permission(d, "permission_name"))
 
         else:
             raise NotImplementedError()
@@ -209,15 +208,11 @@ class Conversion00001(ConversionBase):
         #
         # destination
         #
-        d = container.get("destination")
-        if not isinstance(d, dict):
-            raise DropPacket("Invalid destination type")
-        t = d.get("type")
-        if t == "user-destination":
-            destination = UserDestination()
+        if isinstance(privilege.destination, UserDestination):
+            destination = privilege.destination.implement()
 
-        elif t == "community-destination":
-            destination = CommunityDestination()
+        elif isinstance(privilege.destination, CommunityDestination):
+            destination = privilege.destination.implement()
 
         else:
             raise DropPacket("Invalid destination")
@@ -228,8 +223,7 @@ class Conversion00001(ConversionBase):
         d = container.get("distribution")
         if not isinstance(d, dict):
             raise DropPacket("Invalid distribution type")
-        t = d.get("type")
-        if t == "full-sync":
+        if isinstance(privilege.distribution, FullSyncDistribution):
             global_time = self._decode_global_time(d, "global_time")
             sequence_number = self._decode_sequence_number(d, "sequence_number")
             try:
@@ -238,9 +232,9 @@ class Conversion00001(ConversionBase):
                 raise DropPacket("Duplicate packet")
             except StopIteration:
                 pass
-            distribution = FullSyncDistribution(global_time, sequence_number)
+            distribution = privilege.distribution.implement(global_time, sequence_number)
 
-        if t == "last-sync":
+        elif isinstance(privilege.distribution, LastSyncDistribution):
             global_time = self._decode_global_time(d, "global_time")
             try:
                 self._dispersy_database.execute(u"SELECT 1 FROM sync_last WHERE user = ? and community = ? and global > ? and privilege = ?",
@@ -248,9 +242,9 @@ class Conversion00001(ConversionBase):
                 raise DropPacket("Duplicate or older packet")
             except StopIteration:
                 pass
-            distribution = LastSyncDistribution(global_time)
+            distribution = privilege.distribution.implement(global_time)
 
-        elif container[index] == u"direct-message":
+        elif isinstance(privilege.distribution, DirectDistribution):
             global_time = self._decode_global_time(d, "global_time")
 
             # todo
@@ -265,19 +259,24 @@ class Conversion00001(ConversionBase):
         raise NotImplementedError(type(obj))
 
     def _encode_user_destination(self, container, _):
-        container["destination"] = {"type":"user-destination"}
+        # container["debug-destination"] = {"debug-type":"user-destination"}
+        pass
 
     def _encode_community_destination(self, container, _):
-        container["destination"] = {"type":"community-destination"}
+        # container["debug-destination"] = {"debug-type":"community-destination"}
+        pass
 
     def _encode_full_sync_distribution(self, container, distribution):
-        container["distribution"] = {"type":"full-sync", "global_time":distribution.global_time, "sequence_number":distribution.sequence_number}
+        container["distribution"] = {"global_time":distribution.global_time, "sequence_number":distribution.sequence_number}
+        # container["distribution"]["debug-type"] = "full-sync"
 
     def _encode_last_sync_distribution(self, container, distribution):
-        container["distribution"] = {"type":"last-sync", "global_time":distribution.global_time}
+        container["distribution"] = {"global_time":distribution.global_time}
+        # container["distribution"]["debug-type"] = "last-sync"
 
     def _encode_direct_distribution(self, container, distribution):
-        container["distribution"] = {"type":"direct-message", "global_time":distribution.global_time}
+        container["distribution"] = {"global_time":distribution.global_time}
+        # container["distribution"]["debug-type"] = "direct-message"
 
     def _encode_permit_permission(self, container, permission):
         container["permission"] = {"type":"permit", "privilege_name":permission.privilege.name, "container":permission.payload}

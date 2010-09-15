@@ -12,7 +12,8 @@ from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from DispersyDatabase import DispersyDatabase
 from Singleton import Singleton
 from Member import MyMember
-from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage, SyncDistribution, FullSyncDistribution, LastSyncDistribution
+from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
+from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution
 from Print import dprint
 
 class DummySocket(object):
@@ -175,12 +176,12 @@ class Dispersy(Singleton):
             #
             # Sync messages need to be stored and forwarded
             #
-            if isinstance(message.distribution, SyncDistribution):
+            if isinstance(message.distribution, SyncDistribution.Implementation):
                 self._store(packet, message)
 
     def _store(self, packet, message):
         distribution = message.distribution
-        if isinstance(distribution, FullSyncDistribution):
+        if isinstance(distribution, FullSyncDistribution.Implementation):
             self._database.execute(u"INSERT INTO sync_full(user, community, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
                                    (message.signed_by.database_id,
                                     message.community.database_id,
@@ -188,7 +189,7 @@ class Dispersy(Singleton):
                                     distribution.sequence_number,
                                     buffer(packet)))
 
-        elif isinstance(distribution, LastSyncDistribution):
+        elif isinstance(distribution, LastSyncDistribution.Implementation):
             self._database.execute(u"INSERT OR REPLACE INTO sync_last(community, user, privilege, global, packet) VALUES(?, ?, ?, ?, ?)",
                                    (message.community.database_id,
                                     message.signed_by.database_id,
