@@ -5,7 +5,7 @@ from Encoding import encode, decode
 from Message import DelayPacket, DropPacket
 from Message import Message
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
-from Destination import UserDestination, CommunityDestination
+from Destination import MemberDestination, CommunityDestination, AddressDestination
 from DispersyDatabase import DispersyDatabase
 
 if __debug__:
@@ -86,8 +86,9 @@ class Conversion00001(ConversionBase):
     def __init__(self, community):
         ConversionBase.__init__(self, community, "00001")
 
-        self._encode_destination_map = {UserDestination.Implementation:self._encode_user_destination,
-                                        CommunityDestination.Implementation:self._encode_community_destination}
+        self._encode_destination_map = {MemberDestination.Implementation:self._encode_member_destination,
+                                        CommunityDestination.Implementation:self._encode_community_destination,
+                                        AddressDestination.Implementation:self._encode_address_destination}
 
         self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
                                          LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
@@ -102,7 +103,7 @@ class Conversion00001(ConversionBase):
         if not isinstance(global_time, (int, long)):
             raise DropPacket("Invalid global time type")
         if global_time <= 0:
-            raise DropPacket("Invalid global time value")
+            raise DropPacket("Invalid global time value {global_time}".format(global_time=global_time))
         return global_time
 
     @staticmethod
@@ -111,7 +112,7 @@ class Conversion00001(ConversionBase):
         if not isinstance(sequence_number, (int, long)):
             raise DropPacket("Invalid sequence number type")
         if sequence_number <= 0:
-            raise DropPacket("Invalid sequence number value")
+            raise DropPacket("Invalid sequence number value {sequence_number}".format(sequence_number=sequence_number))
         return sequence_number
     
     def _decode_privilege(self, container, index):
@@ -153,13 +154,6 @@ class Conversion00001(ConversionBase):
             raise DelayPacket("Unable to find to-member in community")
         return member
 
-    def _decode_container(self, container, index):
-        tup = container.get(index)
-        if isinstance(tup, tuple):
-            return tup
-        else:
-            DropPacket("Invalid container type")
-
     def decode_message(self, data):
         """
         Convert version 00001 DATA into an internal data structure.
@@ -192,12 +186,12 @@ class Conversion00001(ConversionBase):
         # permission
         #
         d = container.get("permission")
-        privilege = self._decode_privilege(d, "privilege_name")
         if not isinstance(d, dict):
             raise DropPacket("Invalid permission type")
         t = d.get("type")
+        privilege = self._decode_privilege(d, "privilege_name")
         if t == "permit":
-            permission = PermitPermission(privilege, self._decode_container(d, "container"))
+            permission = PermitPermission(privilege, d.get("container"))
 
         elif t == "authorize":
             permission = AuthorizePermission(privilege, self._decode_member(d, "to"), self._decode_permission(d, "permission_name"))
@@ -208,11 +202,14 @@ class Conversion00001(ConversionBase):
         #
         # destination
         #
-        if isinstance(privilege.destination, UserDestination):
+        if isinstance(privilege.destination, MemberDestination):
             destination = privilege.destination.implement()
 
         elif isinstance(privilege.destination, CommunityDestination):
             destination = privilege.destination.implement()
+
+        elif isinstance(privilege.destination, AddressDestination):
+            destination = privilege.destination.implement(("", 0))
 
         else:
             raise DropPacket("Invalid destination")
@@ -226,29 +223,15 @@ class Conversion00001(ConversionBase):
         if isinstance(privilege.distribution, FullSyncDistribution):
             global_time = self._decode_global_time(d, "global_time")
             sequence_number = self._decode_sequence_number(d, "sequence_number")
-            try:
-                self._dispersy_database.execute(u"SELECT 1 FROM sync_full WHERE user = ? and community = ? and global = ? and sequence = ?",
-                                                (member.database_id, self._community.database_id, global_time, sequence_number)).next()
-                raise DropPacket("Duplicate packet")
-            except StopIteration:
-                pass
             distribution = privilege.distribution.implement(global_time, sequence_number)
 
         elif isinstance(privilege.distribution, LastSyncDistribution):
             global_time = self._decode_global_time(d, "global_time")
-            try:
-                self._dispersy_database.execute(u"SELECT 1 FROM sync_last WHERE user = ? and community = ? and global > ? and privilege = ?",
-                                                (member.database_id, self._community.database_id, global_time, permission.privilege.name)).next()
-                raise DropPacket("Duplicate or older packet")
-            except StopIteration:
-                pass
             distribution = privilege.distribution.implement(global_time)
 
         elif isinstance(privilege.distribution, DirectDistribution):
             global_time = self._decode_global_time(d, "global_time")
-
-            # todo
-            raise NotImplementedError()
+            distribution = privilege.distribution.implement(global_time)
             
         else:
             raise NotImplementedError()
@@ -258,25 +241,26 @@ class Conversion00001(ConversionBase):
     def _encode_not_implemented(self, _, obj):
         raise NotImplementedError(type(obj))
 
-    def _encode_user_destination(self, container, _):
-        # container["debug-destination"] = {"debug-type":"user-destination"}
-        pass
+    def _encode_member_destination(self, container, _):
+        container["debug-destination"] = {"debug-type":"member-destination"}
 
     def _encode_community_destination(self, container, _):
-        # container["debug-destination"] = {"debug-type":"community-destination"}
-        pass
+        container["debug-destination"] = {"debug-type":"community-destination"}
+
+    def _encode_address_destination(self, container, _):
+        container["debug-destination"] = {"debug-type":"address-destination"}
 
     def _encode_full_sync_distribution(self, container, distribution):
         container["distribution"] = {"global_time":distribution.global_time, "sequence_number":distribution.sequence_number}
-        # container["distribution"]["debug-type"] = "full-sync"
+        container["distribution"]["debug-type"] = "full-sync"
 
     def _encode_last_sync_distribution(self, container, distribution):
         container["distribution"] = {"global_time":distribution.global_time}
-        # container["distribution"]["debug-type"] = "last-sync"
+        container["distribution"]["debug-type"] = "last-sync"
 
     def _encode_direct_distribution(self, container, distribution):
         container["distribution"] = {"global_time":distribution.global_time}
-        # container["distribution"]["debug-type"] = "direct-message"
+        container["distribution"]["debug-type"] = "direct-message"
 
     def _encode_permit_permission(self, container, permission):
         container["permission"] = {"type":"permit", "privilege_name":permission.privilege.name, "container":permission.payload}

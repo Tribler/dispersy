@@ -38,20 +38,25 @@ class DelayMessageBySequence(DelayMessage):
     Community.on_message and Community.on_dispersy_message,
     respectively).
 
-    Delaying until a message is received with a
-    self.missing_sequence_number is received.
+    Delaying until all missing sequence numbers have been received.  
     """
-    def __init__(self, missing_sequence_number):
-        assert isinstance(missing_sequence_number, (int, long))
-        DelayMessage.__init__(self, "Missing sequence number")
-        self._missing_sequence_number = missing_sequence_number
+    def __init__(self, missing_low, missing_high):
+        assert isinstance(missing_low, (int, long))
+        assert isinstance(missing_high, (int, long))
+        DelayMessage.__init__(self, "Missing sequence number(s)")
+        self._missing_low = missing_low
+        self._missing_high = missing_high
 
     @property
-    def missing_sequence_number(self):
-        return self._missing_sequence_number
+    def missing_low(self):
+        return self._missing_low
+
+    @property
+    def missing_high(self):
+        return self._missing_high
 
     def __str__(self):
-        return "<{0.__class__.__name__} missing_sequence_number:{0.missing_sequence_number}>".format(self)
+        return "<{0.__class__.__name__} missing_low:{0.missing_low} missing_high:{0.missing_high}>".format(self)
 
 class DelayMessageByProof(DelayMessage):
     """
@@ -121,10 +126,10 @@ class Message(object):
         # the member who signed the message
         self._signed_by = signed_by
 
-        # the distribution policy
+        # the distribution policy implementation
         self._distribution = distribution
 
-        # the destination type
+        # the destination policy implementation
         self._destination = destination
 
         # the permission that is used
@@ -153,5 +158,5 @@ class Message(object):
     def __str__(self):
         return "<{0.__class__.__name__} {0.distribution} {0.destination} {0.permission}>".format(self)
 
-
-
+# class Carrier(object):
+#     def __init__(self, community, distribution, destination

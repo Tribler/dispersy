@@ -3,7 +3,7 @@ class PermissionBase(object):
         if __debug__:
             from Privilege import PrivilegeBase
         assert isinstance(name, unicode)
-        assert isinstance(privilege, PrivilegeBase)
+        assert isinstance(privilege, PrivilegeBase.Implementation)
         self._name = name
         self._privilege = privilege
 
@@ -23,14 +23,14 @@ class AuthorizePermission(PermissionBase):
         """
         User TO is given PERMISSION for PRIVILEGE.
 
-        PRIVILEGE the Privilege that TO obtains PERMISSION for.
+        PRIVILEGE the Privilege.Implementation that TO obtains PERMISSION for.
         TO the User that obtains PERMISSION.
         PERMISSION the Permission that is authorized.
         """
         if __debug__:
             from Privilege import PrivilegeBase
             from Member import Member
-        assert isinstance(privilege, PrivilegeBase)
+        assert isinstance(privilege, PrivilegeBase.Implementation)
         assert isinstance(to, Member)
         assert issubclass(permission, PermissionBase)
         super(AuthorizePermission, self).__init__(u"authorize", privilege)
@@ -53,14 +53,14 @@ class RevokePermission(PermissionBase):
         """
         Revoking PERMISSION for PRIVILEGE previously granted to TO.
 
-        PRIVILEGE the Privilege for which PERMISSION is revoked.
+        PRIVILEGE the Privilege.Implementation for which PERMISSION is revoked.
         TO the User that has PERMISSION revoked.
         PERMISSION the Permission that is revoked.
         """
         if __debug__:
             from Privilege import PrivilegeBase
             from Member import Member
-        assert isinstance(privilege, PrivilegeBase)
+        assert isinstance(privilege, PrivilegeBase.Implementation)
         assert isinstance(to, Member)
         assert issubclass(permission, PermissionBase)
         super(RevokePermission, self).__init__(u"revoke", privilege)
@@ -79,8 +79,9 @@ class PermitPermission(PermissionBase):
     def __init__(self, privilege, payload):
         if __debug__:
             from Privilege import PrivilegeBase
-        assert isinstance(privilege, PrivilegeBase)
-        assert isinstance(payload, (tuple, dict, str, unicode, int, long, bool, float))
+        assert isinstance(privilege, PrivilegeBase.Implementation)
+        # payload may NOT be a tuple
+        assert isinstance(payload, (tuple, dict, str, unicode, int, long, bool, float, type(None))), type(payload)
         super(PermitPermission, self).__init__(u"permit", privilege)
         self._payload = payload
         

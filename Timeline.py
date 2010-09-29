@@ -26,7 +26,7 @@ class Timeline(object):
             return "<Node " + ", ".join(map(time_pair, reversed(self.timeline))) + ">"
 
     def __init__(self, community):
-        self._global_time = 0
+        self._global_time = 1
         self._nodes = {}
 
     def __str__(self):
@@ -34,9 +34,15 @@ class Timeline(object):
             return "HASH: " + str(node)
         return "\n".join(map(node_pair, self._nodes.iteritems()))
 
-    def claim_global_time(self):
-        self._global_time += 1
+    @property
+    def global_time(self):
         return self._global_time
+
+    def claim_global_time(self):
+        try:
+            return self._global_time
+        finally:
+            self._global_time += 1
 
     def check(self, signed_by, permission, global_time):
         """
@@ -51,9 +57,9 @@ class Timeline(object):
             return True
 
         privilege = permission.privilege
-        if isinstance(privilege, PublicPrivilege):
+        if isinstance(privilege, PublicPrivilege.Implementation):
             return True
-        elif isinstance(privilege, LinearPrivilege):
+        elif isinstance(privilege, LinearPrivilege.Implementation):
             node = self._get_node(signed_by, False)
             if node:
                 pair = (privilege.name, permission.name)
@@ -61,7 +67,7 @@ class Timeline(object):
                 if pair in allowed_permissions:
                     self._global_time = max(self._global_time, global_time)
                 return True
-        dprint("FAIL: Check ", signed_by.get_database_id(), "; ", permission, "@", global_time, level="warning")
+        dprint("FAIL: Check ", signed_by.database_id, "; ", permission, "@", global_time, level="warning")
         return False
 
     def update(self, signed_by, permission, global_time):
@@ -77,7 +83,7 @@ class Timeline(object):
         assert self.check(signed_by, permission, global_time)
 
         privilege = permission.get_privilege()
-        if isinstance(privilege, LinearPrivilege):
+        if isinstance(privilege, LinearPrivilege.Implementation):
             return self._update_linear_privilege(signed_by, permission, global_time)
         else:
             raise NotImplementedError

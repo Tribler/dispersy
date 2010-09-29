@@ -98,6 +98,7 @@ def _a_decode_bytes(stream, offset, count, _):
     """
     '7bfoo-bar',2,7 --> 9,'foo-bar'
     """
+    assert len(stream) > offset+count, (len(stream), offset + count)
     return offset+count, stream[offset:offset+count]
 
 def _a_decode_iterable(stream, offset, count, mapping):

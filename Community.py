@@ -10,9 +10,12 @@ from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Member import MasterMember, MyMember, Member
 from Message import Message, DelayMessageByProof
-from Destination import CommunityDestination
+from Destination import CommunityDestination, AddressDestination
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Encoding import encode
+
+if __debug__:
+    from Print import dprint
 
 class Community(object):
     """
@@ -114,12 +117,22 @@ class Community(object):
             # <str> type internally
             master_pem = str(master_pem)
             user_pem = str(user_pem)
-            
+           
         except StopIteration:
             raise ValueError(u"Community not found in database")
         self._database_id = community_id
         self._my_member = MyMember.get_instance(user_pem)
         self._master_member = MasterMember.get_instance(master_pem)
+
+        # implement the privileges
+        self._privileges = {}
+        for meta in self.get_dispersy_meta_privileges():
+            assert meta.name not in self._privileges
+            self._privileges[meta.name] = meta.implement(self)
+        assert u"dispersy-sync" in self._privileges, "The 'dispersy-sync' Privilege has to be supplied"
+        for meta in self.get_meta_privileges():
+            assert meta.name not in self._privileges
+            self._privileges[meta.name] = meta.implement(self)
 
         # dictionary containing available conversions.  currently only
         # contains one conversion (the default 00001)
@@ -136,12 +149,6 @@ class Community(object):
 
         self._dispersy = Dispersy.get_instance()
         self._dispersy.add_community(self)
-
-        # bloomfilters
-        self._full_sync_bloomfilter_stepping = 100
-        self._full_sync_bloomfilter_capacity = 100
-        self._full_sync_bloomfilter_error_rate = 0.001
-        self._full_sync_bloomfilter = []
 
     @property
     def cid(self):
@@ -236,6 +243,8 @@ class Community(object):
             distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
         elif isinstance(distribution, LastSyncDistribution):
             distribution_impl = distribution.implement(self._timeline.claim_global_time())
+        elif isinstance(distribution, DirectDistribution):
+            distribution_impl = distribution.implement(self._timeline.global_time)
         else:
             raise ValueError("Unknown distribution")
 
@@ -245,14 +254,14 @@ class Community(object):
 
         if update_locally:
             assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
-            self.on_message(message)
+            self.on_message(None, message)
 
         if store_and_forward:
             self._dispersy.store_and_forward([message])
 
         return message
 
-    def on_authorize_message(self, message):
+    def on_authorize_message(self, address, message):
         """
         A AuthorizePermission message was received, it was either
         locally generated or received from an external source.
@@ -260,7 +269,7 @@ class Community(object):
         assert isinstance(message, Message)
         self._timeline.update(message.signed_by, message.permission, message.distribution.global_time)
 
-    def on_revoke_message(self, message):
+    def on_revoke_message(self, address, message):
         """
         A RevokePermission message was received, it was either locally
         generated or received from an external source.
@@ -277,12 +286,18 @@ class Community(object):
         assert isinstance(address, tuple)
         assert isinstance(message, Message)
         if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
-            self._incoming_message_map.get(type(message.permission), self.on_message)(message)
+            self._incoming_message_map.get(type(message.permission), self.on_message)(address, message)
 
         else:
             raise DelayMessageByProof()
 
-    def on_message(self, message):
+    # def on_dispersy_sync_message(self, message):
+    #     if __debug__:
+    #         from Message import Message
+    #     assert isinstance(message, Message)
+    #     dprint(message)
+
+    def on_message(self, address, message):
         """
         A message was received, it was either locally generated or
         received from an external source.
@@ -291,13 +306,38 @@ class Community(object):
         """
         if __debug__:
             from Message import Message
-        assert isinstance(message, Message)
-        raise NotImplemented()
-        
-    def get_privilege(self, name):
-        """
-        Must be implemented in community specific code.
-        """
-        assert isinstance(name, unicode)
+        assert isinstance(message, (None, Message))
         raise NotImplemented()
 
+    def get_privilege(self, name):
+        """
+        Returns the PrivilegeBase.Implementation subclass associated
+        to NAME.  Or a KeyError if it does not exist.
+        """
+        assert isinstance(name, unicode)
+        return self._privileges[name]
+
+    def get_privileges(self):
+        """
+        Returns all the PrivilegeBase.Implementation subclasses
+        available in this Community.
+        """
+        return self._privileges.itervalues()
+
+    @staticmethod
+    def get_dispersy_meta_privileges():
+        """
+        Returns the PrivilegeBase subclasses available to Dispersy in
+        this Community.
+        """
+        return [PublicPrivilege(u"dispersy-sync", DirectDistribution(), CommunityDestination()),
+                PublicPrivilege(u"dispersy-missing-sequence", DirectDistribution(), AddressDestination())]
+#todo: dispersy-missing-global
+
+    @staticmethod
+    def get_meta_privileges():
+        """
+        Returns the PrivilegeBase subclasses available in this
+        Community.
+        """
+        raise NotImplementedError()

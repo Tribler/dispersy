@@ -15,17 +15,26 @@ class DispersyDatabase(Database):
 CREATE TABLE user(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  mid BLOB,                                      -- member identifier (sha1 of pem)
- pem BLOB);                                     -- member key (public part)
+ pem BLOB,                                      -- member key (public part)
+ UNIQUE(mid));
 
 CREATE TABLE community(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  user INTEGER REFERENCES user(id),              -- my member that is used to sign my messages
  cid BLOB,                                      -- community identifier (sha1 of pem)
- master_pem BLOB);                              -- community master key (public part)
+ master_pem BLOB,                               -- community master key (public part)
+ UNIQUE(user, cid));
+
+CREATE TABLE privilege(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ community INTEGER REFERENCES community(id),
+ name TEXT,
+ UNIQUE(community, name));
 
 CREATE TABLE key(
  public_pem BLOB,                               -- public part
- private_pem BLOB);                             -- private part
+ private_pem BLOB,                              -- private part
+ UNIQUE(public_pem, private_pem));
 
 CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
@@ -37,27 +46,19 @@ CREATE TABLE routing(
 CREATE TABLE sync_full(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  user INTEGER REFERENCES user(id),
- community INTEGER REFERENCES community(id),
+ privilege INTEGER REFERENCES privilege(id),
  global INTEGER,
  sequence INTEGER,
- packet BLOB);
-
-CREATE TABLE sync_minimal(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- user INTEGER REFERENCES user(id),
- community INTEGER REFERENCES community(id),
- global INTEGER,
- minimal INTEGER,
- packet BLOB);
+ packet BLOB,
+ UNIQUE(user, privilege, global, sequence));
 
 CREATE TABLE sync_last(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
- community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
- privilege TEXT,
+ privilege INTEGER REFERENCES privilege(id),
  global INTEGER,
  packet BLOB,
- UNIQUE(community, user, privilege));
+ UNIQUE(user, privilege, global));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');
