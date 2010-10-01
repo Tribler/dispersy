@@ -22,21 +22,18 @@ class Community(object):
     The Community module manages the participation and the reconstruction
     of the current state of a distributed community.
     """
-    @staticmethod
-    def create_community(cls, privileges, my_member, *args, **kargs):
+    @classmethod
+    def create_community(cls, my_member, *args, **kargs):
         """
-        Create a new CLS community with PRIVILEGES owned by MY_MEMBER.
+        Create a new CLS community owned by MY_MEMBER.
 
         CLS is a Community subclass.  A new instance of this is returned.
-        PRIVILEGES is a list with Privileges that will be created.
         MY_MEMBER is a Member that will be granted all Permissions for PRIVILEGES.
         *ARGS are passed along to __init__
         **KARGS are passed along to __init__
         """
         if __debug__:
             from Privilege import PrivilegeBase
-        assert isinstance(privileges, (tuple, list))
-        assert not filter(lambda x: not isinstance(x, PrivilegeBase), privileges)
         assert isinstance(my_member, MyMember)
 
         # master key and community id
@@ -46,16 +43,17 @@ class Community(object):
         cid = sha1(public_pem).digest()
 
         database = DispersyDatabase.get_instance()
-        database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)", (my_member.get_database_id(), buffer(cid), buffer(public_pem)))
+        database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)", (my_member.database_id, buffer(cid), buffer(public_pem)))
         database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(cid), buffer(public_pem)))
         database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         # new community instance
         community = cls(cid, *args, **kargs)
 
+        # authorize MY_MEMBER for each privilege
         permission_pairs = []
-        for privilege in privileges:
-            if not isinstance(privilege, PublicPrivilege):
+        for privilege in community.get_privileges():
+            if not isinstance(privilege, PublicPrivilege.Implementation):
                 for permission in (AuthorizePermission, RevokePermission, PermitPermission):
                     permission_pairs.append((privilege, permission))
         if permission_pairs:
@@ -74,7 +72,7 @@ class Community(object):
         cid = sha1(master_pem).digest()
         database = DispersyDatabase.get_instance()
         database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)",
-                         (my_member.get_database_id(), buffer(cid), master_pem))
+                         (my_member.database_id, buffer(cid), master_pem))
 
         # new community instance
         return cls(cid, *args, **kargs)
@@ -98,9 +96,9 @@ class Community(object):
         self._cid = cid
 
         # incoming message map
-        self._incoming_message_map = {type(PermitPermission):self.on_message,
-                                      type(AuthorizePermission):self.on_authorize_message,
-                                      type(RevokePermission):self.on_revoke_message}
+        self._incoming_message_map = {PermitPermission:self.on_message,
+                                      AuthorizePermission:self.on_authorize_message,
+                                      RevokePermission:self.on_revoke_message}
 
         # dispersy
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -195,36 +193,42 @@ class Community(object):
          where Permission is the Permission for that Privilege that the Member will obtain.
         SIGN_WITH_MASTER when True the MasterMember is used to sign the authorize message.
         """
-        # if __debug__:
-        #     from Privilege import PrivilegeBase
-        #     from Permission import PermissionBase
-        # assert isinstance(member, Member)
-        # assert isinstance(permission_pairs, (tuple, list))
-        # assert not filter(lambda x: not (isinstance(x, tuple) and len(x) == 2 and isinstance(x[0], PrivilegeBase) and issubclass(x[1], PermissionBase)), permission_pairs)
-        # assert isinstance(sign_with_master, bool)
-        # assert isinstance(update_locally, bool)
-        # assert isinstance(store_and_forward, bool)
+        if __debug__:
+            from Privilege import PrivilegeBase
+            from Permission import PermissionBase
+        assert isinstance(member, Member)
+        assert isinstance(permission_pairs, (tuple, list))
+        assert not filter(lambda x: not isinstance(x, tuple), permission_pairs)
+        assert not filter(lambda x: not len(x) == 2, permission_pairs)
+        assert not filter(lambda x: not isinstance(x[0], PrivilegeBase.Implementation), permission_pairs)
+        assert not filter(lambda x: not issubclass(x[1], PermissionBase), permission_pairs)
+        assert isinstance(sign_with_master, bool)
+        assert isinstance(update_locally, bool)
+        assert isinstance(store_and_forward, bool)
 
-        # if sign_with_master:
-        #     signer = self.get_master_member()
-        # else:
-        #     signer = self.get_my_member()
+        if sign_with_master:
+            signed_by = self.master_member
+        else:
+            signed_by = self.my_member
 
-        # messages = []
-        # global_time = self._timeline.claim_global_time()
-        # for privilege, permission in permission_pairs:
-        #     messages.append(Message(self, signer, FullSyncDistribution(global_time, signer.claim_sequence_number()), CommunityDestination(), AuthorizePermission(privilege, member, permission)))
+        messages = []
+        global_time = self._timeline.claim_global_time()
+        distribution = FullSyncDistribution(100, 100, 0.001)
+        destination = CommunityDestination()
+        for privilege_impl, permission_cls in permission_pairs:
+            distribution_impl = distribution.implement(global_time, signed_by.claim_sequence_number())
+            destination_impl = destination.implement()
+            messages.append(Message(self, signed_by, distribution_impl, destination_impl, AuthorizePermission(privilege_impl, member, permission_cls)))
 
-        # if update_locally:
-        #     for message in messages:
-        #         assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
-        #         self.on_dispersy_message(message)
+        if update_locally:
+            for message in messages:
+                assert self._timeline.check(message.signed_by, message.permission, message.distribution.global_time)
+                self.on_authorize_message(None, message)
 
-        # if store_and_forward:
-        #     self._dispersy.store_and_forward(messages)
+        if store_and_forward:
+            self._dispersy.store_and_forward(messages)
 
-        # return messages
-        pass
+        return messages
 
     def permit(self, permission, destination=(), sign_with_master=False, update_locally=True, store_and_forward=True):
         assert isinstance(permission, PermitPermission)
@@ -286,16 +290,10 @@ class Community(object):
         assert isinstance(address, tuple)
         assert isinstance(message, Message)
         if self._timeline.check(message.signed_by, message.permission, message.distribution.global_time):
-            self._incoming_message_map.get(type(message.permission), self.on_message)(address, message)
+            self._incoming_message_map[type(message.permission)](address, message)
 
         else:
             raise DelayMessageByProof()
-
-    # def on_dispersy_sync_message(self, message):
-    #     if __debug__:
-    #         from Message import Message
-    #     assert isinstance(message, Message)
-    #     dprint(message)
 
     def on_message(self, address, message):
         """

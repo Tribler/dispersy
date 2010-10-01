@@ -6,7 +6,7 @@ from Crypto import rsa_from_private_pem, rsa_from_public_pem, rsa_to_public_pem
 from Encoding import encode, decode
 
 class Member(Parameterized1Singleton):
-    def __init__(self, public_pem, rsa=None, sync=True):
+    def __init__(self, public_pem, rsa=None):
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
         assert rsa is None or len(rsa) % 8 == 0
@@ -18,13 +18,12 @@ class Member(Parameterized1Singleton):
         self._mid = sha1(public_pem).digest()
 
         # sync with database
-        if sync:
-            database = DispersyDatabase.get_instance()
-            try:
-                self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
-            except StopIteration:
-                database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
-                self._database_id = database.get_last_insert_rowid()
+        database = DispersyDatabase.get_instance()
+        try:
+            self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
+        except StopIteration:
+            database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
+            self._database_id = database.get_last_insert_rowid()
 
     @property
     def pem(self):
@@ -52,37 +51,41 @@ class Member(Parameterized1Singleton):
         signature_length = len(self._rsa) / 8
         return bool(self._rsa.verify(sha1(data[offset:length-signature_length]).digest(), data[length-signature_length:length]))
 
+    def __hash__(self):
+        """
+        Allows Member classes to be used as keys in a dictionary.
+        """
+        return self._database_id
+
     def __str__(self):
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
 
 class PrivateMemberBase(Member):
-    def __init__(self, public_pem, private_pem=None, sync=True):
+    def __init__(self, public_pem, private_pem=None):
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
         assert isinstance(private_pem, (type(None), str))
         assert private_pem is None or private_pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
-        assert isinstance(sync, bool)
 
-        if sync:
-            if private_pem is None:
-                # get private pem
-                database = DispersyDatabase.get_instance()
-                try:
-                    private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
-                except StopIteration:
-                    pass
+        if private_pem is None:
+            # get private pem
+            database = DispersyDatabase.get_instance()
+            try:
+                private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
+            except StopIteration:
+                pass
 
-            else:
-                # set private pem
-                database = DispersyDatabase.get_instance()
-                database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
+        else:
+            # set private pem
+            database = DispersyDatabase.get_instance()
+            database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         if private_pem is None:
             rsa = rsa_from_public_pem(public_pem)
         else:
             rsa = rsa_from_private_pem(private_pem)
 
-        Member.__init__(self, public_pem, rsa, sync)
+        super(PrivateMemberBase, self).__init__(public_pem, rsa)
         self._private_pem = private_pem
         self._sequence_number = 0
 

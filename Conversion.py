@@ -266,7 +266,16 @@ class Conversion00001(ConversionBase):
         container["permission"] = {"type":"permit", "privilege_name":permission.privilege.name, "container":permission.payload}
 
     def _encode_authorize_permission(self, container, permission):
-        container["permission"] = {"type":"authorize", "privilege_name":permission.privilege.name, "permission_name":permission.permission.name, "to":permission.to.pem}
+        if issubclass(permission.permission, AuthorizePermission):
+            permission_name = u"authorize"
+        elif issubclass(permission.permission, RevokePermission):
+            permission_name = u"revoke"
+        elif issubclass(permission.permission, PermitPermission):
+            permission_name = u"permit"
+        else:
+            raise NotImplementedError(permission.permission)
+
+        container["permission"] = {"type":"authorize", "privilege_name":permission.privilege.name, "permission_name":permission_name, "to":permission.to.pem}
 
     def encode_message(self, message):
         if __debug__:

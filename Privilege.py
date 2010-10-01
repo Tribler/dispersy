@@ -89,10 +89,10 @@ class LinearPrivilege(PrivilegeBase):
     class Implementation(PrivilegeBase.Implementation):
         pass
 
-class TimelinePrivilege(PrivilegeBase):
-    """
-    Privilege with the Timeline policy.
-    """
-    class Implementation(PrivilegeBase.Implementation):
-        pass
+# class TimelinePrivilege(PrivilegeBase):
+#     """
+#     Privilege with the Timeline policy.
+#     """
+#     class Implementation(PrivilegeBase.Implementation):
+#         pass
 

@@ -46,7 +46,16 @@ class AuthorizePermission(PermissionBase):
         return self._permission
 
     def __str__(self):
-        return "<{0.__class__.__name__} privilege.name:{0.privilege.name} permission.name:{0.permission.name}>".format(self)
+        if issubclass(self._permission, AuthorizePermission):
+            permission_name = u"authorize"
+        elif issubclass(self._permission, RevokePermission):
+            permission_name = u"revoke"
+        elif issubclass(self._permission, PermitPermission):
+            permission_name = u"permit"
+        else:
+            raise NotImplementedError(permission.permission)
+        
+        return "<{0.__class__.__name__} privilege:{0.privilege.name} permission:{1}>".format(self, permission_name)
 
 class RevokePermission(PermissionBase):
     def __init__(self, privilege, by, to, permission):
@@ -90,4 +99,4 @@ class PermitPermission(PermissionBase):
         return self._payload
 
     def __str__(self):
-        return "<{0.__class__.__name__} privilege.name:{0.privilege.name} payload:{0.payload!r}>".format(self)
+        return "<{0.__class__.__name__} privilege:{0.privilege.name} payload:{0.payload!r}>".format(self)

@@ -5,14 +5,15 @@ Run some python code, usually to test one or more features.
 import hashlib
 import types
 
+from Tribler.Community.Forum.Forum import ForumCommunity
 from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
 from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
-from Permission import PermitPermission
+from Permission import AuthorizePermission, RevokePermission, PermitPermission
 from Distribution import LastSyncDistribution
 from Print import dprint
-from Debug import DiscoveryNode
+from Debug import DiscoveryNode, ForumNode
 
 class Script(object):
     class Terminator(object):
@@ -43,7 +44,8 @@ class Script(object):
     def load(rawserver, script):
         terminator = Script.Terminator(rawserver)
         mapping = {"discovery-user":DiscoveryUserScript,
-                   "discovery-community":DiscoveryCommunityScript}
+                   "discovery-community":DiscoveryCommunityScript,
+                   "forum":ForumScript}
         
         dprint(script)
         if script == "all":
@@ -141,7 +143,7 @@ class DiscoveryCommunityScript(ScriptBase):
         node.init_my_member()
         node.set_community(self._discovery)
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("FOOD").digest()
 
         send = node.send_message
@@ -177,7 +179,7 @@ class DiscoveryCommunityScript(ScriptBase):
         node.init_my_member()
         node.set_community(self._discovery)
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINK").digest()
 
         send = node.send_message
@@ -229,7 +231,7 @@ class DiscoveryCommunityScript(ScriptBase):
         node.init_my_member()
         node.set_community(self._discovery)
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINKS").digest()
 
         send = node.send_message
@@ -297,7 +299,7 @@ class DiscoveryCommunityScript(ScriptBase):
         node.init_socket()
         node.init_my_member()
         node.set_community(self._discovery)
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
 
         # create CATS and DOGS communities
         messages = []
@@ -340,10 +342,11 @@ class DiscoveryUserScript(ScriptBase):
     def my_user_metadata(self):
         my_member = self._discovery.my_member
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         self._discovery.create_user_metadata(address, u"My Alias", u"My Comment")
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"My Alias"
@@ -356,7 +359,7 @@ class DiscoveryUserScript(ScriptBase):
         node.init_my_member()
         node.set_community(self._discovery)
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
 
         send = node.send_message
@@ -365,7 +368,8 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Alice-01", u"Comment-01", 1), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Alice-01"
@@ -374,7 +378,8 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Alice-03", u"Comment-03", 3), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Alice-03"
@@ -383,7 +388,8 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Alice-02", u"Comment-02", 2), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Alice-03"
@@ -396,7 +402,7 @@ class DiscoveryUserScript(ScriptBase):
         node.init_my_member()
         node.set_community(self._discovery)
 
-        address = self._dispersy.get_socket().get_address()
+        address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
 
         send = node.send_message
@@ -405,7 +411,8 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Bob-03", u"Comment-03", 3), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Bob-03"
@@ -414,7 +421,8 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Bob-01", u"Comment-01", 1), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Bob-03"
@@ -423,53 +431,93 @@ class DiscoveryUserScript(ScriptBase):
         send(create(node_address, u"Bob-02", u"Comment-02", 2), address)
         yield 0.1
         try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE public_pem = ?", (buffer(node.my_member.pem),)).next()
+            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(node.my_member.pem),)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"Bob-03"
         assert tup[1] == u"Comment-03"
         dprint("finished")
 
-# class DiscoverScript(ScriptBase):
-#     def __init__(self, *args, **kargs):
-#         ScriptBase.__init__(self, *args, **kargs)
+class ForumScript(ScriptBase):
+    def run(self):
+        # self.caller(self.create_my_forum)
+        self.caller(self.wow_forum)
 
-#         alias = u"Alias({0})".format(self._script)
-#         address = self._dispersy.get_socket().get_address()
-#         my_member = self._dispersy.get_my_member()
+    def create_my_forum(self):
+        community = ForumCommunity.create_community(self._dispersy.my_member)
+        community.create_forum_settings(u"My Forum", u"My Forum Description")
+        welcome_thread = community.create_thread(u"Welcome", u"Welcome everyone")
+        community.create_post(welcome_thread, u"Anyone else here?")
 
-#         permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-01"))
-#         message01 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
+    def wow_forum(self):
+        def get_or_create_node(nodes, user):
+            if not user in nodes:
+                # create user
+                dprint("Creating '", user, "'")
+                node = ForumNode()
+                node.init_socket()
+                node.init_my_member()
+                node.set_community(community)
+                node.sequence_number = 0
 
-#         permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-02--"))
-#         message02 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
+                # authorize user
+                permission_pairs = []
+                for privilege_name in [u"create-thread", u"create-post"]:
+                    privilege = community.get_privilege(privilege_name)
+                    for permission in [PermitPermission]:
+                        permission_pairs.append((privilege, permission))
+                community.authorize(node.my_member, permission_pairs)
 
-#         permission = PermitPermission(self._discovery.get_privilege(u"user-metadata"), (address, alias, u"Comment-03----"))
-#         message03 = self._discovery.permit(permission, LastSyncDistribution, update_locally=False, store_and_forward=False)
+                # set Discovery metadata
+                global_time = self._discovery._timeline.global_time
+                node.set_community(self._discovery)
+                node.send_message(node.create_user_metadata_message(node.socket.getsockname(), unicode(user), u"Wow player {0}".format(user), global_time), address)
+                node.set_community(community)
 
-#         self._dispersy._store(message01.community.get_conversion().encode_message(message01), message01)
-#         self._dispersy._store(message02.community.get_conversion().encode_message(message02), message02)
-#         self._dispersy.store_and_forward([message03])
-        
-        
+                # store for later
+                nodes[user] = node
+            return nodes[user]
 
-# class DiscoverStuff(ScriptBase):
-#     def __init__(self, *args, **kargs):
-#         ScriptBase.__init__(self, *args, **kargs)
+        import apsw
+        connection = apsw.Connection("/home/boudewijn/fetch_forum.db")
+        cursor = connection.cursor()
 
-#         alias = u"Alias({0})".format(self._script)
-#         comment = u"Comment({0})".format(self._script)
+        address = self._dispersy.socket.get_address()
 
-#         my_member = self._dispersy.get_my_member()
-#         user_metadata = self._discovery.get_user_metadata(my_member)
-#         assert user_metadata.get_address() == ("", -1)
-#         assert user_metadata.get_alias() == u""
-#         assert user_metadata.get_comment() == u""
+        thread_counter = 0
+        post_counter = 0
+        nodes = {}
+        community = ForumCommunity.create_community(self._dispersy.my_member)
+        community.create_forum_settings(u"World of Warcraft", u"A database scrape from the World of Warcraft forums")
+        for id_, in list(cursor.execute(u"SELECT id FROM thread ORDER BY id DESC")):
+            gen = cursor.execute(u"SELECT user, title, comment FROM post WHERE thread = ? ORDER BY id DESC", (id_,))
+            try:
+                user, title, comment = gen.next()
+            except StopIteration:
+                continue
 
-#         self._discovery.create_user_metadata(self._dispersy.get_socket().get_address(), alias, comment)
-#         metadata = self._discovery.get_user_metadata(my_member)
-#         assert user_metadata.get_address() == ("0.0.0.0", 12345)
-#         assert user_metadata.get_alias() == alias
-#         assert user_metadata.get_comment() == comment
+            node = get_or_create_node(nodes, user)
+            key = "key#{0}".format(id_)
+            global_time = community._timeline.global_time
+            node.sequence_number += 1
+            node.send_message(node.create_create_thread_message(key, title, comment, global_time, node.sequence_number), address)
+            thread_counter += 1
+            post_counter += 1
+            yield 0.01
 
-        
+            while True:
+                try:
+                    user, title, comment = gen.next()
+                except StopIteration:
+                    break
+
+                node = get_or_create_node(nodes, user)
+                global_time = community._timeline.global_time
+                node.sequence_number += 1
+                node.send_message(node.create_create_post_message(key, comment, global_time, node.sequence_number), address)
+                post_counter += 1
+                yield 0.01
+
+        dprint("Threads:", thread_counter, "; Posts:", post_counter)
+        dprint("finished")

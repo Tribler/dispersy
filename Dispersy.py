@@ -70,19 +70,23 @@ class Dispersy(Singleton):
                                            LastSyncDistribution.Implementation:self._check_incoming_last_sync_distribution,
                                            DirectDistribution.Implementation:self._check_incoming_direct_distribution}
 
-    def get_working_directory(self):
+    @property
+    def working_directory(self):
         return self._working_directory
 
-    def get_socket(self):
+    @property
+    def socket(self):
         return self._socket
 
     def set_socket(self, socket):
         self._socket = socket
 
-    def get_my_member(self):
+    @property
+    def my_member(self):
         return self._my_member
 
-    def get_database(self):
+    @property
+    def database(self):
         """
         Returns the Dispersy database.
 
@@ -154,11 +158,12 @@ class Dispersy(Singleton):
             sequence, = self._database.execute(u"""
 SELECT sequence
 FROM sync_full
-WHERE user = ? AND privilege = ?
+LEFT JOIN privilege ON (sync_full.privilege = privilege.id)
+WHERE sync_full.user = ? AND privilege.community = ?
 ORDER BY sequence DESC
 LIMIT 1""",
                                               (message.signed_by.database_id,
-                                               message.permission.privilege.database_id)).next()
+                                               message.community.database_id)).next()
         except StopIteration:
             sequence = 0
             
@@ -231,28 +236,20 @@ LIMIT 1""",
                 dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", address[0], ":", address[1])
                 continue
 
-            #
-            # Converty binary date to internal Message
-            #
             try:
+                #
+                # Converty binary date to internal Message
+                #
                 message = conversion.decode_message(packet)
 
-            except DropPacket as exception:
-                dprint("drop a ", len(packet), " byte packet (", exception, ") from ", address[0], ":", address[1])
-                continue
+                #
+                # Update routing table.  We know that some peer (not
+                # necessarily message.signed_by) exists at this
+                # address.
+                #
+                self._database.execute(u"INSERT OR REPLACE INTO routing(community, host, port, time) VALUES(?, ?, ?, DATETIME())",
+                                       (message.community.database_id, unicode(address[0]), address[1]))
 
-            except DelayPacket as delay:
-                self._delay_packet(address, packet, delay)
-                continue
-
-            #
-            # Update routing table.  We know that some peer (not
-            # necessarily message.signed_by) exists at this address.
-            #
-            self._database.execute(u"INSERT OR REPLACE INTO routing(community, host, port, time) VALUES(?, ?, ?, DATETIME())",
-                                   (message.community.database_id, unicode(address[0]), address[1]))
-
-            try:
                 #
                 # Filter messages based on distribution (usually
                 # duplicate or old messages)
@@ -266,19 +263,28 @@ LIMIT 1""",
                     community.on_incoming_message(address, packet, message)
 
                     #
-                    # Sync messages need to be stored and forwarded
+                    # Sync messages need to be stored (so they can be
+                    # synced later)
                     #
                     if isinstance(message.distribution, SyncDistribution.Implementation):
                         self._store(packet, message)
 
                     #
-                    # This message may 'trigger' a delayed message
+                    # This message may 'trigger' a previously delayed message
                     #
                     tup = self._check_delayed_map.get(type(message.distribution), self._check_delayed_OTHER_distribution)(message)
                     if tup:
                         address, packet, message = tup
                     else:
                         break
+
+            except DropPacket as exception:
+                dprint("drop a ", len(packet), " byte packet (", exception, ") from ", address[0], ":", address[1])
+                continue
+
+            except DelayPacket as delay:
+                self._delay_packet(address, packet, delay)
+                continue
 
             except DropMessage as exception:
                 dprint("drop a ", len(packet), " byte message (", exception, ") from ", address[0], ":", address[1])
@@ -333,11 +339,11 @@ LIMIT 1""",
             # Forward
             if isinstance(message.destination, CommunityDestination.Implementation):
                 for address in addresses:
-                    dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", address[0], ":", address[1])
+                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", address[0], ":", address[1])
                     self._socket.send(address, packet)
 
             elif isinstance(message.destination, AddressDestination.Implementation):
-                dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
+                if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
                 self._socket.send(message.destination.address, packet)
 
             else:

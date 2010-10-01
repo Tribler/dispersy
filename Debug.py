@@ -1,7 +1,7 @@
 import socket
 
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
-from Privilege import PublicPrivilege
+from Privilege import PublicPrivilege, LinearPrivilege
 from Message import Message
 from Destination import CommunityDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
@@ -39,7 +39,7 @@ class Node(object):
 
     def init_my_member(self, bits=512):
         rsa = rsa_generate_key(bits)
-        self._my_member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), False)
+        self._my_member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa))
 
     @property
     def community(self):
@@ -136,9 +136,9 @@ class Node(object):
 
 class DiscoveryNode(Node):
     def __init__(self, *args, **kargs):
-        Node.__init__(self, *args, **kargs)
-        self._user_metadata_privilege = PublicPrivilege(u"user-metadata", LastSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        super(DiscoveryNode, self).__init__(*args, **kargs)
         self._community_metadata_privilege = PublicPrivilege(u"community-metadata", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._user_metadata_privilege = PublicPrivilege(u"user-metadata", LastSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
 
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
         distribution = self._community_metadata_privilege.distribution.implement(global_time, sequence_number)
@@ -152,3 +152,28 @@ class DiscoveryNode(Node):
         permission = PermitPermission(self._user_metadata_privilege, (address, alias, comment))
         return self.create_message(distribution, destination, permission)
     
+class ForumNode(DiscoveryNode):
+    def __init__(self, *args, **kargs):
+        super(ForumNode, self).__init__(*args, **kargs)
+        self._set_settings_privilege = LinearPrivilege(u"set-settings", LastSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._create_thread_privilege = LinearPrivilege(u"create-thread", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._create_post_privilege = LinearPrivilege(u"create-post", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+
+    def create_set_settings_message(self, title, description, global_time):
+        distribution = self._set_settings_privilege.distribution.implement(global_time)
+        destination = self._set_settings_privilege.destination.implement()
+        permission = PermitPermission(self._set_settings_privilege, (title, description))
+        return self.create_message(distribution, destination, permission)
+
+    def create_create_thread_message(self, key, title, comment, global_time, sequence_number):
+        distribution = self._create_thread_privilege.distribution.implement(global_time, sequence_number)
+        destination = self._create_thread_privilege.destination.implement()
+        permission = PermitPermission(self._create_thread_privilege, (key, title, comment))
+        return self.create_message(distribution, destination, permission)
+
+    def create_create_post_message(self, key, comment, global_time, sequence_number):
+        distribution = self._create_post_privilege.distribution.implement(global_time, sequence_number)
+        destination = self._create_post_privilege.destination.implement()
+        permission = PermitPermission(self._create_post_privilege, (key, comment))
+        return self.create_message(distribution, destination, permission)
+        

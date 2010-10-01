@@ -75,7 +75,8 @@ class Parameterized1Singleton(object):
         """
         Returns the existing singleton instance or None
         """
-        assert isinstance(arg, (str, unicode, int, long, float))
+        assert hasattr(arg, "__hash__")
+        # assert isinstance(arg, (str, unicode, int, long, float))
         if hasattr(cls, "_singleton_instances") and arg in getattr(cls, "_singleton_instances"):
             return getattr(cls, "_singleton_instances")[arg]
 
@@ -85,7 +86,8 @@ class Parameterized1Singleton(object):
         Returns the existing singleton instance or create one
         """
         assert len(args) > 0
-        assert isinstance(args[0], (str, unicode, int, long, float))
+        assert hasattr(args[0], "__hash__")
+        # assert isinstance(args[0], (str, unicode, int, long, float))
         
         if hasattr(cls, "_singleton_instances") and args[0] in getattr(cls, "_singleton_instances"):
             return getattr(cls, "_singleton_instances")[args[0]]
