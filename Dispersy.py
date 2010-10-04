@@ -260,6 +260,7 @@ LIMIT 1""",
                     #
                     # Allow community code to handle the message
                     #
+                    if __debug__: dprint("incoming ", message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes)")
                     community.on_incoming_message(address, packet, message)
 
                     #
@@ -374,10 +375,10 @@ LIMIT 1""",
             self._socket.send(address, packet)
 
     def periodically_disperse(self):
-        yield 10.0
+        yield 1.0
 
         while True:
-            yield 10.0
+            yield 1.0
 
             addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
 

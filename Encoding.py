@@ -92,14 +92,19 @@ def _a_decode_unicode(stream, offset, count, _):
     """
     '7sfoo-bar',2,7 --> 9,u'foo-bar'
     """
-    return offset+count, stream[offset:offset+count].decode("UTF-8")
+    if len(stream) >= offset+count:
+        return offset+count, stream[offset:offset+count].decode("UTF-8")
+    else:
+        raise ValueError("Invalid stream length", len(stream), offset + count)
 
 def _a_decode_bytes(stream, offset, count, _):
     """
     '7bfoo-bar',2,7 --> 9,'foo-bar'
     """
-    assert len(stream) > offset+count, (len(stream), offset + count)
-    return offset+count, stream[offset:offset+count]
+    if len(stream) >= offset+count:
+        return offset+count, stream[offset:offset+count]
+    else:
+        raise ValueError("Invalid stream length", len(stream), offset + count)
 
 def _a_decode_iterable(stream, offset, count, mapping):
     """
@@ -161,7 +166,7 @@ def decode(stream, offset=0):
     indicated by the first byte in the binary STREAM.
     """
     assert isinstance(stream, bytes), "STREAM has invalid type: %s" % type(stream)
-    assert isinstance(offset, int), "OFFSET has invalif type: %s" % type(offset)
+    assert isinstance(offset, int), "OFFSET has invalid type: %s" % type(offset)
     if stream[offset] == "a":
         index = offset + 1
         while 48 <= ord(stream[index]) <= 57:

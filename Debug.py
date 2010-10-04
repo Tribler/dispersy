@@ -11,7 +11,7 @@ from Print import dprint
 from Bloomfilter import BloomFilter
 
 class Node(object):
-    _socket_range = (8880, 9330)
+    _socket_range = (8000, 8999)
     _socket_pool = {}
     _socket_counter = 0
 
@@ -81,7 +81,7 @@ class Node(object):
             except:
                 raise
 
-            if not (addresses is None or address in addresses):
+            if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
                 continue
 
             if not (packets is None or packet in packets):
