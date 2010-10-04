@@ -89,8 +89,6 @@ class PermitPermission(PermissionBase):
         if __debug__:
             from Privilege import PrivilegeBase
         assert isinstance(privilege, PrivilegeBase.Implementation)
-        # payload may NOT be a tuple
-        assert isinstance(payload, (tuple, dict, str, unicode, int, long, bool, float, type(None))), type(payload)
         super(PermitPermission, self).__init__(u"permit", privilege)
         self._payload = payload
         

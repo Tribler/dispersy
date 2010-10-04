@@ -132,7 +132,8 @@ class Dispersy(Singleton):
                 self._delayed[key] = (address, packet, message)
 
                 # request the missing data
-                message.community.permit(PermitPermission(message.community.get_privilege(u"dispersy-missing-sequence"), {"user":message.signed_by.pem, "privilege":message.permission.privilege.name, "missing_low":delay.missing_low, "missing_high":delay.missing_high}), destination=(address,), update_locally=False)
+                payload = {"user":message.signed_by, "privilege":message.permission.privilege, "missing_low":delay.missing_low, "missing_high":delay.missing_high}
+                message.community.permit(PermitPermission(message.community.get_privilege(u"dispersy-missing-sequence"), payload), destination=(address,), update_locally=False)
                 
         else:
             raise NotImplementedError(delay)
@@ -356,23 +357,24 @@ LIMIT 1""",
             from Message import Message
         assert isinstance(message, Message)
 
-        packets = []
-        for privilege_name, bloom in message.permission.payload:
-            privilege = message.community.get_privilege(privilege_name)
+        for privilege, bloom in message.permission.payload:
             distribution = privilege.distribution
             if isinstance(distribution, FullSyncDistribution):
                 for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE privilege = ? ORDER BY global, sequence", (privilege.database_id,)):
                     packet = str(packet)
                     if not packet in bloom:
-                        packets.append(packet)
+                        dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+                        self._socket.send(address, packet)
+
+            elif isinstance(distribution, LastSyncDistribution):
+                for packet, in self._database.execute(u"SELECT packet FROM sync_last WHERE privilege = ? ORDER BY global", (privilege.database_id,)):
+                    packet = str(packet)
+                    if not packet in bloom:
+                        dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
+                        self._socket.send(address, packet)
+
             else:
                 raise NotImplementedError(distribution)
-
-        # Send
-        dprint("Syncing ", len(packets), " packets to ", address[0], ":", address[1])
-        for packet in packets:
-            dprint("Syncing ", len(packet), " bytes to " , address[0], ":", address[1])
-            self._socket.send(address, packet)
 
     def periodically_disperse(self):
         yield 1.0
@@ -402,14 +404,16 @@ LIMIT 1""",
                         if isinstance(distribution, FullSyncDistribution):
                             for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE privilege = ?", (privilege.database_id,)):
                                 bloom.add(str(packet))
+
                         elif isinstance(distribution, LastSyncDistribution):
                             for packet, in self._database.execute(u"SELECT packet FROM sync_last WHERE privilege = ?", (privilege.database_id,)):
                                 bloom.add(str(packet))
+
                         else:
                             raise NotImplementedError(distribution)
 
-                        payload.append((privilege.name, str(bloom)))
+                        payload.append((privilege, bloom))
 
-                community.permit(PermitPermission(community.get_privilege(u"dispersy-sync"), tuple(payload)), update_locally=False)
+                community.permit(PermitPermission(community.get_privilege(u"dispersy-sync"), payload), update_locally=False)
 
 

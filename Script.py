@@ -205,7 +205,10 @@ class DiscoveryCommunityScript(ScriptBase):
 
         _, pckt, message = node.receive_message(addresses=[address], privileges=[node.community.get_privilege(u"dispersy-missing-sequence")])
         # must ask for missing sequence 2
-        assert message.permission.payload == {"privilege":u"community-metadata", "missing_low":2, "missing_high":2, "user":node.my_member.pem}
+        assert message.permission.payload["privilege"].name == u"community-metadata"
+        assert message.permission.payload["user"].pem == node.my_member.pem
+        assert message.permission.payload["missing_low"] == 2
+        assert message.permission.payload["missing_high"] == 2
 
         send(create(cid, u"Drink-02", u"Comment-02", 2, 2), address)
         yield 0.1
@@ -257,7 +260,10 @@ class DiscoveryCommunityScript(ScriptBase):
 
         _, pckt, message = node.receive_message(addresses=[address], privileges=[node.community.get_privilege(u"dispersy-missing-sequence")])
         # must ask for missing sequence 2, 3, and 4
-        assert message.permission.payload == {"privilege":u"community-metadata", "missing_low":2, "missing_high":4, "user":node.my_member.pem}
+        assert message.permission.payload["privilege"].name == u"community-metadata"
+        assert message.permission.payload["user"].pem == node.my_member.pem
+        assert message.permission.payload["missing_low"] == 2
+        assert message.permission.payload["missing_high"] == 4
 
         send(create(cid, u"Drinks-03", u"Comment-03", 3, 3), address)
         yield 0.1

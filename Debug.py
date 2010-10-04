@@ -132,11 +132,11 @@ class Node(object):
             bloom = BloomFilter(privilege.distribution.capacity, privilege.distribution.error_rate)
             for element in elements:
                 bloom.add(element)
-            return privilege.name, str(bloom)
+            return privilege, bloom
         assert isinstance(payload, list)
         assert not filter(lambda x: not isinstance(x, tuple), payload)
         assert not filter(lambda x: not len(x) == 2, payload)
-        payload = tuple(map(create_payload, payload))
+        payload = map(create_payload, payload)
         distribution = self._dispersy_sync_privilege.distribution.implement(global_time)
         destination = self._dispersy_sync_privilege.destination.implement()
         permission = PermitPermission(self._dispersy_sync_privilege, payload)
