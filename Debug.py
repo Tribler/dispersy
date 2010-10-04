@@ -11,7 +11,9 @@ from Print import dprint
 from Bloomfilter import BloomFilter
 
 class Node(object):
-    _socket_port_counter = 8881
+    _socket_range = (8880, 9330)
+    _socket_pool = {}
+    _socket_counter = 0
 
     def __init__(self):
         self._socket = None
@@ -23,15 +25,21 @@ class Node(object):
     def socket(self):
         return self._socket
 
-    def init_socket(self, port=0):
-        assert isinstance(port, int)
+    def init_socket(self):
         assert self._socket is None
-        if not port:
-            port = Node._socket_port_counter
-            Node._socket_port_counter += 1
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._socket.bind(("localhost", port))
-        self._socket.setblocking(True)
+        port = Node._socket_range[0] + Node._socket_counter % (Node._socket_range[1] - Node._socket_range[0])
+        Node._socket_counter += 1
+
+        if not port in Node._socket_pool:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.bind(("localhost", port))
+            s.setblocking(True)
+            Node._socket_pool[port] = s
+
+        elif __debug__:
+            dprint("REUSE SOCKET ", port, level="warning")
+
+        self._socket = Node._socket_pool[port]
 
     @property
     def my_member(self):
