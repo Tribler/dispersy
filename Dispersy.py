@@ -328,7 +328,7 @@ LIMIT 1""",
         assert len(messages) > 0
         assert not filter(lambda x: not isinstance(x, Message), messages)
 
-        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
+        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time DESC LIMIT 10")]
 
         for message in messages:
             packet = message.community.get_conversion().encode_message(message)
