@@ -374,10 +374,10 @@ LIMIT 1""",
             self._socket.send(address, packet)
 
     def periodically_disperse(self):
-        yield 30.0
+        yield 10.0
 
         while True:
-            yield 30.0
+            yield 10.0
 
             addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
 
