@@ -38,13 +38,16 @@ class ConversionBase(object):
         # instance produces, is identified by _prefix.
         self._prefix = community.cid + vid
 
-    def get_community(self):
+    @property
+    def community(self):
         return self._community
 
-    def get_vid(self):
+    @property
+    def vid(self):
         return self._prefix[20:25]
 
-    def get_prefix(self):
+    @property
+    def prefix(self):
         return self._prefix
 
     def decode_message(self, data):
@@ -58,14 +61,31 @@ class ConversionBase(object):
         assert isinstance(data, str)
         assert len(data) >= 25
         assert data[:25] == self._prefix
-        raise NotImplemented
+        raise NotImplementedError()
 
     def encode_message(self, message):
         """
         Encode a Message instance into a binary string.
         """
         assert isinstance(message, Message)
-        raise NotImplemented
+        raise NotImplementedError()
+
+    def decode_payload(self, privilege, stream, offset):
+        """
+        Decode community specific bytes from STREAM starting at
+        OFFSET.  Returns the a (new-offset, payload) tuple.
+        """
+        assert isinstance(stream, str)
+        assert isinstance(offset, (int, long))
+        raise NotImplementedError()
+
+    def encode_payload(self, message):
+        """
+        Encode the community specific message.permission.payload part
+        into a binary string.
+        """
+        assert isinstance(message, Message)
+        raise NotImplementedError()
 
 class Conversion00001(ConversionBase):
     """
@@ -191,7 +211,8 @@ class Conversion00001(ConversionBase):
         t = d.get("type")
         privilege = self._decode_privilege(d, "privilege_name")
         if t == "permit":
-            permission = PermitPermission(privilege, d.get("container"))
+            _, payload = self.decode_payload(privilege, d.get("payload"), 0)
+            permission = PermitPermission(privilege, payload)
 
         elif t == "authorize":
             permission = AuthorizePermission(privilege, self._decode_member(d, "to"), self._decode_permission(d, "permission_name"))
@@ -238,8 +259,8 @@ class Conversion00001(ConversionBase):
 
         return Message(self._community, member, distribution, destination, permission)
 
-    def _encode_not_implemented(self, _, obj):
-        raise NotImplementedError(type(obj))
+    def _encode_not_implemented(self, _, __):
+        raise NotImplementedError()
 
     def _encode_member_destination(self, container, _):
         container["debug-destination"] = {"debug-type":"member-destination"}
@@ -250,32 +271,32 @@ class Conversion00001(ConversionBase):
     def _encode_address_destination(self, container, _):
         container["debug-destination"] = {"debug-type":"address-destination"}
 
-    def _encode_full_sync_distribution(self, container, distribution):
-        container["distribution"] = {"global_time":distribution.global_time, "sequence_number":distribution.sequence_number}
+    def _encode_full_sync_distribution(self, container, message):
+        container["distribution"] = {"global_time":message.distribution.global_time, "sequence_number":message.distribution.sequence_number}
         container["distribution"]["debug-type"] = "full-sync"
 
-    def _encode_last_sync_distribution(self, container, distribution):
-        container["distribution"] = {"global_time":distribution.global_time}
+    def _encode_last_sync_distribution(self, container, message):
+        container["distribution"] = {"global_time":message.distribution.global_time}
         container["distribution"]["debug-type"] = "last-sync"
 
-    def _encode_direct_distribution(self, container, distribution):
-        container["distribution"] = {"global_time":distribution.global_time}
+    def _encode_direct_distribution(self, container, message):
+        container["distribution"] = {"global_time":message.distribution.global_time}
         container["distribution"]["debug-type"] = "direct-message"
 
-    def _encode_permit_permission(self, container, permission):
-        container["permission"] = {"type":"permit", "privilege_name":permission.privilege.name, "container":permission.payload}
+    def _encode_permit_permission(self, container, message):
+        container["permission"] = {"type":"permit", "privilege_name":message.permission.privilege.name, "payload":self.encode_payload(message)}
 
-    def _encode_authorize_permission(self, container, permission):
-        if issubclass(permission.permission, AuthorizePermission):
+    def _encode_authorize_permission(self, container, message):
+        if issubclass(message.permission.permission, AuthorizePermission):
             permission_name = u"authorize"
-        elif issubclass(permission.permission, RevokePermission):
+        elif issubclass(message.permission.permission, RevokePermission):
             permission_name = u"revoke"
-        elif issubclass(permission.permission, PermitPermission):
+        elif issubclass(message.permission.permission, PermitPermission):
             permission_name = u"permit"
         else:
-            raise NotImplementedError(permission.permission)
+            raise NotImplementedError(message.permission.permission)
 
-        container["permission"] = {"type":"authorize", "privilege_name":permission.privilege.name, "permission_name":permission_name, "to":permission.to.pem}
+        container["permission"] = {"type":"authorize", "privilege_name":message.permission.privilege.name, "permission_name":permission_name, "to":message.permission.to.pem}
 
     def encode_message(self, message):
         if __debug__:
@@ -286,14 +307,14 @@ class Conversion00001(ConversionBase):
 
         # stuff message in a container
         container = {"signed_by":message.signed_by.pem}
-        self._encode_destination_map.get(type(message.destination), self._encode_not_implemented)(container, message.destination)
-        self._encode_distribution_map.get(type(message.distribution), self._encode_not_implemented)(container, message.distribution)
-        self._encode_permission_map.get(type(message.permission), self._encode_not_implemented)(container, message.permission)
+        self._encode_destination_map.get(type(message.destination), self._encode_not_implemented)(container, message)
+        self._encode_distribution_map.get(type(message.distribution), self._encode_not_implemented)(container, message)
+        self._encode_permission_map.get(type(message.permission), self._encode_not_implemented)(container, message)
 
         # encode and sign message
         return message.signed_by.generate_pair(self._prefix + encode(container))
-    
-class Conversion(Conversion00001, ConversionBase):
+
+class DefaultConversion(Conversion00001):
     """
     Conversion subclasses the current ConversionXXXXX class.
     """

@@ -4,7 +4,7 @@ from Bloomfilter import BloomFilter
 from Timeline import Timeline
 from Privilege import PublicPrivilege
 from Permission import AuthorizePermission, RevokePermission, PermitPermission
-from Conversion import Conversion
+from Conversion import DefaultConversion
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
@@ -133,9 +133,9 @@ class Community(object):
             self._privileges[meta.name] = meta.implement(self)
 
         # dictionary containing available conversions.  currently only
-        # contains one conversion (the default 00001)
-        default_conversion = Conversion(self)
-        self._conversions = {None:default_conversion, default_conversion.get_prefix():default_conversion}
+        # contains one conversion.
+        default_conversion = DefaultConversion(self)
+        self._conversions = {None:default_conversion, default_conversion.prefix:default_conversion}
 
         # dictionary with in-memory community members
         # todo: load from database
@@ -180,8 +180,12 @@ class Community(object):
         return self._members[public_key]
 
     def get_conversion(self, prefix=None):
-        # todo: add parameter to specify the conversion version
         return self._conversions[prefix]
+
+    def add_conversion(self, conversion, default=False):
+        if default:
+            self._conversions[None] = conversion
+        self._conversions[conversion.prefix] = conversion
 
     def authorize(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
         """
