@@ -35,9 +35,10 @@ class Node(object):
             s.bind(("localhost", port))
             s.setblocking(True)
             Node._socket_pool[port] = s
+            if __debug__: dprint("create socket ", port)
 
         elif __debug__:
-            dprint("REUSE SOCKET ", port, level="warning")
+            dprint("reuse socket ", port, level="warning")
 
         self._socket = Node._socket_pool[port]
 
@@ -97,6 +98,8 @@ class Node(object):
         assert isinstance(distributions, (type(None), list))
         assert isinstance(destinations, (type(None), list))
         assert isinstance(permissions, (type(None), list))
+        assert isinstance(privileges, (type(None), list))
+        assert isinstance(successful_decode, bool)
         self._socket.settimeout(timeout)
         while True:
             address, packet = self.receive_packet(timeout, addresses, packets)
@@ -123,30 +126,23 @@ class Node(object):
             dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
             return address, packet, message
             
-    def create_dispersy_sync_message(self, payload, global_time):
-        def create_payload((privilege_name, elements)):
-            assert isinstance(privilege_name, unicode)
-            assert isinstance(elements, list)
-            assert not filter(lambda x: not isinstance(x, str), elements)
-            privilege = self._community.get_privilege(privilege_name)
-            bloom = BloomFilter(privilege.distribution.capacity, privilege.distribution.error_rate)
-            for element in elements:
-                bloom.add(element)
-            return privilege, bloom
-        assert isinstance(payload, list)
-        assert not filter(lambda x: not isinstance(x, tuple), payload)
-        assert not filter(lambda x: not len(x) == 2, payload)
-        payload = map(create_payload, payload)
+    def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
+        assert isinstance(bloom_global_time, (int, long))
+        assert isinstance(bloom_packets, list)
+        assert not filter(lambda x: not isinstance(x, str), bloom_packets)
+        assert isinstance(global_time, (int, long))
+        bloom_filter = BloomFilter(1000, 0.001)
+        map(bloom_filter.add, bloom_packets)
         distribution = self._dispersy_sync_privilege.distribution.implement(global_time)
         destination = self._dispersy_sync_privilege.destination.implement()
-        permission = PermitPermission(self._dispersy_sync_privilege, payload)
+        permission = PermitPermission(self._dispersy_sync_privilege, (bloom_global_time, bloom_filter))
         return self.create_message(distribution, destination, permission)
 
 class DiscoveryNode(Node):
     def __init__(self, *args, **kargs):
         super(DiscoveryNode, self).__init__(*args, **kargs)
-        self._community_metadata_privilege = PublicPrivilege(u"community-metadata", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
-        self._user_metadata_privilege = PublicPrivilege(u"user-metadata", LastSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._community_metadata_privilege = PublicPrivilege(u"community-metadata", FullSyncDistribution(), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._user_metadata_privilege = PublicPrivilege(u"user-metadata", LastSyncDistribution(), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
 
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
         distribution = self._community_metadata_privilege.distribution.implement(global_time, sequence_number)

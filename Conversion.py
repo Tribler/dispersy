@@ -148,41 +148,25 @@ class Conversion00001(ConversionBase):
     def _decode_sync_payload(self, privilege, payload):
         if not isinstance(payload, tuple):
             raise DropPacket("Invalid payload type")
-        elements = []
-        for tup in payload:
-            if not isinstance(tup, tuple):
-                raise DropPacket("Invalid payload element type")
-            if not len(tup) == 2:
-                raise DropPacket("Invalid payload element length")
-            if not isinstance(tup[0], unicode):
-                raise DropPacket("Invalid privilege type")
-            try:
-                privilege = self._community.get_privilege(tup[0])
-            except KeyError:
-                # the privilege is not known in this community.  delay
-                # message processing for a while
-                raise DropPacket("Invalid privilege")
-            if not isinstance(tup[1], str):
-               raise DropPacket("Invalid bloom type") 
-            try:
-                bloom = BloomFilter(tup[1])
-            except:
-                raise DropPacket("Invalid bloom value")
-
-            elements.append((privilege, bloom))
-        return elements
+        if not len(payload) == 2:
+            raise DropPacket("Invalid payload length")
+        if not isinstance(payload[0], (int, long)):
+            raise DropPacket("Invalid global-time type")
+        if not payload[0] > 0:
+            raise DropPacket("Invalid global-time value")
+        if not isinstance(payload[1], str):
+            raise DropPacket("Invalid bloom-filter type")
+        return (payload[0], BloomFilter(payload[1]))
 
     def _encode_sync_payload(self, message):
         payload = message.permission.payload
         if __debug__:
-            from Privilege import PrivilegeBase
-            assert isinstance(payload, list)
-            for t in payload:
-                assert isinstance(t, tuple)
-                assert len(t) == 2
-                assert isinstance(t[0], PrivilegeBase.Implementation)
-                assert isinstance(t[1], BloomFilter)
-        return tuple([(privilege.name, str(bloom)) for privilege, bloom in message.permission.payload])
+            assert isinstance(payload, tuple)
+            assert len(payload) == 2
+            global_time, bloom_filter = payload
+            assert isinstance(global_time, (int, long))
+            assert isinstance(bloom_filter, BloomFilter)
+        return (payload[0], str(payload[1]))
 
     @staticmethod
     def _decode_global_time(container, index):
@@ -190,7 +174,7 @@ class Conversion00001(ConversionBase):
         if not isinstance(global_time, (int, long)):
             raise DropPacket("Invalid global time type")
         if global_time <= 0:
-            raise DropPacket("Invalid global time value {global-time}".format(global_time=global_time))
+            raise DropPacket("Invalid global time value {global_time}".format(global_time=global_time))
         return global_time
 
     @staticmethod
@@ -199,7 +183,7 @@ class Conversion00001(ConversionBase):
         if not isinstance(sequence_number, (int, long)):
             raise DropPacket("Invalid sequence number type")
         if sequence_number <= 0:
-            raise DropPacket("Invalid sequence number value {sequence-number}".format(sequence_number=sequence_number))
+            raise DropPacket("Invalid sequence number value {sequence_number}".format(sequence_number=sequence_number))
         return sequence_number
     
     def _decode_privilege(self, container, index):

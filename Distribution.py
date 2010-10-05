@@ -47,43 +47,6 @@ class DistributionBase(object):
 class SyncDistribution(DistributionBase):
     class Implementation(DistributionBase.Implementation):
         pass
-    
-    def __init__(self, stepping, capacity, error_rate):
-        """
-        Sync using a BloomFilter.
-
-        A seperate BloomFilter is created to hash all messages in one
-        STEPPING range.  The first BloomFilter will hash all messages
-        with 0 <= global_time < STEPPING, the second BloomFilter will
-        hash all messages with STEPPING <= global_time < 2*STEPPING,
-        etc.
-
-        Each BloomFilter will have CAPACITY and ERROR_RATE.  These two
-        values directly reflect the size of the BloomFilter.  Given an
-        ERROR_RATE of 0.0001, a CAPACITY of 100 can store 1000 unique
-        hashes with 93% recall rate.
-        """
-        assert isinstance(stepping, int)
-        assert isinstance(capacity, int)
-        assert isinstance(error_rate, float)
-        self._stepping = stepping
-        self._capacity = capacity
-        self._error_rate = error_rate
-
-    @property
-    def stepping(self):
-        return self._stepping
-
-    @property
-    def capacity(self):
-        return self._capacity
-
-    @property
-    def error_rate(self):
-        return self._error_rate
-
-    def __str__(self):
-        return "<{0.__class__.__name__} stepping:{0.stepping} capacity:{0.capacity} error_rate:{0.error_rate}>".format(self)
 
 class FullSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):

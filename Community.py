@@ -132,6 +132,13 @@ class Community(object):
             assert meta.name not in self._privileges
             self._privileges[meta.name] = meta.implement(self)
 
+        # the list with bloom filters.  the list will grow as the
+        # global time increases.  The 1st bloom filter will contain
+        # all stored messages from global time 1 to stepping.  The 2nd
+        # from stepping to 2*stepping, etc.
+        self._bloom_filter_stepping = 100
+        self._bloom_filters = []
+
         # dictionary containing available conversions.  currently only
         # contains one conversion.
         default_conversion = DefaultConversion(self)
@@ -147,6 +154,22 @@ class Community(object):
 
         self._dispersy = Dispersy.get_instance()
         self._dispersy.add_community(self)
+
+    def get_bloom_filter(self, global_time):
+        """
+        Returns the bloom-filter associated to global-time
+        """
+        index = global_time / self._bloom_filter_stepping
+        while len(self._bloom_filters) <= index:
+            self._bloom_filters.append(BloomFilter(100, 0.01))
+        return self._bloom_filters[index]
+
+    def get_current_bloom_filter(self):
+        """
+        Returns (global-time, bloom-filter)
+        """
+        index = len(self._bloom_filters) - 1
+        return index * self._bloom_filter_stepping + 1, self._bloom_filters[index]
 
     @property
     def cid(self):

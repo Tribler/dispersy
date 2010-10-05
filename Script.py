@@ -2,6 +2,7 @@
 Run some python code, usually to test one or more features.
 """
 
+import socket
 import hashlib
 import types
 
@@ -45,6 +46,7 @@ class Script(object):
         terminator = Script.Terminator(rawserver)
         mapping = {"discovery-user":DiscoveryUserScript,
                    "discovery-community":DiscoveryCommunityScript,
+                   "discovery-sync":DiscoverySyncScript,
                    "forum":ForumScript}
         
         dprint(script)
@@ -98,7 +100,6 @@ class DiscoveryCommunityScript(ScriptBase):
         self.caller(self.food)
         self.caller(self.drink)
         self.caller(self.drinks)
-        self.caller(self.sync)
 
     def my_community_metadata(self):
 
@@ -295,50 +296,6 @@ class DiscoveryCommunityScript(ScriptBase):
         assert tup[1] == u"Comment-05"
         dprint("finished")
 
-    def sync(self):
-        """
-        We ensure that SELF has a the communities CATS and DOGS.  We
-        send a dispersy-sync message with an empty bloom filter.  SELF
-        should respond by offering the CATS and DOGS metadata.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.init_my_member()
-        node.set_community(self._discovery)
-        address = self._dispersy.socket.get_address()
-
-        # create CATS and DOGS communities
-        messages = []
-        messages.append(node.create_community_metadata_message(hashlib.sha1("CATS").digest(), u"Cat Community", u"Cat Community Comment", 1, 1))
-        messages.append(node.create_community_metadata_message(hashlib.sha1("DOGS").digest(), u"Dog Community", u"Dog Community Comment", 2, 2))
-        packets = [node.encode_message(message) for message in messages]
-        for packet in packets:
-            node.send_packet(packet, address)
-            yield 0.1
-
-        # send empty bloomfilter
-        node.send_message(node.create_dispersy_sync_message([(u"community-metadata", [])], 3), address)
-        yield 0.1
-
-        # receive CATS and DOGS communities
-        received = [False] * len(packets)
-        while filter(lambda x: not x, received):
-            _, pckt = node.receive_packet(addresses=[address], packets=packets)
-            for index, packet in zip(xrange(len(packets)), packets):
-                if pckt == packet:
-                    received[index] = True
-        
-        # create = node.create_dispersy_sync_message
-        # encode = node.encode_message
-
-        # cid, alias, comment = (hashlib.sha1("CATS").digest(), u"Cat Community", u"Cat Community Comment")
-        # cats_payload = encode(node.create_community_metadata_message(cid, alias, comment, 1, 1))
-        # cid, alias, comment = (hashlib.sha1("DOGS").digest(), u"Dog Community", u"Dog Community Comment")
-        # dogs_payload = encode(node.create_community_metadata_message(cid, alias, comment, 2, 2))
-        # send(create([(u"community-metadata", [cats_payload, dogs_payload])], 2), address)
-
-        dprint("finished")
-
 class DiscoveryUserScript(ScriptBase):
     def run(self):
         self.caller(self.my_user_metadata)
@@ -443,6 +400,82 @@ class DiscoveryUserScript(ScriptBase):
             assert False, "Entry not found"
         assert tup[0] == u"Bob-03"
         assert tup[1] == u"Comment-03"
+        dprint("finished")
+
+class DiscoverySyncScript(ScriptBase):
+    def run(self):
+        self.caller(self.to_node)
+        self.caller(self.from_node)
+
+    def to_node(self):
+        """
+        We ensure that SELF has a the communities COPPER and TIN.  We
+        send a dispersy-sync message with an empty bloom filter.  SELF
+        should respond by offering the COPPER and TIN metadata.
+        """
+        node = DiscoveryNode()
+        node.init_socket()
+        node.init_my_member()
+        node.set_community(self._discovery)
+        address = self._dispersy.socket.get_address()
+
+        # create COPPER and TIN communities
+        messages = []
+        messages.append(node.create_community_metadata_message(hashlib.sha1("COPPER").digest(), u"Copper Community", u"Copper Community Comment", 1, 1))
+        messages.append(node.create_community_metadata_message(hashlib.sha1("TIN").digest(), u"Tin Community", u"Tin Community Comment", 2, 2))
+        packets = [node.encode_message(message) for message in messages]
+        for packet in packets:
+            node.send_packet(packet, address)
+            yield 0.1
+
+        # send empty bloomfilter
+        node.send_message(node.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+
+        # receive COPPER and TIN communities
+        received = [False] * len(packets)
+        while filter(lambda x: not x, received):
+            _, pckt = node.receive_packet(addresses=[address], packets=packets)
+            for index, packet in zip(xrange(len(packets)), packets):
+                if pckt == packet:
+                    received[index] = True
+
+        dprint("finished")
+
+    def from_node(self):
+        """
+        We wait until SELF sends a dispersy-sync message to ensure
+        that the messages are in its sync message.
+        """
+        node = DiscoveryNode()
+        node.init_socket()
+        node.init_my_member()
+        node.set_community(self._discovery)
+        address = self._dispersy.socket.get_address()
+
+        # create messages should show up in the bloom filter from SELF
+        messages = []
+        messages.append(node.create_community_metadata_message(hashlib.sha1("IRON").digest(), u"Iron Community", u"Iron Community Comment", 1, 1))
+        messages.append(node.create_community_metadata_message(hashlib.sha1("MITHRIL").digest(), u"Mithril Community", u"Mithril Community Comment", 2, 2))
+        packets = [node.encode_message(message) for message in messages]
+        for packet in packets:
+            node.send_packet(packet, address)
+            yield 0.1
+
+        # wait for dispersy-sync message
+        for _ in xrange(10):
+            yield 1.0
+            try:
+                _, packet, message = node.receive_message(timeout=0.1, addresses=[address], privileges=[self._discovery.get_privilege(u"dispersy-sync")])
+            except socket.timeout:
+                continue
+
+            print(message)
+            global_time, bloom = message.permission.payload
+            for packet in packets:
+                assert packet in bloom
+            break
+
         dprint("finished")
 
 class ForumScript(ScriptBase):

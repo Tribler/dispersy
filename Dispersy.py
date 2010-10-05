@@ -269,7 +269,7 @@ LIMIT 1""",
                     # synced later)
                     #
                     if isinstance(message.distribution, SyncDistribution.Implementation):
-                        self._store(packet, message)
+                        self._sync_store(packet, message)
 
                     #
                     # This message may 'trigger' a previously delayed message
@@ -296,8 +296,14 @@ LIMIT 1""",
                 self._delay_message(address, packet, message, delay)
                 continue
 
-    def _store(self, packet, message):
+    def _sync_store(self, packet, message):
+        assert isinstance(message.distribution, SyncDistribution.Implementation)
         distribution = message.distribution
+
+        # sync bloomfilter
+        message.community.get_bloom_filter(message.distribution.global_time).add(packet)
+
+        # sync database
         if isinstance(distribution, FullSyncDistribution.Implementation):
             self._database.execute(u"INSERT INTO sync_full(user, privilege, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
                                    (message.signed_by.database_id,
@@ -312,10 +318,6 @@ LIMIT 1""",
                                     message.permission.privilege.database_id,
                                     distribution.global_time,
                                     buffer(packet)))
-
-        elif isinstance(distribution, DirectDistribution.Implementation):
-            # we do not store for DirectDistribution
-            pass
         
         else:
             raise NotImplementedError(distribution)
@@ -336,7 +338,8 @@ LIMIT 1""",
             packet = message.community.get_conversion().encode_message(message)
 
             # Store
-            self._store(packet, message)
+            if isinstance(message.distribution, SyncDistribution.Implementation):
+                self._sync_store(packet, message)
 
             # Forward
             if isinstance(message.destination, CommunityDestination.Implementation):
@@ -352,68 +355,39 @@ LIMIT 1""",
                 raise NotImplementedError(message.destination)
 
     def on_sync_message(self, address, message):
-        # todo: ensure that the payload is correct
         if __debug__:
             from Message import Message
         assert isinstance(message, Message)
 
-        for privilege, bloom in message.permission.payload:
-            distribution = privilege.distribution
-            if isinstance(distribution, FullSyncDistribution):
-                for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE privilege = ? ORDER BY global, sequence", (privilege.database_id,)):
-                    packet = str(packet)
-                    if not packet in bloom:
-                        dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
-                        self._socket.send(address, packet)
+        global_time, bloom_filter = message.permission.payload
 
-            elif isinstance(distribution, LastSyncDistribution):
-                for packet, in self._database.execute(u"SELECT packet FROM sync_last WHERE privilege = ? ORDER BY global", (privilege.database_id,)):
-                    packet = str(packet)
-                    if not packet in bloom:
-                        dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
-                        self._socket.send(address, packet)
+        for packet, in self._database.execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global", (message.community.database_id, global_time)):
+            packet = str(packet)
+            if not packet in bloom_filter:
+                dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+                self._socket.send(address, packet)
 
-            else:
-                raise NotImplementedError(distribution)
+        for packet, in self._database.execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global", (message.community.database_id, global_time)):
+            packet = str(packet)
+            if not packet in bloom_filter:
+                dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
+                self._socket.send(address, packet)
 
     def periodically_disperse(self):
         yield 1.0
 
         while True:
             yield 1.0
-
-            addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time LIMIT 10")]
-
-            sending_global_time = 0
-            sending_packet = None
+            # Todo: currently we send the bloomfilters for all
+            # communities to the address.  Eventually, it will be
+            # unlikely that each peer has all these communities.
 
             #
             # Advertise the packages that we sync.  This means sending
             # a 'sync' message containing one or more bloom filters.
             #
-            # Todo: currently we construct the bloomfilter on the fly,
-            # this should be updated in memory instead.
             for community in self._communities.itervalues():
-                payload = []
-                for privilege in community.get_privileges():
-                    distribution = privilege.distribution
-                    if isinstance(distribution, SyncDistribution):
-                        # todo: we are ignoring privilege.distribution.stepping for now
-                        bloom = BloomFilter(distribution.capacity, distribution.error_rate)
-
-                        if isinstance(distribution, FullSyncDistribution):
-                            for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE privilege = ?", (privilege.database_id,)):
-                                bloom.add(str(packet))
-
-                        elif isinstance(distribution, LastSyncDistribution):
-                            for packet, in self._database.execute(u"SELECT packet FROM sync_last WHERE privilege = ?", (privilege.database_id,)):
-                                bloom.add(str(packet))
-
-                        else:
-                            raise NotImplementedError(distribution)
-
-                        payload.append((privilege, bloom))
-
+                payload = community.get_current_bloom_filter()
                 community.permit(PermitPermission(community.get_privilege(u"dispersy-sync"), payload), update_locally=False)
 
 
