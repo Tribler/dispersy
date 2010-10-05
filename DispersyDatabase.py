@@ -86,28 +86,28 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 #         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')",
 #                      (host, port))
 
-        host = u"frayja.com"
-        port = 12345
-        mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
-        pem = """-----BEGIN PUBLIC KEY-----
-MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDAu3+CFRrYYoBge+lKn1Ty5wbu
-89wzfAHo+rt6/OEhelWnMTMGZn0Xb6jGS0oU0grhtvurWXQyZ6uPuZO4q/su8aeT
-F2RBGJ+zXHm9tlpiIxxUQTFKiilwsQtIFCpw+v0shnPt/LtoG1Y3mTSXyzXp2FLZ
-Q6DMokT4fOGpdap57wIBBQ==
------END PUBLIC KEY-----
-"""
-        self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-        self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')", (host, port))
-
-#         host = u"masaq.st.ewi.tudelft.nl"
+#         host = u"frayja.com"
 #         port = 12345
-#         mid = "ca7a5eebaffe0d08c1afe5253c001569bdea4803".decode("HEX")
+#         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
 #         pem = """-----BEGIN PUBLIC KEY-----
-# MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDgOk7d0F6sinM+6XY2pE3SiSNv
-# AipUkNY4iU0/sEbt+hUnx5oiLAlwq+YAbO095XCWyBAu8zppfS/6n6Bk3rKm6B1C
-# x14Y8HXJTXyEofgBcsSl9gNBYyaYhJsCalQJpP2WkkQFQsSkhRx9H2S955915/Dz
-# ddbv3NkHuZ+G0HrjRQIBBQ==
+# MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDAu3+CFRrYYoBge+lKn1Ty5wbu
+# 89wzfAHo+rt6/OEhelWnMTMGZn0Xb6jGS0oU0grhtvurWXQyZ6uPuZO4q/su8aeT
+# F2RBGJ+zXHm9tlpiIxxUQTFKiilwsQtIFCpw+v0shnPt/LtoG1Y3mTSXyzXp2FLZ
+# Q6DMokT4fOGpdap57wIBBQ==
 # -----END PUBLIC KEY-----
 # """
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
 #         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')", (host, port))
+
+        host = u"masaq.st.ewi.tudelft.nl"
+        port = 12345
+        mid = "ca7a5eebaffe0d08c1afe5253c001569bdea4803".decode("HEX")
+        pem = """-----BEGIN PUBLIC KEY-----
+MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDgOk7d0F6sinM+6XY2pE3SiSNv
+AipUkNY4iU0/sEbt+hUnx5oiLAlwq+YAbO095XCWyBAu8zppfS/6n6Bk3rKm6B1C
+x14Y8HXJTXyEofgBcsSl9gNBYyaYhJsCalQJpP2WkkQFQsSkhRx9H2S955915/Dz
+ddbv3NkHuZ+G0HrjRQIBBQ==
+-----END PUBLIC KEY-----
+"""
+        self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
+        self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')", (host, port))
