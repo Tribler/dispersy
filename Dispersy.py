@@ -361,23 +361,25 @@ LIMIT 1""",
 
         global_time, bloom_filter = message.permission.payload
 
-        for packet, in self._database.execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global", (message.community.database_id, global_time)):
+        for packet, in self._database.execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
             packet = str(packet)
             if not packet in bloom_filter:
                 dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
                 self._socket.send(address, packet)
 
-        for packet, in self._database.execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global", (message.community.database_id, global_time)):
+        for packet, in self._database.execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global LIMIT 100", (message.community.database_id, global_time)):
             packet = str(packet)
             if not packet in bloom_filter:
                 dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
                 self._socket.send(address, packet)
 
     def periodically_disperse(self):
-        yield 1.0
-
+        """
+        Periodically disperse the latest bloom filters for each
+        community.
+        """
         while True:
-            yield 1.0
+            yield 10.0
             # Todo: currently we send the bloomfilters for all
             # communities to the address.  Eventually, it will be
             # unlikely that each peer has all these communities.
