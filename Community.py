@@ -137,7 +137,7 @@ class Community(object):
         # all stored messages from global time 1 to stepping.  The 2nd
         # from stepping to 2*stepping, etc.
         self._bloom_filter_stepping = 100
-        self._bloom_filters = []
+        self._bloom_filters = [BloomFilter(100, 0.01)]
 
         # dictionary containing available conversions.  currently only
         # contains one conversion.
@@ -169,8 +169,6 @@ class Community(object):
         Returns (global-time, bloom-filter)
         """
         index = len(self._bloom_filters) - 1
-        while len(self._bloom_filters) <= index:
-            self._bloom_filters.append(BloomFilter(100, 0.01))
         return index * self._bloom_filter_stepping + 1, self._bloom_filters[index]
 
     @property
