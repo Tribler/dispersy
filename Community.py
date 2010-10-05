@@ -169,6 +169,8 @@ class Community(object):
         Returns (global-time, bloom-filter)
         """
         index = len(self._bloom_filters) - 1
+        while len(self._bloom_filters) <= index:
+            self._bloom_filters.append(BloomFilter(100, 0.01))
         return index * self._bloom_filter_stepping + 1, self._bloom_filters[index]
 
     @property
