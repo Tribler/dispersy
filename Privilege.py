@@ -17,7 +17,7 @@ class PrivilegeBase(object):
                     self._database_id = database.execute(u"SELECT id FROM privilege WHERE community = ? AND name = ? LIMIT 1", (community.database_id, meta._name)).next()[0]
                 except StopIteration:
                     database.execute(u"INSERT INTO privilege(community, name) VALUES(?, ?)", (community.database_id, meta._name))
-                    self._database_id = database.get_last_insert_rowid()
+                    self._database_id = database.last_insert_rowid
 
         @property
         def meta(self):

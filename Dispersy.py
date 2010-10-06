@@ -248,7 +248,10 @@ LIMIT 1""",
                 # necessarily message.signed_by) exists at this
                 # address.
                 #
-                self._database.execute(u"INSERT OR REPLACE INTO routing(community, host, port, time) VALUES(?, ?, ?, DATETIME())",
+                self._database.execute(u"UPDATE routing SET incoming_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
+                                       (message.community.database_id, unicode(address[0]), address[1]))
+                if self._database.changes == 0:
+                    self._database.execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) VALUES(?, ?, ?, DATETIME(), '2010-01-01 00:00:00')",
                                        (message.community.database_id, unicode(address[0]), address[1]))
 
                 #
@@ -332,8 +335,6 @@ LIMIT 1""",
         assert len(messages) > 0
         assert not filter(lambda x: not isinstance(x, Message), messages)
 
-        addresses = [(str(host), port) for host, port in self._database.execute(u"SELECT DISTINCT host, port FROM routing ORDER BY time DESC LIMIT 10")]
-
         for message in messages:
             packet = message.community.get_conversion().encode_message(message)
 
@@ -343,13 +344,44 @@ LIMIT 1""",
 
             # Forward
             if isinstance(message.destination, CommunityDestination.Implementation):
-                for address in addresses:
-                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", address[0], ":", address[1])
-                    self._socket.send(address, packet)
+                # todo: we can remove the returning diff and age from
+                # the query since it is not used (especially in the
+                # 2nd query)
+
+                # select addresses where
+                # a) the difference between incoming- and outgoing- time is larger than 10 seconds
+                # b) or the last time we send something was more that 60 seconds ago
+                sql = u"""
+SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+FROM routing
+WHERE community = ? AND (diff > 10 OR age > 60)
+ORDER BY diff, age DESC
+LIMIT 10"""
+
+                addresses = list(self._database.execute(sql, (message.community.database_id,)))
+                if not addresses:
+                    sql = u"""
+SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+FROM routing
+WHERE community = ?
+ORDER BY diff, age DESC
+LIMIT 10"""
+                    addresses = list(self._database.execute(sql, (message.community.database_id,)))
+                    
+                for diff, age, host, port in addresses:
+                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " to ", host, ":", port, " [len:", len(packet), "; diff:", diff, "; age:", age, "]")
+                    self._socket.send((host, port), packet)
+                    self._database.execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
+                                               (message.community.database_id, host, port))
+                    assert self._database.changes
 
             elif isinstance(message.destination, AddressDestination.Implementation):
                 if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
                 self._socket.send(message.destination.address, packet)
+                self._database.execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
+                                       (message.community.database_id, unicode(message.destination.address[0]), message.destination.address[1]))
+                assert self._database.changes
+
 
             else:
                 raise NotImplementedError(message.destination)
@@ -380,10 +412,6 @@ LIMIT 1""",
         """
         while True:
             yield 10.0
-            # Todo: currently we send the bloomfilters for all
-            # communities to the address.  Eventually, it will be
-            # unlikely that each peer has all these communities.
-
             #
             # Advertise the packages that we sync.  This means sending
             # a 'sync' message containing one or more bloom filters.

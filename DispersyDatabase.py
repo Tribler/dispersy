@@ -1,3 +1,4 @@
+from socket import gethostbyname
 from hashlib import sha1
 from os import path
 
@@ -40,8 +41,9 @@ CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
  host TEXT,                                     -- IP address
  port INTEGER,                                  -- port number
- time TEXT,                                     -- time when received data
- UNIQUE(host, port));
+ incoming_time TEXT,                            -- time when received data
+ outgoing_time TEXT,                            -- time when data send
+ UNIQUE(community, host, port));
  
 CREATE TABLE sync_full(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,7 +74,7 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
             pass
 
     def bootstrap(self):
-#         host = u"mughal.tribler.org"
+#         host = unicode(gethostbyname(u"mughal.tribler.org"))
 #         port = 6711
 #         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
 #         pem = """-----BEGIN PUBLIC KEY-----
@@ -83,10 +85,10 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 # -----END PUBLIC KEY-----
 # """
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')",
+#         self.execute(u"INSERT INTO routing(community, host, port, incoming_time) VALUES(0, ?, ?, '2010-01-01 00:00:00')",
 #                      (host, port))
 
-#         host = u"frayja.com"
+#         host = unicode(gethostbyname(u"frayja.com"))
 #         port = 12345
 #         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
 #         pem = """-----BEGIN PUBLIC KEY-----
@@ -97,9 +99,9 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 # -----END PUBLIC KEY-----
 # """
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')", (host, port))
+#         self.execute(u"INSERT INTO routing(community, host, port, incoming_time) VALUES(0, ?, ?, '2010-01-01 00:00:00')", (host, port))
 
-        host = u"masaq.st.ewi.tudelft.nl"
+        host = unicode(gethostbyname(u"masaq.st.ewi.tudelft.nl"))
         port = 12345
         mid = "ca7a5eebaffe0d08c1afe5253c001569bdea4803".decode("HEX")
         pem = """-----BEGIN PUBLIC KEY-----
@@ -110,4 +112,4 @@ ddbv3NkHuZ+G0HrjRQIBBQ==
 -----END PUBLIC KEY-----
 """
         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-        self.execute(u"INSERT INTO routing(host, port, time) VALUES(?, ?, '0000-0-0 0:0:0')", (host, port))
+        self.execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) VALUES(0, ?, ?, '2010-01-01 00:00:00', '2010-01-01 00:00:00')", (host, port))

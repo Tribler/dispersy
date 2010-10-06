@@ -8,6 +8,9 @@ from Tribler.Core.Dispersy.Print import dprint
 class DatabaseException(Exception):
     pass
 
+# class DatabaseRollbackException(DatabaseException):
+#     pass
+
 class Database(Singleton):
     def __init__(self, file_path):
         if __debug__:
@@ -15,6 +18,7 @@ class Database(Singleton):
         assert isinstance(file_path, unicode)
 
         self._connection = apsw.Connection(file_path)
+        # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
 
         # get version from required 'option' table
@@ -28,6 +32,16 @@ class Database(Singleton):
             version = u"0"
 
         self.check_database(version)
+
+    @property
+    def last_insert_rowid(self):
+        assert self._thread_ident == thread.get_ident()
+        return self._connection.last_insert_rowid()
+
+    @property
+    def changes(self):
+        assert self._thread_ident == thread.get_ident()
+        return self._connection.changes()
 
     def execute(self, statements, bindings=()):
         """
@@ -83,73 +97,9 @@ class Database(Singleton):
                 dprint(statements)
             raise DatabaseException(exception)
 
-    def get_last_insert_rowid(self):
-        assert self._thread_ident == thread.get_ident()
-        return self._connection.last_insert_rowid()
-
-    def screen_dump(self, tables=[]):
-        """
-        Dumps the content of TABLES to the console.
-        """
-        assert isinstance(tables, (tuple, list))
-        assert not filter(lambda x: not isinstance(x, unicode), tables)
-        def get_tables(tables):
-            return tables or [table for table, in self._cursor.execute(u"SELECT name FROM sqlite_master WHERE tyupe = 'table' ORDER BY name")]
-
-        def get_type(type_):
-            if isinstance(type_, unicode):
-                upper_type = type_.upper()
-                if upper_type in all_types:
-                    format_ = all_types[upper_type]
-                    if isinstance(format_, unicode):
-                        format_ = all_types[format_]
-                    return upper_type, format_[0], format_[1]
-
-            print "(Warning: unknown type %s)" % repr(type_)
-            return u"UNKNOWN", all_types[u"UNKNOWN"][0], all_types[u"UNKNOWN"][1]
-
-        def print_string(length, string, postfix=".."):
-            if len(string) > length:
-                return string[:length-len(postfix)] + postfix
-            else:
-                return string
-
-        def print_blob(length, blob):
-            s = str(blob)
-            if s.isdigit():
-                return s
-            else:
-                return "%s.%s" % (len(s), hashlib.sha1(s).digest().encode("HEX"))
-
-        all_types = {u"INTEGER":(7, lambda x: print_string(7, str(x))),
-                     u"NUMERIC":u"INTEGER",
-                     u"INT":u"INTEGER",
-                     u"TEXT":(30, lambda x: print_string(30, 'u"%s"' % x)),
-                     u"STRING":u"TEXT",
-                     u"STR":u"TEXT",
-                     u"BLOB":(45, lambda x: print_blob(45, x)),
-                     u"UNKNOWN":(30, lambda x: print_string(30, 'u"%s"' % repr(x)))}
-
-        for table in get_tables(tables):
-            row_count = self._cursor.execute(u"SELECT COUNT(1) FROM " + table).next()[0]                       
-
-            print
-            print "-- table: %s (%d) --" % (table, row_count)
-
-            try:
-                iterator = self._cursor.execute(u"SELECT * FROM " + table + u" LIMIT 100")                     
-                description = self._cursor.getdescription()                                                    
-
-                types = [get_type(type_) for _, type_ in description]                                                    
-                pattern = u"  ".join([u"%"+str(width)+u"s" for _, width, _ in types])
-
-                print pattern % tuple([type_[:width] for (type_, width, _) in types])
-                print pattern % tuple([name[:width] for (_, width, _), (name, _) in zip(types, description)])  
-                for row in iterator:                                                                           
-                    print pattern % tuple([filter_(value) for (_, _, filter_), value in zip(types, row)])         
-            except:                                                                                            
-                if row_count > 0:                                                                              
-                    raise                                                                                      
+    # def _on_rollback(self):
+    #     if __debug__: dprint("ROLLBACK", level="warning")
+    #     raise DatabaseRollbackException(1)
 
     def check_database(self, database_version):
         """
@@ -163,5 +113,5 @@ class Database(Singleton):
         The 'option' table must always exist:
         CREATE TABLE option(key STRING, value STRING);
         """
-        raise NotImplemented
+        raise NotImplementedError()
     

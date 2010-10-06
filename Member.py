@@ -23,7 +23,7 @@ class Member(Parameterized1Singleton):
             self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
         except StopIteration:
             database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
-            self._database_id = database.get_last_insert_rowid()
+            self._database_id = database.last_insert_rowid
 
     @property
     def pem(self):
