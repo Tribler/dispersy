@@ -342,49 +342,50 @@ LIMIT 1""",
             if isinstance(message.distribution, SyncDistribution.Implementation):
                 self._sync_store(packet, message)
 
-            # Forward
-            if isinstance(message.destination, CommunityDestination.Implementation):
-                # todo: we can remove the returning diff and age from
-                # the query since it is not used (especially in the
-                # 2nd query)
+            with self._database as execute:
+                # Forward
+                if isinstance(message.destination, CommunityDestination.Implementation):
+                    # todo: we can remove the returning diff and age from
+                    # the query since it is not used (especially in the
+                    # 2nd query)
 
-                # select addresses where
-                # a) the difference between incoming- and outgoing- time is larger than 10 seconds
-                # b) or the last time we send something was more that 60 seconds ago
-                sql = u"""
+                    # select addresses where
+                    # a) the difference between incoming- and outgoing- time is larger than 10 seconds
+                    # b) or the last time we send something was more that 60 seconds ago
+                    sql = u"""
 SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
 FROM routing
 WHERE community = ? AND (diff > 10 OR age > 60)
 ORDER BY diff, age DESC
 LIMIT 10"""
 
-                addresses = list(self._database.execute(sql, (message.community.database_id,)))
-                if not addresses:
-                    sql = u"""
+                    addresses = list(execute(sql, (message.community.database_id,)))
+                    if not addresses:
+                        sql = u"""
 SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
 FROM routing
 WHERE community = ?
 ORDER BY diff, age DESC
 LIMIT 10"""
-                    addresses = list(self._database.execute(sql, (message.community.database_id,)))
+                        addresses = list(execute(sql, (message.community.database_id,)))
                     
-                for diff, age, host, port in addresses:
-                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " to ", host, ":", port, " [len:", len(packet), "; diff:", diff, "; age:", age, "]")
-                    self._socket.send((host, port), packet)
-                    self._database.execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
+                    for diff, age, host, port in addresses:
+                        if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " to ", host, ":", port, " [len:", len(packet), "; diff:", diff, "; age:", age, "]")
+                        self._socket.send((host, port), packet)
+                        execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
                                                (message.community.database_id, host, port))
+                        assert self._database.changes
+
+                elif isinstance(message.destination, AddressDestination.Implementation):
+                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
+                    self._socket.send(message.destination.address, packet)
+                    execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
+                                           (message.community.database_id, unicode(message.destination.address[0]), message.destination.address[1]))
                     assert self._database.changes
 
-            elif isinstance(message.destination, AddressDestination.Implementation):
-                if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
-                self._socket.send(message.destination.address, packet)
-                self._database.execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
-                                       (message.community.database_id, unicode(message.destination.address[0]), message.destination.address[1]))
-                assert self._database.changes
 
-
-            else:
-                raise NotImplementedError(message.destination)
+                else:
+                    raise NotImplementedError(message.destination)
 
     def on_sync_message(self, address, message):
         if __debug__:
@@ -393,17 +394,18 @@ LIMIT 10"""
 
         global_time, bloom_filter = message.permission.payload
 
-        for packet, in self._database.execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
-            packet = str(packet)
-            if not packet in bloom_filter:
-                dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
-                self._socket.send(address, packet)
+        with self._database as execute:
+            for packet, in execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
+                packet = str(packet)
+                if not packet in bloom_filter:
+                    if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+                    self._socket.send(address, packet)
 
-        for packet, in self._database.execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global LIMIT 100", (message.community.database_id, global_time)):
-            packet = str(packet)
-            if not packet in bloom_filter:
-                dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
-                self._socket.send(address, packet)
+            for packet, in execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global LIMIT 100", (message.community.database_id, global_time)):
+                packet = str(packet)
+                if not packet in bloom_filter:
+                    if __debug__: dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
+                    self._socket.send(address, packet)
 
     def periodically_disperse(self):
         """

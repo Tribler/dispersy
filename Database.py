@@ -14,12 +14,39 @@ class DatabaseException(Exception):
 class Database(Singleton):
     def __init__(self, file_path):
         if __debug__:
+            assert isinstance(file_path, unicode)
+            dprint(file_path)
             self._thread_ident = thread.get_ident()
-        assert isinstance(file_path, unicode)
 
         self._connection = apsw.Connection(file_path)
         # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
+
+        # database configuration (pragma)
+        if __debug__:
+            cache_size, = self._cursor.execute(u"PRAGMA cache_size").next()
+            page_size, = self._cursor.execute(u"PRAGMA page_size").next()
+            page_count, = self._cursor.execute(u"PRAGMA page_count").next()
+            dprint("page_size: ", page_size, " (for currently ", page_count * page_size, " bytes in database)")
+            dprint("cache_size: ", cache_size, " (for maximal ", cache_size * page_size, " bytes in memory)")
+
+        synchronous, = self._cursor.execute(u"PRAGMA synchronous").next()
+        if __debug__: dprint("synchronous: ", synchronous, " (", {0:"OFF", 1:"NORMAL", 2:"FULL"}[synchronous])
+        if not synchronous == 0:
+            if __debug__: dprint("synchronous: ", synchronous, " (", {0:"OFF", 1:"NORMAL", 2:"FULL"}[synchronous], ") --> 0 (OFF)")
+            self._cursor.execute(u"PRAGMA synchronous = 0")
+
+        count_changes, = self._cursor.execute(u"PRAGMA count_changes").next()
+        if __debug__: dprint("count_changes: ", count_changes, " (", {0:"False", 1:"True"}[count_changes], ")")
+        if not count_changes == 0:
+            if __debug__: dprint("count_changes: ", count_changes, " (", {0:"False", 1:"True"}[count_changes], ") --> 0 (False)")
+            self._cursor.execute(u"PRAGMA count_changes = 0")
+
+        temp_store, = self._cursor.execute(u"PRAGMA temp_store").next()
+        if __debug__: dprint("temp_store: ", temp_store, " (", {0:"DEFAULT", 1:"FILE", 2:"MEMORY"}[temp_store])
+        if not temp_store == 3:
+            if __debug__: dprint("temp_store: ", temp_store, " (", {0:"DEFAULT", 1:"FILE", 2:"MEMORY"}[temp_store], ") --> 3 (MEMORY)")
+            self._cursor.execute(u"PRAGMA temp_store = 3")
 
         # get version from required 'option' table
         try:
@@ -32,6 +59,13 @@ class Database(Singleton):
             version = u"0"
 
         self.check_database(version)
+
+    def __enter__(self):
+        self._cursor.execute("BEGIN TRANSACTION")
+        return self.execute
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._cursor.execute("END TRANSACTION")
 
     @property
     def last_insert_rowid(self):
