@@ -101,6 +101,16 @@ class Dispersy(Singleton):
         assert not community.cid in self._communities
         self._communities[community.cid] = community
 
+        # update the community bloom filter
+        with self._database as execute:
+            for global_time, packet in execute(u"SELECT global, sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? ORDER BY sync_full.global", (community.database_id,)):
+                packet = str(packet)
+                community.get_bloom_filter(global_time).add(packet)
+
+            for global_time, packet in execute(u"SELECT global, sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? ORDER BY sync_last.global", (community.database_id,)):
+                packet = str(packet)
+                community.get_bloom_filter(global_time).add(packet)
+
     def get_community(self, cid):
         assert isinstance(cid, str)
         return self._communities[cid]
@@ -243,6 +253,19 @@ LIMIT 1""",
                 #
                 message = conversion.decode_message(packet)
 
+                # #
+                # # Perhaps this is a message send by us?
+                # #
+                # if message.signed_by == message.community.my_member:
+                #     # todo: perform a identity check.  if it proves to
+                #     # be us, then we can remove this address from
+                #     # routing
+                #     dprint("drop a ", len(packet), " byte packet (send by ourselves) from ", address[0], ":", address[1])
+                #     dprint("TODO: perform an identity check", level="warning")
+                #     self._database.execute(u"DELETE FROM routing WHERE community = ? AND host = ? AND port = ?",
+                #                            (message.community.database_id, unicode(address[0]), address[1]))
+                #     continue
+
                 #
                 # Update routing table.  We know that some peer (not
                 # necessarily message.signed_by) exists at this
@@ -349,23 +372,33 @@ LIMIT 1""",
                     # the query since it is not used (especially in the
                     # 2nd query)
 
-                    # select addresses where
-                    # a) the difference between incoming- and outgoing- time is larger than 10 seconds
-                    # b) or the last time we send something was more that 60 seconds ago
+                    # the theory behind the address selection is:
+                    # a) we want to keep contact with those who are
+                    #    online, hence we send messages to those that
+                    #    have a small diff.
+                    # b) we want to get connections to those that have
+                    #    been away for some time, hence we send
+                    #    messages to those that have a high age.
                     sql = u"""
-SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff,
+       STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age,
+       host, port
 FROM routing
-WHERE community = ? AND (diff > 10 OR age > 60)
-ORDER BY diff, age DESC
+WHERE community = ? AND (diff < 30 OR age > 300)
+ORDER BY diff ASC, age DESC
 LIMIT 10"""
 
                     addresses = list(execute(sql, (message.community.database_id,)))
                     if not addresses:
+                        # we need to fallback to something... just
+                        # pick some addresses.
                         sql = u"""
-SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff,
+       STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age,
+       host, port
 FROM routing
 WHERE community = ?
-ORDER BY diff, age DESC
+ORDER BY diff ASC, age DESC
 LIMIT 10"""
                         addresses = list(execute(sql, (message.community.database_id,)))
                     
