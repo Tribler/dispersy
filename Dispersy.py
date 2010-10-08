@@ -10,13 +10,14 @@ community is revealed.
 
 from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+from Destination import CommunityDestination, AddressDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Member import MyMember
 from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
 from Permission import PermitPermission
+from Privilege import PublicPrivilege
 from Singleton import Singleton
-from Destination import CommunityDestination, AddressDestination
 
 if __debug__:
     from Print import dprint
@@ -419,6 +420,40 @@ LIMIT 10"""
 
                 else:
                     raise NotImplementedError(message.destination)
+
+    def get_meta_privileges(self, community):
+        """
+        Returns the PrivilegeBase subclasses available to Dispersy.
+
+        Each Privilege has a name prefixed with dispersy, and each
+        Community should support these Privileges in order for
+        Dispersy to properly function.
+        """
+        if __debug__:
+            # the community may not already have these privileges
+            try:
+                community.get_privilege(u"dispersy-sync")
+                assert False
+            except KeyError:
+                pass
+            try:
+                community.get_privilege(u"dispersy-missing-sequence")
+                assert False
+            except KeyError:
+                pass
+        return [PublicPrivilege(u"dispersy-sync", DirectDistribution(), CommunityDestination()),
+                PublicPrivilege(u"dispersy-missing-sequence", DirectDistribution(), AddressDestination())]
+
+    def get_privilege_handlers(self, community):
+        """
+        Returns the handler methods for the privileges available to
+        Dispersy.
+        """
+        return [(community.get_privilege(u"dispersy-sync"), self.on_sync_message),
+                (community.get_privilege(u"dispersy-missing-sequence"), self.on_missing_sequence)]
+
+    def on_missing_sequence(self, address, message):
+        dprint("TODO: implement", level="error")
 
     def on_sync_message(self, address, message):
         if __debug__:

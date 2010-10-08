@@ -104,6 +104,7 @@ class Community(object):
                                       RevokePermission:self.on_revoke_message}
 
         # dispersy
+        self._dispersy = Dispersy.get_instance()
         self._dispersy_database = DispersyDatabase.get_instance()
 
         try:
@@ -127,10 +128,9 @@ class Community(object):
 
         # implement the privileges
         self._privileges = {}
-        for meta in self.get_dispersy_meta_privileges():
+        for meta in self._dispersy.get_meta_privileges(self):
             assert meta.name not in self._privileges
             self._privileges[meta.name] = meta.implement(self)
-        assert u"dispersy-sync" in self._privileges, "The 'dispersy-sync' Privilege has to be supplied"
         for meta in self.get_meta_privileges():
             assert meta.name not in self._privileges
             self._privileges[meta.name] = meta.implement(self)
@@ -155,7 +155,6 @@ class Community(object):
         # initial timeline containing all known privileges
         self._timeline = Timeline(self)
 
-        self._dispersy = Dispersy.get_instance()
         self._dispersy.add_community(self)
 
     def get_bloom_filter(self, global_time):
@@ -243,7 +242,7 @@ class Community(object):
 
         messages = []
         global_time = self._timeline.claim_global_time()
-        distribution = FullSyncDistribution(100, 100, 0.001)
+        distribution = FullSyncDistribution()
         destination = CommunityDestination()
         for privilege_impl, permission_cls in permission_pairs:
             distribution_impl = distribution.implement(global_time, signed_by.claim_sequence_number())
@@ -335,7 +334,7 @@ class Community(object):
         if __debug__:
             from Message import Message
         assert isinstance(message, (None, Message))
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def get_privilege(self, name):
         """
@@ -351,16 +350,6 @@ class Community(object):
         available in this Community.
         """
         return self._privileges.itervalues()
-
-    @staticmethod
-    def get_dispersy_meta_privileges():
-        """
-        Returns the PrivilegeBase subclasses available to Dispersy in
-        this Community.
-        """
-        return [PublicPrivilege(u"dispersy-sync", DirectDistribution(), CommunityDestination()),
-                PublicPrivilege(u"dispersy-missing-sequence", DirectDistribution(), AddressDestination())]
-#todo: dispersy-missing-global
 
     @staticmethod
     def get_meta_privileges():

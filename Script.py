@@ -470,7 +470,6 @@ class DiscoverySyncScript(ScriptBase):
             except socket.timeout:
                 continue
 
-            print(message)
             global_time, bloom = message.permission.payload
             for packet in packets:
                 assert packet in bloom
@@ -480,8 +479,8 @@ class DiscoverySyncScript(ScriptBase):
 
 class ForumScript(ScriptBase):
     def run(self):
-        # self.caller(self.create_my_forum)
-        self.caller(self.wow_forum)
+        self.caller(self.create_my_forum)
+        # self.caller(self.wow_forum)
 
     def create_my_forum(self):
         community = ForumCommunity.create_community(self._dispersy.my_member)
