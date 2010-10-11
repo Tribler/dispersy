@@ -453,17 +453,48 @@ LIMIT 10"""
                 (community.get_privilege(u"dispersy-missing-sequence"), self.on_missing_sequence)]
 
     def on_missing_sequence(self, address, message):
-        dprint("TODO: implement", level="error")
+        """
+        We received a dispersy-missing-sequence message.
 
-    def on_sync_message(self, address, message):
+        The message contains a user and a range of sequence numbers.
+        We will send the messages in this range back to the sender.
+
+        Todo: we need to optimise this to include a bandwidth
+        throttle.  Otherwise a node can easilly force us to send
+        arbitrary large amounts of data.
+        """
         if __debug__:
             from Message import Message
-        assert isinstance(message, Message)
+            assert isinstance(message, Message)
+
+        # payload = {"user":message.signed_by, "privilege":message.permission.privilege, "missing_low":delay.missing_low, "missing_high":delay.missing_high}
+        payload = message.permission.payload
+        for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE privilege = ? and sequence >= ? AND sequence <= ? ORDER BY sequence LIMIT 100",
+                                              (payload["privilege"].database_id, payload["missing_low"], payload["missing_high"])):
+            if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+            self._socket.send(address, packet)
+
+    def on_sync_message(self, address, message):
+        """
+        We received a dispersy-sync message.
+
+        The message contains a bloom-filter that needs to be checked.
+        If we find any messages that are not in the bloom-filter, we
+        will send those to the sender.
+
+        Todo: we need to optimise this much much more, currently it
+        just sends back data.  So if multiple nodes receive this
+        dispersy-sync message they will probably all send the same
+        messages back.  So we need to make things smarter!
+        """
+        if __debug__:
+            from Message import Message
+            assert isinstance(message, Message)
 
         global_time, bloom_filter = message.permission.payload
 
         with self._database as execute:
-            for packet, in execute(u"SELECT DISTINCT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
+            for packet, in execute(u"SELECT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
                 packet = str(packet)
                 if not packet in bloom_filter:
                     if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
