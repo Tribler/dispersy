@@ -726,7 +726,7 @@ def dprint(*args, **kargs):
         messages.append("".join(kargs["box_char"] * kargs["box_width"]))
 
     if kargs["stdout"]:
-        print >> stdout, prefix + ("\n"+prefix).join([msg[:1000] for msg in messages])
+        print >> stdout, prefix + ("\n"+prefix).join([msg[:10000] for msg in messages])
         if kargs["stack"]:
             if isinstance(kargs["stack"], bool):
                 for line in format_list(callstack):
@@ -737,7 +737,7 @@ def dprint(*args, **kargs):
         if kargs["exception"]:
             print_exception(*exc_info(), file=stdout)
     if kargs["stderr"]:
-        print >> stderr, prefix + ("\n"+prefix).join([msg[:1000] for msg in messages])
+        print >> stderr, prefix + ("\n"+prefix).join([msg[:10000] for msg in messages])
         if kargs["stack"]:
             print_stack(file=stderr)
         if kargs["exception"]:

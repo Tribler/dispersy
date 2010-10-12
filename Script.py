@@ -6,15 +6,14 @@ import socket
 import hashlib
 import types
 
-from Tribler.Community.Forum.Forum import ForumCommunity
-from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
-from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
+from Debug import DiscoveryNode, ForumNode
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
-from Permission import AuthorizePermission, RevokePermission, PermitPermission
 from Distribution import LastSyncDistribution
 from Print import dprint
-from Debug import DiscoveryNode, ForumNode
+from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
+from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
+from Tribler.Community.Forum.Forum import ForumCommunity
 
 class Script(object):
     class Terminator(object):
@@ -204,12 +203,12 @@ class DiscoveryCommunityScript(ScriptBase):
         assert tup[0] == u"Drink-01"
         assert tup[1] == u"Comment-01"
 
-        _, pckt, message = node.receive_message(addresses=[address], privileges=[node.community.get_privilege(u"dispersy-missing-sequence")])
+        _, pckt, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
         # must ask for missing sequence 2
-        assert message.permission.payload["privilege"].name == u"community-metadata"
-        assert message.permission.payload["user"].pem == node.my_member.pem
-        assert message.permission.payload["missing_low"] == 2
-        assert message.permission.payload["missing_high"] == 2
+        assert message.payload.member.pem == node.my_member.pem
+        assert message.payload.message.name == u"community-metadata"
+        assert message.payload.missing_low == 2
+        assert message.payload.missing_high == 2
 
         send(create(cid, u"Drink-02", u"Comment-02", 2, 2), address)
         yield 0.1
@@ -259,12 +258,12 @@ class DiscoveryCommunityScript(ScriptBase):
         assert tup[0] == u"Drinks-01"
         assert tup[1] == u"Comment-01"
 
-        _, pckt, message = node.receive_message(addresses=[address], privileges=[node.community.get_privilege(u"dispersy-missing-sequence")])
+        _, pckt, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
         # must ask for missing sequence 2, 3, and 4
-        assert message.permission.payload["privilege"].name == u"community-metadata"
-        assert message.permission.payload["user"].pem == node.my_member.pem
-        assert message.permission.payload["missing_low"] == 2
-        assert message.permission.payload["missing_high"] == 4
+        assert message.payload.member.pem == node.my_member.pem
+        assert message.payload.message.name == u"community-metadata"
+        assert message.payload.missing_low == 2
+        assert message.payload.missing_high == 4
 
         send(create(cid, u"Drinks-03", u"Comment-03", 3, 3), address)
         yield 0.1
@@ -466,11 +465,11 @@ class DiscoverySyncScript(ScriptBase):
         for _ in xrange(10):
             yield 1.0
             try:
-                _, packet, message = node.receive_message(timeout=0.1, addresses=[address], privileges=[self._discovery.get_privilege(u"dispersy-sync")])
+                _, packet, message = node.receive_message(timeout=0.1, addresses=[address], message_names=[u"dispersy-sync"])
             except socket.timeout:
                 continue
 
-            global_time, bloom = message.permission.payload
+            bloom = message.payload.bloom_filter
             for packet in packets:
                 assert packet in bloom
             break
@@ -484,9 +483,9 @@ class ForumScript(ScriptBase):
 
     def create_my_forum(self):
         community = ForumCommunity.create_community(self._dispersy.my_member)
-        community.create_forum_settings(u"My Forum", u"My Forum Description")
-        welcome_thread = community.create_thread(u"Welcome", u"Welcome everyone")
-        community.create_post(welcome_thread, u"Anyone else here?")
+        community.create_set_settings(u"My Forum", u"My Forum Description")
+        welcome_thread_message = community.create_thread(u"Welcome", u"Welcome everyone")
+        community.create_post(welcome_thread_message.payload.key, u"Anyone else here?")
 
     def wow_forum(self):
         def get_or_create_node(nodes, user):

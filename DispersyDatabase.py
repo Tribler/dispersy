@@ -26,12 +26,6 @@ CREATE TABLE community(
  master_pem BLOB,                               -- community master key (public part)
  UNIQUE(user, cid));
 
-CREATE TABLE privilege(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- community INTEGER REFERENCES community(id),
- name TEXT,
- UNIQUE(community, name));
-
 CREATE TABLE key(
  public_pem BLOB,                               -- public part
  private_pem BLOB,                              -- private part
@@ -47,20 +41,20 @@ CREATE TABLE routing(
  
 CREATE TABLE sync_full(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
+ community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
- privilege INTEGER REFERENCES privilege(id),
  global INTEGER,
  sequence INTEGER,
  packet BLOB,
- UNIQUE(user, privilege, global, sequence));
+ UNIQUE(user, global));
 
 CREATE TABLE sync_last(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
+ community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
- privilege INTEGER REFERENCES privilege(id),
  global INTEGER,
  packet BLOB,
- UNIQUE(user, privilege, global));
+ UNIQUE(user, global));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');

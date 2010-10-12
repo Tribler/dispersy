@@ -49,6 +49,8 @@ def _a_encode_dictionary(values, mapping):
     encoded = [str(len(values)).encode("UTF-8"), "d"]
     extend = encoded.extend
     for key, value in sorted(values.items()):
+        assert type(key) in mapping, (key, values)
+        assert type(value) in mapping, (value, values)
         extend(mapping[type(key)](key, mapping))
         extend(mapping[type(value)](value, mapping))
     return encoded

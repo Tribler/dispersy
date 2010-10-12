@@ -1,7 +1,3 @@
-if __debug__:
-    from Distribution import LastSyncDistribution, FullSyncDistribution, DirectDistribution, RelayDistribution
-    from Destination import DestinationBase
-
 #
 # Exceptions
 #
@@ -43,6 +39,7 @@ class DelayMessageBySequence(DelayMessage):
     def __init__(self, missing_low, missing_high):
         assert isinstance(missing_low, (int, long))
         assert isinstance(missing_high, (int, long))
+        assert 0 < missing_low <= missing_high
         DelayMessage.__init__(self, "Missing sequence number(s)")
         self._missing_low = missing_low
         self._missing_high = missing_high
@@ -106,42 +103,91 @@ class DropMessageByProof(DropMessage):
 # Message
 #
 class Message(object):
-    def __init__(self, community, signed_by, distribution, destination, permission):
+    class Implementation(object):
+        def __init__(self, meta, signed_by, distribution, destination, payload):
+            if __debug__:
+                from Payload import Permit, Authorize, Revoke
+                from Destination import DestinationBase
+                from Distribution import DistributionBase
+                from Member import Member
+            assert isinstance(meta, Message), "META has invalid type '{0}'".format(type(meta))
+            assert isinstance(signed_by, Member), "SIGNED_BY has invalid type '{0}'".format(type(signed_by))
+            assert isinstance(distribution, DistributionBase.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
+            assert isinstance(destination, DestinationBase.Implementation), "DESTINATION has invalid type '{0}'".format(type(destination))
+            assert isinstance(payload, (Permit, Authorize, Revoke)), "PAYLOAD has invalid type '{0}'".format(type(payload))
+            self._meta = meta
+            self._signed_by = signed_by
+            self._distribution = distribution
+            self._destination = destination
+            self._payload = payload
+
+        @property
+        def community(self):
+            return self._meta._community
+
+        @property
+        def meta(self):
+            return self._meta
+
+        @property
+        def name(self):
+            return self._meta._name
+
+        @property
+        def database_id(self):
+            return self._meta._database_id
+
+        @property
+        def resolution(self):
+            return self._meta._resolution
+
+        @property
+        def signed_by(self):
+            return self._signed_by
+
+        @property
+        def distribution(self):
+            return self._distribution
+
+        @property
+        def destination(self):
+            return self._destination
+
+        @property
+        def payload(self):
+            return self._payload
+
+        def __str__(self):
+            return "<{0.__class__.__name__} {0.payload.__class__.__name__} {0.distribution} {0.destination}>".format(self)
+
+    def __init__(self, community, name, resolution, distribution, destination):
         if __debug__:
-            from Member import Member
+            from Resolution import Resolution
             from Community import Community
-            from Permission import PermitPermission, AuthorizePermission, RevokePermission
-        assert isinstance(community, Community)
-        assert isinstance(signed_by, Member)
-        assert isinstance(distribution, (FullSyncDistribution.Implementation,
-                                         DirectDistribution.Implementation,
-                                         RelayDistribution.Implementation,
-                                         LastSyncDistribution.Implementation)), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
-        assert isinstance(destination, DestinationBase.Implementation)
-        assert isinstance(permission, (AuthorizePermission, RevokePermission, PermitPermission))
-
-        # the community
+            from Destination import DestinationBase
+            from Distribution import DistributionBase
+        assert isinstance(community, Community), "COMMUNITY has invalid type '{0}'".format(type(community))
+        assert isinstance(name, unicode), "NAME has invalid type '{0}'".format(type(name))
+        assert isinstance(resolution, Resolution), "RESOLUTION has invalid type '{0}'".format(type(resolution))
+        assert isinstance(distribution, DistributionBase), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
+        assert isinstance(destination, DestinationBase), "DESTINATION has invalid type '{0}'".format(type(destination))
         self._community = community
-
-        # the member who signed the message
-        self._signed_by = signed_by
-
-        # the distribution policy implementation
+        self._name = name
+        self._resolution = resolution
         self._distribution = distribution
-
-        # the destination policy implementation
         self._destination = destination
-
-        # the permission that is used
-        self._permission = permission
 
     @property
     def community(self):
         return self._community
 
     @property
-    def signed_by(self):
-        return self._signed_by
+    def name(self):
+        return self._name
+
+    @property
+    def resolution(self):
+        return self._resolution
 
     @property
     def distribution(self):
@@ -151,12 +197,12 @@ class Message(object):
     def destination(self):
         return self._destination
 
-    @property
-    def permission(self):
-        return self._permission
-
     def __str__(self):
-        return "<{0.__class__.__name__} {0.distribution} {0.destination} {0.permission}>".format(self)
+        return "<{0.__class__.__name__} resolution:{0.resolution.__class__.__name__} distribution:{0.distribution.__class__.__name__} destination:{0.destination.__class__.__name__} name:{0.name}>".format(self)
+
+    def implement(self, signed_by, distribution, destination, payload):
+        return self.Implementation(self, signed_by, distribution, destination, payload)
+
 
 # class Carrier(object):
 #     def __init__(self, community, distribution, destination

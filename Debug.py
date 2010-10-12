@@ -1,14 +1,16 @@
 import socket
 
+from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
-from Privilege import PublicPrivilege, LinearPrivilege
-from Message import Message
 from Destination import CommunityDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
-from Permission import PermitPermission
 from Member import MyMember
+from Message import Message
+from Payload import MissingSequencePayload, SyncPayload
 from Print import dprint
-from Bloomfilter import BloomFilter
+from Resolution import PublicResolution, LinearResolution
+
+from Tribler.Community.Discovery.DiscoveryPayload import UserMetadataPayload, CommunityMetadataPayload
 
 class Node(object):
     _socket_range = (8000, 8999)
@@ -19,7 +21,7 @@ class Node(object):
         self._socket = None
         self._my_member = None
         self._community = None
-        self._dispersy_sync_privilege = PublicPrivilege(u"dispersy-sync", DirectDistribution(), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._dispersy_sync_message = None
 
     @property
     def socket(self):
@@ -56,9 +58,7 @@ class Node(object):
 
     def set_community(self, community):
         self._community = community
-
-    def create_message(self, distribution, destination, permission):
-        return Message(self._community, self._my_member, distribution, destination, permission)
+        self._dispersy_sync_message = Message(community, u"dispersy-sync", PublicResolution(), DirectDistribution(), CommunityDestination())
 
     def encode_message(self, message):
         return self._community.get_conversion().encode_message(message)
@@ -68,7 +68,7 @@ class Node(object):
         return self._socket.sendto(packet, address)
 
     def send_message(self, message, address):
-        dprint(message.permission.privilege.name, "^", message.permission.name, " to ", address[0], ":", address[1])
+        dprint(message.payload.type, "^", message.name, " to ", address[0], ":", address[1])
         return self.send_packet(self.encode_message(message), address)
 
     def receive_packet(self, timeout=10.0, addresses=None, packets=None):
@@ -91,25 +91,24 @@ class Node(object):
             dprint(len(packet), " bytes from ", address[0], ":", address[1])
             return address, packet
         
-    def receive_message(self, timeout=10.0, addresses=None, packets=None, distributions=None, destinations=None, permissions=None, privileges=None, successful_decode=True):
+    def receive_message(self, timeout=10.0, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
         assert isinstance(timeout, float)
         assert isinstance(addresses, (type(None), list))
         assert isinstance(packets, (type(None), list))
+        assert isinstance(message_names, (type(None), list))
+        assert isinstance(payload_types, (type(None), list))
         assert isinstance(distributions, (type(None), list))
         assert isinstance(destinations, (type(None), list))
-        assert isinstance(permissions, (type(None), list))
-        assert isinstance(privileges, (type(None), list))
-        assert isinstance(successful_decode, bool)
         self._socket.settimeout(timeout)
         while True:
             address, packet = self.receive_packet(timeout, addresses, packets)
+            message = self._community.get_conversion().decode_message(packet)
 
-            try:
-                message = self._community.get_conversion().decode_message(packet)
-            except:
-                if successful_decode:
-                    continue
-                raise
+            if not (message_names is None or message.name in message_names):
+                continue
+
+            if not (payload_types is None or message.payload.type in payload_types):
+                continue
 
             if not (distributions is None or isinstance(message.distribution, distributions)):
                 continue
@@ -117,13 +116,7 @@ class Node(object):
             if not (destinations is None or isinstance(message.destination, destinations)):
                 continue
 
-            if not (permissions is None or isinstance(message.permission, permissions)):
-                continue
-
-            if not (privileges is None or message.permission.privilege in privileges):
-                continue
-            
-            dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
+            dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
             return address, packet, message
             
     def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
@@ -133,35 +126,46 @@ class Node(object):
         assert isinstance(global_time, (int, long))
         bloom_filter = BloomFilter(1000, 0.001)
         map(bloom_filter.add, bloom_packets)
-        distribution = self._dispersy_sync_privilege.distribution.implement(global_time)
-        destination = self._dispersy_sync_privilege.destination.implement()
-        permission = PermitPermission(self._dispersy_sync_privilege, (bloom_global_time, bloom_filter))
-        return self.create_message(distribution, destination, permission)
+        distribution = self._dispersy_sync_message.distribution.implement(global_time)
+        destination = self._dispersy_sync_message.destination.implement()
+        payload = SyncPayload(bloom_global_time, bloom_filter)
+        return self._dispersy_sync_message.implement(self._my_member, distribution, destination, payload)
 
 class DiscoveryNode(Node):
     def __init__(self, *args, **kargs):
         super(DiscoveryNode, self).__init__(*args, **kargs)
-        self._community_metadata_privilege = PublicPrivilege(u"community-metadata", FullSyncDistribution(), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
-        self._user_metadata_privilege = PublicPrivilege(u"user-metadata", LastSyncDistribution(), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._community_metadata_message = None
+        self._user_metadata_message = None
+
+    def set_community(self, community):
+        super(DiscoveryNode, self).set_community(community)
+        self._community_metadata_message = Message(community, u"community-metadata", PublicResolution(), FullSyncDistribution(), CommunityDestination())
+        self._user_metadata_message = Message(community, u"user-metadata", PublicResolution(), LastSyncDistribution(), CommunityDestination())
 
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
-        distribution = self._community_metadata_privilege.distribution.implement(global_time, sequence_number)
-        destination = self._community_metadata_privilege.destination.implement()
-        permission = PermitPermission(self._community_metadata_privilege, (cid, alias, comment))
-        return self.create_message(distribution, destination, permission)
+        distribution = self._community_metadata_message.distribution.implement(global_time, sequence_number)
+        destination = self._community_metadata_message.destination.implement()
+        payload = CommunityMetadataPayload(cid, alias, comment)
+        return self._community_metadata_message.implement(self._my_member, distribution, destination, payload)
 
     def create_user_metadata_message(self, address, alias, comment, global_time):
-        distribution = self._user_metadata_privilege.distribution.implement(global_time)
-        destination = self._user_metadata_privilege.destination.implement()
-        permission = PermitPermission(self._user_metadata_privilege, (address, alias, comment))
-        return self.create_message(distribution, destination, permission)
+        distribution = self._user_metadata_message.distribution.implement(global_time)
+        destination = self._user_metadata_message.destination.implement()
+        payload = UserMetadataPayload(address, alias, comment)
+        return self._user_metadata_message.implement(self._my_member, distribution, destination, payload)
     
 class ForumNode(DiscoveryNode):
     def __init__(self, *args, **kargs):
         super(ForumNode, self).__init__(*args, **kargs)
-        self._set_settings_privilege = LinearPrivilege(u"set-settings", LastSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
-        self._create_thread_privilege = LinearPrivilege(u"create-thread", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
-        self._create_post_privilege = LinearPrivilege(u"create-post", FullSyncDistribution(100, 100, 0.001), CommunityDestination()).implement("DISABLED FOR DEBUG", sync=False)
+        self._set_settings_message = None
+        self._create_thread_message = None
+        self._create_post_message = None
+
+    def set_community(self, community):
+        super(ForumNode, self).set_community(community)
+        self._set_settings_message = Message(community, u"set-settings", LinearResolution(), LastSyncDistribution(100, 100, 0.001), CommunityDestination())
+        self._create_thread_message = Message(community, u"create-thread", LinearResolution(), FullSyncDistribution(100, 100, 0.001), CommunityDestination())
+        self._create_post_message = Message(community, u"create-post", LinearResolution(), FullSyncDistribution(100, 100, 0.001), CommunityDestination())
 
     def create_set_settings_message(self, title, description, global_time):
         distribution = self._set_settings_privilege.distribution.implement(global_time)

@@ -1,28 +1,30 @@
 """
 The Timeline is an important part of Dispersy.  The Timeline can be
-queried as to who had what permissions at some point in time.
+queried as to who had what actions at some point in time.
 """
 
 from Member import Member, MasterMember
-from Permission import AuthorizePermission, RevokePermission, PermitPermission
-from Privilege import PublicPrivilege, LinearPrivilege
-from Print import dprint
+from Payload import Authorize, Revoke
+from Resolution import PublicResolution, LinearResolution
+
+if __debug__:
+    from Print import dprint
 
 class Timeline(object):
     class Node(object):
         def __init__(self):
-            self.timeline = [] # (global_time, [permissions])
+            self.timeline = [] # (global_time, [actions])
 
-        def get_privileges(self, global_time):
+        def get_actions(self, global_time):
             assert isinstance(global_time, (int, long))
-            for time, allowed_permissions in reversed(self.timeline):
+            for time, allowed_actions in reversed(self.timeline):
                 if global_time >= time:
-                    return time, allowed_permissions
+                    return time, allowed_actions
             return -1, []
 
         def __str__(self):
-            def time_pair((global_time, permissions)):
-                return "%d=[%s]" % (global_time, ",".join(["%s:%s" % (permission[0], permission[1]) for permission in permissions]))
+            def time_pair((global_time, actions)):
+                return "%d=[%s]" % (global_time, ",".join(["%s:%s" % (time, allowed_actions) for time, allowed_actions in actions]))
             return "<Node " + ", ".join(map(time_pair, reversed(self.timeline))) + ">"
 
     def __init__(self, community):
@@ -44,52 +46,78 @@ class Timeline(object):
         finally:
             self._global_time += 1
 
-    def check(self, signed_by, permission, global_time):
+    def check(self, message):
         """
-        Check if SIGNED_BY has PERMISSION at GLOBAL_TIME.
+        Check if message is allowed.
         """
         if __debug__:
-            from Permission import PermissionBase
-        assert isinstance(signed_by, Member)
-        assert isinstance(permission, PermissionBase)
-        assert isinstance(global_time, (int, long))
+            from Message import Message
+        assert isinstance(message, Message.Implementation)
 
-        if isinstance(signed_by, MasterMember):
+        # the MasterMember can do anything
+        if isinstance(message.signed_by, MasterMember):
             return True
 
-        privilege = permission.privilege
-        if isinstance(privilege, PublicPrivilege.Implementation):
+        # everyone is allowed PublicResolution
+        if isinstance(message.resolution, PublicResolution):
             return True
 
-        elif isinstance(privilege, LinearPrivilege.Implementation):
-            node = self._get_node(signed_by, False)
+        # allowed LinearResolution is stored in Timeline
+        elif isinstance(message.resolution, LinearResolution):
+            node = self._get_node(message.signed_by, False)
             if node:
-                pair = (privilege.name, permission.name)
-                _, allowed_permissions = node.get_privileges(global_time)
-                if pair in allowed_permissions:
-                    self._global_time = max(self._global_time, global_time)
+                pair = u"{0.payload.type}^{0.name}".format(message)
+                _, allowed_actions = node.get_actions(message.distribution.global_time)
+                if pair in allowed_actions:
+                    self._global_time = max(self._global_time, message.distribution.global_time + 1)
                     return True
 
-        dprint("FAIL: Check ", signed_by.database_id, "; ", str(permission)[:30], "@", global_time, level="warning")
+        else:
+            raise NotImplementedError("Unknown Resolution")
+
+        if __debug__: dprint("FAIL: Check ", message.signed_by.database_id, "; ", message.payload.type, "^", message.name, "@", message.distribution.global_time, level="warning")
         return False
 
-    def update(self, signed_by, permission, global_time):
+    def update(self, message):
         """
-        Add a new edge, and possibly a new node, to the privilege
-        tree.
-
+        Update the timeline according to the Authorize or Revoke
+        message.
+        
         Returns True on success, otherwise False is returned.
         """
-        assert isinstance(signed_by, Member)
-        assert isinstance(permission, (AuthorizePermission, RevokePermission))
-        assert isinstance(global_time, (int, long))
-        assert self.check(signed_by, permission, global_time)
+        if __debug__:
+            from Message import Message
+        assert isinstance(message, Message.Implementation)
+        assert isinstance(message.payload, (Authorize, Revoke))
+        assert self.check(message)
 
-        privilege = permission.privilege
-        if isinstance(privilege, LinearPrivilege.Implementation):
-            return self._update_linear_privilege(signed_by, permission, global_time)
+        if isinstance(message.resolution, LinearResolution):
+            return self._update_linear_resolution(message)
+
         else:
-            raise NotImplementedError(privilege)
+            raise NotImplementedError(message.resolution)
+
+    def _update_linear_resolution(self, message):
+        if isinstance(message.payload, Authorize):
+            # MESSAGE.signed_by authorizes MESSAGE.payload.to to use
+            # MESSAGE.payload.payload for MESSAGE starting at
+            # MESSAGE.distribution.global_time + 1.
+            global_time = message.distribution.global_time
+            node = self._get_node(message.payload.to, True)
+            time, allowed_actions = node.get_actions(global_time + 1)
+            pair = u"{0}^{1.name}".format(message.payload.payload.get_static_type(), message)
+
+            if not pair in allowed_actions:
+                if time == global_time + 1:
+                    allowed_actions.append(pair)
+                else:
+                    node.timeline.append((global_time + 1, allowed_actions + [pair]))
+
+            if __debug__: dprint(message.payload.to.database_id, "; ", node.timeline)
+            return True
+
+        else:
+            raise NotImplementedError(action)
 
     def _get_node(self, signed_by, create_new):
         """
@@ -102,33 +130,3 @@ class Timeline(object):
             self._nodes[pem] = self.Node()
         return self._nodes.get(pem, None)
 
-    def _update_linear_privilege(self, signed_by, permission, global_time):
-        if isinstance(permission, AuthorizePermission):
-            # SIGNED_BY authorizes PERMISSION.to to use
-            # PERMISSION.permission for
-            # PERMISSION.privilege starting at GLOBAL_TIME + 1.
-            node = self._get_node(permission.to, True)
-            time, allowed_permissions = node.get_privileges(global_time + 1)
-
-            if issubclass(permission.permission, AuthorizePermission):
-                permission_name = u"authorize"
-            elif issubclass(permission.permission, RevokePermission):
-                permission_name = u"revoke"
-            elif issubclass(permission.permission, PermitPermission):
-                permission_name = u"permit"
-            else:
-                raise NotImplementedError(permission.permission)
-
-            pair = (permission.privilege.name, permission_name)
-
-            if not pair in allowed_permissions:
-                if time == global_time + 1:
-                    allowed_permissions.append(pair)
-                else:
-                    node.timeline.append((global_time + 1, allowed_permissions + [pair]))
-
-            dprint(signed_by.database_id, "%", permission.to.database_id, ": ", node.timeline)
-            return True
-
-        else:
-            raise NotImplementedError(permission)

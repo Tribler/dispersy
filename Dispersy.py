@@ -14,9 +14,9 @@ from Destination import CommunityDestination, AddressDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Member import MyMember
-from Message import DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
-from Permission import PermitPermission
-from Privilege import PublicPrivilege
+from Message import Message, DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
+from Payload import MissingSequencePayload, SyncPayload
+from Resolution import PublicResolution
 from Singleton import Singleton
 
 if __debug__:
@@ -104,11 +104,11 @@ class Dispersy(Singleton):
 
         # update the community bloom filter
         with self._database as execute:
-            for global_time, packet in execute(u"SELECT global, sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? ORDER BY sync_full.global", (community.database_id,)):
+            for global_time, packet in execute(u"SELECT global, packet FROM sync_full WHERE community = ? ORDER BY global", (community.database_id,)):
                 packet = str(packet)
                 community.get_bloom_filter(global_time).add(packet)
 
-            for global_time, packet in execute(u"SELECT global, sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? ORDER BY sync_last.global", (community.database_id,)):
+            for global_time, packet in execute(u"SELECT global, packet FROM sync_last WHERE community = ? ORDER BY global", (community.database_id,)):
                 packet = str(packet)
                 community.get_bloom_filter(global_time).add(packet)
 
@@ -133,24 +133,19 @@ class Dispersy(Singleton):
         assert isinstance(address[0], str)
         assert isinstance(address[1], int)
         assert isinstance(packet, str)
-        assert isinstance(message, Message)
+        assert isinstance(message, Message.Implementation)
         assert isinstance(delay, DelayMessage)
         if isinstance(delay, DelayMessageBySequence):
-            key = "community:{0.community.database_id} user:{0.signed_by.database_id} privilege:{0.permission.privilege.database_id} sequence:{1.missing_high}".format(message, delay)
+            key = "message:{0.name} community:{0.community.database_id} user:{0.signed_by.database_id} sequence:{1.missing_high}".format(message, delay)
             if not key in self._delayed:
-                dprint(delay)
-                dprint(key)
                 self._delayed[key] = (address, packet, message)
-
-                # request the missing data
-                payload = {"user":message.signed_by, "privilege":message.permission.privilege, "missing_low":delay.missing_low, "missing_high":delay.missing_high}
-                message.community.permit(PermitPermission(message.community.get_privilege(u"dispersy-missing-sequence"), payload), destination=(address,), update_locally=False)
+                message.community.permit(message.community.get_meta_message(u"dispersy-missing-sequence"), MissingSequencePayload(message.signed_by, message.meta, delay.missing_low, delay.missing_high), destination=(address,), update_locally=False)
                 
         else:
             raise NotImplementedError(delay)
 
     def _check_delayed_full_sync_distribution(self, message):
-        key = "community:{0.community.database_id} user:{0.signed_by.database_id} privilege:{0.permission.privilege.database_id} sequence:{0.distribution.sequence_number}".format(message)
+        key = "message:{0.name} community:{0.community.database_id} user:{0.signed_by.database_id} sequence:{0.distribution.sequence_number}".format(message)
         if __debug__:
             if key in self._delayed:
                 dprint(key)
@@ -170,8 +165,7 @@ class Dispersy(Singleton):
             sequence, = self._database.execute(u"""
 SELECT sequence
 FROM sync_full
-LEFT JOIN privilege ON (sync_full.privilege = privilege.id)
-WHERE sync_full.user = ? AND privilege.community = ?
+WHERE user = ? AND community = ?
 ORDER BY sequence DESC
 LIMIT 1""",
                                               (message.signed_by.database_id,
@@ -198,10 +192,9 @@ LIMIT 1""",
             self._database.execute(u"""
 SELECT 1
 FROM sync_last
-WHERE user = ? AND privilege = ? AND global > ?
+WHERE user = ? AND global > ?
 LIMIT 1""",
                                    (message.signed_by.database_id,
-                                    message.permission.privilege.database_id,
                                     message.distribution.global_time)).next()
         except StopIteration:
             return
@@ -288,8 +281,8 @@ LIMIT 1""",
                     #
                     # Allow community code to handle the message
                     #
-                    if __debug__: dprint("incoming ", message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes)")
-                    community.on_incoming_message(address, packet, message)
+                    if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(packet), " bytes)")
+                    community.on_incoming_message(address, message)
 
                     #
                     # Sync messages need to be stored (so they can be
@@ -332,17 +325,17 @@ LIMIT 1""",
 
         # sync database
         if isinstance(distribution, FullSyncDistribution.Implementation):
-            self._database.execute(u"INSERT INTO sync_full(user, privilege, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
-                                   (message.signed_by.database_id,
-                                    message.permission.privilege.database_id,
+            self._database.execute(u"INSERT INTO sync_full(community, user, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
+                                   (message.community.database_id,
+                                    message.signed_by.database_id,
                                     distribution.global_time,
                                     distribution.sequence_number,
                                     buffer(packet)))
 
         elif isinstance(distribution, LastSyncDistribution.Implementation):
-            self._database.execute(u"INSERT OR REPLACE INTO sync_last(user, privilege, global, packet) VALUES(?, ?, ?, ?)",
-                                   (message.signed_by.database_id,
-                                    message.permission.privilege.database_id,
+            self._database.execute(u"INSERT OR REPLACE INTO sync_last(community, user, global, packet) VALUES(?, ?, ?, ?)",
+                                   (message.community.database_id,
+                                    message.signed_by.database_id,
                                     distribution.global_time,
                                     buffer(packet)))
         
@@ -357,7 +350,7 @@ LIMIT 1""",
             from Message import Message
         assert isinstance(messages, (tuple, list))
         assert len(messages) > 0
-        assert not filter(lambda x: not isinstance(x, Message), messages)
+        assert not filter(lambda x: not isinstance(x, Message.Implementation), messages)
 
         for message in messages:
             packet = message.community.get_conversion().encode_message(message)
@@ -404,14 +397,14 @@ LIMIT 10"""
                         addresses = list(execute(sql, (message.community.database_id,)))
                     
                     for diff, age, host, port in addresses:
-                        if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " to ", host, ":", port, " [len:", len(packet), "; diff:", diff, "; age:", age, "]")
+                        if __debug__: dprint(message.payload.type, "^", message.name, " to ", host, ":", port, " [len:", len(packet), "; diff:", diff, "; age:", age, "]")
                         self._socket.send((host, port), packet)
                         execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
                                                (message.community.database_id, host, port))
                         assert self._database.changes
 
                 elif isinstance(message.destination, AddressDestination.Implementation):
-                    if __debug__: dprint(message.permission.privilege.name, "^", message.permission.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
+                    if __debug__: dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) to ", message.destination.address[0], ":", message.destination.address[1])
                     self._socket.send(message.destination.address, packet)
                     execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
                                            (message.community.database_id, unicode(message.destination.address[0]), message.destination.address[1]))
@@ -421,36 +414,36 @@ LIMIT 10"""
                 else:
                     raise NotImplementedError(message.destination)
 
-    def get_meta_privileges(self, community):
+    def get_meta_messages(self, community):
         """
-        Returns the PrivilegeBase subclasses available to Dispersy.
+        Returns the Message instances available to Dispersy.
 
-        Each Privilege has a name prefixed with dispersy, and each
-        Community should support these Privileges in order for
-        Dispersy to properly function.
+        Each Message has a name prefixed with dispersy, and each
+        Community should support these Messages in order for Dispersy
+        to function properly.
         """
         if __debug__:
-            # the community may not already have these privileges
+            # the community may not already have these messages
             try:
-                community.get_privilege(u"dispersy-sync")
+                community.get_meta_message(u"dispersy-sync")
                 assert False
             except KeyError:
                 pass
             try:
-                community.get_privilege(u"dispersy-missing-sequence")
+                community.get_meta_message(u"dispersy-missing-sequence")
                 assert False
             except KeyError:
                 pass
-        return [PublicPrivilege(u"dispersy-sync", DirectDistribution(), CommunityDestination()),
-                PublicPrivilege(u"dispersy-missing-sequence", DirectDistribution(), AddressDestination())]
+        return [Message(community, u"dispersy-sync", PublicResolution(), DirectDistribution(), CommunityDestination()),
+                Message(community, u"dispersy-missing-sequence", PublicResolution(), DirectDistribution(), AddressDestination())]
 
-    def get_privilege_handlers(self, community):
+    def get_message_handlers(self, community):
         """
         Returns the handler methods for the privileges available to
         Dispersy.
         """
-        return [(community.get_privilege(u"dispersy-sync"), self.on_sync_message),
-                (community.get_privilege(u"dispersy-missing-sequence"), self.on_missing_sequence)]
+        return [(community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
+                (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence)]
 
     def on_missing_sequence(self, address, message):
         """
@@ -489,18 +482,19 @@ LIMIT 10"""
         """
         if __debug__:
             from Message import Message
-            assert isinstance(message, Message)
+            assert isinstance(message, Message.Implementation)
 
-        global_time, bloom_filter = message.permission.payload
+        global_time = message.payload.global_time
+        bloom_filter = message.payload.bloom_filter
 
         with self._database as execute:
-            for packet, in execute(u"SELECT sync_full.packet FROM sync_full LEFT JOIN privilege WHERE privilege.community = ? AND sync_full.global >= ? ORDER BY sync_full.global LIMIT 100", (message.community.database_id, global_time)):
+            for packet, in execute(u"SELECT packet FROM sync_full WHERE community = ? AND global >= ? ORDER BY global LIMIT 100", (message.community.database_id, global_time)):
                 packet = str(packet)
                 if not packet in bloom_filter:
                     if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
                     self._socket.send(address, packet)
 
-            for packet, in execute(u"SELECT sync_last.packet FROM sync_last LEFT JOIN privilege WHERE privilege.community = ? AND sync_last.global >= ? ORDER BY sync_last.global LIMIT 100", (message.community.database_id, global_time)):
+            for packet, in execute(u"SELECT packet FROM sync_last WHERE community = ? AND global >= ? ORDER BY global LIMIT 100", (message.community.database_id, global_time)):
                 packet = str(packet)
                 if not packet in bloom_filter:
                     if __debug__: dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
@@ -518,7 +512,7 @@ LIMIT 10"""
             # a 'sync' message containing one or more bloom filters.
             #
             for community in self._communities.itervalues():
-                payload = community.get_current_bloom_filter()
-                community.permit(PermitPermission(community.get_privilege(u"dispersy-sync"), payload), update_locally=False)
+                global_time, bloom_filter = community.get_current_bloom_filter()
+                community.permit(community.get_meta_message(u"dispersy-sync"), SyncPayload(global_time, bloom_filter), update_locally=False)
 
 
