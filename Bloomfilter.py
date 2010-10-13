@@ -4,13 +4,13 @@ Bloomfilter implementation based on pybloom by Jay Baird
 
 Simplified, and optimized to use just python code by Boudewijn Schoon.
 """
-
-import math
 import hashlib
+import math
 from array import array
 from struct import unpack, pack
 
 from Decorator import Constructor, constructor
+
 
 if __debug__:
     from time import time
