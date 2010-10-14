@@ -236,7 +236,7 @@ LIMIT 1""",
             # Find associated conversion
             #
             try:
-                conversion = community.get_conversion(packet[:25])
+                conversion = community.get_conversion(packet[:22])
             except KeyError:
                 dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", address[0], ":", address[1])
                 continue

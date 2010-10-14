@@ -139,6 +139,10 @@ class Community(object):
         # from stepping to 2*stepping, etc.
         self._bloom_filter_stepping = 100
         self._bloom_filters = [BloomFilter(100, 0.01)]
+        # todo: if we are only using LastSyncDistribution then it is
+        # possible that only the last elements of the _bloom_filters
+        # are used.  We should make this into a dictionary and keep it
+        # clean once a bloomfilter becomes obsolete.
 
         # dictionary containing available conversions.  currently only
         # contains one conversion.

@@ -101,29 +101,29 @@ class RelayDistribution(DistributionBase):
     class Implementation(DistributionBase.Implementation):
         pass
         
-if __debug__:
-    def main():
-        meta = DistributionBase()
-        print meta, meta.implement(42)
+# if __debug__:
+#     def main():
+#         meta = DistributionBase()
+#         print meta, meta.implement(42)
 
-        meta = SyncDistribution(100, 100, 0.001)
-        print meta, meta.implement(42)
+#         meta = SyncDistribution(100, 100, 0.001)
+#         print meta, meta.implement(42)
 
-        meta = FullSyncDistribution(100, 100, 0.001)
-        print meta, meta.implement(42, 8)
+#         meta = FullSyncDistribution(100, 100, 0.001)
+#         print meta, meta.implement(42, 8)
 
-        meta = LastSyncDistribution(100, 100, 0.001)
-        print meta, meta.implement(42)
+#         meta = LastSyncDistribution(100, 100, 0.001)
+#         print meta, meta.implement(42)
 
-        meta = DirectDistribution()
-        print meta, meta.implement(42)
+#         meta = DirectDistribution()
+#         print meta, meta.implement(42)
 
-        meta = RelayDistribution()
-        print meta, meta.implement(42)
+#         meta = RelayDistribution()
+#         print meta, meta.implement(42)
 
 
-    if __name__ == "__main__":
-        main()
+#     if __name__ == "__main__":
+#         main()
 
 
 

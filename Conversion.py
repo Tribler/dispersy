@@ -27,7 +27,7 @@ class ConversionBase(object):
         if __debug__: from Community import Community
         assert isinstance(community, Community)
         assert isinstance(vid, str)
-        assert len(vid) == 5
+        assert len(vid) == 2
 
         # the dispersy database
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -45,7 +45,7 @@ class ConversionBase(object):
 
     @property
     def vid(self):
-        return self._prefix[20:25]
+        return self._prefix[20:22]
 
     @property
     def prefix(self):
@@ -54,8 +54,8 @@ class ConversionBase(object):
     def decode_message(self, data):
         """
         DATA is a string, where the first 20 bytes indicate the CID,
-        the next 5 byres the VID, and the rest forms a CID and VID
-        dependent message payload.
+        the next 2 bytes the VID, and the rest forms the message
+        payload.
         
         Returns a Message instance.
         """
@@ -66,29 +66,31 @@ class ConversionBase(object):
 
     def encode_message(self, message):
         """
-        Encode a Message instance into a binary string.
+        Encode a Message instance into a binary string that starts
+        with CID and VID.
         """
         assert isinstance(message, Message)
         raise NotImplementedError()
 
-class Conversion00001(ConversionBase):
-    """
-    On-The-Wire version 00001.
+dprint(bin(128), " ", bin(1))
+dprint("  ", "".join(map(str, range(8))), "   ", "".join(map(str, range(8))))
+dprint(chr(128), chr(1), binary=1)
 
-    USER-DESTINATION + DIRECT-MESSAGE
-    =================================
-    20 byte CID (community identifier)
-     5 byte VID (on-the-wire protocol version)
-    {
-       signed_by: "public key, in PEM format"
-       destination: {}
-       distribution: {}
-       payload: {}
-    }
-    20 byte signature of entire message (including CID and VID)
+
+class ConversionD01(ConversionBase):
+    """
+    On-The-Wire version DEBUG-\x80\x01
+
+    The \x80 is the first bit in the first character.  This represents
+    the debug format.  The \x01 indicates the version number 1.
+
+    This conversion is for debugging only.  The entire message is made
+    into a dictionary, and is encoded using Encoding.py.  This makes
+    is easy to create messages and read them without needing to
+    convert them from binary first.
     """
     def __init__(self, community):
-        ConversionBase.__init__(self, community, "00001")
+        ConversionBase.__init__(self, community, "\x80\x01")
 
         self._encode_destination_map = {MemberDestination.Implementation:self._encode_member_destination,
                                         CommunityDestination.Implementation:self._encode_community_destination,
@@ -209,11 +211,11 @@ class Conversion00001(ConversionBase):
         Convert version 00001 DATA into an internal data structure.
         """
         assert isinstance(data, str)
-        assert len(data) >= 25
-        assert data[:25] == self._prefix
+        assert len(data) >= 22
+        assert data[:22] == self._prefix
 
         signature = data[-20:]
-        container = decode(data, 25)
+        container = decode(data, 22)
         if not isinstance(container, dict):
             raise DropPacket("Invalid container type")
 
@@ -248,7 +250,7 @@ class Conversion00001(ConversionBase):
             raise DropPacket("Invalid permission type")
         t = self._decode_type(d, "type")
         if t == u"permit":
-            payload = self._decode_payload_map.get(meta_message.name, self._decode_not_implemented)(d, d.get("payload"))
+            payload = self._decode_payload_map.get(meta_message.name, self._decode_not_implemented)(d, d.get("message-payload"))
             assert isinstance(payload, Permit)
         elif t == "authorize":
             payload = Authorize(self._decode_member(d, "to"), self._decode_type(d, "payload-type"))
@@ -317,11 +319,11 @@ class Conversion00001(ConversionBase):
 
     def _encode_permit_payload(self, container, message):
         payload = self._encode_payload_map.get(message.name, self._encode_not_implemented)(message)
-        assert isinstance(payload, dict)
-        container["payload"] = {"type":"permit", "payload":payload}
+        assert encode(payload), "Must be able to encode this payload.  Preferably a dictionary"
+        container["payload"] = {"type":"permit", "message-payload":payload}
 
     def _encode_authorize_payload(self, container, message):
-        container["payload"] = {"type":"authorize", "to":message.payload.to.pem, "payload":message.payload.payload.get_static_type()}
+        container["payload"] = {"type":"authorize", "to":message.payload.to.pem, "payload-type":message.payload.payload.get_static_type()}
 
     def encode_message(self, message):
         if __debug__:
@@ -345,8 +347,8 @@ class Conversion00001(ConversionBase):
         # encode and sign message
         return message.signed_by.generate_pair(self._prefix + encode(container))
 
-class DefaultConversion(Conversion00001):
+class DefaultConversion(ConversionD01):
     """
-    Conversion subclasses the current ConversionXXXXX class.
+    Conversion subclasses the current ConversionXXX class.
     """
     pass

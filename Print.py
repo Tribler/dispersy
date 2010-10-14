@@ -43,6 +43,7 @@ _dprint_settings = {
     "box":False,                        # add a single line above and below the message
     "box_char":"-",                     # when a box is added to the message use this character to generate the line
     "box_width":80,                     # when a box is added to the message make the lines this long
+    "binary":False,
     "callback":None,                    # optional callback. the callback is only performed if the filters accept the message. the callback result is added to the displayed message
     "exception":False,                  # add the last occured exception, including its stacktrace, to the message
     "glue":"",                          # use this string to join() *args together
@@ -381,7 +382,7 @@ def _config_read():
 
     string = ["box_char", "glue", "line_char", "remote_host", "source_file", "source_function", "style"]
     int_ = ["box_width", "line_width", "remote_port", "source_line", "stack_origin_modifier"]
-    boolean = ["box", "exception", "exclude_policy", "line", "lines", "meta", "remote", "stack", "stderr", "stdout"]
+    boolean = ["box", "binary", "exception", "exclude_policy", "line", "lines", "meta", "remote", "stack", "stderr", "stdout"]
     for line_number, line, before, after in sections["default"]:
         try:
             if before in string:
@@ -590,6 +591,9 @@ def dprint(*args, **kargs):
     Each ARGS will be presented on a seperate line with meta data when
     kargs contains "meta" which evaluates to True.
 
+    Each ARGS will be presented in binary format when kargs contains
+    "binary" which evaluates to True.
+
     A string representation is derived from anything in ARGS using
     str(). Therefore, no objects should be supplied that define a
     __str__ method which causes secondary effects. Furthermore, to
@@ -705,7 +709,11 @@ def dprint(*args, **kargs):
         args = args + (kargs["callback"](),)
 
     # print each variable in args
-    if kargs["meta"]:
+    if kargs["binary"]:
+        string = kargs["glue"].join([str(v) for v in args])
+        for index, char in zip(xrange(len(string)), string):
+            messages.append("{0:3d} {1:08d} \\x{2}".format(index, int(bin(ord(char))[2:]), char.encode("HEX")))
+    elif kargs["meta"]:
         messages.extend([dprint_format_variable(v) for v in args])
     elif kargs["lines"] and len(args) == 1 and type(args[0]) in (list, tuple):
         messages.extend([str(v) for v in args[0]])
