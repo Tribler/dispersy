@@ -72,11 +72,6 @@ class ConversionBase(object):
         assert isinstance(message, Message)
         raise NotImplementedError()
 
-dprint(bin(128), " ", bin(1))
-dprint("  ", "".join(map(str, range(8))), "   ", "".join(map(str, range(8))))
-dprint(chr(128), chr(1), binary=1)
-
-
 class ConversionD01(ConversionBase):
     """
     On-The-Wire version DEBUG-\x80\x01
