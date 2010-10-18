@@ -123,3 +123,7 @@ if __name__ == "__main__":
     print "SHA1(prv).HEX:", sha1(private_pem).digest().encode("HEX")
     print public_pem
     print private_pem
+
+    data = "hello world"
+    sig = rsa.sign(data)
+    print len(data), "->", len(sig)

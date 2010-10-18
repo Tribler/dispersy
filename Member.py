@@ -26,6 +26,10 @@ class Member(Parameterized1Singleton):
             self._database_id = database.last_insert_rowid
 
     @property
+    def mid(self):
+        return self._mid
+
+    @property
     def pem(self):
         return self._public_pem
 
@@ -50,6 +54,17 @@ class Member(Parameterized1Singleton):
         if not length: length = len(data)
         signature_length = len(self._rsa) / 8
         return bool(self._rsa.verify(sha1(data[offset:length-signature_length]).digest(), data[length-signature_length:length]))
+
+    def verify(self, data, signature, offset=0, length=0):
+        assert isinstance(data, str)
+        assert isinstance(signature, str)
+        assert isinstance(offset, (int, long))
+        assert isinstance(length, (int, long))
+        if len(signature) == len(self._rsa) / 8:
+            return bool(self._rsa.verify(sha1(data[offset:offset+length]).digest()), signature)
+            
+        else:
+            raise ValueError("Invalid signature length")
 
     def __hash__(self):
         """
@@ -97,6 +112,13 @@ class PrivateMemberBase(Member):
     @property
     def private_pem(self):
         return self._private_pem
+
+    def sign(self, data, offset=0, length=0):
+        """
+        Sign DATA using our private key.  Returns the signature.
+        """
+        assert not self._private_pem is None
+        return self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
 
     def generate_pair(self, data, offset=0, length=0):
         """

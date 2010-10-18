@@ -301,7 +301,7 @@ LIMIT 1""",
                         break
 
             except DropPacket as exception:
-                dprint("drop a ", len(packet), " byte packet (", exception, ") from ", address[0], ":", address[1])
+                dprint("drop a ", len(packet), " byte packet (", exception, ") from ", address[0], ":", address[1], exception=True)
                 continue
 
             except DelayPacket as delay:
@@ -309,7 +309,7 @@ LIMIT 1""",
                 continue
 
             except DropMessage as exception:
-                dprint("drop a ", len(packet), " byte message (", exception, ") from ", address[0], ":", address[1])
+                dprint("drop a ", len(packet), " byte message (", exception, ") from ", address[0], ":", address[1], exception=True)
                 continue
             
             except DelayMessage as delay:

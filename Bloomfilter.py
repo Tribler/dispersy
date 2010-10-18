@@ -7,12 +7,13 @@ Simplified, and optimized to use just python code by Boudewijn Schoon.
 import hashlib
 import math
 from array import array
-from struct import unpack, pack
+from struct import unpack_from, unpack, pack
 
 from Decorator import Constructor, constructor
 
 
 if __debug__:
+    from Print import dprint
     from time import time
 
 def make_hashfuncs(num_slices, num_bits):
@@ -91,25 +92,34 @@ class BloomFilter(Constructor):
         self._make_hashes = make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
 
-    @constructor(str)
-    def _init_load(self, data):
+        dprint(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))
+
+    @constructor(str, (int, long))
+    def _init_load(self, data, offset):
         """
         Implements a space-efficient probabilistic data structure.
 
-        DATA
-            the stream contains binary data for a BloomFilter.
+        DATA: the stream contains binary data for a BloomFilter.
+        OFFSET: the start of the bloomfiter in DATA
 
         >>> b = BloomFilter(100000, 0.001)
         >>> b.add("test")
         >>> data = str(b)
-        >>> c = BloomFilter(data)
+        >>> c = BloomFilter(data, 0)
         >>> "test" in c
         True
         """
         assert isinstance(data, str)
-        self._num_slices, self._bits_per_slice = unpack("II", data[:8])
+        if len(data) < offset + 8:
+            raise ValueError("Insufficient bytes")
+
+        self._num_slices, self._bits_per_slice = unpack_from("!LL", data, offset)
+        size = int(math.ceil(self._num_slices * self._bits_per_slice / 8.0))
+        if len(data) < offset + 8 + size:
+            raise ValueError("Insufficient bytes")
+
         self._make_hashes = make_hashfuncs(self._num_slices, self._bits_per_slice)
-        self._bytes = array("B", data[8:])
+        self._bytes = array("B", data[offset+8:offset+8+size])
 
     def __contains__(self, key):
         """
@@ -150,7 +160,15 @@ class BloomFilter(Constructor):
         """
         Create a string representation of the BloomFilter.
         """
-        return pack("II", self._num_slices, self._bits_per_slice) + self._bytes.tostring()
+        return pack("!LL", self._num_slices, self._bits_per_slice) + self._bytes.tostring()
+
+    def __len__(self):
+        """
+        Returns the size of the bloom filter and its adminitration
+        value in bytes.  Note that this is the same as
+        len(str(bloom_filter)), only faster.
+        """
+        return 8 + len(self._bytes)
 
 if __debug__:
     def main():
@@ -160,7 +178,7 @@ if __debug__:
             sha1 = hashlib.sha1
             data = [(i, sha1(str(i)).digest()) for i in xrange(count)]
             create_begin = time()
-            bloom = BloomFilter(bits)
+            bloom = BloomFilter(bits, 0.0001)
             fill_begin = time()
             for i, h in data:
                 if i % 2 == 0:
@@ -179,7 +197,7 @@ if __debug__:
         def test(bits, count):
             ok = 0
             create_begin = time()
-            bloom = BloomFilter(bits)
+            bloom = BloomFilter(bits, 0.0001)
             fill_begin = time()
             for i in xrange(count):
                 if i % 2 == 0:
@@ -199,7 +217,7 @@ if __debug__:
         b.add("Hello")
         data = str(b)
 
-        c = BloomFilter(data)
+        c = BloomFilter(data, 0)
         assert "Hello" in c
         assert not "Bye" in c
 

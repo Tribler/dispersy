@@ -146,18 +146,14 @@ class Community(object):
 
         # dictionary containing available conversions.  currently only
         # contains one conversion.
-        default_conversion = DefaultConversion(self)
-        self._conversions = {None:default_conversion, default_conversion.prefix:default_conversion}
-
-        # dictionary with in-memory community members
-        # todo: load from database
-        self._members = {self._master_member.pem:self._master_member,
-                         self._my_member.pem:self._my_member}
+        self._conversions = {}
+        self.add_conversion(DefaultConversion(self), True)
 
         # initial timeline.  the timeline will keep track of member
         # permissions
         self._timeline = Timeline(self)
 
+        # tell dispersy that there is a new community
         self._dispersy.add_community(self)
 
     def get_bloom_filter(self, global_time):
@@ -201,16 +197,38 @@ class Community(object):
     def get_member(self, public_key):
         """
         Returns a Member instance associated with PUBLIC_KEY.
+
+        Since we have the PUBLIC_KEY, we can create this user when it
+        didn't already exist.  Hence, this method always succeeds.
         """
         assert isinstance(public_key, str)
-        if not public_key in self._members:
-            self._members[public_key] = Member.get_instance(public_key)
-        return self._members[public_key]
+        return Member.get_instance(public_key)
+
+    def get_members_from_id(self, mid):
+        """
+        Returns one or more Member instances associated with MID.  MID
+        is the sha1 hash of a member public key.
+
+        Since we may not have the public key associated to MID, this
+        method may return an empty list.  In such a case it is
+        sometimes possoble to DelayPacketByMissingMember to obtain the
+        public key.
+        """
+        assert isinstance(mid, str)
+        assert len(mid) == 20
+        return [Member.get_instance(str(pem)) for pem, in self._dispersy_database.execute(u"SELECT pem FROM user WHERE mid = ?", (buffer(mid),))]
 
     def get_conversion(self, prefix=None):
+        assert prefix is None or isinstance(prefix, str)
+        assert prefix is None or len(prefix) == 22
         return self._conversions[prefix]
 
     def add_conversion(self, conversion, default=False):
+        if __debug__:
+            from Conversion import ConversionBase
+        assert isinstance(conversion, ConversionBase)
+        assert isinstance(default, bool)
+        assert not conversion.prefix in self._conversions
         if default:
             self._conversions[None] = conversion
         self._conversions[conversion.prefix] = conversion

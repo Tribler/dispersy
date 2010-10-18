@@ -9,6 +9,45 @@ class DelayPacket(Exception):
     """
     pass
 
+class DelayPacketByMissingMember(DelayPacket):
+    """
+    Raised during Conversion.decode_message when an unknown member id
+    was received.  A member id is the sha1 hash over the member's
+    public key, hence there is a small chance that members with
+    different public keys will have the same member id.
+
+    Raising this exception should result in a request for all public
+    keys associated to the missing member id.
+    """
+    def __init__(self, missing_member_id):
+        assert isinstance(missing_member_id, str)
+        assert len(missing_member_id) == 20
+        super(DelayPacketByMissingMember, self).__init__("Missing member")
+        self._missing_member_id = missing_member_id
+
+    @property
+    def missing_member_id(self):
+        return self._missing_member_id
+
+class DelayPacketByUnspecifiedMember(DelayPacket):
+    """
+    Raised during Conversion.decode_message when an unknown member id
+    was received.  A member id is the sha1 hash over the member's
+    public key, hence there is a small chance that members with
+    different public keys will have the same member id.
+
+    Raising this exception should result in a request for all the
+    member id / public key pairs that are part of the message.
+    """
+    def __init__(self, packet):
+        assert isinstance(packet, str)
+        super(DelayPacketByUnspecificMember, self).__init__("Unspecified member")
+        self._packet = packet
+
+    @property
+    def packet(self):
+        return self._packet
+    
 class DropPacket(Exception):
     """
     Raised by Conversion.decode_message when the packet is invalid.

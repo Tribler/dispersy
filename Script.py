@@ -11,6 +11,8 @@ from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Distribution import LastSyncDistribution
 from Print import dprint
+from Conversion import DictionaryConversion, BinaryConversion
+
 from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
 from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
 from Tribler.Community.Forum.Forum import ForumCommunity
@@ -46,6 +48,7 @@ class Script(object):
         mapping = {"discovery-user":DiscoveryUserScript,
                    "discovery-community":DiscoveryCommunityScript,
                    "discovery-sync":DiscoverySyncScript,
+                   "conversion":ConversionScript,
                    "forum":ForumScript}
         
         dprint(script)
@@ -438,6 +441,7 @@ class DiscoverySyncScript(ScriptBase):
             for index, packet in zip(xrange(len(packets)), packets):
                 if pckt == packet:
                     received[index] = True
+        assert not filter(lambda x: not x, received)
 
         dprint("finished")
 
@@ -469,11 +473,43 @@ class DiscoverySyncScript(ScriptBase):
             except socket.timeout:
                 continue
 
-            bloom = message.payload.bloom_filter
             for packet in packets:
-                assert packet in bloom
+                assert packet in message.payload.bloom_filter
             break
 
+        else:
+            assert False
+
+        dprint("finished")
+
+class ConversionScript(ScriptBase):
+    def run(self):
+        self.caller(self.size)
+
+    def size(self):
+        node = DiscoveryNode()
+        node.init_my_member()
+        node.set_community(self._discovery)
+
+        node2 = DiscoveryNode()
+        node2.init_my_member()
+
+        conversion = DictionaryConversion(self._discovery, "\x00\x00")
+        b1 = conversion.encode_message(node.create_dispersy_sync_message(1, [], 3))
+        b2 = conversion.encode_message(node.create_dispersy_missing_sequence_message(node2.my_member, node._user_metadata_message, 1, 10, 10, ("127.0.0.1", 123)))
+        dprint(len(b1), " ", len(b2))
+
+        def encode_msg(*args):
+            pass
+
+        def decode_msg(*args):
+            pass
+
+        conversion = BinaryConversion(self._discovery, "\x00\x01")
+        conversion.define_meta_message(chr(1), node._user_metadata_message, encode_msg, decode_msg)
+        b1 = conversion.encode_message(node.create_dispersy_sync_message(1, [], 3))
+        b2 = conversion.encode_message(node.create_dispersy_missing_sequence_message(node2.my_member, node._user_metadata_message, 1, 10, 10, ("127.0.0.1", 123)))
+        dprint(len(b1), " ", len(b2))
         dprint("finished")
 
 class ForumScript(ScriptBase):

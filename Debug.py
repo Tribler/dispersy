@@ -2,9 +2,9 @@ import socket
 
 from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
-from Destination import CommunityDestination
+from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
-from Member import MyMember
+from Member import MyMember, Member
 from Message import Message
 from Payload import MissingSequencePayload, SyncPayload
 from Print import dprint
@@ -59,6 +59,7 @@ class Node(object):
     def set_community(self, community):
         self._community = community
         self._dispersy_sync_message = Message(community, u"dispersy-sync", PublicResolution(), DirectDistribution(), CommunityDestination())
+        self._dispersy_missing_sequence_message = Message(community, u"dispersy-missing-sequence", PublicResolution(), DirectDistribution(), AddressDestination())
 
     def encode_message(self, message):
         return self._community.get_conversion().encode_message(message)
@@ -130,6 +131,21 @@ class Node(object):
         destination = self._dispersy_sync_message.destination.implement()
         payload = SyncPayload(bloom_global_time, bloom_filter)
         return self._dispersy_sync_message.implement(self._my_member, distribution, destination, payload)
+
+    def create_dispersy_missing_sequence_message(self, missing_member, missing_message_meta, missing_low, missing_high, global_time, destination_address):
+        assert isinstance(missing_member, Member)
+        assert isinstance(missing_message_meta, Message)
+        assert isinstance(missing_low, (int, long))
+        assert isinstance(missing_high, (int, long))
+        assert isinstance(global_time, (int, long))
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        distribution = self._dispersy_missing_sequence_message.distribution.implement(global_time)
+        destination = self._dispersy_missing_sequence_message.destination.implement(destination_address)
+        payload = MissingSequencePayload(missing_member, missing_message_meta, missing_low, missing_high)
+        return self._dispersy_missing_sequence_message.implement(self._my_member, distribution, destination, payload)
 
 class DiscoveryNode(Node):
     def __init__(self, *args, **kargs):

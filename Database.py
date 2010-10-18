@@ -3,7 +3,9 @@ import hashlib
 import apsw
 
 from Singleton import Singleton
-from Tribler.Core.Dispersy.Print import dprint
+
+if __debug__:
+    from Tribler.Core.Dispersy.Print import dprint
 
 class DatabaseException(Exception):
     pass

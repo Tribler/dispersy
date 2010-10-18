@@ -1,3 +1,4 @@
+from struct import pack, unpack_from
 from hashlib import sha1
 
 from Bloomfilter import BloomFilter
@@ -19,15 +20,15 @@ class ConversionBase(object):
     outgoing messages to be converted to a different, often older,
     community version.
     """ 
-    def __init__(self, community, vid):
+    def __init__(self, community, version):
         """
         COMMUNITY instance that this conversion belongs to.
-        VID is the conversion identifyer (on the wire version).
+        VERSION is the conversion identifyer (on the wire version).
         """
         if __debug__: from Community import Community
         assert isinstance(community, Community)
-        assert isinstance(vid, str)
-        assert len(vid) == 2
+        assert isinstance(version, str)
+        assert len(version) == 2
 
         # the dispersy database
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -37,14 +38,14 @@ class ConversionBase(object):
 
         # the messages that this instance can handle, and that this
         # instance produces, is identified by _prefix.
-        self._prefix = community.cid + vid
+        self._prefix = community.cid + version
 
     @property
     def community(self):
         return self._community
 
     @property
-    def vid(self):
+    def version(self):
         return self._prefix[20:22]
 
     @property
@@ -54,107 +55,153 @@ class ConversionBase(object):
     def decode_message(self, data):
         """
         DATA is a string, where the first 20 bytes indicate the CID,
-        the next 2 bytes the VID, and the rest forms the message
-        payload.
+        the next 2 bytes the on-the-wite VERSION, and the rest forms
+        the message payload.
         
         Returns a Message instance.
         """
         assert isinstance(data, str)
-        assert len(data) >= 25
-        assert data[:25] == self._prefix
-        raise NotImplementedError()
+        assert len(data) >= 22
+        assert data[:22] == self._prefix
+        raise NotImplementedError("The subclass must implement decode_message")
 
     def encode_message(self, message):
         """
         Encode a Message instance into a binary string that starts
-        with CID and VID.
+        with CID and the on-the-wire VERSION.
         """
         assert isinstance(message, Message)
-        raise NotImplementedError()
+        raise NotImplementedError("The subclass must implement encode_message")
 
-class ConversionD01(ConversionBase):
+class DictionaryConversion(ConversionBase):
     """
-    On-The-Wire version DEBUG-\x80\x01
-
-    The \x80 is the first bit in the first character.  This represents
-    the debug format.  The \x01 indicates the version number 1.
+    On-The-Wire debug version
 
     This conversion is for debugging only.  The entire message is made
     into a dictionary, and is encoded using Encoding.py.  This makes
     is easy to create messages and read them without needing to
     convert them from binary first.
     """
-    def __init__(self, community):
-        ConversionBase.__init__(self, community, "\x80\x01")
+    def __init__(self, community, version):
+        ConversionBase.__init__(self, community, version)
+        self._distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
+                                  LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
+                                  DirectDistribution.Implementation:self._encode_direct_distribution}
+        self._destination_map = {MemberDestination.Implementation:self._encode_member_destination,
+                                 CommunityDestination.Implementation:self._encode_community_destination,
+                                 AddressDestination.Implementation:self._encode_address_destination}
+        self._message_map = dict() # message.name : (encode_payload_func, decode_payload_func)
+        self.define_meta_message(community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
+        self.define_meta_message(community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
 
-        self._encode_destination_map = {MemberDestination.Implementation:self._encode_member_destination,
-                                        CommunityDestination.Implementation:self._encode_community_destination,
-                                        AddressDestination.Implementation:self._encode_address_destination}
+    def define_meta_message(self, message, encode_payload_func, decode_payload_func):
+        assert isinstance(message, Message)
+        assert not message.name in self._message_map
+        assert callable(encode_payload_func)
+        assert callable(decode_payload_func)
+        self._message_map[message.name] = (encode_payload_func, decode_payload_func)
 
-        self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
-                                         LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
-                                         DirectDistribution.Implementation:self._encode_direct_distribution}
-
-        self._decode_payload_map = {u"dispersy-missing-sequence":self._decode_missing_sequence_payload,
-                                    u"dispersy-sync":self._decode_sync_payload}
-
-        self._encode_payload_map = {u"dispersy-missing-sequence":self._encode_missing_sequence_payload,
-                                    u"dispersy-sync":self._encode_sync_payload}
-
-    @staticmethod
-    def _decode_not_implemented(*args):
-        if __debug__: dprint(args, level="warning")
-        raise DropPacket("Unknown payload")
-
-    @staticmethod
-    def _encode_not_implemented(*args):
-        raise NotImplementedError(*args)
-
-    def _decode_missing_sequence_payload(self, _, payload):
-        if not isinstance(payload, dict):
-            raise DropPacket("Invalid payload type")
-        if not len(payload) == 4:
-            raise DropPacket("Invalid payload length")
-
-        missing_low = self._decode_sequence_number(payload, "missing-low")
-        missing_high = self._decode_sequence_number(payload, "missing-high")
-        if not 0 < missing_low <= missing_high:
-            raise DropPacket("Invalid missing low and high values")
-        meta_message = self._decode_meta_message(payload, "message")
-        member = self._decode_member(payload, "member")
-
-        return MissingSequencePayload(member, meta_message, missing_low, missing_high)
+    #
+    # Dispersy payload
+    #
 
     def _encode_missing_sequence_payload(self, message):
         assert isinstance(message.payload, MissingSequencePayload)
         payload = message.payload
         return {"message":payload.message.name, "member":payload.member.pem, "missing-low":payload.missing_low, "missing-high":payload.missing_high}
 
-    def _decode_sync_payload(self, _, payload):
+    def _decode_missing_sequence_payload(self, payload):
         if not isinstance(payload, dict):
             raise DropPacket("Invalid payload type")
-        if not len(payload) == 2:
+        if not len(payload) == 4:
             raise DropPacket("Invalid payload length")
 
-        global_time = payload.get("global-time")
-        if not isinstance(global_time, (int, long)):
-            raise DropPacket("Invalid global-time type")
-        if not global_time > 0:
-            raise DropPacket("Invalid global-time value")
+        missing_low = self._check_sequence_number(payload.get("missing-low"))
+        missing_high = self._check_sequence_number(payload.get("missing-high"))
+        if not 0 < missing_low <= missing_high:
+            raise DropPacket("Invalid missing low and high values")
+        meta_message = self._check_meta_message(payload.get("message"))
+        member = self._check_member(payload.get("member"))
 
-        bloom_filter = payload.get("bloom-filter")
-        if not isinstance(bloom_filter, str):
-            raise DropPacket("Invalid bloom-filter type")
-
-        return SyncPayload(global_time, BloomFilter(bloom_filter))
+        return MissingSequencePayload(member, meta_message, missing_low, missing_high)
 
     def _encode_sync_payload(self, message):
         assert isinstance(message.payload, SyncPayload)
         return {"global-time":message.payload.global_time, "bloom-filter":str(message.payload.bloom_filter)}
 
+    def _decode_sync_payload(self, payload):
+        if not isinstance(payload, dict):
+            raise DropPacket("Invalid payload type")
+        if not len(payload) == 2:
+            raise DropPacket("Invalid payload length")
+
+        global_time = self._check_global_time(payload.get("global-time"))
+        bloom_filter = payload.get("bloom-filter")
+        if not isinstance(bloom_filter, str):
+            raise DropPacket("Invalid bloom-filter type")
+        try:
+            bloom_filter = BloomFilter(bloom_filter, 0)
+        except ValueError:
+            raise DropPacket("Invalid bloom-filter value")
+
+        return SyncPayload(global_time, bloom_filter)
+
+    #
+    # Encoding
+    #
+
+    def _encode_member_destination(self, container, _):
+        container["destination"] = {"debug-type":"member-destination"}
+
+    def _encode_community_destination(self, container, _):
+        container["destination"] = {"debug-type":"community-destination"}
+
+    def _encode_address_destination(self, container, _):
+        container["destination"] = {"debug-type":"address-destination"}
+
+    def _encode_full_sync_distribution(self, container, message):
+        container["distribution"] = {"debug-type":"full-sync", "global-time":message.distribution.global_time, "sequence-number":message.distribution.sequence_number}
+
+    def _encode_last_sync_distribution(self, container, message):
+        container["distribution"] = {"debug-type":"last-sync", "global-time":message.distribution.global_time}
+
+    def _encode_direct_distribution(self, container, message):
+        container["distribution"] = {"debug-type":"direct-message", "global-time":message.distribution.global_time}
+
+    def encode_message(self, message):
+        if __debug__:
+            from Member import PrivateMemberBase
+        assert isinstance(message, Message.Implementation)
+        assert isinstance(message.signed_by, PrivateMemberBase)
+        assert not message.signed_by.private_pem is None
+
+        container = {"signed-by":message.signed_by.pem, "message-name":message.name}
+        assert type(message.destination) in self._destination_map
+        self._destination_map[type(message.destination)](container, message)
+        assert type(message.distribution) in self._distribution_map
+        self._distribution_map[type(message.distribution)](container, message)
+
+        if isinstance(message.payload, Permit):
+            assert message.name in self._message_map
+            payload = self._message_map[message.name][0](message)
+            assert encode(payload), "Must be able to encode this payload.  Preferably a dictionary"
+            container["payload"] = {"type":u"permit", "message-payload":payload}
+
+        elif isinstance(message.payload, Authorize):
+            container["payload"] = {"type":u"authorize", "to":message.payload.to.pem, "payload-type":message.payload.payload.get_static_type()}
+
+        else:
+            raise NotImplementedError()
+
+        # Encode and sign
+        return message.signed_by.generate_pair(self._prefix + encode(container))
+
+    #
+    # Decoding
+    #
+
     @staticmethod
-    def _decode_global_time(container, index):
-        global_time = container.get(index)
+    def _check_global_time(global_time):
         if not isinstance(global_time, (int, long)):
             raise DropPacket("Invalid global time type")
         if global_time <= 0:
@@ -162,16 +209,22 @@ class ConversionD01(ConversionBase):
         return global_time
 
     @staticmethod
-    def _decode_sequence_number(container, index):
-        sequence_number = container.get(index)
+    def _check_sequence_number(sequence_number):
         if not isinstance(sequence_number, (int, long)):
             raise DropPacket("Invalid sequence number type")
         if sequence_number <= 0:
             raise DropPacket("Invalid sequence number value {sequence_number}".format(sequence_number=sequence_number))
         return sequence_number
     
-    def _decode_meta_message(self, container, index):
-        message_name = container.get(index)
+    @staticmethod
+    def _check_payload_type(payload_type):
+        if not isinstance(payload_type, unicode):
+            raise DropPacket("Invalid type type")
+        if not payload_type in (u"permit", u"authorize", u"revoke"):
+            raise DropPacket("Invalid type")
+        return payload_type
+
+    def _check_meta_message(self, message_name):
         if not isinstance(message_name, unicode):
             raise DropPacket("Invalid meta message type")
         try:
@@ -181,16 +234,7 @@ class ConversionD01(ConversionBase):
             raise DropPacket("Invalid meta message")
         return meta_message
 
-    def _decode_type(self, container, index):
-        type_ = container.get(index)
-        if not isinstance(type_, str):
-            raise DropPacket("Invalid type type")
-        if not type_ in (u"permit", u"authorize", u"revoke"):
-            raise DropPacket("Invalid type")
-        return type_
-
-    def _decode_member(self, container, index):
-        public_key = container.get(index)
+    def _check_member(self, public_key):
         if not isinstance(public_key, str):
             raise DropPacket("Invalid to-member type")
         try:
@@ -209,116 +253,162 @@ class ConversionD01(ConversionBase):
         assert len(data) >= 22
         assert data[:22] == self._prefix
 
-        signature = data[-20:]
         container = decode(data, 22)
         if not isinstance(container, dict):
             raise DropPacket("Invalid container type")
 
-        #
-        # member (signer of the message)
-        #
-        public_key = container.get("signed-by")
-        if not isinstance(public_key, str):
-            raise DropPacket("Invalid public key type")
-        try:
-            signed_by = self._community.get_member(public_key)
-        except KeyError:
-            # todo: delay + retrieve user public key
-            raise DelayPacket("Unable to find member in community")
-
+        # signed_by
+        signed_by = self._check_member(container.get("signed-by"))
         if not signed_by.verify_pair(data):
             raise DropPacket("Invalid signature")
 
-        #
-        # message
-        #
-        t = container.get("message-name")
-        if not isinstance(t, unicode):
-            raise DropPacket("Invalid message name type")
-        try:
-            meta_message = self._community.get_meta_message(t)
-        except KeyError:
-            raise DropPacket("Invalid message name")
+        # meta_message
+        meta_message = self._check_meta_message(container.get("message-name"))
 
-        d = container.get("payload")
-        if not isinstance(d, dict):
-            raise DropPacket("Invalid permission type")
-        t = self._decode_type(d, "type")
-        if t == u"permit":
-            payload = self._decode_payload_map.get(meta_message.name, self._decode_not_implemented)(d, d.get("message-payload"))
-            assert isinstance(payload, Permit)
-        elif t == "authorize":
-            payload = Authorize(self._decode_member(d, "to"), self._decode_type(d, "payload-type"))
-        else:
-            raise NotImplementedError()
-
-        #
         # destination
-        #
-        if isinstance(meta_message.destination, MemberDestination):
-            destination = meta_message.destination.implement()
-
-        elif isinstance(meta_message.destination, CommunityDestination):
-            destination = meta_message.destination.implement()
-
-        elif isinstance(meta_message.destination, AddressDestination):
-            destination = meta_message.destination.implement(("", 0))
-
+        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination))
+        if isinstance(meta_message.destination, AddressDestination):
+            destination_impl = meta_message.destination.implement(("", 0))
         else:
-            raise DropPacket("Invalid destination")
+            destination_impl = meta_message.destination.implement()
 
-        #
         # distribution
-        #
         d = container.get("distribution")
         if not isinstance(d, dict):
             raise DropPacket("Invalid distribution type")
+        assert isinstance(meta_message.distribution, (FullSyncDistribution, LastSyncDistribution, DirectDistribution))
         if isinstance(meta_message.distribution, FullSyncDistribution):
-            global_time = self._decode_global_time(d, "global-time")
-            sequence_number = self._decode_sequence_number(d, "sequence-number")
-            distribution = meta_message.distribution.implement(global_time, sequence_number)
+            global_time = self._check_global_time(d.get("global-time"))
+            sequence_number = self._check_sequence_number(d.get("sequence-number"))
+            distribution_impl = meta_message.distribution.implement(global_time, sequence_number)
+        else:
+            global_time = self._check_global_time(d.get("global-time"))
+            distribution_impl = meta_message.distribution.implement(global_time)
 
-        elif isinstance(meta_message.distribution, LastSyncDistribution):
-            global_time = self._decode_global_time(d, "global-time")
-            distribution = meta_message.distribution.implement(global_time)
-
-        elif isinstance(meta_message.distribution, DirectDistribution):
-            global_time = self._decode_global_time(d, "global-time")
-            distribution = meta_message.distribution.implement(global_time)
-            
+        # payload
+        d = container.get("payload")
+        if not isinstance(d, dict):
+            raise DropPacket("Invalid permission type")
+        t = self._check_payload_type(d.get("type"))
+        if t == u"permit":
+            assert meta_message.name in self._message_map
+            payload = self._message_map[meta_message.name][1][d.get("message-payload")]
+            assert isinstance(payload, Permit), type(payload)
+        elif t == "authorize":
+            payload_type = self._check_payload_type(d.get("payload-type"))
+            payload_type = {u"authorize":Authorize, u"revoke":Revoke, u"permit":Permit}[payload_type]
+            payload = Authorize(self._check_member(d.get("to")), payload_type)
         else:
             raise NotImplementedError()
 
-        return meta_message.implement(signed_by, distribution, destination, payload)
+        return meta_message.implement(signed_by, distribution_impl, destination_impl, payload)
 
-    def _encode_member_destination(self, container, _):
-        container["destination"] = {"debug-type":"member-destination"}
+class BinaryConversion(ConversionBase):
+    """
+    On-The-Wire binary version
 
-    def _encode_community_destination(self, container, _):
-        container["destination"] = {"debug-type":"community-destination"}
+    This conversion is intended to be as space efficient as possible.
+    All data is encoded in a binary form.
+    """
+    _encode_payload_type_map = {u"permit":"\x00", u"authorize":"\x01", u"revoke":"\x02"}
+    _decode_payload_type_map = dict([(value, key) for key, value in _encode_payload_type_map.iteritems()])
 
-    def _encode_address_destination(self, container, _):
-        container["destination"] = {"debug-type":"address-destination"}
+    def __init__(self, community, version):
+        ConversionBase.__init__(self, community, version)
+        self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
+                                         LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
+                                         DirectDistribution.Implementation:self._encode_direct_distribution}
+        self._decode_distribution_map = {FullSyncDistribution:self._decode_full_sync_distribution,
+                                         LastSyncDistribution:self._decode_last_sync_distribution,
+                                         DirectDistribution:self._decode_direct_distribution}
+        self._encode_message_map = dict() # message.name : (byte, encode_payload_func)
+        self._decode_message_map = dict() # byte : (message, decode_payload_func)
+        self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
+        self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
 
-    def _encode_full_sync_distribution(self, container, message):
-        container["distribution"] = {"global-time":message.distribution.global_time, "sequence-number":message.distribution.sequence_number}
-        container["distribution"]["debug-type"] = "full-sync"
+    def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
+        assert isinstance(byte, str)
+        assert len(byte) == 1
+        assert isinstance(message, Message)
+        assert 0 < ord(byte) < 255
+        assert not message.name in self._encode_message_map
+        assert not byte in self._decode_message_map
+        assert callable(encode_payload_func)
+        assert callable(decode_payload_func)
+        self._encode_message_map[message.name] = (byte, encode_payload_func)
+        self._decode_message_map[byte] = (message, decode_payload_func)
 
-    def _encode_last_sync_distribution(self, container, message):
-        container["distribution"] = {"global-time":message.distribution.global_time}
-        container["distribution"]["debug-type"] = "last-sync"
+    #
+    # Dispersy payload
+    #
 
-    def _encode_direct_distribution(self, container, message):
-        container["distribution"] = {"global-time":message.distribution.global_time}
-        container["distribution"]["debug-type"] = "direct-message"
+    def _encode_missing_sequence_payload(self, message):
+        assert isinstance(message.payload, MissingSequencePayload)
+        payload = message.payload
+        assert payload.message.name in self._encode_message_map, payload.message.name
+        message_id, _ = self._encode_message_map[payload.message.name]
+        return payload.member.mid, message_id, pack("!LL", payload.missing_low, payload.missing_high)
 
-    def _encode_permit_payload(self, container, message):
-        payload = self._encode_payload_map.get(message.name, self._encode_not_implemented)(message)
-        assert encode(payload), "Must be able to encode this payload.  Preferably a dictionary"
-        container["payload"] = {"type":"permit", "message-payload":payload}
+    def _decode_missing_sequence_payload(self, offset, data):
+        if len(data) < offset + 29:
+            raise DropPacket("Insufficient packet size")
 
-    def _encode_authorize_payload(self, container, message):
-        container["payload"] = {"type":"authorize", "to":message.payload.to.pem, "payload-type":message.payload.payload.get_static_type()}
+        member_id = data[offset:offset+20]
+        offset += 20
+        members = self._community.get_members_from_id(member_id)
+        if not members:
+            raise DelayPacketByMissingMember(member_id)
+        elif len(members) > 1:
+            # this is unrecoverable.  a member id without a signature
+            # is simply not globally unique.  This can occur when two
+            # or more nodes have the same sha1 hash.  Very unlikely.
+            raise DropPacket("Unrecoverable: ambiguous member")
+        member = members[0]
+
+        meta_message, _ = self._decode_message_map.get(data[offset], (None, None))
+        if meta_message is None:
+            raise DropPacket("Invalid message")
+        offset += 1
+        
+        missing_low, missing_high = unpack_from("!LL", data, offset)
+        offset += 8
+
+        return offset, MissingSequencePayload(member, meta_message, missing_low, missing_high)
+
+    def _encode_sync_payload(self, message):
+        assert isinstance(message.payload, SyncPayload)
+        return pack("!L", message.payload.global_time), str(message.payload.bloom_filter)
+
+    def _decode_sync_payload(self, offset, data):
+        if len(data) < offset + 4:
+            raise DropPacket("Insufficient packet size")
+
+        global_time, = unpack_from("!L", data, offset)
+        offset += 4
+
+        try:
+            bloom_filter = BloomFilter(data, offset)
+        except ValueError:
+            raise DropPacket("Invalid bloom filter")
+        offset += len(bloom_filter)
+
+        return offset, SyncPayload(global_time, bloom_filter)
+
+    #
+    # Encoding
+    #
+
+    @staticmethod
+    def _encode_full_sync_distribution(container, message):
+        container.append(pack("!LL", message.distribution.global_time, message.distribution.sequence_number))
+
+    @staticmethod
+    def _encode_last_sync_distribution(container, message):
+        container.append(pack("!L", message.distribution.global_time))
+
+    @staticmethod
+    def _encode_direct_distribution(container, message):
+        container.append(pack("!L", message.distribution.global_time))
 
     def encode_message(self, message):
         if __debug__:
@@ -327,23 +417,134 @@ class ConversionD01(ConversionBase):
         assert isinstance(message.signed_by, PrivateMemberBase)
         assert not message.signed_by.private_pem is None
 
-        # stuff message in a container
-        container = {"signed-by":message.signed_by.pem, "message-name":message.name}
-        self._encode_destination_map.get(type(message.destination), self._encode_not_implemented)(container, message)
-        self._encode_distribution_map.get(type(message.distribution), self._encode_not_implemented)(container, message)
+        assert message.name in self._encode_message_map
+        message_id, encode_payload_func = self._encode_message_map[message.name]
 
+        # Signed by and the message name
+        container = [self._prefix, message.signed_by.mid, message_id]
+        # Destination does not hold any space in the message
+        # Distribution
+        assert type(message.distribution) in self._encode_distribution_map
+        self._encode_distribution_map[type(message.distribution)](container, message)
+        # Payload
+        container.append(self._encode_payload_type_map[u"permit"])
         if isinstance(message.payload, Permit):
-            self._encode_permit_payload(container, message)
+            if __debug__:
+                tup = encode_payload_func(message)
+                assert isinstance(tup, tuple)
+                assert not filter(lambda x: not isinstance(x, str), tup)
+                container.extend(tup)
+            else:
+                container.extend(encode_payload_func(message))
+
         elif isinstance(message.payload, Authorize):
-            self._encode_authorize_payload(container, message)
+            public_key = message.payload.to.pem
+            container.extend((self._encode_payload_type_map[message.payload.payload.get_static_type()], pack("H", len(public_key)), public_key))
+
         else:
             raise NotImplementedError()
 
-        # encode and sign message
-        return message.signed_by.generate_pair(self._prefix + encode(container))
+        # Sign
+        return message.signed_by.generate_pair("".join(container))
 
-class DefaultConversion(ConversionD01):
+    #
+    # Decoding
+    #
+
+    @staticmethod
+    def _decode_full_sync_distribution(offset, data, meta_message):
+        global_time, sequence_number = unpack_from("!LL", data, offset)
+        return offset + 8, meta_message.distribution.implement(global_time, sequence_number)
+
+    @staticmethod
+    def _decode_last_sync_distribution(offset, data, meta_message):
+        global_time, = unpack_from("!L", data, offset)
+        return offset + 4, meta_message.distribution.implement(global_time)
+
+    @staticmethod
+    def _decode_direct_distribution(offset, data, meta_message):
+        global_time, = unpack_from("!L", data, offset)
+        return offset + 4, meta_message.distribution.implement(global_time)
+
+    def decode_message(self, data):
+        assert isinstance(data, str)
+        assert len(data) >= 22
+        assert data[:22] == self._prefix
+
+        if len(data) < 100:
+            DropPacket("Packet is to small to decode")
+
+        offset = 22
+
+        # signed by
+        member_id = data[offset:offset+20]
+        offset += 20
+        try:
+            members = self._community.get_members_from_id(member_id)
+        except KeyError:
+            raise DelayPacketByMissingMember(member_id)
+        for signed_by in members:
+            if signed_by.verify_pair(data):
+                break
+        else:
+            raise DelayPacketByMissingMember(member_id)
+
+        # meta_message
+        meta_message, decode_payload_func = self._decode_message_map.get(data[offset], (None, None))
+        if meta_message is None:
+            raise DropPacket("Invalid message byte")
+        offset += 1
+
+        # destination
+        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination))
+        if isinstance(meta_message.destination, AddressDestination):
+            destination_impl = meta_message.destination.implement(("", 0))
+        else:
+            destination_impl = meta_message.destination.implement()
+
+        # distribution
+        assert type(meta_message.distribution) in self._decode_distribution_map, type(meta_message.distribution)
+        offset, distribution_impl = self._decode_distribution_map[type(meta_message.distribution)](offset, data, meta_message)
+
+        # payload
+        payload_type = self._decode_payload_type_map.get(data[offset])
+        if payload_type is None:
+            raise DropPacket("Invalid payload type")
+        offset += 1
+        if payload_type == u"permit":
+            offset, payload = decode_payload_func(offset, data)
+            assert isinstance(offset, (int, long))
+            assert isinstance(payload, Permit), type(payload)
+            
+        elif payload_type == u"authorize":
+            authorized_payload = self._decode_payload_type_map.get(data[offset])
+            if authorized_payload is None:
+                raise DropPacket("Invalid payload type (2)")
+            offset += 1
+
+            public_key_length, = unpack_from("H", data, offset)
+            offset += 2
+            try:
+                member = self._community.get_member(data[offset:offset+public_key_length])
+            except KeyError:
+                # todo: delay + retrieve user public key
+                raise DelayPacket("Unable to find member in community")
+            offset += public_key_length
+
+            payload = Authorized(member, authorized_payload)
+
+        else:
+            raise NotImplementedError()
+        
+        return meta_message.implement(signed_by, distribution_impl, destination_impl, payload)
+
+class DefaultConversion(BinaryConversion):
     """
-    Conversion subclasses the current ConversionXXX class.
+    This conversion class is initially used to encode some Dispersy
+    specific messages during the creation of a new Community
+    (authorizing the initial member).  Afterwards it is usually
+    replaced by a Community specific conversion that also supplies
+    payload conversion for the Community specific messages.
     """
-    pass
+    def __init__(self, community):
+        super(DefaultConversion, self).__init__(community, "\x00\x00")
