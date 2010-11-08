@@ -4,6 +4,7 @@ Bloomfilter implementation based on pybloom by Jay Baird
 
 Simplified, and optimized to use just python code by Boudewijn Schoon.
 """
+
 import hashlib
 import math
 from array import array
@@ -11,16 +12,15 @@ from struct import unpack_from, unpack, pack
 
 from Decorator import Constructor, constructor
 
-
 if __debug__:
     from Print import dprint
     from time import time
 
-def make_hashfuncs(num_slices, num_bits):
+def _make_hashfuncs(num_slices, num_bits):
     if num_bits >= (1 << 31):
         fmt_code, chunk_size = 'Q', 8
     elif num_bits >= (1 << 15):
-        fmt_code, chunk_size = 'I', 4
+        fmt_code, chunk_size = 'L', 4
     else:
         fmt_code, chunk_size = 'H', 2
     total_hash_bits = 8 * num_slices * chunk_size
@@ -38,8 +38,8 @@ def make_hashfuncs(num_slices, num_bits):
     num_salts, extra = divmod(num_slices, len(fmt))
     if extra:
         num_salts += 1
-    salts = [hashfn(hashfn(pack('I', i)).digest()) for i in xrange(num_salts)]
-    def _make_hashfuncs(key):
+    salts = [hashfn(hashfn(pack('L', i)).digest()) for i in xrange(num_salts)]
+    def _make_hashfuncs_helper(key):
         assert isinstance(key, str), "KEY must be a binary string"
         rval = []
         for salt in salts:
@@ -53,29 +53,47 @@ def make_hashfuncs(num_slices, num_bits):
 
         del rval[num_slices:]
         return rval
-    return _make_hashfuncs
+    return _make_hashfuncs_helper
 
 class BloomFilter(Constructor):
+    """
+    Implements a space-efficient probabilistic data structure.
+
+    There are two overloaded constructors:
+     - __init__(CAPACITY, ERROR_RATE)
+     - __init__(DATA, OFFSET)
+
+    CAPACITY: this BloomFilter must be able to store at least CAPACITY
+    elements while maintaining no more than ERROR_RATE chance of false
+    positives.
+
+    ERROR_RATE: the error_rate of the filter returning false
+    positives. This determines the filters capacity. Inserting more
+    than capacity elements greatly increases the chance of false
+    positives.
+
+    DATA: the stream contains binary data for a BloomFilter.
+
+    OFFSET: the start of the bloomfiter in DATA
+
+    >>> # use CAPACITY, ERROR_RATE constructor
+    >>> b = BloomFilter(100000, 0.001)
+    >>> b.add("test")
+    True
+    >>> "test" in b
+    True
+
+    >>> # use DATA, OFFSET constructor
+    >>> b = BloomFilter(100000, 0.001)
+    >>> b.add("test")
+    >>> data = str(b)
+    >>> c = BloomFilter(data, 0)
+    >>> "test" in c
+    True
+    """
+
     @constructor((int, long), float)
     def _init_new(self, capacity, error_rate):
-        """
-        Implements a space-efficient probabilistic data structure.
-
-        CAPACITY
-            this BloomFilter must be able to store at least *capacity* elements
-            while maintaining no more than *error_rate* chance of false
-            positives.
-        ERROR_RATE
-            the error_rate of the filter returning false positives. This
-            determines the filters capacity. Inserting more than capacity
-            elements greatly increases the chance of false positives.
-
-        >>> b = BloomFilter(100000, 0.001)
-        >>> b.add("test")
-        True
-        >>> "test" in b
-        True
-        """
         assert isinstance(capacity, (int, long))
         assert isinstance(error_rate, float)
         assert 0 < error_rate < 1, "Error_Rate must be between 0 and 1"
@@ -89,26 +107,11 @@ class BloomFilter(Constructor):
         # the error_rate constraint assumes a fill rate of 1/2
         # so we double the capacity to simplify the API
         self._bits_per_slice = int(math.ceil((2 * capacity * abs(math.log(error_rate))) / (self._num_slices * (math.log(2) ** 2))))
-        self._make_hashes = make_hashfuncs(self._num_slices, self._bits_per_slice)
+        self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
-
-        dprint(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))
 
     @constructor(str, (int, long))
     def _init_load(self, data, offset):
-        """
-        Implements a space-efficient probabilistic data structure.
-
-        DATA: the stream contains binary data for a BloomFilter.
-        OFFSET: the start of the bloomfiter in DATA
-
-        >>> b = BloomFilter(100000, 0.001)
-        >>> b.add("test")
-        >>> data = str(b)
-        >>> c = BloomFilter(data, 0)
-        >>> "test" in c
-        True
-        """
         assert isinstance(data, str)
         if len(data) < offset + 8:
             raise ValueError("Insufficient bytes")
@@ -118,7 +121,7 @@ class BloomFilter(Constructor):
         if len(data) < offset + 8 + size:
             raise ValueError("Insufficient bytes")
 
-        self._make_hashes = make_hashfuncs(self._num_slices, self._bits_per_slice)
+        self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", data[offset+8:offset+8+size])
 
     def __contains__(self, key):
@@ -156,6 +159,21 @@ class BloomFilter(Constructor):
             bytes[(offset + i) / 8] |=  1<<(offset + i) % 8
             offset += bits_per_slice
 
+    def __and__(self, other):
+        assert isinstance(other, BloomFilter)
+        if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
+            raise ValueError("Both bloom filters need to be the same size")
+        return BloomFilter(pack("!LL", self._num_slices, self._bits_per_slice) + array("B", [i&j for i, j in zip(self._bytes, other._bytes)]).tostring(), 0)
+
+    def __or__(self, other):
+        raise NotImplementedError()
+
+    def __xor__(self, other):
+        assert isinstance(other, BloomFilter)
+        if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
+            raise ValueError("Both bloom filters need to be the same size")
+        return BloomFilter(pack("!LL", self._num_slices, self._bits_per_slice) + array("B", [i^j for i, j in zip(self._bytes, other._bytes)]).tostring(), 0)
+        
     def __str__(self):
         """
         Create a string representation of the BloomFilter.
@@ -171,7 +189,7 @@ class BloomFilter(Constructor):
         return 8 + len(self._bytes)
 
 if __debug__:
-    def main():
+    def _performance_test():
         def test2(bits, count):
             generate_begin = time()
             ok = 0
@@ -294,5 +312,51 @@ if __debug__:
 # 0a00000040630400ffdffc5d45fff7ddcdaff6fffff57f3f3ffff77bfd7fbf5eb7b9f7ffff96f63fcefbcbefcfef2dff9ff5 359448 bytes; (927286/1000000 ~93%)
 # create: 0.1; fill: 122.8; check: 237.7; write: 0.0
 
+    def _taste_test():
+        def pri(f, m):
+            set_bits = 0
+            for c in f._bytes.tostring():
+                s = "{0:08d}".format(int(bin(ord(c))[2:]))
+                for bit in s:
+                    if bit == "1":
+                        set_bits += 1
+                print s,
+            print "= {0:2d}:".format(set_bits), m
+
+        def gen(l, m):
+            for e in l:
+                f = BloomFilter(CAPACITY, ERROR_RATE)
+                f.add(e)
+                pri(f, e)
+            f = BloomFilter(CAPACITY, ERROR_RATE)
+            map(f.add, l)
+            pri(f, m + ": " + ", ".join(l))
+            return f
+
+        CAPACITY, ERROR_RATE = 10, 0.1
+
+        a = gen(["kittens", "puppies"], "User A")
+        b = gen(["beer", "bars"], "User B")
+        c = gen(["puppies", "beer"], "User C")
+
+        pri(a&b, "A AND B")
+        pri(a&c, "A AND C")
+        pri(b&c, "B AND C")
+
+        # t1 = ["cake", "lemonade", "kittens", "puppies"]
+        # b1 = BloomFilter(10, 0.8)
+        # map(b1.add, t1)
+
+        # t2 = ["beer", "booze", "women", "pubs"]
+        # b2 = BloomFilter(10, 0.8)
+        # map(b2.add, t2)
+
+        # dprint(t1)
+        # dprint(str(b1), binary=1)
+
+        # dprint(t2)
+        # dprint(str(b2), binary=1)
+
     if __name__ == "__main__":
-        main()
+        #_performance_test()
+        _taste_test()
