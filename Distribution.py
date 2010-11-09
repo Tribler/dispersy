@@ -1,3 +1,5 @@
+from Meta import MetaObject
+
 """
 Each Privilege can be distributed, usualy through the transfer of a
 message, in different ways.  These ways are defined by
@@ -16,36 +18,22 @@ object is created.  The LastSyncDistribution object holds additional
 information for this specific message, such as the global_time.
 """
 
-class DistributionBase(object):
-    class Implementation(object):
+class Distribution(MetaObject):
+    class Implementation(MetaObject.Implementation):
         def __init__(self, meta, global_time):
-            assert isinstance(meta, DistributionBase)
+            assert isinstance(meta, Distribution)
             assert isinstance(global_time, (int, long))
-            # the associated distribution
-            self._meta = meta
+            super(Distribution.Implementation, self).__init__(meta)
             # the last known global time + 1 (from the user who signed the
             # message)
             self._global_time = global_time
 
         @property
-        def meta(self):
-            return self._meta
-
-        @property
         def global_time(self):
             return self._global_time
 
-        def __str__(self):
-            return "<{0.meta.__class__.__name__}.{0.__class__.__name__} global_time:{0.global_time}>".format(self)
-
-    def __str__(self):
-        return "<{0.__class__.__name__}>".format(self)
-
-    def implement(self, *args, **kargs):
-        return self.Implementation(self, *args, **kargs)
-
-class SyncDistribution(DistributionBase):
-    class Implementation(DistributionBase.Implementation):
+class SyncDistribution(Distribution):
+    class Implementation(Distribution.Implementation):
         pass
 
 class FullSyncDistribution(SyncDistribution):
@@ -93,17 +81,17 @@ class LastSyncDistribution(SyncDistribution):
 #         def __str__(self):
 #             return "<{0} {1}:- {2}>".format(self.__class__.__name__, self._global_time, self._minimal_count)
 
-class DirectDistribution(DistributionBase):
-    class Implementation(DistributionBase.Implementation):
+class DirectDistribution(Distribution):
+    class Implementation(Distribution.Implementation):
         pass
 
-class RelayDistribution(DistributionBase):
-    class Implementation(DistributionBase.Implementation):
+class RelayDistribution(Distribution):
+    class Implementation(Distribution.Implementation):
         pass
         
 # if __debug__:
 #     def main():
-#         meta = DistributionBase()
+#         meta = Distribution()
 #         print meta, meta.implement(42)
 
 #         meta = SyncDistribution(100, 100, 0.001)

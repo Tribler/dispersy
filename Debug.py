@@ -1,5 +1,6 @@
 import socket
 
+from Authentication import NoAuthentication
 from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Destination import CommunityDestination, AddressDestination
@@ -9,6 +10,7 @@ from Message import Message
 from Payload import MissingSequencePayload, SyncPayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
+from Member import PrivateMember
 
 from Tribler.Community.Discovery.DiscoveryPayload import UserMetadataPayload, CommunityMetadataPayload
 
@@ -21,7 +23,6 @@ class Node(object):
         self._socket = None
         self._my_member = None
         self._community = None
-        self._dispersy_sync_message = None
 
     @property
     def socket(self):
@@ -48,9 +49,15 @@ class Node(object):
     def my_member(self):
         return self._my_member
 
-    def init_my_member(self, bits=512):
+    def init_my_member(self, bits=512, sync_with_database=False):
+        class DebugPrivateMember(PrivateMember):
+            pass
+            # def get_member(self):
+            #     return Member.get_instance(self._public_pem)
+
+        # specifically do NOT use PrivateMember.get_instance(...) here!
         rsa = rsa_generate_key(bits)
-        self._my_member = MyMember.get_instance(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa))
+        self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=sync_with_database)
 
     @property
     def community(self):
@@ -58,8 +65,6 @@ class Node(object):
 
     def set_community(self, community):
         self._community = community
-        self._dispersy_sync_message = Message(community, u"dispersy-sync", PublicResolution(), DirectDistribution(), CommunityDestination())
-        self._dispersy_missing_sequence_message = Message(community, u"dispersy-missing-sequence", PublicResolution(), DirectDistribution(), AddressDestination())
 
     def encode_message(self, message):
         return self._community.get_conversion().encode_message(message)
@@ -125,12 +130,14 @@ class Node(object):
         assert isinstance(bloom_packets, list)
         assert not filter(lambda x: not isinstance(x, str), bloom_packets)
         assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"dispersy-sync")
         bloom_filter = BloomFilter(1000, 0.001)
         map(bloom_filter.add, bloom_packets)
-        distribution = self._dispersy_sync_message.distribution.implement(global_time)
-        destination = self._dispersy_sync_message.destination.implement()
+        authentication = meta.authentication.implement()
+        distribution = meta.distribution.implement(global_time)
+        destination = meta.destination.implement()
         payload = SyncPayload(bloom_global_time, bloom_filter)
-        return self._dispersy_sync_message.implement(self._my_member, distribution, destination, payload)
+        return meta.implement(authentication, distribution, destination, payload)
 
     def create_dispersy_missing_sequence_message(self, missing_member, missing_message_meta, missing_low, missing_high, global_time, destination_address):
         assert isinstance(missing_member, Member)
@@ -142,33 +149,31 @@ class Node(object):
         assert len(destination_address) == 2
         assert isinstance(destination_address[0], str)
         assert isinstance(destination_address[1], int)
-        distribution = self._dispersy_missing_sequence_message.distribution.implement(global_time)
-        destination = self._dispersy_missing_sequence_message.destination.implement(destination_address)
+        meta = self._community.get_meta_message(u"dispersy-missing-sequence")
+        authentication = meta.authentication.implement(self._my_member)
+        distribution = meta.distribution.implement(global_time)
+        destination = meta.destination.implement(destination_address)
         payload = MissingSequencePayload(missing_member, missing_message_meta, missing_low, missing_high)
-        return self._dispersy_missing_sequence_message.implement(self._my_member, distribution, destination, payload)
+        return meta.implement(authentication, distribution, destination, payload)
+
+    # def create_dispersy_double_signature_message(self, 
 
 class DiscoveryNode(Node):
-    def __init__(self, *args, **kargs):
-        super(DiscoveryNode, self).__init__(*args, **kargs)
-        self._community_metadata_message = None
-        self._user_metadata_message = None
-
-    def set_community(self, community):
-        super(DiscoveryNode, self).set_community(community)
-        self._community_metadata_message = Message(community, u"community-metadata", PublicResolution(), FullSyncDistribution(), CommunityDestination())
-        self._user_metadata_message = Message(community, u"user-metadata", PublicResolution(), LastSyncDistribution(), CommunityDestination())
-
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
-        distribution = self._community_metadata_message.distribution.implement(global_time, sequence_number)
-        destination = self._community_metadata_message.destination.implement()
+        meta = self._community.get_meta_message(u"community-metadata")
+        authentication = meta.authentication.implement(self._my_member)
+        distribution = meta.distribution.implement(global_time, sequence_number)
+        destination = meta.destination.implement()
         payload = CommunityMetadataPayload(cid, alias, comment)
-        return self._community_metadata_message.implement(self._my_member, distribution, destination, payload)
+        return meta.implement(authentication, distribution, destination, payload)
 
     def create_user_metadata_message(self, address, alias, comment, global_time):
-        distribution = self._user_metadata_message.distribution.implement(global_time)
-        destination = self._user_metadata_message.destination.implement()
+        meta = self._community.get_meta_message(u"user-metadata")
+        authentication = meta.authentication.implement(self._my_member)
+        distribution = meta.distribution.implement(global_time)
+        destination = meta.destination.implement()
         payload = UserMetadataPayload(address, alias, comment)
-        return self._user_metadata_message.implement(self._my_member, distribution, destination, payload)
+        return meta.implement(authentication, distribution, destination, payload)
     
 class ForumNode(DiscoveryNode):
     def __init__(self, *args, **kargs):

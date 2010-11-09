@@ -1,67 +1,68 @@
-class DestinationBase(object):
-    class Implementation(object):
-        def __init__(self, meta):
-            assert isinstance(meta, DestinationBase)
-            # the associated destination
-            self._meta = meta
+from Meta import MetaObject
 
-        @property
-        def meta(self):
-            return self._meta
-
-        def __str__(self):
-            return "<{0.meta.__class__.__name__}.{0.__class__.__name__}>".format(self)
-
-    def __str__(self):
-        return "<{0.__class__.__name__}>".format(self)
-
-    def implement(self, *args, **kargs):
-        return self.Implementation(self, *args, **kargs)
-
-# class UserDestination(DestinationBase):
+class Destination(MetaObject):
+    class Implementation(MetaObject.Implementation):
+        pass
+    
+# class NoDestination(Destination):
 #     """
-#     Send the message to the target user.
+#     The message does not contain any destination.
 #     """
-#     class Implementation(DestinationBase.Implementation):
+#     class Implementation(Destination.Implementation):
 #         pass
 
-class AddressDestination(DestinationBase):
+class AddressDestination(Destination):
     """
-    Send the message to an IP:port tuple.
+    The message is send to the destination address.
     """
-    class Implementation(DestinationBase.Implementation):
-        def __init__(self, meta, address):
-            assert isinstance(address, tuple)
-            assert len(address) == 2
-            assert isinstance(address[0], str)
-            assert isinstance(address[1], int)
+    class Implementation(Destination.Implementation):
+        def __init__(self, meta, *addresses):
+            assert isinstance(addresses, tuple)
+            assert len(addresses) > 0
+            assert not filter(lambda x: not isinstance(x, tuple), addresses)
+            assert not filter(lambda x: not len(x) == 2, addresses)
+            assert not filter(lambda x: not isinstance(x[0], str), addresses)
+            assert not filter(lambda x: not isinstance(x[1], int), addresses)
             super(AddressDestination.Implementation, self).__init__(meta)
-            # the target address
-            self._address = address
+            # the target addresses
+            self._addresses = addresses
 
         @property
-        def address(self):
-            return self._address
+        def addresses(self):
+            return self._addresses
 
-        def __str__(self):
-            return "<{0.meta.__class__.__name__}.{0.__class__.__name__} address:{0.address[0]}:{0.address[1]}>".format(self)
+class MemberDestination(Destination):
+    """
+    The message is send to the destination Member.
+    """
+    class Implementation(Destination.Implementation):
+        def __init__(self, meta, *members):
+            if __debug__:
+                from Member import Member
+            assert len(members) > 0
+            assert not filter(lambda x: not isinstance(x, Member), members)
+            super(MemberDestination.Implementation, self).__init__(meta)
+            self._members = members
 
-class MemberDestination(DestinationBase):
+        @property
+        def members(self):
+            return self._members
+
+class CommunityDestination(Destination):
     """
-    Send the message to the target member.
+    The message is send to one or more peers in the Community.
     """
-    class Implementation(DestinationBase.Implementation):
+    class Implementation(Destination.Implementation):
         pass
 
-class CommunityDestination(DestinationBase):
-    """
-    Send the message some one or more peers in the Community.
-    """
-    class Implementation(DestinationBase.Implementation):
+class SimilarityDestination(Destination):
+    class Implementation(Destination.Implementation):
         pass
 
-class PrivilegedDestination(DestinationBase):
-    class Implementation(DestinationBase.Implementation):
-        pass
+    # todo: add stuff like: how big is the bitstring, how many to be
+    # similar, do we pretend, etc.
+    pass
 
-
+# class PrivilegedDestination(Destination):
+#     class Implementation(Destination.Implementation):
+#         pass

@@ -54,12 +54,12 @@ class Timeline(object):
             from Message import Message
         assert isinstance(message, Message.Implementation)
 
-        # the MasterMember can do anything
-        if isinstance(message.signed_by, MasterMember):
-            return True
-
         # everyone is allowed PublicResolution
         if isinstance(message.resolution, PublicResolution):
+            return True
+
+        # the MasterMember can do anything
+        if isinstance(message.signed_by, MasterMember):
             return True
 
         # allowed LinearResolution is stored in Timeline

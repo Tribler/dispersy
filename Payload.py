@@ -1,14 +1,20 @@
 class Payload(object):
     @classmethod
     def get_static_type(cls):
+        """
+        The subclasses Authorize, Revoke, and Permit are sometimes
+        used to indicate to what type of payload something applied; In
+        this case this method can be used to get the corresponding
+        type: u'authorize', u'revoke', and u'permit'.
+        """
         return {Authorize:u"authorize", Revoke:u"revoke", Permit:u"permit"}[cls]
 
     @property
-    def name(self):
-        raise NotImplementedError()
-
-    @property
     def type(self):
+        """
+        Returns u'authorize', u'revoke', and u'permit' for Authorize,
+        Revoke, and Permit instances respectively.
+        """
         raise NotImplementedError()
 
     def __str__(self):
@@ -19,8 +25,8 @@ class Authorize(Payload):
         """
         User TO is given permission to use PAYLOAD.
 
-        TO: the member that is allowed to use PAYLOAD
-        PAYLOAD: the kind of payload that TO is allowed to use
+        TO is the member that is allowed to use PAYLOAD.
+        PAYLOAD is the kind of payload that is allowed {Authorize, Revoke, Permit}.
         """
         if __debug__:
             from Member import Member
@@ -46,6 +52,9 @@ class Revoke(Payload):
     def __init__(self, to, payload):
         """
         User TO is no longer allowed to use PAYLOAD.
+
+        TO is the Member that will be revoked.
+        PAYLOAD is the payload type that is revoked {Authorize, Revoke, Permit}.
         """
         if __debug__:
             from Member import Member
@@ -124,3 +133,19 @@ class SyncPayload(Permit):
     @property
     def bloom_filter(self):
         return self._bloom_filter
+
+class ResponsePayload(Permit):
+    def __init__(self, request_id, response):
+        assert isinstance(request_id, str)
+        assert len(request_id) == 20
+        assert isinstance(response, Message.Implementation)
+        self._request_id = request_id
+        self._response = response
+
+    @property
+    def request_id(self):
+        return self._request_id
+
+    @property
+    def response(self):
+        return self._response

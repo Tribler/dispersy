@@ -48,6 +48,15 @@ class Singleton(object):
                 setattr(cls, "_singleton_instance", cls(*args, **kargs))
             return getattr(cls, "_singleton_instance")
 
+    @classmethod
+    def del_instance(cls):
+        """
+        Removes the existing singleton instance
+        """
+        with cls._singleton_lock:
+            if hasattr(cls, "_singleton_instance"):
+                delattr(cls, "_singleton_instance")
+
 class Parameterized1Singleton(object):
     """
     The required first parameter is used to uniquely identify a
@@ -76,7 +85,6 @@ class Parameterized1Singleton(object):
         Returns the existing singleton instance or None
         """
         assert hasattr(arg, "__hash__")
-        # assert isinstance(arg, (str, unicode, int, long, float))
         if hasattr(cls, "_singleton_instances") and arg in getattr(cls, "_singleton_instances"):
             return getattr(cls, "_singleton_instances")[arg]
 
@@ -87,7 +95,6 @@ class Parameterized1Singleton(object):
         """
         assert len(args) > 0
         assert hasattr(args[0], "__hash__")
-        # assert isinstance(args[0], (str, unicode, int, long, float))
         
         if hasattr(cls, "_singleton_instances") and args[0] in getattr(cls, "_singleton_instances"):
             return getattr(cls, "_singleton_instances")[args[0]]
@@ -98,3 +105,16 @@ class Parameterized1Singleton(object):
                 setattr(cls, "_singleton_instances", {})
             getattr(cls, "_singleton_instances")[args[0]] = instance
             return instance
+
+    @classmethod
+    def del_instance(cls, arg):
+        """
+        Removes the existing singleton instance
+        """
+        assert hasattr(arg, "__hash__")
+        with cls._singleton_lock:
+            if hasattr(cls, "_singleton_instances") and arg in getattr(cls, "_singleton_instances"):
+                del getattr(cls, "_singleton_instances")[arg]
+                if not getattr(cls, "_singleton_instances"):
+                    delattr(cls, "_singleton_instances")
+

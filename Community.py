@@ -1,5 +1,11 @@
+"""
+The Community module manages the participation and the reconstruction
+of the current state of a distributed community.
+"""
+
 from hashlib import sha1
 
+from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
 from Conversion import DefaultConversion
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
@@ -27,10 +33,17 @@ class Community(object):
         """
         Create a new CLS community owned by MY_MEMBER.
 
-        CLS is a Community subclass.  A new instance of this is returned.
-        MY_MEMBER is a Member that will be granted Permit, Authorize, and Revoke for all messages.
-        *ARGS are passed along to __init__
-        **KARGS are passed along to __init__
+        CLS is a Community subclass.  A new instance of this is
+        returned.
+        
+        MY_MEMBER is a Member that will be granted Permit, Authorize,
+        and Revoke for all messages.
+        
+        *ARGS are passed along to cls.__init__(...).
+        
+        **KARGS are passed along to cls.__init__(...).
+
+        Returns the created community.
         """
         assert isinstance(my_member, MyMember)
 
@@ -65,8 +78,11 @@ class Community(object):
     @staticmethod
     def join_community(cls, master_pem, my_member, *args, **kargs):
         """
-        Joins a discovered community.  Returns a Community subclass
+        Joins an existing community.  Returns a Community subclass
         instance.
+        
+        TODO: we should probably change MASTER_PEM to require a master
+        member instance, or the cid that we want to join.
         """
         assert isinstance(master_pem, str)
         assert isinstance(my_member, MyMember)
@@ -82,12 +98,23 @@ class Community(object):
     def load_communities():
         """
         Load existing communities.  Returns a list with zero or more
-        Community subclass instances.
+        Community subclass instances.  The returned instances must
+        include the communities of type CLS.
+
+        Typically the load_communities is called when the main
+        application is launched.  This will ensure that all
+        communities are loaded and attacked to Dispersy.
         """
         raise NotImplementedError()
 
     def __init__(self, cid):
         """
+        Creates a new Community instance identified by CID.
+
+        Generally a new community is created using create_community.
+        Or an existing community is loaded using load_communities.
+        These two methods prepare and call this __init__ method.
+
         CID is the community identifier.
         """
         assert isinstance(cid, str)
@@ -158,7 +185,10 @@ class Community(object):
 
     def get_bloom_filter(self, global_time):
         """
-        Returns the bloom-filter associated to global-time
+        Returns the bloom-filter associated to global-time.
+
+        TODO: this name should be more distinct... this bloom filter
+        is specifically used by the SyncDistribution policy.
         """
         index = global_time / self._bloom_filter_stepping
         while len(self._bloom_filters) <= index:
@@ -168,29 +198,41 @@ class Community(object):
     def get_current_bloom_filter(self):
         """
         Returns (global-time, bloom-filter)
+
+        TODO: this name should be more distinct... this bloom filter
+        is specifically used by the SyncDistribution policy.
         """
         index = len(self._bloom_filters) - 1
         return index * self._bloom_filter_stepping + 1, self._bloom_filters[index]
 
     @property
     def cid(self):
+        """
+        The 20 byte sha1 digest of the public master key, in other
+        words: the community identifier.
+        """
         return self._cid
 
     @property
     def database_id(self):
+        """
+        The number used to identify this community in the local
+        Dispersy database.
+        """
         return self._database_id
 
     @property
     def master_member(self):
         """
-        Returns the community MasterMember instance.
+        The community MasterMember instance.  
         """
         return self._master_member
 
     @property
     def my_member(self):
         """
-        Returns our own MyMember instance.
+        Our own MyMember instance that is used to sign the messages
+        that we create.
         """
         return self._my_member
         
@@ -200,18 +242,31 @@ class Community(object):
 
         Since we have the PUBLIC_KEY, we can create this user when it
         didn't already exist.  Hence, this method always succeeds.
+
+        This method may be removed in the future, as it does nothing
+        more than the folling:
+
+        >>> Member.get_instance(public_key)
         """
         assert isinstance(public_key, str)
         return Member.get_instance(public_key)
 
     def get_members_from_id(self, mid):
         """
-        Returns one or more Member instances associated with MID.  MID
-        is the sha1 hash of a member public key.
+        Returns zero or more Member instances associated with MID,
+        where MID is the sha1 digest of a member public key.
+
+        MID must be a 20 byte sting.  As we are using only 20 bytes to
+        represent the actual member public key, this method may return
+        multiple possible Member instances.  In this case, other ways
+        must be used to figure out the correct Member instance.  For
+        instance: if a signature or encryption is available, all
+        Member instances could be used, but only one can succeed in
+        verifying or decrypting.
 
         Since we may not have the public key associated to MID, this
         method may return an empty list.  In such a case it is
-        sometimes possoble to DelayPacketByMissingMember to obtain the
+        sometimes possible to DelayPacketByMissingMember to obtain the
         public key.
         """
         assert isinstance(mid, str)
@@ -219,14 +274,37 @@ class Community(object):
         return [Member.get_instance(str(pem)) for pem, in self._dispersy_database.execute(u"SELECT pem FROM user WHERE mid = ?", (buffer(mid),))]
 
     def get_conversion(self, prefix=None):
+        """
+        Returns the Conversion associated with PREFIX.
+
+        PREFIX is an optional 22 byte sting.  Where the first 20 bytes
+        are the community id and the last 2 bytes are the conversion
+        version.
+        
+        When no PREFIX is given, i.e. PREFIX is None, then the default
+        Conversion is returned.  Conversions are assigned to a
+        community using add_conversion().
+        """
         assert prefix is None or isinstance(prefix, str)
         assert prefix is None or len(prefix) == 22
         return self._conversions[prefix]
 
     def add_conversion(self, conversion, default=False):
+        """
+        Assigns a Conversion to the Community.
+
+        CONVERSION is a Conversion instance.  A conversion instance
+        converts between the internal Message structure and the
+        on-the-wire message.
+
+        DEFAULT is an optional boolean.  When True the conversion is
+        set to be the default conversion.  The default conversion is
+        used (by default) when a new message (self.authorize(),
+        self.revoke(), self.permit()) is created.
+        """
         if __debug__:
-            from Conversion import ConversionBase
-        assert isinstance(conversion, ConversionBase)
+            from Conversion import Conversion
+        assert isinstance(conversion, Conversion)
         assert isinstance(default, bool)
         assert not conversion.prefix in self._conversions
         if default:
@@ -235,15 +313,43 @@ class Community(object):
 
     def authorize(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
         """
-        Grant MEMBER the PERMISSION_PAIRS.
+        Gives MEMBER the permissions defined in PERMISSION_PAIRS.
 
+        MEMBER must be a Member instance.  This Member will obtain the
+        new permissions.  By default, self.my_member is used to
+        perform this authorization.
 
-        MEMBER is the Member who will obtain the new permissions.
-        PERMISSIONS_PAIRS is a list containing (Message, Payload)
-         tuples.  where Message is the meta message for which Member
-         may send Payload
-        SIGN_WITH_MASTER when True the MasterMember is used to sign
-         the authorize message.
+        PERMISSIONS_PAIRS must be a list or tuple containing (Message,
+        Payload) tuples.  Where Message is the meta message for which
+        Member may send Payload. 
+
+        SIGN_WITH_MASTER must be a boolean.  When True
+        self.master_member is used to sign the authorize message.
+        Otherwise self.my_member is used.
+
+        UPDATE_LOCALLY must be a boolean.  When True the
+        self.on_authorize_message is called with each created message.
+        This parameter should (almost always) be True, its inclusion
+        is mostly to allow certain debugging scenarios.
+
+        STORE_AND_FORWARD must be a boolean.  When True the created
+        messages are stored (as defined by the message distribution
+        policy) in the local Dispersy database and the messages are
+        forewarded to other peers (as defined by the message
+        destination policy).  This parameter should (almost always) be
+        True, its inclusion is mostly to allow certain debugging
+        scenarios.
+
+        Note that, by default, self.my_member is doing the
+        authorization.  This means, that self.my_member must have the
+        authorize permission for each of the permissions that he is
+        authorizing.
+
+        >>> # Authorize Bob to use Permit payload for 'some-message'
+        >>> from Payload import Permit
+        >>> bob = Member.get_instance(pem_bob)
+        >>> msg = self.get_meta_messages(u"some-message")
+        >>> self.authorize(bob, [msg, Permit])
         """
         assert isinstance(member, Member)
         assert isinstance(permission_pairs, (tuple, list))
@@ -256,9 +362,9 @@ class Community(object):
         assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
-            signed_by = self.master_member
+            signed_by = self._master_member
         else:
-            signed_by = self.my_member
+            signed_by = self._my_member
 
         messages = []
         distribution = FullSyncDistribution()
@@ -269,9 +375,14 @@ class Community(object):
             payload = Authorize(member, allowed)
             messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))
 
-        if update_locally:
+        if __debug__:
+            # this method may NOT be called when we do not have the
+            # appropriate permissions
             for message_impl in messages:
                 assert self._timeline.check(message_impl)
+
+        if update_locally:
+            for message_impl in messages:
                 self.on_authorize_message(None, message_impl)
 
         if store_and_forward:
@@ -279,24 +390,139 @@ class Community(object):
 
         return messages
 
-    def permit(self, message, payload, distribution=(), destination=(), sign_with_master=False, update_locally=True, store_and_forward=True):
-        assert isinstance(message, Message)
-        assert isinstance(payload, Permit)
-        assert isinstance(distribution, tuple)
-        assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
-        assert isinstance(destination, tuple)
+    def revoke(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
+        """
+        Removes the permissions defined in PERMISSION_PAIRS from
+        MEMBER.
+
+        MEMBER must be a Member instance.  This Member will no longer
+        have the permissions.  By default, self.my_member is used to
+        perform this revocation.
+
+        PERMISSIONS_PAIRS must be a list or tuple containing (Message,
+        Payload) tuples.  Where Message is the meta message for which
+        Member may send Payload. 
+
+        SIGN_WITH_MASTER must be a boolean.  When True
+        self.master_member is used to sign the revoke message.
+        Otherwise self.my_member is used.
+
+        UPDATE_LOCALLY must be a boolean.  When True the
+        self.on_revoke_message is called with each created message.
+        This parameter should (almost always) be True, its inclusion
+        is mostly to allow certain debugging scenarios.
+
+        STORE_AND_FORWARD must be a boolean.  When True the created
+        messages are stored (as defined by the message distribution
+        policy) in the local Dispersy database and the messages are
+        forewarded to other peers (as defined by the message
+        destination policy).  This parameter should (almost always) be
+        True, its inclusion is mostly to allow certain debugging
+        scenarios.
+
+        Note that, by default, self.my_member is doing the
+        authorization.  This means, that self.my_member must have the
+        revoke permission for each of the permissions that he is
+        revoking.
+
+        >>> # Revoke the Permit payload for 'some-message' from Bob
+        >>> from Payload import Permit
+        >>> bob = Member.get_instance(pem_bob)
+        >>> msg = self.get_meta_messages(u"some-message")
+        >>> self.revoke(bob, [msg, Permit])
+        """
+        assert isinstance(member, Member)
+        assert isinstance(permission_pairs, (tuple, list))
+        assert not filter(lambda x: not isinstance(x, tuple), permission_pairs)
+        assert not filter(lambda x: not len(x) == 2, permission_pairs)
+        assert not filter(lambda x: not isinstance(x[0], Message), permission_pairs)
+        assert not filter(lambda x: not issubclass(x[1], (Authorize, Revoke, Permit)), permission_pairs)
         assert isinstance(sign_with_master, bool)
         assert isinstance(update_locally, bool)
         assert isinstance(store_and_forward, bool)
 
         if sign_with_master:
-            signed_by = self.master_member
+            signed_by = self._master_member
         else:
-            signed_by = self.my_member
+            signed_by = self._my_member
 
+        messages = []
+        distribution = FullSyncDistribution()
+        destination = CommunityDestination()
+        for message, revoked in permission_pairs:
+            distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
+            destination_impl = destination.implement()
+            payload = Revoke(member, revoked)
+            messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))
+
+        if __debug__:
+            # this method may NOT be called when we do not have the
+            # appropriate permissions
+            for message_impl in messages:
+                assert self._timeline.check(message_impl)
+
+        if update_locally:
+            for message_impl in messages:
+                self.on_authorize_message(None, message_impl)
+
+        if store_and_forward:
+            self._dispersy.store_and_forward(messages)
+
+        return messages
+
+    def permit(self, message, payload, authentication=(), distribution=(), destination=(), update_locally=True, store_and_forward=True):
+        """
+        TODO
+
+        SIGN_WITH_MASTER must be a boolean.  When True
+        self.master_member is used to sign the authorize message.
+        Otherwise self.my_member is used.
+
+        UPDATE_LOCALLY must be a boolean.  When True the
+        self.on_authorize_message is called with each created message.
+        This parameter should (almost always) be True, its inclusion
+        is mostly to allow certain debugging scenarios.
+
+        STORE_AND_FORWARD must be a boolean.  When True the created
+        messages are stored (as defined by the message distribution
+        policy) in the local Dispersy database and the messages are
+        forewarded to other peers (as defined bt the message
+        destination policy).
+        """
+        assert isinstance(message, Message)
+        assert isinstance(payload, Permit), type(payload)
+        assert isinstance(authentication, (tuple, list))
+        assert isinstance(distribution, (tuple, list))
+        assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
+        assert isinstance(destination, (tuple, list))
+        assert isinstance(update_locally, bool)
+        assert isinstance(store_and_forward, bool)
+
+        # authentication
+        if isinstance(message.authentication, NoAuthentication):
+            assert len(authentication) == 0
+
+            authentication_impl = message.authentication.implement()
+        elif isinstance(message.authentication, MemberAuthentication):
+            assert len(authentication) in (0, 1)
+            if authentication:
+                if __debug__:
+                    from Member import PrivateMember
+                assert isinstance(authentication[0], PrivateMember)
+                authentication_impl = message.authentication.implement(authentication[0])
+            else:
+                authentication_impl = message.authentication.implement(self._my_member)
+        elif isinstance(message.authentication, MultiMemberAuthentication):
+            assert len(authentication) > 1
+            authentication_impl = message.authentication.implement(authentication)
+        else:
+            raise ValueError("Unknown authentication")
+
+        # distribution
         distribution = message.distribution
         if isinstance(distribution, FullSyncDistribution):
-            distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
+            assert isinstance(message.authentication, MemberAuthentication)
+            distribution_impl = distribution.implement(self._timeline.claim_global_time(), authentication_impl.member.claim_sequence_number())
         elif isinstance(distribution, LastSyncDistribution):
             distribution_impl = distribution.implement(self._timeline.claim_global_time())
         elif isinstance(distribution, DirectDistribution):
@@ -304,8 +530,10 @@ class Community(object):
         else:
             raise ValueError("Unknown distribution")
 
+        # destination
         destination_impl = message.destination.implement(*destination)
-        message_impl = message.implement(signed_by, distribution_impl, destination_impl, payload)
+
+        message_impl = message.implement(authentication_impl, distribution_impl, destination_impl, payload)
 
         if update_locally:
             assert self._timeline.check(message_impl)
@@ -315,6 +543,57 @@ class Community(object):
             self._dispersy.store_and_forward([message_impl])
 
         return message_impl
+
+    def signature_request(self, message, payload, authentication, distribution=(), destination=(), store_and_forward=True):
+        """
+        Send a request to all members in AUTHENTICATION to add their
+        signature to MESSAGE.
+
+        >>> signature_request(self.get_meta_message(u"send-message"), u"Hello World!", (community.my_member, bob))
+        """
+        assert isinstance(message, Message)
+        assert isinstance(message.authentication, MultiMemberAuthentication)
+        assert isinstance(payload, Permit)
+        assert isinstance(authentication, tuple)
+        assert self._my_member in authentication
+        assert isinstance(distribution, tuple)
+        assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
+        assert isinstance(destination, tuple)
+        assert isinstance(store_and_forward, bool)
+
+        # the message that needs to be multi signed
+        submsg_impl = self.permit(message, payload, authentication, distribution, destination, False, False)
+
+        # the message that will hold the signature request
+        meta = self.get_meta_message(u"dispersy-signature-request")
+
+        # the members that need to sign
+        members = [member for is_signed, member in submsg_impl.authentication.signed_members if not is_signed]
+
+        # send the dispersy-signature-request
+        return self.permit(meta, submsg_impl, (), (), members, False, store_and_forward)
+
+    # def signature_response(self, message, authentication=(), distribution(), destination=(), store_and_forward=True):
+    #     assert isinstance(message, Message.Implementation)
+    #     assert isinstance(message.authentication, MultiMemberAuthentication.Implementation)
+    #     assert isinstance(authentication, tuple)
+    #     assert self._my_member in authentication
+    #     assert isinstance(distribution, tuple)
+    #     assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
+    #     assert isinstance(destination, tuple)
+    #     assert isinstance(store_and_forward, bool)
+
+    #     # the message that will hold the signature response
+    #     meta = self.get_meta_message(u"dispersy-response")
+
+    #     if not destination:
+    #         destination = (members.authentication.member,)
+
+    #     # send the dispersy-signature-response
+    #     return self.permit(meta, message, authentication, distribution, destination, False, store_and_forward)
+
+    def await_response(self, request, reply_func, timeout=10.0):
+        self._dispersy.await_response(request, reply_func, timeout=timeout)
 
     def on_incoming_message(self, address, message):
         """

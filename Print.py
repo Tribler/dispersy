@@ -736,12 +736,14 @@ def dprint(*args, **kargs):
     if kargs["stdout"]:
         print >> stdout, prefix + ("\n"+prefix).join([msg[:10000] for msg in messages])
         if kargs["stack"]:
-            if isinstance(kargs["stack"], bool):
-                for line in format_list(callstack):
-                    print >> stdout, line, 
-            else:
-                for line in format_list(kargs["stack"][:kargs["stack_origin_modifier"]]):
-                    print >> stdout, line,
+            for line in format_list(callstack):
+                print >> stdout, line, 
+            # if isinstance(kargs["stack"], bool):
+            #     for line in format_list(callstack):
+            #         print >> stdout, line, 
+            # else:
+            #     for line in format_list(kargs["stack"][:kargs["stack_origin_modifier"]]):
+            #         print >> stdout, line,
         if kargs["exception"]:
             print_exception(*exc_info(), file=stdout)
     if kargs["stderr"]:

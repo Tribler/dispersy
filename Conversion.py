@@ -1,19 +1,20 @@
 from struct import pack, unpack_from
 from hashlib import sha1
 
+from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
 from Destination import MemberDestination, CommunityDestination, AddressDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from Encoding import encode, decode
-from Message import DelayPacket, DropPacket
-from Message import Message
+from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
 from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload
+from Member import PrivateMember, MasterMember
 
 if __debug__:
     from Print import dprint
 
-class ConversionBase(object):
+class Conversion(object):
     """
     A Conversion object is used to convert incoming packets to a
     different, often more recent, community version.  If also allows
@@ -73,7 +74,7 @@ class ConversionBase(object):
         assert isinstance(message, Message)
         raise NotImplementedError("The subclass must implement encode_message")
 
-class DictionaryConversion(ConversionBase):
+class DictionaryConversion(Conversion):
     """
     On-The-Wire debug version
 
@@ -83,7 +84,7 @@ class DictionaryConversion(ConversionBase):
     convert them from binary first.
     """
     def __init__(self, community, version):
-        ConversionBase.__init__(self, community, version)
+        Conversion.__init__(self, community, version)
         self._distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
                                   LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
                                   DirectDistribution.Implementation:self._encode_direct_distribution}
@@ -170,9 +171,9 @@ class DictionaryConversion(ConversionBase):
 
     def encode_message(self, message):
         if __debug__:
-            from Member import PrivateMemberBase
+            from Member import PrivateMember
         assert isinstance(message, Message.Implementation)
-        assert isinstance(message.signed_by, PrivateMemberBase)
+        assert isinstance(message.signed_by, PrivateMember)
         assert not message.signed_by.private_pem is None
 
         container = {"signed-by":message.signed_by.pem, "message-name":message.name}
@@ -303,7 +304,7 @@ class DictionaryConversion(ConversionBase):
 
         return meta_message.implement(signed_by, distribution_impl, destination_impl, payload)
 
-class BinaryConversion(ConversionBase):
+class BinaryConversion(Conversion):
     """
     On-The-Wire binary version
 
@@ -314,7 +315,7 @@ class BinaryConversion(ConversionBase):
     _decode_payload_type_map = dict([(value, key) for key, value in _encode_payload_type_map.iteritems()])
 
     def __init__(self, community, version):
-        ConversionBase.__init__(self, community, version)
+        Conversion.__init__(self, community, version)
         self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
                                          LastSyncDistribution.Implementation:self._encode_last_sync_distribution,
                                          DirectDistribution.Implementation:self._encode_direct_distribution}
@@ -325,6 +326,8 @@ class BinaryConversion(ConversionBase):
         self._decode_message_map = dict() # byte : (message, decode_payload_func)
         self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
         self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
+        self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
+        self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-response"), self._encode_response, self._decode_response)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -394,44 +397,78 @@ class BinaryConversion(ConversionBase):
 
         return offset, SyncPayload(global_time, bloom_filter)
 
+    def _encode_signature_request(self, message):
+        return self.encode_message(message.payload),
+
+    def _decode_signature_request(self, offset, data):
+        # print "PREFIX"
+        # print self._prefix.encode("HEX")
+        # dprint("DATA")
+        # dprint(data.encode("HEX"))
+        # dprint("SUB-MSG")
+        # dprint(data[offset:].encode("HEX"))
+        # print
+        return len(data), self._decode_message(data[offset:], False)
+
+    def _encode_response(self, message):
+        return message.payload.message_id + self.encode_message(message.payload.response)
+
+    def _decode_response(self, offset, data):
+        return len(data), ResponsePayload(data[offset:offset+20], self._decode_message(data[offset+20:]))
+
     #
     # Encoding
     #
 
     @staticmethod
     def _encode_full_sync_distribution(container, message):
-        container.append(pack("!LL", message.distribution.global_time, message.distribution.sequence_number))
+        container.append(pack("!QL", message.distribution.global_time, message.distribution.sequence_number))
 
     @staticmethod
     def _encode_last_sync_distribution(container, message):
-        container.append(pack("!L", message.distribution.global_time))
+        container.append(pack("!Q", message.distribution.global_time))
 
     @staticmethod
     def _encode_direct_distribution(container, message):
-        container.append(pack("!L", message.distribution.global_time))
+        container.append(pack("!Q", message.distribution.global_time))
 
     def encode_message(self, message):
         if __debug__:
-            from Member import PrivateMemberBase
+            from Member import PrivateMember
         assert isinstance(message, Message.Implementation)
-        assert isinstance(message.signed_by, PrivateMemberBase)
-        assert not message.signed_by.private_pem is None
 
-        assert message.name in self._encode_message_map
+        assert message.name in self._encode_message_map, message.name
         message_id, encode_payload_func = self._encode_message_map[message.name]
 
-        # Signed by and the message name
-        container = [self._prefix, message.signed_by.mid, message_id]
+        # Community prefix, message-id
+        container = [self._prefix, message_id]
+
+        # Authentication
+        if isinstance(message.authentication, NoAuthentication.Implementation):
+            pass
+        elif isinstance(message.authentication, MemberAuthentication.Implementation):
+            container.append(message.authentication.member.mid)
+        elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
+            container.extend([member.mid for member in message.authentication.members])
+        else:
+            raise NotImplementedError(type(message.authentication))
+
         # Destination does not hold any space in the message
+
         # Distribution
         assert type(message.distribution) in self._encode_distribution_map
         self._encode_distribution_map[type(message.distribution)](container, message)
+
+        # # Follow
+        # if isinstance(message.follow, (RequestFollow, ResponseFollow)):
+        #     container.append(message.follow.identifier)
+
         # Payload
-        container.append(self._encode_payload_type_map[u"permit"])
         if isinstance(message.payload, Permit):
+            container.append(self._encode_payload_type_map[u"permit"])
             if __debug__:
                 tup = encode_payload_func(message)
-                assert isinstance(tup, tuple)
+                assert isinstance(tup, tuple), (type(tup), encode_payload_func)
                 assert not filter(lambda x: not isinstance(x, str), tup)
                 container.extend(tup)
             else:
@@ -445,7 +482,27 @@ class BinaryConversion(ConversionBase):
             raise NotImplementedError()
 
         # Sign
-        return message.signed_by.generate_pair("".join(container))
+        if isinstance(message.authentication, NoAuthentication.Implementation):
+            message.packet = "".join(container)
+        elif isinstance(message.authentication, MemberAuthentication.Implementation):
+            data = "".join(container)
+            message.packet = data + message.authentication.member.sign(data)
+        elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
+            data = "".join(container)
+            signatures = []
+            for member in message.authentication.members:
+                dprint(member)
+                if isinstance(member, PrivateMember):
+                    signatures.append(member.sign(data))
+                else:
+                    signatures.append("\x00" * member.signature_length)
+            message.packet = data + "".join(signatures)
+        else:
+            raise NotImplementedError(type(message.authentication))
+
+
+        # dprint(message.packet.encode("HEX"))
+        return message.packet
 
     #
     # Decoding
@@ -453,21 +510,99 @@ class BinaryConversion(ConversionBase):
 
     @staticmethod
     def _decode_full_sync_distribution(offset, data, meta_message):
-        global_time, sequence_number = unpack_from("!LL", data, offset)
-        return offset + 8, meta_message.distribution.implement(global_time, sequence_number)
-
+        global_time, sequence_number = unpack_from("!QL", data, offset)
+        return offset + 12, meta_message.distribution.implement(global_time, sequence_number)
+ 
     @staticmethod
     def _decode_last_sync_distribution(offset, data, meta_message):
-        global_time, = unpack_from("!L", data, offset)
-        return offset + 4, meta_message.distribution.implement(global_time)
+        global_time, = unpack_from("!Q", data, offset)
+        return offset + 8, meta_message.distribution.implement(global_time)
 
     @staticmethod
     def _decode_direct_distribution(offset, data, meta_message):
-        global_time, = unpack_from("!L", data, offset)
-        return offset + 4, meta_message.distribution.implement(global_time)
+        global_time, = unpack_from("!Q", data, offset)
+        return offset + 8, meta_message.distribution.implement(global_time)
 
-    def decode_message(self, data):
+    def _decode_authentication(self, authentication, offset, data):
+        if isinstance(authentication, NoAuthentication):
+            return offset, authentication.implement(), len(data)
+
+        elif isinstance(authentication, MemberAuthentication):
+            member_id = data[offset:offset+20]
+            members = self._community.get_members_from_id(member_id)
+            if not members:
+                raise DelayPacketByMissingMember(member_id)
+            offset += 20
+
+            for member in members:
+                first_signature_offset = len(data) - member.signature_length
+                if member.verify(data, data[first_signature_offset:], length=first_signature_offset):
+                    return offset, authentication.implement(member, is_signed=True), first_signature_offset
+            raise DelayPacketByMissingMember(member_id)
+
+        elif isinstance(authentication, MultiMemberAuthentication):
+            def iter_options(members_ids):
+                """
+                members_ids = [[m1_a, m1_b], [m2_a], [m3_a, m3_b]]
+                --> m1_a, m2_a, m3_a
+                --> m1_a, m2_a, m3_b
+                --> m1_b, m2_a, m3_a
+                --> m1_b, m2_a, m3_b
+                """
+                if members_ids:
+                    for member_id in members_ids[0]:
+                        for others in iter_options(members_ids[1:]):
+                            yield [member_id] + others
+                else:
+                    yield []
+
+            members_ids = []
+            for _ in range(authentication.count):
+                member_id = data[offset:offset+20]
+                members = self._community.get_members_from_id(member_id)
+                if not members:
+                    raise DelayPacketByMissingMember(member_id)
+                offset += 20
+                members_ids.append(members)
+
+            for members in iter_options(members_ids):
+                # try this member combination
+                first_signature_offset = len(data) - sum([member.signature_length for member in members])
+                signature_offset = first_signature_offset
+                are_signed = [False] * authentication.count
+                valid_or_null = True
+                for index, member in zip(range(authentication.count), members):
+                    signature = data[signature_offset:signature_offset+member.signature_length]
+                    dprint("INDEX: ", index)
+                    dprint(signature.encode('HEX'))
+                    if not signature == "\x00" * member.signature_length:
+                        if member.verify(data, data[signature_offset:signature_offset+member.signature_length], length=first_signature_offset):
+                            are_signed[index] = True
+                        else:
+                            valid_or_null = False
+                            break
+                    signature_offset += member.signature_length
+
+                # found a valid combination
+                if valid_or_null:
+                    return offset, authentication.implement(members, are_signed=are_signed), first_signature_offset
+            raise DelayPacketByMissingMember(member_id)
+
+        raise NotImplementedError()
+
+    def _decode_message(self, data, verify_all_signatures):
+        """
+        Decode a binary string into a Message structure, with some
+        Dispersy specific parameters.
+
+        When VERIFY_ALL_SIGNATURES is True, all signatures must be
+        valid.  When VERIFY_ALL_SIGNATURES is False, signatures may be
+        \x00 bytes.  Message.authentication.signed_members returns
+        information on which members had a signature present.
+        Signatures that are set and fail will NOT be accepted.
+        """
         assert isinstance(data, str)
+        assert isinstance(verify_all_signatures, bool)
         assert len(data) >= 22
         assert data[:22] == self._prefix
 
@@ -476,29 +611,23 @@ class BinaryConversion(ConversionBase):
 
         offset = 22
 
-        # signed by
-        member_id = data[offset:offset+20]
-        offset += 20
-        try:
-            members = self._community.get_members_from_id(member_id)
-        except KeyError:
-            raise DelayPacketByMissingMember(member_id)
-        for signed_by in members:
-            if signed_by.verify_pair(data):
-                break
-        else:
-            raise DelayPacketByMissingMember(member_id)
-
         # meta_message
         meta_message, decode_payload_func = self._decode_message_map.get(data[offset], (None, None))
         if meta_message is None:
             raise DropPacket("Invalid message byte")
         offset += 1
 
+        # authentication
+        offset, authentication_impl, first_signature_offset = self._decode_authentication(meta_message.authentication, offset, data)
+        if verify_all_signatures and not authentication_impl.is_signed:
+            raise DropPacket("Signature consists of \x00 bytes")
+
         # destination
         assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination))
         if isinstance(meta_message.destination, AddressDestination):
             destination_impl = meta_message.destination.implement(("", 0))
+        elif isinstance(meta_message.destination, MemberDestination):
+            destination_impl = meta_message.destination.implement(self._community.my_member)
         else:
             destination_impl = meta_message.destination.implement()
 
@@ -512,7 +641,7 @@ class BinaryConversion(ConversionBase):
             raise DropPacket("Invalid payload type")
         offset += 1
         if payload_type == u"permit":
-            offset, payload = decode_payload_func(offset, data)
+            offset, payload = decode_payload_func(offset, data[:first_signature_offset])
             assert isinstance(offset, (int, long))
             assert isinstance(payload, Permit), type(payload)
             
@@ -535,8 +664,16 @@ class BinaryConversion(ConversionBase):
 
         else:
             raise NotImplementedError()
-        
-        return meta_message.implement(signed_by, distribution_impl, destination_impl, payload)
+
+        message_impl =  meta_message.implement(authentication_impl, distribution_impl, destination_impl, payload)
+        message_impl.packet = data
+        return message_impl
+
+    def decode_message(self, data):
+        """
+        Decode a binary string into a Message structure.
+        """
+        return self._decode_message(data, True)
 
 class DefaultConversion(BinaryConversion):
     """

@@ -4,15 +4,7 @@ from os import path
 
 from Database import Database
 
-class DispersyDatabase(Database):
-
-    def __init__(self, working_directory):
-        assert isinstance(working_directory, unicode)
-        return Database.__init__(self, path.join(working_directory, u"dispersy.db"))
-
-    def check_database(self, database_version):
-        if database_version == "0":
-            self.execute(u"""
+schema = u"""
 CREATE TABLE user(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  mid BLOB,                                      -- member identifier (sha1 of pem)
@@ -58,7 +50,19 @@ CREATE TABLE sync_last(
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');
-""")
+"""
+
+class DispersyDatabase(Database):
+    if __debug__:
+        __doc__ = schema
+    
+    def __init__(self, working_directory):
+        assert isinstance(working_directory, unicode)
+        return Database.__init__(self, path.join(working_directory, u"dispersy.db"))
+
+    def check_database(self, database_version):
+        if database_version == "0":
+            self.execute(schema)
 
             # Add bootstrap users
             self.bootstrap()
