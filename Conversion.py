@@ -8,7 +8,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from Encoding import encode, decode
 from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload
+from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload
 from Member import PrivateMember, MasterMember
 
 if __debug__:
@@ -327,7 +327,7 @@ class BinaryConversion(Conversion):
         self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
         self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
         self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
-        self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-response"), self._encode_response, self._decode_response)
+        self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-signature-response"), self._encode_signature_response, self._decode_signature_response)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -335,7 +335,7 @@ class BinaryConversion(Conversion):
         assert isinstance(message, Message)
         assert 0 < ord(byte) < 255
         assert not message.name in self._encode_message_map
-        assert not byte in self._decode_message_map
+        assert not byte in self._decode_message_map, "This byte has already been defined"
         assert callable(encode_payload_func)
         assert callable(decode_payload_func)
         self._encode_message_map[message.name] = (byte, encode_payload_func)
@@ -410,11 +410,11 @@ class BinaryConversion(Conversion):
         # print
         return len(data), self._decode_message(data[offset:], False)
 
-    def _encode_response(self, message):
-        return message.payload.message_id + self.encode_message(message.payload.response)
+    def _encode_signature_response(self, message):
+        return message.payload.request_id, message.payload.signature
 
-    def _decode_response(self, offset, data):
-        return len(data), ResponsePayload(data[offset:offset+20], self._decode_message(data[offset+20:]))
+    def _decode_signature_response(self, offset, data):
+        return len(data), SignatureResponsePayload(data[offset:offset+20], data[offset+20:])
 
     #
     # Encoding
@@ -459,10 +459,6 @@ class BinaryConversion(Conversion):
         assert type(message.distribution) in self._encode_distribution_map
         self._encode_distribution_map[type(message.distribution)](container, message)
 
-        # # Follow
-        # if isinstance(message.follow, (RequestFollow, ResponseFollow)):
-        #     container.append(message.follow.identifier)
-
         # Payload
         if isinstance(message.payload, Permit):
             container.append(self._encode_payload_type_map[u"permit"])
@@ -499,7 +495,6 @@ class BinaryConversion(Conversion):
             message.packet = data + "".join(signatures)
         else:
             raise NotImplementedError(type(message.authentication))
-
 
         # dprint(message.packet.encode("HEX"))
         return message.packet
@@ -573,8 +568,8 @@ class BinaryConversion(Conversion):
                 valid_or_null = True
                 for index, member in zip(range(authentication.count), members):
                     signature = data[signature_offset:signature_offset+member.signature_length]
-                    dprint("INDEX: ", index)
-                    dprint(signature.encode('HEX'))
+                    # dprint("INDEX: ", index)
+                    # dprint(signature.encode('HEX'))
                     if not signature == "\x00" * member.signature_length:
                         if member.verify(data, data[signature_offset:signature_offset+member.signature_length], length=first_signature_offset):
                             are_signed[index] = True

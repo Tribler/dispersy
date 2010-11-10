@@ -21,6 +21,8 @@ from Print import dprint
 from Resolution import PublicResolution
 from Member import Member
 
+from DebugCommunity import DebugCommunity
+
 from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
 from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
 from Tribler.Community.Forum.Forum import ForumCommunity
@@ -210,7 +212,7 @@ class DiscoveryCommunityScript(ScriptBase):
         assert tup[0] == u"Drink-01"
         assert tup[1] == u"Comment-01"
 
-        _, pckt, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
+        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
         # must ask for missing sequence 2
         assert message.payload.member.pem == node.my_member.pem
         assert message.payload.message.name == u"community-metadata"
@@ -262,7 +264,7 @@ class DiscoveryCommunityScript(ScriptBase):
         assert tup[0] == u"Drinks-01"
         assert tup[1] == u"Comment-01"
 
-        _, pckt, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
+        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
         # must ask for missing sequence 2, 3, and 4
         assert message.payload.member.pem == node.my_member.pem
         assert message.payload.message.name == u"community-metadata"
@@ -456,7 +458,7 @@ class DiscoverySyncScript(ScriptBase):
         for _ in xrange(10):
             yield 1.0
             try:
-                _, packet, message = node.receive_message(timeout=0.1, addresses=[address], message_names=[u"dispersy-sync"])
+                _, message = node.receive_message(timeout=0.1, addresses=[address], message_names=[u"dispersy-sync"])
             except socket.timeout:
                 continue
 
@@ -500,82 +502,16 @@ class DiscoverySyncScript(ScriptBase):
 #         dprint("finished")
 
 class DispersyScript(ScriptBase):
-    class TestCommunityConversion(BinaryConversion):
-        def __init__(self, community):
-            super(DispersyScript.TestCommunityConversion, self).__init__(community, "\x00\x02")
-            self.define_meta_message(chr(1), community.get_meta_message(u"double-signed-message"), self._encode_double_signed_message, self._decode_double_signed_message)
-
-        def _encode_double_signed_message(self, message):
-            return pack("!B", len(message.payload.message)), message.payload.message
-
-        def _decode_double_signed_message(self, offset, data):
-            if len(data) < offset + 1:
-                raise DropPacket("Insufficient packet size")
-
-            message_length, = unpack_from("!B", data, offset)
-            offset += 1
-
-            if len(data) < offset + message_length:
-                raise DropPacket("Insufficient packet size")
-
-            message = data[offset:offset+message_length]
-            offset += message_length
-
-            return offset, DispersyScript.DoubleSignedMessagePayload(message)
-
-    class DoubleSignedMessagePayload(Permit):
-        def __init__(self, message):
-            assert isinstance(message, str)
-            self._message = message
-
-        @property
-        def message(self):
-            return self._message
-
-    class TestCommunity(Community):
-        """
-        Community to test Dispersy related messages and policies.
-        """
-        def get_meta_messages(self):
-            return [Message(self, u"double-signed-message", MultiMemberAuthentication(2, self.allow_signature_func), PublicResolution(), LastSyncDistribution(), CommunityDestination())]
-
-        def __init__(self, cid):
-            super(DispersyScript.TestCommunity, self).__init__(cid)
-
-            # mapping
-            self._incoming_message_map = {u"double-signed-message":self.on_doubled_sign_message}
-
-            # add the Dispersy message handlers to the
-            # _incoming_message_map
-            for message, handler in self._dispersy.get_message_handlers(self):
-                assert message.name not in self._incoming_message_map
-                self._incoming_message_map[message.name] = handler
-
-            # available conversions
-            self.add_conversion(DispersyScript.TestCommunityConversion(self), True)
-
-        def allow_signature_func(self, message):
-            """
-            Received a request to double sign MESSAGE.
-            """
-            dprint(message)
-            return False
-
-        def on_message(self, address, message):
-            self._incoming_message_map[message.name](address, message)
-
-        def on_doubled_sign_message(self, address, message):
-            """
-            Received a double signed message.
-            """
-            dprint(message, stack=1)
-
     def run(self):
-        self.caller(self.double_signature)
+        self.caller(self.double_signed_timeout)
+        self.caller(self.double_signed_response)
+        self.caller(self.triple_signed_timeout)
+        self.caller(self.triple_signed_response)
 
-    def double_signature(self):
-        community = DispersyScript.TestCommunity.create_community(self._discovery.my_member)
+    def double_signed_timeout(self):
+        community = DebugCommunity.create_community(self._discovery.my_member)
         address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
 
         # create node and ensure that SELF knows the node address
         node = DiscoveryNode()
@@ -588,22 +524,170 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # SELF requests NODE to double sign
-        def on_response(address, request, reply):
-            dprint(address)
-            dprint(request)
-            dprint(reply)
-        double_signed_message = DispersyScript.DoubleSignedMessagePayload("Hello World!")
-        request = community.signature_request(community.get_meta_message(u"double-signed-message"), double_signed_message, (community.my_member, Member.get_instance(node.my_member.pem)))
-        community.await_response(request, on_response, 1.0)
-        yield 1.0
+        def on_response(address, request, response):
+            assert address == ("", -1)
+            assert response is None
+            container["timeout"] += 1
+        request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
 
         # receive dispersy-signature-request message
-        _, _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
-        yield 2.0
-        # should have timed out
-        
-        dprint("TODO")
-        
+        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        # do not send a response
+
+        # should time out
+        yield 4.0
+
+        assert container["timeout"] == 1, container["timeout"]
+        dprint("finished")
+
+    def double_signed_response(self):
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"response":0, "signature":""}
+
+        # create node and ensure that SELF knows the node address
+        node = DiscoveryNode()
+        node.init_socket()
+        node.init_my_member()
+        Member.get_instance(node.my_member.pem)
+        node.set_community(self._discovery)
+        node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        node.set_community(community)
+        yield 0.1
+
+        # SELF requests NODE to double sign
+        def on_response(address, request, response):
+            assert address == node.socket.getsockname(), address
+            assert request.authentication.is_signed
+            container["response"] += 1
+            container["signature"] = response.signature
+        request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
+
+        # receive dispersy-signature-request message
+        address, message = node.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        second_signature_offset = len(message.payload.packet) - community.my_member.signature_length
+        first_signature_offset = second_signature_offset - node.my_member.signature_length
+        assert message.payload.packet[second_signature_offset:] == "\x00" * node.my_member.signature_length
+        signature = node.my_member.sign(message.payload.packet, length=first_signature_offset)
+
+        # send dispersy-signature-response message
+        request_id = hashlib.sha1(request.packet).digest()
+        global_time = community._timeline.global_time
+        node.send_message(node.create_dispersy_signature_response_message(request_id, signature, global_time, community.my_member), address)
+
+        # should not time out
+        yield 4.0
+
+        assert container["response"] == 1, container["response"]
+        assert container["signature"] == signature, container["signature"]
+        dprint("finished")
+
+    def triple_signed_timeout(self):
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
+
+        # create node and ensure that SELF knows the node address
+        node1 = DiscoveryNode()
+        node1.init_socket()
+        node1.init_my_member()
+        Member.get_instance(node1.my_member.pem)
+        node1.set_community(self._discovery)
+        node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        node1.set_community(community)
+
+        # create node and ensure that SELF knows the node address
+        node2 = DiscoveryNode()
+        node2.init_socket()
+        node2.init_my_member()
+        Member.get_instance(node2.my_member.pem)
+        node2.set_community(self._discovery)
+        node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
+        node2.set_community(community)
+        yield 0.1
+
+        # SELF requests NODE1 and NODE2 to double sign
+        def on_response(address, request, response):
+            assert address == ("", -1)
+            assert response is None
+            container["timeout"] += 1
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
+
+        # receive dispersy-signature-request message
+        _, message = node1.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        _, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        # do not send a response
+
+        # should time out
+        yield 4.0
+
+        assert container["timeout"] == 1, container["timeout"]
+        dprint("finished")
+
+    def triple_signed_response(self):
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"response":0, "signature":[]}
+
+        # create node and ensure that SELF knows the node address
+        node1 = DiscoveryNode()
+        node1.init_socket()
+        node1.init_my_member()
+        Member.get_instance(node1.my_member.pem)
+        node1.set_community(self._discovery)
+        node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        node1.set_community(community)
+
+        # create node and ensure that SELF knows the node address
+        node2 = DiscoveryNode()
+        node2.init_socket()
+        node2.init_my_member()
+        Member.get_instance(node2.my_member.pem)
+        node2.set_community(self._discovery)
+        node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
+        node2.set_community(community)
+        yield 0.1
+
+        # SELF requests NODE1 and NODE2 to add their signature
+        def on_response(address, request, response):
+            assert container["response"] == 0 or request.authentication.is_signed
+            container["response"] += 1
+            container["signature"].append(response.signature)
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
+
+        # receive dispersy-signature-request message
+        address, message = node1.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        third_signature_offset = len(message.payload.packet) - node2.my_member.signature_length
+        second_signature_offset = third_signature_offset - node1.my_member.signature_length
+        first_signature_offset = second_signature_offset - community.my_member.signature_length
+        assert message.payload.packet[second_signature_offset:third_signature_offset] == "\x00" * node1.my_member.signature_length
+        signature1 = node1.my_member.sign(message.payload.packet, length=first_signature_offset)
+
+        # send dispersy-signature-response message
+        request_id = hashlib.sha1(request.packet).digest()
+        global_time = community._timeline.global_time
+        node1.send_message(node1.create_dispersy_signature_response_message(request_id, signature1, global_time, community.my_member), address)
+
+        # receive dispersy-signature-request message
+        address, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
+        third_signature_offset = len(message.payload.packet) - node2.my_member.signature_length
+        second_signature_offset = third_signature_offset - node1.my_member.signature_length
+        first_signature_offset = second_signature_offset - community.my_member.signature_length
+        assert message.payload.packet[third_signature_offset:] == "\x00" * node2.my_member.signature_length
+        signature2 = node2.my_member.sign(message.payload.packet, length=first_signature_offset)
+
+        # send dispersy-signature-response message
+        request_id = hashlib.sha1(request.packet).digest()
+        global_time = community._timeline.global_time
+        node2.send_message(node2.create_dispersy_signature_response_message(request_id, signature2, global_time, community.my_member), address)
+
+        # should not time out
+        yield 4.0
+
+        assert container["response"] == 2, container["response"]
+        assert container["signature"] == [signature1, signature2], container["signature"]
+        dprint("finished")
+
 class ForumScript(ScriptBase):
     def run(self):
         self.caller(self.create_my_forum)

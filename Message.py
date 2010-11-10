@@ -141,73 +141,6 @@ class DropMessageByProof(DropMessage):
     def proof(self):
         return self._proof
 
-# #
-# # Follow
-# #
-# class Follow(MetaObject):
-#     class Implementation(object):
-#         def __init__(self, meta):
-#             self._meta = meta
-
-#         @property
-#         def meta(self):
-#             return self._meta
-
-# class NoFollow(Follow):
-#     pass
-
-# class RequestFollow(Follow):
-#     class Implementation(Follow.Implementation):
-#         def __init__(self, meta, identifier):
-#             assert isinstance(identifier, str)
-#             assert len(identifier) == 4
-#             super(RequestFollow.Implementation, self).__init__(meta)
-#             self._identifier = identifier
-
-#         @property
-#         def identifier(self):
-#             return self._identifier
-
-    # class Implementation(Follow.Implementation):
-    #     def __init__(self, meta, identifier, handler=None, timeout=10.0, default=None):
-    #         assert isinstance(meta, RequestFollow)
-    #         assert hasattr(handler, "__call__")
-    #         assert isinstance(timeout, float)
-    #         assert default is None or isinstance(default, Message.Implementation)
-    #         super(RequestFollow.Implementation, self).__init__(meta)
-    #         self._identifier = identifier
-    #         self._handler = handler
-    #         self._timeout = timeout
-    #         self._default = default
-
-    #     @property
-    #     def identifier(self):
-    #         return self._identifier
-
-    #     @property
-    #     def handler(self):
-    #         return self._handler
-
-    #     @property
-    #     def timeout(self):
-    #         return self._timeout
-
-    #     @property
-    #     def default(self):
-    #         return self._default
-
-# class ResponseFollow(Follow):
-#     class Implementation(Follow.Implementation):
-#         def __init__(self, meta, identifier):
-#             assert isinstance(identifier, str)
-#             assert len(identifier) == 4
-#             super(ResponseFollow.Implementation, self).__init__(meta)
-#             self._identifier = identifier
-
-#         @property
-#         def identifier(self):
-#             return self._identifier
-
 #
 # message
 #
@@ -223,13 +156,11 @@ class Message(MetaObject):
             assert isinstance(authentication, Authentication.Implementation), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
             assert isinstance(distribution, Distribution.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
             assert isinstance(destination, Destination.Implementation), "DESTINATION has invalid type '{0}'".format(type(destination))
-            # assert isinstance(follow, Follow.Implementation), "FOLLOW has invalid type '{0}'".format(type(follow))
             assert isinstance(payload, (Permit, Authorize, Revoke)), "PAYLOAD has invalid type '{0}'".format(type(payload))
             super(Message.Implementation, self).__init__(meta)
             self._authentication = authentication
             self._distribution = distribution
             self._destination = destination
-            # self._follow = follow
             self._payload = payload
             self._packet = ""
 
@@ -260,10 +191,6 @@ class Message(MetaObject):
         @property
         def destination(self):
             return self._destination
-
-        # @property
-        # def follow(self):
-        #     return self._follow
         
         @property
         def payload(self):
@@ -278,6 +205,9 @@ class Message(MetaObject):
             assert isinstance(packet, str)
             self._packet = packet
 
+        def __str__(self):
+            return "<{0.meta.__class__.__name__}.{0.__class__.__name__} {0.name} {1}>".format(self, len(self._packet))
+
     def __init__(self, community, name, authentication, resolution, distribution, destination):
         if __debug__:
             from Community import Community
@@ -291,7 +221,6 @@ class Message(MetaObject):
         assert isinstance(resolution, Resolution), "RESOLUTION has invalid type '{0}'".format(type(resolution))
         assert isinstance(distribution, Distribution), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
         assert isinstance(destination, Destination), "DESTINATION has invalid type '{0}'".format(type(destination))
-        # assert isinstance(follow, Follow), "FOLLLOW has invalid type '{0}'".format(type(follow))
         assert self.check_policy_combination(authentication.__class__, resolution.__class__, distribution.__class__, destination.__class__)
         self._community = community
         self._name = name
@@ -299,7 +228,6 @@ class Message(MetaObject):
         self._resolution = resolution
         self._distribution = distribution
         self._destination = destination
-        # self._follow = follow
 
     @property
     def community(self):
@@ -325,9 +253,8 @@ class Message(MetaObject):
     def destination(self):
         return self._destination
 
-    # @property
-    # def follow(self):
-    #     return self._callback
+    def __str__(self):
+        return "<{0.__class__.__name__} {0.name}>".format(self)
 
     @staticmethod
     def check_policy_combination(authentication, resolution, distribution, destination):

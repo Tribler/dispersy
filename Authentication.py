@@ -45,6 +45,10 @@ class MultiMemberAuthentication(Authentication):
             super(MultiMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
 
+            # will contain the list of signatures as they are received
+            # from dispersy-signature-response messages
+            self._signatures = [""] * meta._count
+
             if are_signed:
                 assert len(are_signed) == meta._count
                 self._are_signed = are_signed
@@ -77,6 +81,12 @@ class MultiMemberAuthentication(Authentication):
         @property
         def is_signed(self):
             return all(self._are_signed)
+
+        def add_signature(self, member, signature):
+            assert member in self._members
+            index = self._members.index(member)
+            self._signatures[index] = signature
+            self._are_signed[index] = True
 
     def __init__(self, count, allow_signature_func):
         assert isinstance(count, int)

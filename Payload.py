@@ -135,17 +135,20 @@ class SyncPayload(Permit):
         return self._bloom_filter
 
 class ResponsePayload(Permit):
-    def __init__(self, request_id, response):
+    def __init__(self, request_id):
         assert isinstance(request_id, str)
         assert len(request_id) == 20
-        assert isinstance(response, Message.Implementation)
         self._request_id = request_id
-        self._response = response
 
     @property
     def request_id(self):
         return self._request_id
 
+class SignatureResponsePayload(ResponsePayload):
+    def __init__(self, request_id, signature):
+        super(SignatureResponsePayload, self).__init__(request_id)
+        self._signature = signature
+
     @property
-    def response(self):
-        return self._response
+    def signature(self):
+        return self._signature

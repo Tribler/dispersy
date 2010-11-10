@@ -123,11 +123,6 @@ class Community(object):
         # community identifier
         self._cid = cid
 
-        # incoming message map
-        self._incoming_payload_type_map = {u"permit":self.on_message,
-                                           u"authorize":self.on_authorize_message,
-                                           u"revoke":self.on_revoke_message}
-
         # dispersy
         self._dispersy = Dispersy.get_instance()
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -544,68 +539,47 @@ class Community(object):
 
         return message_impl
 
-    def signature_request(self, message, payload, authentication, distribution=(), destination=(), store_and_forward=True):
+    def create_signature_request(self, message, response_func, timeout=10.0, store_and_forward=True):
         """
-        Send a request to all members in AUTHENTICATION to add their
-        signature to MESSAGE.
-
-        >>> signature_request(self.get_meta_message(u"send-message"), u"Hello World!", (community.my_member, bob))
+        Send a dispersy-signature-request to all members in MESSAGE to
+        ask them to add their signature to MESSAGE.
         """
-        assert isinstance(message, Message)
-        assert isinstance(message.authentication, MultiMemberAuthentication)
-        assert isinstance(payload, Permit)
-        assert isinstance(authentication, tuple)
-        assert self._my_member in authentication
-        assert isinstance(distribution, tuple)
-        assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
-        assert isinstance(destination, tuple)
+        assert isinstance(message, Message.Implementation)
+        assert isinstance(message.authentication, MultiMemberAuthentication.Implementation)
+        assert hasattr(response_func, "__call__")
+        assert isinstance(timeout, float)
         assert isinstance(store_and_forward, bool)
-
-        # the message that needs to be multi signed
-        submsg_impl = self.permit(message, payload, authentication, distribution, destination, False, False)
 
         # the message that will hold the signature request
         meta = self.get_meta_message(u"dispersy-signature-request")
 
         # the members that need to sign
-        members = [member for is_signed, member in submsg_impl.authentication.signed_members if not is_signed]
+        members = [member for is_signed, member in message.authentication.signed_members if not is_signed]
 
-        # send the dispersy-signature-request
-        return self.permit(meta, submsg_impl, (), (), members, False, store_and_forward)
+        # create the dispersy-signature-request
+        request = self.permit(meta, message, (), (), members, False, store_and_forward)
 
-    # def signature_response(self, message, authentication=(), distribution(), destination=(), store_and_forward=True):
-    #     assert isinstance(message, Message.Implementation)
-    #     assert isinstance(message.authentication, MultiMemberAuthentication.Implementation)
-    #     assert isinstance(authentication, tuple)
-    #     assert self._my_member in authentication
-    #     assert isinstance(distribution, tuple)
-    #     assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
-    #     assert isinstance(destination, tuple)
-    #     assert isinstance(store_and_forward, bool)
+        # set callback and timeout
+        self._dispersy.await_response(request, lambda address, request, payload: self.on_signature_response(address, request, payload, response_func), timeout)
 
-    #     # the message that will hold the signature response
-    #     meta = self.get_meta_message(u"dispersy-response")
+        return request
 
-    #     if not destination:
-    #         destination = (members.authentication.member,)
-
-    #     # send the dispersy-signature-response
-    #     return self.permit(meta, message, authentication, distribution, destination, False, store_and_forward)
-
-    def await_response(self, request, reply_func, timeout=10.0):
-        self._dispersy.await_response(request, reply_func, timeout=timeout)
-
-    def on_incoming_message(self, address, message):
-        """
-        A message was received from an external source.
-        """
-        assert isinstance(address, tuple)
-        assert isinstance(message, Message.Implementation)
-        if self._timeline.check(message):
-            self._incoming_payload_type_map[message.payload.type](address, message)
+    def on_signature_response(self, address, request, payload, response_func):
+        # check for timeout
+        if payload is None:
+            response_func(address, request, payload)
 
         else:
-            raise DelayMessageByProof()
+            # the multi signed message
+            submsg = request.payload
+
+            first_signature_offset = len(submsg.packet) - sum([member.signature_length for member in submsg.authentication.members])
+            body = submsg.packet[:first_signature_offset]
+
+            for has_signed, member in submsg.authentication.signed_members:
+                if not has_signed and member.verify(body, payload.signature):
+                    submsg.authentication.add_signature(member, payload.signature)
+                    response_func(address, request, payload)
 
     def on_authorize_message(self, address, message):
         """
@@ -614,7 +588,10 @@ class Community(object):
         """
         assert isinstance(address, (type(None), tuple))
         assert isinstance(message, Message.Implementation)
-        self._timeline.update(message)
+        if self._timeline.check(message):
+            self._timeline.update(message)
+        else:
+            raise DelayMessageByProof()
 
     def on_revoke_message(self, address, message):
         """
@@ -623,7 +600,10 @@ class Community(object):
         """
         assert isinstance(address, (type(None), tuple))
         assert isinstance(message, Message.Implementation)
-        self._timeline.update(message)
+        if self._timeline.check(message):
+            self._timeline.update(message)
+        else:
+            raise DelayMessageByProof()
 
     def on_message(self, address, message):
         """

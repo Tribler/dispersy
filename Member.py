@@ -5,6 +5,7 @@ Special Member subclasses exist to identify, for instance, youself.
 """
 
 from hashlib import sha1
+from M2Crypto.RSA import RSAError
 
 from Singleton import Parameterized1Singleton
 from DispersyDatabase import DispersyDatabase
@@ -136,25 +137,11 @@ class Member(Public, Parameterized1Singleton):
         assert isinstance(signature, str)
         assert isinstance(offset, (int, long))
         assert isinstance(length, (int, long))
-        return len(signature) == len(self._rsa) / 8 and bool(self._rsa.verify(sha1(data[offset:offset+length]).digest(), signature))
-
-    # def verify_pair(self, data, offset=0, length=0):
-    #     """
-    #     Verify that DATA, containing n byte signature followed by m
-    #     byte data, was signed with our public key.
-
-    #     DATA is the signed data and the signature concatenated.
-    #     OFFSET is the offset for the signed data.
-    #     LENGTH is the length of the signature and the data, in bytes.
-
-    #     Returns True or False.
-    #     """
-    #     assert isinstance(data, str)
-    #     assert isinstance(offset, (int, long))
-    #     assert isinstance(length, (int, long))
-    #     if not length: length = len(data)
-    #     signature_length = len(self._rsa) / 8
-    #     return bool(self._rsa.verify(sha1(data[offset:length-signature_length]).digest(), data[length-signature_length:length]))
+        length = length or len(data)
+        try:
+            return len(signature) == len(self._rsa) / 8 and bool(self._rsa.verify(sha1(data[offset:offset+length]).digest(), signature))
+        except RSAError:
+            return False
 
     def __hash__(self):
         """
@@ -215,16 +202,27 @@ class PrivateMember(Private, Member):
         assert not self._private_pem is None
         return self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
 
-    # def generate_pair(self, data, offset=0, length=0):
-    #     """
-    #     Sign DATA using our private key.  Returns a binary string
-    #     concatenated with the signature.
-    #     """
-    #     assert not self._private_pem is None
-    #     return data[offset:length or len(data)] + self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
-
 class MasterMember(PrivateMember):
     pass
 
 class MyMember(PrivateMember):
     pass
+
+if __name__ == "__main__":
+    from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+
+    rsa = rsa_generate_key(512)
+    public_pem = rsa_to_public_pem(rsa)
+    private_pem = rsa_to_private_pem(rsa)
+    public_member = Member(public_pem, sync_with_database=False)
+    private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
+
+    data = "Hello World! " * 1000
+    sig = private_member.sign(data)
+    digest = sha1(data).digest()
+    assert sig == rsa.sign(digest)
+    assert rsa.verify(digest, sig)
+    assert public_member._rsa.verify(digest, sig)
+    dprint(sig.encode("HEX"))
+    assert public_member.verify(data, sig)
+    assert private_member.verify(data, sig)

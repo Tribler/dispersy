@@ -10,7 +10,7 @@ community is revealed.
 
 from hashlib import sha1
 
-from Authentication import NoAuthentication
+from Authentication import NoAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Destination import CommunityDestination, AddressDestination, MemberDestination
@@ -18,7 +18,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Member import MyMember, PrivateMember, MasterMember
 from Message import Message, DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
-from Payload import MissingSequencePayload, SyncPayload
+from Payload import MissingSequencePayload, SyncPayload, ResponsePayload
 from Resolution import PublicResolution
 from Singleton import Singleton
 
@@ -31,8 +31,20 @@ class DummySocket(object):
 
 class ExpectedResponse(object):
     def __init__(self, request, response_func):
+        assert isinstance(request, Message.Implementation)
+        assert isinstance(request.payload, Message.Implementation)
+        assert isinstance(request.payload.authentication, MultiMemberAuthentication.Implementation)
         self._request = request
         self._response_func = response_func
+
+        if isinstance(request.destination, AddressDestination.Implementation):
+            self._responses_remaining = len(request.destination.addresses)
+
+        elif isinstance(request.destination, MemberDestination.Implementation):
+            self._responses_remaining = len(request.destination.members)
+
+        else:
+            raise NotImplementedError(type(request.destination))
 
     @property
     def request(self):
@@ -41,6 +53,14 @@ class ExpectedResponse(object):
     @property
     def response_func(self):
         return self._response_func
+
+    @property
+    def responses_remaining(self):
+        return self._responses_remaining
+
+    def on_response(self, response):
+        assert isinstance(response, Message.Implementation)
+        self._responses_remaining -= 1
 
 class Dispersy(Singleton):
     """
@@ -52,7 +72,7 @@ class Dispersy(Singleton):
     def __init__(self, rawserver, working_directory):
         # the raw server
         self._rawserver = rawserver
-        self._rawserver.add_task(self._periodically_disperse, 1.0)
+        self._rawserver.add_task(self._periodically_disperse, 10.0)
 
         # where we store all data
         self._working_directory = working_directory
@@ -304,7 +324,12 @@ LIMIT 1""",
                     # Allow community code to handle the message
                     #
                     if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes)")
-                    community.on_incoming_message(address, message)
+                    if message.payload.type == u"permit":
+                        community.on_message(address, message)
+                    elif message.payload.type == u"authorize":
+                        community.on_authorize_message(address, message)
+                    elif message.payload.type == u"revoke":
+                        community.on_revoke_message(address, message)
 
                     #
                     # Sync messages need to be stored (so they can be
@@ -473,13 +498,6 @@ LIMIT 1""",
         self._expected_responses[request_id] = ExpectedResponse(request, response_func)
         self._rawserver.add_task(on_timeout, timeout)
 
-    def on_response(self, address, message):
-        # todo: we should expect multiple people to send a response
-        # back (based on the destination policy from the request)
-        expected_response = self._expected_responses.pop(message.payload.request_id)
-        if expected_response:
-            expected_response.response_func(address, expected_response.request, message.payload.response)
-
     def get_meta_messages(self, community):
         """
         Returns the Message instances available to Dispersy.
@@ -496,36 +514,25 @@ LIMIT 1""",
                 except KeyError:
                     pass
             # the community may not already have these messages
-            # map(check_meta_message, [u"dispersy-handshake-request", u"disperty-handshake-reply", u"dispersy-sync", u"dispersy-missing-sequence", u"dispersy-double-signature"])
             map(check_meta_message, [u"dispersy-sync",
                                      u"dispersy-missing-sequence",
                                      u"dispersy-signature-request",
-                                     u"dispersy-response"])
+                                     u"dispersy-signature-response"])
 
-        # return [Message(community, u"dispersy-handshake-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-        #         Message(community, u"dispersy-handshake-reply", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
         return [Message(community, u"dispersy-sync", NoAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination()),
-                Message(community, u"dispersy-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination())]
+                Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination())]
 
     def get_message_handlers(self, community):
         """
         Returns the handler methods for the privileges available to
         Dispersy.
         """
-        # return [(community.get_meta_message(u"dispersy-handshake-request"), self.on_handshake_request),
-        #         (community.get_meta_message(u"dispersy-handshake-reply"), self.on_handshake_reply),
         return [(community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
                 (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence),
                 (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
-                (community.get_meta_message(u"dispersy-response"), self.on_response)]
-
-    # def on_handshake_request(self, address, message):
-    #     dprint(message)
-
-    # def on_handshake_reply(self, address, message):
-    #     dprint(message)
+                (community.get_meta_message(u"dispersy-signature-response"), self.on_general_response)]
 
     def on_sync_message(self, address, message):
         """
@@ -588,6 +595,10 @@ LIMIT 1""",
         The message may, or may not, have already been signed by some
         of the other members.  Furthermore, we can choose for
         ourselves if we want to sign this message or not.
+
+        When the message is allowed to be signed, a
+        dispersy-signature-response message is send to the creator of
+        the message (the first one in the authentication list).
         """
         if __debug__:
             from Message import Message
@@ -644,12 +655,25 @@ LIMIT 1""",
             if True:
                 self.on_message(address, payload)
 
-            # apparently we are going to propagate this message
-            # todo:
-            self.store_and_forward([payload])
+            # send the message back to the message creator
+            authentication = ()
+            distribution = ()
+            destination = (message.authentication.member,)
+            message.community.permit(community.get_meta_message(u"dispersy-signature-response"), message, authentication, distribution, destination, False, True)
 
         else:
             raise DropMessage("Nothing to sign")
+
+    def on_general_response(self, address, message):
+        expected_response = self._expected_responses.pop(message.payload.request_id)
+        if expected_response:
+            # check if we expect more responses
+            expected_response.on_response(message)
+            if expected_response.responses_remaining:
+                self._expected_responses[message.payload.request_id] = expected_response
+
+            # handle the incoming response
+            expected_response.response_func(address, expected_response.request, message.payload)
 
     def _periodically_disperse(self):
         """
@@ -664,4 +688,4 @@ LIMIT 1""",
             global_time, bloom_filter = community.get_current_bloom_filter()
             community.permit(community.get_meta_message(u"dispersy-sync"), SyncPayload(global_time, bloom_filter), update_locally=False)
 
-        self._rawserver.add_task(self._periodically_disperse, 1.0)
+        self._rawserver.add_task(self._periodically_disperse, 10.0)

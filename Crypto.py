@@ -157,35 +157,30 @@ def rsa_decrypt(rsa, data):
 #     raise ValueError("This data length can not be signed using a RSA key with this length")
 
 if __name__ == "__main__":
-    # bits = 1024
-    # exponent = 5
-    # rsa = rsa_generate_key(bits, exponent)
-    # public_pem = rsa_to_public_pem(rsa)
-    # public_bin = rsa_to_public_bin(rsa)
-    # private_pem = rsa_to_private_pem(rsa)
-    # private_bin = rsa_to_private_bin(rsa)
+    bits = 1024
+    exponent = 5
+    rsa = rsa_generate_key(bits, exponent)
+    public_pem = rsa_to_public_pem(rsa)
+    public_bin = rsa_to_public_bin(rsa)
+    private_pem = rsa_to_private_pem(rsa)
+    private_bin = rsa_to_private_bin(rsa)
 
-    # print "Generating public / private key pair"
-    # print "Bits:", bits
-    # print "Exponent:", exponent
-    # print "SHA1(pub-pem).HEX:", len(public_pem), sha1(public_pem).digest().encode("HEX")
-    # print "SHA1(pub-str).HEX:", len(public_bin), sha1(public_bin).digest().encode("HEX")
-    # print "SHA1(prv-pem).HEX:", len(private_pem), sha1(private_pem).digest().encode("HEX")
-    # print "SHA1(prv-str).HEX:", len(private_bin), sha1(private_bin).digest().encode("HEX")
-    # print public_pem
-    # print private_pem
+    print "Generating public / private key pair"
+    print "Bits:", bits
+    print "Exponent:", exponent
+    print "SHA1(pub-pem).HEX:", len(public_pem), sha1(public_pem).digest().encode("HEX")
+    print "SHA1(pub-str).HEX:", len(public_bin), sha1(public_bin).digest().encode("HEX")
+    print "SHA1(prv-pem).HEX:", len(private_pem), sha1(private_pem).digest().encode("HEX")
+    print "SHA1(prv-str).HEX:", len(private_bin), sha1(private_bin).digest().encode("HEX")
+    print public_pem
+    print private_pem
 
-    # data = "Hello World! " * 1000
-    # digest = sha1(data).digest()
-
-    # for bits in reversed([31*8, 256, 512, 1024, 2048]):
-    #     rsa = rsa_generate_key(bits, 5)
-
-    #     # sig = rsa.sign(digest, "sha1")
-    #     sig = ""
-    #     enc = rsa.private_encrypt(digest, M2Crypto.RSA.pkcs1_padding)
-
-    #     print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
+    data = "Hello World! " * 1000
+    digest = sha1(data).digest()
+    sig = rsa.sign(digest)
+    assert rsa.verify(digest, sig)
+    print "Verify = OK"
+    print
 
     # # smallest sha1 (20 bytes)
     # bits = 20 * 8

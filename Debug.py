@@ -7,7 +7,7 @@ from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
 from Message import Message
-from Payload import MissingSequencePayload, SyncPayload
+from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
@@ -74,8 +74,9 @@ class Node(object):
         return self._socket.sendto(packet, address)
 
     def send_message(self, message, address):
-        dprint(message.payload.type, "^", message.name, " to ", address[0], ":", address[1])
-        return self.send_packet(self.encode_message(message), address)
+        self.encode_message(message)
+        dprint(message.payload.type, "^", message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
+        return self.send_packet(message.packet, address)
 
     def receive_packet(self, timeout=10.0, addresses=None, packets=None):
         assert isinstance(timeout, float)
@@ -123,7 +124,7 @@ class Node(object):
                 continue
 
             dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
-            return address, packet, message
+            return address, message
             
     def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
         assert isinstance(bloom_global_time, (int, long))
@@ -156,7 +157,18 @@ class Node(object):
         payload = MissingSequencePayload(missing_member, missing_message_meta, missing_low, missing_high)
         return meta.implement(authentication, distribution, destination, payload)
 
-    # def create_dispersy_double_signature_message(self, 
+    def create_dispersy_signature_response_message(self, request_id, signature, global_time, destination_member):
+        assert isinstance(request_id, str)
+        assert len(request_id) == 20
+        assert isinstance(signature, str)
+        assert isinstance(global_time, (int, long))
+        assert isinstance(destination_member, Member)
+        meta = self._community.get_meta_message(u"dispersy-signature-response")                                                
+        authentication = meta.authentication.implement()
+        distribution = meta.distribution.implement(global_time)
+        destination = meta.destination.implement(destination_member)
+        payload = SignatureResponsePayload(request_id, signature)
+        return meta.implement(authentication, distribution, destination, payload)
 
 class DiscoveryNode(Node):
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
