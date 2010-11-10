@@ -106,7 +106,7 @@ class BloomFilter(Constructor):
         self._num_slices = int(math.ceil(math.log(1 / error_rate, 2)))
         # the error_rate constraint assumes a fill rate of 1/2
         # so we double the capacity to simplify the API
-        self._bits_per_slice = int(math.ceil((2 * capacity * abs(math.log(error_rate))) / (self._num_slices * (math.log(2) ** 2))))
+        self._bits_per_slice = int(((capacity * math.log(error_rate)) / math.log(1.0 / (math.pow(2.0, math.log(2.0)))) ) / self._num_slices)
         self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
 
