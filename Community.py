@@ -532,7 +532,7 @@ class Community(object):
 
         if update_locally:
             assert self._timeline.check(message_impl)
-            self.on_message(None, message_impl)
+            self.on_message(("", -1), message_impl)
 
         if store_and_forward:
             self._dispersy.store_and_forward([message_impl])
