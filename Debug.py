@@ -109,7 +109,11 @@ class Node(object):
         self._socket.settimeout(timeout)
         while True:
             address, packet = self.receive_packet(timeout, addresses, packets)
-            message = self._community.get_conversion().decode_message(packet)
+            try:
+                message = self._community.get_conversion(packet[:22]).decode_message(packet)
+            except KeyError:
+                # not for this community
+                continue
 
             if not (message_names is None or message.name in message_names):
                 continue
