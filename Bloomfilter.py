@@ -59,8 +59,9 @@ class BloomFilter(Constructor):
     """
     Implements a space-efficient probabilistic data structure.
 
-    There are two overloaded constructors:
+    There are three overloaded constructors:
      - __init__(CAPACITY, ERROR_RATE)
+     - __init__(NUM_SLICES, BITS_PER_SLICE)
      - __init__(DATA, OFFSET)
 
     CAPACITY: this BloomFilter must be able to store at least CAPACITY
@@ -72,12 +73,26 @@ class BloomFilter(Constructor):
     than capacity elements greatly increases the chance of false
     positives.
 
+    NUM_SLICES: the number of slices.  More slices makes the
+    BloomFilter more fault tolerant as well as bigger.  Each slice has
+    its own hash function, and each key added to the BloomFilter will
+    (potentially) set one bit per slice.
+
+    BITS_PER_SLICE: the number of bits in each slice.
+
     DATA: the stream contains binary data for a BloomFilter.
 
     OFFSET: the start of the bloomfiter in DATA
 
     >>> # use CAPACITY, ERROR_RATE constructor
     >>> b = BloomFilter(100000, 0.001)
+    >>> b.add("test")
+    True
+    >>> "test" in b
+    True
+
+    >>> # use NUM_SLICES, BITS_PER_SLICE constructor
+    >>> b = BloomFilter(1, 1024)
     >>> b.add("test")
     True
     >>> "test" in b
@@ -92,8 +107,19 @@ class BloomFilter(Constructor):
     True
     """
 
+    @constructor((int, long), (int, long))
+    def _init_size(self, num_slices, bits_per_slice):
+        assert isinstance(num_slices, (int, long))
+        assert num_slices > 0
+        assert isinstance(bits_per_slice, (int, long))
+        assert bits_per_slice > 0
+        self._num_slices = num_slices
+        self._bits_per_slice = bits_per_slice
+        self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
+        self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
+
     @constructor((int, long), float)
-    def _init_new(self, capacity, error_rate):
+    def _init_capacity(self, capacity, error_rate):
         assert isinstance(capacity, (int, long))
         assert isinstance(error_rate, float)
         assert 0 < error_rate < 1, "Error_Rate must be between 0 and 1"
@@ -123,6 +149,13 @@ class BloomFilter(Constructor):
 
         self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", data[offset+8:offset+8+size])
+
+    @property
+    def bits(self):
+        """
+        Returns the number of bits in this bloom filter.
+        """
+        return self._num_slices * self._bits_per_slice
 
     def __contains__(self, key):
         """
@@ -173,7 +206,7 @@ class BloomFilter(Constructor):
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
             raise ValueError("Both bloom filters need to be the same size")
         return BloomFilter(pack("!LL", self._num_slices, self._bits_per_slice) + array("B", [i^j for i, j in zip(self._bytes, other._bytes)]).tostring(), 0)
-        
+
     def __str__(self):
         """
         Create a string representation of the BloomFilter.
@@ -313,35 +346,60 @@ if __debug__:
 # create: 0.1; fill: 122.8; check: 237.7; write: 0.0
 
     def _taste_test():
-        def pri(f, m):
+        def pri(f, m, invert=False):
             set_bits = 0
             for c in f._bytes.tostring():
                 s = "{0:08d}".format(int(bin(ord(c))[2:]))
                 for bit in s:
+                    if invert:
+                        if bit == "0":
+                            bit = "1"
+                        else:
+                            bit = "0"
                     if bit == "1":
                         set_bits += 1
                 print s,
-            print "= {0:2d}:".format(set_bits), m
+            percent = 100 * set_bits / f.bits
+            print "= {0:2d} bits or {1:2d}%:".format(set_bits, percent), m
 
         def gen(l, m):
-            for e in l:
-                f = BloomFilter(CAPACITY, ERROR_RATE)
-                f.add(e)
-                pri(f, e)
-            f = BloomFilter(CAPACITY, ERROR_RATE)
+            if len(l) <= 10:
+                for e in l:
+                    f = BloomFilter(NUM_SLICES, BITS_PER_SLICE)
+                    f.add(e)
+                    pri(f, e)
+            f = BloomFilter(NUM_SLICES, BITS_PER_SLICE)
             map(f.add, l)
-            pri(f, m + ": " + ", ".join(l))
+            if len(l) <= 10:
+                pri(f, m + ": " + ", ".join(l))
+            else:
+                pri(f, m + ": " + l[0] + "..." + l[-1])
             return f
 
-        CAPACITY, ERROR_RATE = 10, 0.1
+        NUM_SLICES, BITS_PER_SLICE = 1, 25
 
-        a = gen(["kittens", "puppies"], "User A")
-        b = gen(["beer", "bars"], "User B")
-        c = gen(["puppies", "beer"], "User C")
+        # a = gen(["kittens", "puppies"], "User A")
+        # b = gen(["beer", "bars"], "User B")
+        # c = gen(["puppies", "beer"], "User C")
 
-        pri(a&b, "A AND B")
-        pri(a&c, "A AND C")
-        pri(b&c, "B AND C")
+        # a = gen(map(str, xrange(0, 150)), "User A")
+        # b = gen(map(str, xrange(100, 250)), "User B")
+        # c = gen(map(str, xrange(200, 350)), "User C")
+
+        a = gen(map(str, xrange(0, 10)), "User A")
+        b = gen(map(str, xrange(5, 15)), "User B")
+        c = gen(map(str, xrange(10, 20)), "User C")
+
+        if True:
+            print
+            pri(a&b, "A AND B --> 50%")
+            pri(a&c, "A AND C -->  0%")
+            pri(b&c, "B AND C --> 50%")
+        if True:
+            print
+            pri(a^b, "A XOR B --> 50%", invert=True)
+            pri(a^c, "A XOR C -->  0%", invert=True)
+            pri(b^c, "B XOR C --> 50%", invert=True)
 
         # t1 = ["cake", "lemonade", "kittens", "puppies"]
         # b1 = BloomFilter(10, 0.8)
