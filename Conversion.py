@@ -486,9 +486,10 @@ class BinaryConversion(Conversion):
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
             data = "".join(container)
             signatures = []
-            for member in message.authentication.members:
-                dprint(member)
-                if isinstance(member, PrivateMember):
+            for signature, member in message.authentication.signed_members:
+                if signature:
+                    signatures.append(signature)
+                elif isinstance(member, PrivateMember):
                     signatures.append(member.sign(data))
                 else:
                     signatures.append("\x00" * member.signature_length)
@@ -564,7 +565,7 @@ class BinaryConversion(Conversion):
                 # try this member combination
                 first_signature_offset = len(data) - sum([member.signature_length for member in members])
                 signature_offset = first_signature_offset
-                are_signed = [False] * authentication.count
+                signatures = [""] * authentication.count
                 valid_or_null = True
                 for index, member in zip(range(authentication.count), members):
                     signature = data[signature_offset:signature_offset+member.signature_length]
@@ -572,7 +573,7 @@ class BinaryConversion(Conversion):
                     # dprint(signature.encode('HEX'))
                     if not signature == "\x00" * member.signature_length:
                         if member.verify(data, data[signature_offset:signature_offset+member.signature_length], length=first_signature_offset):
-                            are_signed[index] = True
+                            signatures[index] = signature
                         else:
                             valid_or_null = False
                             break
@@ -580,7 +581,7 @@ class BinaryConversion(Conversion):
 
                 # found a valid combination
                 if valid_or_null:
-                    return offset, authentication.implement(members, are_signed=are_signed), first_signature_offset
+                    return offset, authentication.implement(members, signatures=signatures), first_signature_offset
             raise DelayPacketByMissingMember(member_id)
 
         raise NotImplementedError()

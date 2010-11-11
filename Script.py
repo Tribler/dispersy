@@ -58,10 +58,8 @@ class Script(object):
         mapping = {"discovery-user":DiscoveryUserScript,
                    "discovery-community":DiscoveryCommunityScript,
                    "discovery-sync":DiscoverySyncScript,
-                   # "conversion":ConversionScript,
-                   "dispersy":DispersyScript,
-                   # "dispersy-callback":DispersyCallbackScript,
-                   "forum":ForumScript}
+                   "dispersy":DispersyScript,}
+                   # "forum":ForumScript}
         
         dprint(script)
         if script == "all":
@@ -471,36 +469,6 @@ class DiscoverySyncScript(ScriptBase):
 
         dprint("finished")
 
-# class ConversionScript(ScriptBase):
-#     def run(self):
-#         self.caller(self.size)
-
-#     def size(self):
-#         node = DiscoveryNode()
-#         node.init_my_member()
-#         node.set_community(self._discovery)
-
-#         node2 = DiscoveryNode()
-#         node2.init_my_member()
-
-#         conversion = DictionaryConversion(self._discovery, "\x00\x00")
-#         b1 = conversion.encode_message(node.create_dispersy_sync_message(1, [], 3))
-#         b2 = conversion.encode_message(node.create_dispersy_missing_sequence_message(node2.my_member, node._user_metadata_message, 1, 10, 10, ("127.0.0.1", 123)))
-#         dprint(len(b1), " ", len(b2))
-
-#         def encode_msg(*args):
-#             pass
-
-#         def decode_msg(*args):
-#             pass
-
-#         conversion = BinaryConversion(self._discovery, "\x00\x01")
-#         conversion.define_meta_message(chr(1), node._user_metadata_message, encode_msg, decode_msg)
-#         b1 = conversion.encode_message(node.create_dispersy_sync_message(1, [], 3))
-#         b2 = conversion.encode_message(node.create_dispersy_missing_sequence_message(node2.my_member, node._user_metadata_message, 1, 10, 10, ("127.0.0.1", 123)))
-#         dprint(len(b1), " ", len(b2))
-#         dprint("finished")
-
 class DispersyScript(ScriptBase):
     def run(self):
         self.caller(self.double_signed_timeout)
@@ -557,6 +525,7 @@ class DispersyScript(ScriptBase):
 
         # SELF requests NODE to double sign
         def on_response(address, request, response):
+            assert container["response"] == 0, container["response"]
             assert address == node.socket.getsockname(), address
             assert request.authentication.is_signed
             container["response"] += 1

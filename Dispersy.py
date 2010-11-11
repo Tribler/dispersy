@@ -30,12 +30,13 @@ class DummySocket(object):
         pass
 
 class ExpectedResponse(object):
-    def __init__(self, request, response_func):
+    def __init__(self, request, response_func, args):
         assert isinstance(request, Message.Implementation)
         assert isinstance(request.payload, Message.Implementation)
         assert isinstance(request.payload.authentication, MultiMemberAuthentication.Implementation)
         self._request = request
         self._response_func = response_func
+        self._args = args
 
         if isinstance(request.destination, AddressDestination.Implementation):
             self._responses_remaining = len(request.destination.addresses)
@@ -53,6 +54,10 @@ class ExpectedResponse(object):
     @property
     def response_func(self):
         return self._response_func
+
+    @property
+    def args(self):
+        return self._args
 
     @property
     def responses_remaining(self):
@@ -481,7 +486,7 @@ LIMIT 1""",
             execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
                     (message.community.database_id, unicode(address[0]), address[1]))
 
-    def await_response(self, request, response_func, timeout=10.0):
+    def await_response(self, request, response_func, timeout=10.0, *args):
         assert isinstance(request, Message.Implementation)
         assert request.packet
         assert hasattr(response_func, "__call__")
@@ -491,11 +496,11 @@ LIMIT 1""",
         def on_timeout():
             expected_response = self._expected_responses.pop(request_id, None)
             if expected_response:
-                expected_response.response_func(("", -1), expected_response.request, None)
+                expected_response.response_func(("", -1), expected_response.request, None, *expected_response.args)
 
         request_id = sha1(request.packet).digest()
         assert not request_id in self._expected_responses
-        self._expected_responses[request_id] = ExpectedResponse(request, response_func)
+        self._expected_responses[request_id] = ExpectedResponse(request, response_func, args)
         self._rawserver.add_task(on_timeout, timeout)
 
     def get_meta_messages(self, community):
@@ -673,7 +678,7 @@ LIMIT 1""",
                 self._expected_responses[message.payload.request_id] = expected_response
 
             # handle the incoming response
-            expected_response.response_func(address, expected_response.request, message.payload)
+            expected_response.response_func(address, expected_response.request, message.payload, *expected_response.args)
 
     def _periodically_disperse(self):
         """

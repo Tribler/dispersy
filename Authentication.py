@@ -34,26 +34,24 @@ class MemberAuthentication(Authentication):
 
 class MultiMemberAuthentication(Authentication):
     class Implementation(Authentication.Implementation):
-        def __init__(self, meta, members, are_signed=[]):
+        def __init__(self, meta, members, signatures=[]):
             if __debug__:
                 from Member import Member
             assert isinstance(members, (tuple, list))
             assert not filter(lambda x: not isinstance(x, Member), members)
-            assert isinstance(are_signed, (tuple, list))
-            assert not filter(lambda x: not isinstance(x, bool), are_signed)
             assert len(members) == meta._count
+            assert isinstance(signatures, list)
+            assert not filter(lambda x: not isinstance(x, str), signatures)
+            assert not signatures or len(signatures) == meta._count
             super(MultiMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
 
             # will contain the list of signatures as they are received
             # from dispersy-signature-response messages
-            self._signatures = [""] * meta._count
-
-            if are_signed:
-                assert len(are_signed) == meta._count
-                self._are_signed = are_signed
+            if signatures:
+                self._signatures = signatures
             else:
-                self._are_signed = [isinstance(member, PrivateMember) for member in members]
+                self._signatures = [""] * meta._count
 
         @property
         def count(self):
@@ -76,17 +74,15 @@ class MultiMemberAuthentication(Authentication):
 
         @property
         def signed_members(self):
-            return zip(self._are_signed, self._members)
+            return zip(self._signatures, self._members)
 
         @property
         def is_signed(self):
-            return all(self._are_signed)
+            return all(self._signatures)
 
-        def add_signature(self, member, signature):
+        def set_signature(self, member, signature):
             assert member in self._members
-            index = self._members.index(member)
-            self._signatures[index] = signature
-            self._are_signed[index] = True
+            self._signatures[self._members.index(member)] = signature
 
     def __init__(self, count, allow_signature_func):
         assert isinstance(count, int)

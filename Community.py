@@ -14,7 +14,7 @@ from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Encoding import encode
-from Member import MasterMember, MyMember, Member
+from Member import Private, MasterMember, MyMember, Member
 from Message import Message, DelayMessageByProof
 from Payload import Permit, Authorize, Revoke
 from Resolution import PublicResolution
@@ -501,9 +501,7 @@ class Community(object):
         elif isinstance(message.authentication, MemberAuthentication):
             assert len(authentication) in (0, 1)
             if authentication:
-                if __debug__:
-                    from Member import PrivateMember
-                assert isinstance(authentication[0], PrivateMember)
+                assert isinstance(authentication[0], Private)
                 authentication_impl = message.authentication.implement(authentication[0])
             else:
                 authentication_impl = message.authentication.implement(self._my_member)
@@ -554,13 +552,13 @@ class Community(object):
         meta = self.get_meta_message(u"dispersy-signature-request")
 
         # the members that need to sign
-        members = [member for is_signed, member in message.authentication.signed_members if not is_signed]
+        members = [member for signature, member in message.authentication.signed_members if not (signature or isinstance(member, Private))]
 
         # create the dispersy-signature-request
         request = self.permit(meta, message, (), (), members, False, store_and_forward)
 
         # set callback and timeout
-        self._dispersy.await_response(request, lambda address, request, payload: self.on_signature_response(address, request, payload, response_func), timeout)
+        self._dispersy.await_response(request, self.on_signature_response, timeout, response_func)
 
         return request
 
@@ -576,9 +574,9 @@ class Community(object):
             first_signature_offset = len(submsg.packet) - sum([member.signature_length for member in submsg.authentication.members])
             body = submsg.packet[:first_signature_offset]
 
-            for has_signed, member in submsg.authentication.signed_members:
-                if not has_signed and member.verify(body, payload.signature):
-                    submsg.authentication.add_signature(member, payload.signature)
+            for signature, member in submsg.authentication.signed_members:
+                if not signature and member.verify(body, payload.signature):
+                    submsg.authentication.set_signature(member, payload.signature)
                     response_func(address, request, payload)
 
     def on_authorize_message(self, address, message):
