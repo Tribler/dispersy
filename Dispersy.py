@@ -210,14 +210,13 @@ class Dispersy(Singleton):
 
     def _check_incoming_full_sync_distribution(self, message):
         try:
-            sequence, = self._database.execute(u"""
-SELECT sequence
-FROM sync_full
-WHERE user = ? AND community = ?
-ORDER BY sequence DESC
-LIMIT 1""",
-                                              (message.authentication.member.database_id,
-                                               message.community.database_id)).next()
+            sequence, = self._database.execute(u"""SELECT sequence
+                                                   FROM sync_full
+                                                   WHERE community = ? AND user = ?
+                                                   ORDER BY sequence DESC
+                                                   LIMIT 1""",
+                                               (message.community.database_id,
+                                                message.authentication.member.database_id)).next()
         except StopIteration:
             sequence = 0
             
@@ -236,17 +235,16 @@ LIMIT 1""",
         assert False
 
     def _check_incoming_last_sync_distribution(self, message):
-        try:
-            self._database.execute(u"""
-SELECT 1
-FROM sync_last
-WHERE user = ? AND global > ?
-LIMIT 1""",
-                                   (message.authentication.member.database_id,
-                                    message.distribution.global_time)).next()
-        except StopIteration:
-            return
-        raise DropMessage("duplicate or older message")
+        times = [x for x, in self._database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? LIMIT ?",
+                                                    (message.community.database_id,
+                                                     message.authentication.member.database_id,
+                                                     message.distribution.history_size))]
+
+        if message.distribution.global_time in times:
+            raise DropMessage("duplicate message")
+
+        if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
+            raise DropMessage("older message")
 
     def _check_incoming_direct_distribution(self, message):
         return
@@ -373,26 +371,45 @@ LIMIT 1""",
         distribution = message.distribution
 
         # sync bloomfilter
-        message.community.get_bloom_filter(message.distribution.global_time).add(message.packet)
+        message.community.get_bloom_filter(distribution.global_time).add(message.packet)
 
         # sync database
-        if isinstance(distribution, FullSyncDistribution.Implementation):
-            self._database.execute(u"INSERT INTO sync_full(community, user, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
-                                   (message.community.database_id,
-                                    message.authentication.member.database_id,
-                                    distribution.global_time,
-                                    distribution.sequence_number,
-                                    buffer(message.packet)))
+        with self._database as execute:
+            if isinstance(distribution, FullSyncDistribution.Implementation):
+                execute(u"INSERT INTO sync_full(community, user, global, sequence, packet) VALUES(?, ?, ?, ?, ?)",
+                        (message.community.database_id,
+                         message.authentication.member.database_id,
+                         distribution.global_time,
+                         distribution.sequence_number,
+                         buffer(message.packet)))
 
-        elif isinstance(distribution, LastSyncDistribution.Implementation):
-            self._database.execute(u"INSERT OR REPLACE INTO sync_last(community, user, global, packet) VALUES(?, ?, ?, ?)",
+            elif isinstance(distribution, LastSyncDistribution.Implementation):
+                # delete any messages if there are more than is allowed per member
+
+                try:
+                    id_, = execute(u"SELECT id FROM sync_last WHERE community = ? AND user = ? ORDER BY global DESC LIMIT 1 OFFSET ?",
                                    (message.community.database_id,
                                     message.authentication.member.database_id,
-                                    distribution.global_time,
-                                    buffer(message.packet)))
-        
-        else:
-            raise NotImplementedError(distribution)
+                                    distribution.history_size - 1)).next()
+                except StopIteration:
+                    pass
+                else:
+                    execute(u"DELETE FROM sync_last WHERE id = ?", (id_,))
+
+                # execute(u"DELETE FROM sync_last WHERE community = ? AND user = ? ORDER BY global LIMIT 1 OFFSET ?",
+                #         (message.community.database_id,
+                #          message.authentication.member.database_id,
+                #          message.distribution.history_size))
+
+                # insert the new message
+                execute(u"INSERT INTO sync_last(community, user, global, packet) VALUES(?, ?, ?, ?)",
+                        (message.community.database_id,
+                         message.authentication.member.database_id,
+                         distribution.global_time,
+                         buffer(message.packet)))
+
+            else:
+                raise NotImplementedError(distribution)
 
     def store_and_forward(self, messages):
         """

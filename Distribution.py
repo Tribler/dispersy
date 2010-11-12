@@ -61,6 +61,18 @@ class LastSyncDistribution(SyncDistribution):
                 assert isinstance(global_time, (int, long))
                 super(LastSyncDistribution.Implementation, self).__init__(meta, global_time)
 
+        @property
+        def history_size(self):
+            return self._meta._history_size
+
+    def __init__(self, history_size):
+        assert isinstance(history_size, int)
+        self._history_size = history_size
+
+    @property
+    def history_size(self):
+        return self._history_size
+
 # class MinimalSyncDistribution(SyncDistribution):
 #     class Implementation(SyncDistribution.Implementation):
 #         def __init__(self, meta, global_time, minimal_count):

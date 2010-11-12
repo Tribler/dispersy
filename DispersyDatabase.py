@@ -38,7 +38,7 @@ CREATE TABLE sync_full(
  global INTEGER,
  sequence INTEGER,
  packet BLOB,
- UNIQUE(user, global));
+ UNIQUE(community, user, global));
 
 CREATE TABLE sync_last(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +46,7 @@ CREATE TABLE sync_last(
  user INTEGER REFERENCES user(id),
  global INTEGER,
  packet BLOB,
- UNIQUE(user, global));
+ UNIQUE(community, user, global));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');
