@@ -35,6 +35,7 @@ class Node(object):
 
         if not port in Node._socket_pool:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
             s.bind(("localhost", port))
             s.setblocking(True)
             Node._socket_pool[port] = s
