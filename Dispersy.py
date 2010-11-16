@@ -10,7 +10,7 @@ community is revealed.
 
 from hashlib import sha1
 
-from Authentication import NoAuthentication, MultiMemberAuthentication
+from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
 from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
 from Destination import CommunityDestination, AddressDestination, MemberDestination
@@ -18,7 +18,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Member import MyMember, PrivateMember, MasterMember
 from Message import Message, DelayPacket, DropPacket, DelayMessage, DelayMessageBySequence, DropMessage
-from Payload import MissingSequencePayload, SyncPayload, ResponsePayload
+from Payload import MissingSequencePayload, SyncPayload, ResponsePayload, IdentityResponsePayload
 from Resolution import PublicResolution
 from Singleton import Singleton
 
@@ -85,8 +85,16 @@ class Dispersy(Singleton):
         # our data storage
         self._database = DispersyDatabase.get_instance(working_directory)
 
+        # our external address
         try:
-            public_pem = str(self._database.execute(u"SELECT value FROM option WHERE key == 'my_public_pem' LIMIT 1").next()[0])
+            ip, = self._database.execute(u"SELECT value FROM option WHERE key = 'my_external_ip' LIMIT 1").next()
+            port, = self._database.execute(u"SELECT value FROM option WHERE key = 'my_external_port' LIMIT 1").next()
+            self._my_external_address = (str(ip), port)
+        except StopIteration:
+            self._my_external_address = ("", -1)
+
+        try:
+            public_pem, = str(self._database.execute(u"SELECT value FROM option WHERE key == 'my_public_pem' LIMIT 1").next())
             private_pem = None
         except StopIteration:
             # one of the keys was not found in the database, we need
@@ -130,6 +138,8 @@ class Dispersy(Singleton):
     @socket.setter
     def socket(self, socket):
         self._socket = socket
+        if self._my_external_address == ("", -1):
+            self._my_external_address = socket.get_address()
 
     @property
     def my_member(self):
@@ -187,7 +197,12 @@ class Dispersy(Singleton):
             key = "message:{0.name} community:{0.community.database_id} user:{0.authentication.member.database_id} sequence:{1.missing_high}".format(message, delay)
             if not key in self._delayed:
                 self._delayed[key] = (address, message)
-                message.community.permit(message.community.get_meta_message(u"dispersy-missing-sequence"), MissingSequencePayload(message.authentication.member, message.meta, delay.missing_low, delay.missing_high), destination=(address,), update_locally=False)
+                meta = message.community.get_meta_message(u"dispersy-missing-sequence")
+                request = meta.implement(meta.authentication.implement(),
+                                         meta.distribution.implement(meta.community._timeline.global_time),
+                                         meta.destination.implement(address),
+                                         MissingSequencePayload(message.authentication.member, message.meta, delay.missing_low, delay.missing_high))
+                self.store_and_forward([request])
                 
         else:
             raise NotImplementedError(delay)
@@ -464,31 +479,21 @@ class Dispersy(Singleton):
                 for diff, age, host, port in addresses:
                     assert isinstance(host, unicode)
                     self._send((str(host), port), message)
-                    # if __debug__: dprint(message.payload.type, "^", message.name, " to ", host, ":", port, " [len:", len(message.packet), "; diff:", diff, "; age:", age, "]")
-                    # self._socket.send((host, port), message.packet)
-                    # execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
-                    #                        (message.community.database_id, host, port))
-                    # assert self._database.changes
 
             elif isinstance(message.destination, AddressDestination.Implementation):
                 for address in message.destination.addresses:
                     self._send(address, message)
-                    # if __debug__: dprint(message.payload.type, "^", message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
-                    # self._socket.send(address, message.packet)
-                    # execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
-                    #         (message.community.database_id, unicode(address[0]), address[1]))
 
             elif isinstance(message.destination, MemberDestination.Implementation):
                 for member in message.destination.members:
-                    address = member.discovery.address
-                    if address:
-                        self._send(address, message)
-                        # if __debug__: dprint(message.payload.type, "^", message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
-                        # self._socket.send(address, message.packet)
-                        # execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
-                        #         (message.community.database_id, unicode(address[0]), address[1]))
-                    elif __debug__:
+                    try:
+                        host, port = self._database.execute(u"SELECT host, port FROM routing WHERE user = ? ORDER BY incoming_time LIMIT 1", (member.database_id,)).next()
+
+                    except StopIteration:
                         dprint("No address available for this member", level="warning")
+                        
+                    else:
+                        self._send((str(host), port), message)
 
             else:
                 raise NotImplementedError(message.destination)
@@ -528,20 +533,9 @@ class Dispersy(Singleton):
         Community should support these Messages in order for Dispersy
         to function properly.
         """
-        if __debug__:
-            def check_meta_message(name):
-                try:
-                    community.get_meta_message(name)
-                    assert False, name
-                except KeyError:
-                    pass
-            # the community may not already have these messages
-            map(check_meta_message, [u"dispersy-sync",
-                                     u"dispersy-missing-sequence",
-                                     u"dispersy-signature-request",
-                                     u"dispersy-signature-response"])
-
-        return [Message(community, u"dispersy-sync", NoAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination()),
+        return [Message(community, u"dispersy-identity-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
+                Message(community, u"dispersy-identity-response", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
+                Message(community, u"dispersy-sync", NoAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination())]
@@ -551,10 +545,39 @@ class Dispersy(Singleton):
         Returns the handler methods for the privileges available to
         Dispersy.
         """
-        return [(community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
+        return [(community.get_meta_message(u"dispersy-identity-request"), self.on_identity_request),
+                (community.get_meta_message(u"dispersy-identity-response"), self.on_general_response),
+                (community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
                 (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence),
                 (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
                 (community.get_meta_message(u"dispersy-signature-response"), self.on_general_response)]
+
+    def on_identity_request(self, address, message):
+        """
+        We received a dispersy-identity-request message.
+
+        This message contains the external address that the sender
+        believes it has (message.payload.source_address), and our
+        external address (message.payload.destination_address).
+
+        We should send a dispersy-identity-response message back.
+        Allowing us to inform them of their external address.
+        """
+        if __debug__:
+            from Message import Message
+        assert message.name == u"dispersy-identity-request"
+        assert isinstance(message, Message.Implementation)
+        dprint("Our external address may be: ", message.payload.destination_address)
+        self._database.execute(u"UPDATE routing SET user = ? WHERE community = ? AND host = ? AND port = ?",
+                               (message.authentication.member.database_id, message.community.database_id, unicode(address[0]), address[1]))
+
+        # send response
+        meta = message.community.get_meta_message(u"dispersy-identity-response")
+        message = meta.implement(meta.authentication.implement(message.community.my_member),
+                                 meta.distribution.implement(meta.community._timeline.global_time),
+                                 meta.destination.implement(address),
+                                 IdentityResponsePayload(self._my_external_address, address))
+        self.store_and_forward([message])
 
     def on_sync_message(self, address, message):
         """
@@ -571,7 +594,8 @@ class Dispersy(Singleton):
         """
         if __debug__:
             from Message import Message
-            assert isinstance(message, Message.Implementation)
+        assert message.name == u"dispersy-sync"
+        assert isinstance(message, Message.Implementation)
 
         bloom_filter = message.payload.bloom_filter
         with self._database as execute:
@@ -677,11 +701,13 @@ class Dispersy(Singleton):
             if True:
                 self.on_message(address, payload)
 
-            # send the message back to the message creator
-            authentication = ()
-            distribution = ()
-            destination = (message.authentication.member,)
-            message.community.permit(community.get_meta_message(u"dispersy-signature-response"), message, authentication, distribution, destination, False, True)
+            # send response
+            meta = message.community.get_meta_message(u"dispersy-signature-response")
+            message = meta.implement(meta.authentication.implement(),
+                                     meta.distribution.implement(),
+                                     meta.destination_address(message.authentication.member,),
+                                     message)
+            self.store_and_forward(message)
 
         else:
             raise DropMessage("Nothing to sign")
@@ -708,6 +734,11 @@ class Dispersy(Singleton):
         #
         for community in self._communities.itervalues():
             global_time, bloom_filter = community.get_current_bloom_filter()
-            community.permit(community.get_meta_message(u"dispersy-sync"), SyncPayload(global_time, bloom_filter), update_locally=False)
+            meta = community.get_meta_message(u"dispersy-sync")
+            message = meta.implement(meta.authentication.implement(),
+                                     meta.distribution.implement(community._timeline.global_time),
+                                     meta.destination.implement(),
+                                     SyncPayload(global_time, bloom_filter))
+            self.store_and_forward([message])
 
         self._rawserver.add_task(self._periodically_disperse, 10.0)

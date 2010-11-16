@@ -1,3 +1,4 @@
+from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from
 from hashlib import sha1
 
@@ -8,7 +9,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from Encoding import encode, decode
 from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload
+from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload, IdentityRequestPayload, IdentityResponsePayload
 from Member import PrivateMember, MasterMember
 
 if __debug__:
@@ -324,10 +325,13 @@ class BinaryConversion(Conversion):
                                          DirectDistribution:self._decode_direct_distribution}
         self._encode_message_map = dict() # message.name : (byte, encode_payload_func)
         self._decode_message_map = dict() # byte : (message, decode_payload_func)
+
         self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
         self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
         self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
         self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-signature-response"), self._encode_signature_response, self._decode_signature_response)
+        self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
+        self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-identity-response"), self._encode_identity_response, self._decode_identity_response)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -415,6 +419,30 @@ class BinaryConversion(Conversion):
 
     def _decode_signature_response(self, offset, data):
         return len(data), SignatureResponsePayload(data[offset:offset+20], data[offset+20:])
+
+    def _encode_identity_request(self, message):
+        return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
+
+    def _decode_identity_request(self, offset, data):
+        if len(data) < offset + 12:
+            raise DropPacket("Insufficient packet size")
+
+        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
+
+        return offset + 12, IdentityRequestPayload(source_address, destination_address)
+
+    def _encode_identity_response(self, message):
+        return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
+
+    def _decode_identity_response(self, offset, data):
+        if len(data) < offset + 12:
+            raise DropPacket("Insufficient packet size")
+
+        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
+
+        return offset + 12, IdentityResponsePayload(source_address, destination_address)
 
     #
     # Encoding

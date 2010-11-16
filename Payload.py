@@ -117,6 +117,58 @@ class MissingSequencePayload(Permit):
     def missing_high(self):
         return self._missing_high
 
+class ResponsePayload(Permit):
+    def __init__(self, request_id):
+        assert isinstance(request_id, str)
+        assert len(request_id) == 20
+        self._request_id = request_id
+
+    @property
+    def request_id(self):
+        return self._request_id
+
+class IdentityRequestPayload(Permit):
+    def __init__(self, source_address, destination_address):
+        assert isinstance(source_address, tuple)
+        assert len(source_address) == 2
+        assert isinstance(source_address[0], str)
+        assert isinstance(source_address[1], int)
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        self._source_address = source_address
+        self._destination_address = destination_address
+
+    @property
+    def source_address(self):
+        return self._source_address
+
+    @property
+    def destination_address(self):
+        return self._destination_address
+
+class IdentityResponsePayload(ResponsePayload):
+    def __init__(self, source_address, destination_address):
+        assert isinstance(source_address, tuple)
+        assert len(source_address) == 2
+        assert isinstance(source_address[0], str)
+        assert isinstance(source_address[1], int)
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        self._source_address = source_address
+        self._destination_address = destination_address
+
+    @property
+    def source_address(self):
+        return self._source_address
+
+    @property
+    def destination_address(self):
+        return self._destination_address
+
 class SyncPayload(Permit):
     def __init__(self, global_time, bloom_filter):
         if __debug__:
@@ -133,16 +185,6 @@ class SyncPayload(Permit):
     @property
     def bloom_filter(self):
         return self._bloom_filter
-
-class ResponsePayload(Permit):
-    def __init__(self, request_id):
-        assert isinstance(request_id, str)
-        assert len(request_id) == 20
-        self._request_id = request_id
-
-    @property
-    def request_id(self):
-        return self._request_id
 
 class SignatureResponsePayload(ResponsePayload):
     def __init__(self, request_id, signature):

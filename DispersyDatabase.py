@@ -25,6 +25,7 @@ CREATE TABLE key(
 
 CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
+ user INTEGER REFERENCES user(id),
  host TEXT,                                     -- IP address
  port INTEGER,                                  -- port number
  incoming_time TEXT,                            -- time when received data

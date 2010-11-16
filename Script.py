@@ -7,6 +7,7 @@ import hashlib
 import types
 from struct import pack, unpack_from
 
+from Singleton import Singleton
 from Authentication import MultiMemberAuthentication
 from Community import Community
 from Conversion import DictionaryConversion, BinaryConversion
@@ -27,7 +28,7 @@ from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
 from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
 from Tribler.Community.Forum.Forum import ForumCommunity
 
-class Script(object):
+class Script(Singleton):
     class Terminator(object):
         def __init__(self, rawserver):
             self._rawserver = rawserver
@@ -52,33 +53,41 @@ class Script(object):
             else:
                 self._rawserver.add_task(self.loop, 1.0)
 
-    @staticmethod
-    def load(rawserver, script):
-        terminator = Script.Terminator(rawserver)
-        mapping = {"discovery-user":DiscoveryUserScript,
-                   "discovery-community":DiscoveryCommunityScript,
-                   "discovery-sync":DiscoverySyncScript,
-                   "dispersy":DispersyScript,}
-                   # "forum":ForumScript}
-        
-        dprint(script)
-        if script == "all":
-            for script, cls in mapping.iteritems():
-                dprint(script)
-                cls(terminator, script, rawserver)
+    def __init__(self):
+        self._scripts = {"discovery-user":DiscoveryUserScript,
+                         "discovery-community":DiscoveryCommunityScript,
+                         "discovery-sync":DiscoverySyncScript,
+                         "dispersy":DispersyScript,}
 
-        elif script in mapping:
-            mapping[script](terminator, script, rawserver)
+    def add(self, name, script):
+        assert isinstance(name, str)
+        assert not name in self._scripts
+        assert issubclass(script, ScriptBase)
+        self._scripts[name] = script
+
+    def load(self, rawserver, name):
+        dprint(name)
+        terminator = Script.Terminator(rawserver)
+       
+        if name == "all":
+            for name, script in self._scripts.iteritems():
+                dprint(name)
+                script(terminator, name, rawserver)
+
+        elif name in self._scripts:
+            self._scripts[name](terminator, name, rawserver)
 
         else:
-            raise ValueError("Unknown script '{0}'".format(script))
+            for available in self._scripts:
+                dprint("Available: ", available)
+            raise ValueError("Unknown script '{0}'".format(name))
 
         terminator.run()
 
 class ScriptBase(object):
-    def __init__(self, terminator, script, rawserver):
+    def __init__(self, terminator, name, rawserver):
         self._terminator = terminator
-        self._script = script
+        self._name = name
         self._rawserver = rawserver
         self._dispersy = Dispersy.get_instance()
         self._dispersy_database = DispersyDatabase.get_instance()
@@ -153,8 +162,8 @@ class DiscoveryCommunityScript(ScriptBase):
         """
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("FOOD").digest()
@@ -186,8 +195,8 @@ class DiscoveryCommunityScript(ScriptBase):
         """
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINK").digest()
@@ -238,8 +247,8 @@ class DiscoveryCommunityScript(ScriptBase):
         """
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINKS").digest()
@@ -320,8 +329,8 @@ class DiscoveryUserScript(ScriptBase):
     def alice(self):
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
 
         address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
@@ -357,8 +366,8 @@ class DiscoveryUserScript(ScriptBase):
     def bob(self):
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
 
         address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
@@ -404,8 +413,8 @@ class DiscoverySyncScript(ScriptBase):
         """
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
         address = self._dispersy.socket.get_address()
 
         # create COPPER and TIN communities
@@ -439,8 +448,8 @@ class DiscoverySyncScript(ScriptBase):
         """
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(self._discovery)
+        node.init_my_member(sync_with_database=True)
         address = self._dispersy.socket.get_address()
 
         # create messages should show up in the bloom filter from SELF
@@ -485,8 +494,8 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(community)
+        node.init_my_member(sync_with_database=True)
 
         # should be no messages from NODE yet
         times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id)))
@@ -539,8 +548,8 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
-        node.init_my_member(sync_with_database=True)
         node.set_community(community)
+        node.init_my_member(sync_with_database=True)
 
         # should be no messages from NODE yet
         times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id)))
@@ -604,11 +613,11 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member()
-        Member.get_instance(node.my_member.pem)
-        node.set_community(self._discovery)
-        node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        # Member.get_instance(node.my_member.pem)
+        # node.set_community(self._discovery)
+        # node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node.set_community(community)
+        node.init_my_member()
         yield 0.1
 
         # SELF requests NODE to double sign
@@ -636,11 +645,11 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DiscoveryNode()
         node.init_socket()
-        node.init_my_member()
-        Member.get_instance(node.my_member.pem)
-        node.set_community(self._discovery)
-        node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        # Member.get_instance(node.my_member.pem)
+        # node.set_community(self._discovery)
+        # node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node.set_community(community)
+        node.init_my_member()
         yield 0.1
 
         # SELF requests NODE to double sign
@@ -679,20 +688,20 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node1 = DiscoveryNode()
         node1.init_socket()
-        node1.init_my_member()
-        Member.get_instance(node1.my_member.pem)
-        node1.set_community(self._discovery)
-        node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        # Member.get_instance(node1.my_member.pem)
+        # node1.set_community(self._discovery)
+        # node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node1.set_community(community)
+        node1.init_my_member()
 
         # create node and ensure that SELF knows the node address
         node2 = DiscoveryNode()
         node2.init_socket()
-        node2.init_my_member()
-        Member.get_instance(node2.my_member.pem)
-        node2.set_community(self._discovery)
-        node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
+        # Member.get_instance(node2.my_member.pem)
+        # node2.set_community(self._discovery)
+        # node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
         node2.set_community(community)
+        node2.init_my_member()
         yield 0.1
 
         # SELF requests NODE1 and NODE2 to double sign
@@ -721,20 +730,20 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node1 = DiscoveryNode()
         node1.init_socket()
-        node1.init_my_member()
-        Member.get_instance(node1.my_member.pem)
-        node1.set_community(self._discovery)
-        node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
+        # Member.get_instance(node1.my_member.pem)
+        # node1.set_community(self._discovery)
+        # node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node1.set_community(community)
+        node1.init_my_member()
 
         # create node and ensure that SELF knows the node address
         node2 = DiscoveryNode()
         node2.init_socket()
-        node2.init_my_member()
-        Member.get_instance(node2.my_member.pem)
-        node2.set_community(self._discovery)
-        node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
+        # Member.get_instance(node2.my_member.pem)
+        # node2.set_community(self._discovery)
+        # node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
         node2.set_community(community)
+        node2.init_my_member()
         yield 0.1
 
         # SELF requests NODE1 and NODE2 to add their signature

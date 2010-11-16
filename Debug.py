@@ -7,7 +7,7 @@ from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
 from Message import Message
-from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload
+from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, IdentityRequestPayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
@@ -50,7 +50,7 @@ class Node(object):
     def my_member(self):
         return self._my_member
 
-    def init_my_member(self, bits=512, sync_with_database=False):
+    def init_my_member(self, bits=512, sync_with_database=False, identify=True):
         class DebugPrivateMember(PrivateMember):
             pass
             # def get_member(self):
@@ -59,6 +59,18 @@ class Node(object):
         # specifically do NOT use PrivateMember.get_instance(...) here!
         rsa = rsa_generate_key(bits)
         self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=sync_with_database)
+
+        if identify:
+            # update database and memory
+            Member.get_instance(self._my_member.pem)
+
+            # update routing information
+            assert self._socket, "Socket needs to be set to identify"
+            assert self._community, "Community needs to be set to identify"
+            source_address = self._socket.getsockname()
+            destination_address = self._community._dispersy.socket.get_address()
+            message = self.create_dispersy_identity_request_message(source_address, destination_address, 0)
+            self.send_message(message, destination_address)
 
     @property
     def community(self):
@@ -130,6 +142,22 @@ class Node(object):
 
             dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
             return address, message
+
+    def create_dispersy_identity_request_message(self, source_address, destination_address, global_time):
+        assert isinstance(source_address, tuple)
+        assert len(source_address) == 2
+        assert isinstance(source_address[0], str)
+        assert isinstance(source_address[1], int)
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"dispersy-identity-request")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(destination_address),
+                              IdentityRequestPayload(source_address, destination_address))
             
     def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
         assert isinstance(bloom_global_time, (int, long))
@@ -169,11 +197,10 @@ class Node(object):
         assert isinstance(global_time, (int, long))
         assert isinstance(destination_member, Member)
         meta = self._community.get_meta_message(u"dispersy-signature-response")                                                
-        authentication = meta.authentication.implement()
-        distribution = meta.distribution.implement(global_time)
-        destination = meta.destination.implement(destination_member)
-        payload = SignatureResponsePayload(request_id, signature)
-        return meta.implement(authentication, distribution, destination, payload)
+        return meta.implement(meta.authentication.implement(),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(destination_member),
+                              SignatureResponsePayload(request_id, signature))
 
 class DiscoveryNode(Node):
     def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):

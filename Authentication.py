@@ -37,7 +37,7 @@ class MultiMemberAuthentication(Authentication):
         def __init__(self, meta, members, signatures=[]):
             if __debug__:
                 from Member import Member
-            assert isinstance(members, (tuple, list))
+            assert isinstance(members, (tuple, list)), type(members)
             assert not filter(lambda x: not isinstance(x, Member), members)
             assert len(members) == meta._count
             assert isinstance(signatures, list)
