@@ -9,7 +9,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from Encoding import encode, decode
 from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload, IdentityRequestPayload, IdentityResponsePayload
+from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, CallbackResponsePayload, IdentityPayload, IdentityRequestPayload
 from Member import PrivateMember, MasterMember
 
 if __debug__:
@@ -330,8 +330,10 @@ class BinaryConversion(Conversion):
         self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
         self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
         self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-signature-response"), self._encode_signature_response, self._decode_signature_response)
-        self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
-        self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-identity-response"), self._encode_identity_response, self._decode_identity_response)
+        self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-callback-request"), self._encode_callback_request, self._decode_callback_request)
+        self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-callback-response"), self._encode_callback_response, self._decode_callback_response)
+        self.define_meta_message(chr(248), community.get_meta_message(u"dispersy-identity"), self._encode_identity, self._decode_identity)
+        self.define_meta_message(chr(247), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -364,7 +366,7 @@ class BinaryConversion(Conversion):
         offset += 20
         members = self._community.get_members_from_id(member_id)
         if not members:
-            raise DelayPacketByMissingMember(member_id)
+            raise DelayPacketByMissingMember(self._community, member_id)
         elif len(members) > 1:
             # this is unrecoverable.  a member id without a signature
             # is simply not globally unique.  This can occur when two
@@ -405,13 +407,6 @@ class BinaryConversion(Conversion):
         return self.encode_message(message.payload),
 
     def _decode_signature_request(self, offset, data):
-        # print "PREFIX"
-        # print self._prefix.encode("HEX")
-        # dprint("DATA")
-        # dprint(data.encode("HEX"))
-        # dprint("SUB-MSG")
-        # dprint(data[offset:].encode("HEX"))
-        # print
         return len(data), self._decode_message(data[offset:], False)
 
     def _encode_signature_response(self, message):
@@ -420,29 +415,49 @@ class BinaryConversion(Conversion):
     def _decode_signature_response(self, offset, data):
         return len(data), SignatureResponsePayload(data[offset:offset+20], data[offset+20:])
 
-    def _encode_identity_request(self, message):
+    def _encode_callback_request(self, message):
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
+
+    def _decode_callback_request(self, offset, data):
+        if len(data) < offset + 12:
+            raise DropPacket("Insufficient packet size")
+
+        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
+
+        return offset + 12, CallbackRequestPayload(source_address, destination_address)
+
+    def _encode_callback_response(self, message):
+        return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
+
+    def _decode_callback_response(self, offset, data):
+        if len(data) < offset + 12:
+            raise DropPacket("Insufficient packet size")
+
+        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
+
+        return offset + 12, CallbackResponsePayload(source_address, destination_address)
+
+    def _encode_identity(self, message):
+        return inet_aton(message.payload.address[0]), pack("!H", message.payload.address[1])
+
+    def _decode_identity(self, offset, data):
+        if len(data) < offset + 6:
+            raise DropPacket("Insufficient packet size")
+
+        address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+
+        return offset + 6, IdentityPayload(address)
+
+    def _encode_identity_request(self, message):
+        return message.payload.mid,
 
     def _decode_identity_request(self, offset, data):
-        if len(data) < offset + 12:
+        if len(data) < offset + 20:
             raise DropPacket("Insufficient packet size")
 
-        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
-        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
-
-        return offset + 12, IdentityRequestPayload(source_address, destination_address)
-
-    def _encode_identity_response(self, message):
-        return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
-
-    def _decode_identity_response(self, offset, data):
-        if len(data) < offset + 12:
-            raise DropPacket("Insufficient packet size")
-
-        source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
-        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
-
-        return offset + 12, IdentityResponsePayload(source_address, destination_address)
+        return offset + 20, IdentityRequestPayload(data[offset:offset+20])
 
     #
     # Encoding
@@ -475,7 +490,12 @@ class BinaryConversion(Conversion):
         if isinstance(message.authentication, NoAuthentication.Implementation):
             pass
         elif isinstance(message.authentication, MemberAuthentication.Implementation):
-            container.append(message.authentication.member.mid)
+            if message.authentication.encoding == "sha1":
+                container.append(message.authentication.member.mid)
+            elif message.authentication.encoding == "pem":
+                container.extend((pack("!H", len(message.authentication.member.pem)), message.authentication.member.pem))
+            else:
+                raise NotImplementedError(message.authentication.encoding)
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
             container.extend([member.mid for member in message.authentication.members])
         else:
@@ -552,17 +572,33 @@ class BinaryConversion(Conversion):
             return offset, authentication.implement(), len(data)
 
         elif isinstance(authentication, MemberAuthentication):
-            member_id = data[offset:offset+20]
-            members = self._community.get_members_from_id(member_id)
-            if not members:
-                raise DelayPacketByMissingMember(member_id)
-            offset += 20
+            if authentication.encoding == "sha1":
+                member_id = data[offset:offset+20]
+                members = self._community.get_members_from_id(member_id)
+                if not members:
+                    raise DelayPacketByMissingMember(self._community, member_id)
+                offset += 20
 
-            for member in members:
+                for member in members:
+                    first_signature_offset = len(data) - member.signature_length
+                    if member.verify(data, data[first_signature_offset:], length=first_signature_offset):
+                        return offset, authentication.implement(member, is_signed=True), first_signature_offset
+
+                raise DelayPacketByMissingMember(self._community, member_id)
+            
+            elif authentication.encoding == "pem":
+                pem_length, = unpack_from("!H", data, offset)
+                offset += 2
+                member = self._community.get_member(data[offset:offset+pem_length])
+                offset += pem_length
                 first_signature_offset = len(data) - member.signature_length
                 if member.verify(data, data[first_signature_offset:], length=first_signature_offset):
                     return offset, authentication.implement(member, is_signed=True), first_signature_offset
-            raise DelayPacketByMissingMember(member_id)
+                else:
+                    raise DropPacket("Invalid signature")
+
+            else:
+                raise NotImplementedError(authentication.encoding)
 
         elif isinstance(authentication, MultiMemberAuthentication):
             def iter_options(members_ids):
@@ -585,7 +621,7 @@ class BinaryConversion(Conversion):
                 member_id = data[offset:offset+20]
                 members = self._community.get_members_from_id(member_id)
                 if not members:
-                    raise DelayPacketByMissingMember(member_id)
+                    raise DelayPacketByMissingMember(self._community, member_id)
                 offset += 20
                 members_ids.append(members)
 
@@ -610,7 +646,7 @@ class BinaryConversion(Conversion):
                 # found a valid combination
                 if valid_or_null:
                     return offset, authentication.implement(members, signatures=signatures), first_signature_offset
-            raise DelayPacketByMissingMember(member_id)
+            raise DelayPacketByMissingMember(self._community, member_id)
 
         raise NotImplementedError()
 

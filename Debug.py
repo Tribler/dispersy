@@ -7,7 +7,7 @@ from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
 from Message import Message
-from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, IdentityRequestPayload
+from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, IdentityPayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
@@ -36,8 +36,16 @@ class Node(object):
         if not port in Node._socket_pool:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
-            s.bind(("localhost", port))
             s.setblocking(True)
+            while True:
+                try:
+                    s.bind(("localhost", port))
+                except socket.error as error:
+                    port = Node._socket_range[0] + Node._socket_counter % (Node._socket_range[1] - Node._socket_range[0])
+                    Node._socket_counter += 1
+                    continue
+                break
+
             Node._socket_pool[port] = s
             if __debug__: dprint("create socket ", port)
 
@@ -50,26 +58,37 @@ class Node(object):
     def my_member(self):
         return self._my_member
 
-    def init_my_member(self, bits=512, sync_with_database=False, identify=True):
+    def init_my_member(self, bits=512, sync_with_database=False, callback=True, identity=True):
         class DebugPrivateMember(PrivateMember):
-            pass
-            # def get_member(self):
-            #     return Member.get_instance(self._public_pem)
+            @property
+            def database_id(self):
+                return Member.get_instance(self.pem).database_id
+
+        assert not sync_with_database, "The parameter sync_with_database is depricated and must be False"
 
         # specifically do NOT use PrivateMember.get_instance(...) here!
         rsa = rsa_generate_key(bits)
-        self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=sync_with_database)
+        self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=False)
 
-        if identify:
-            # update database and memory
-            Member.get_instance(self._my_member.pem)
-
+        if callback:
             # update routing information
-            assert self._socket, "Socket needs to be set to identify"
-            assert self._community, "Community needs to be set to identify"
+            assert self._socket, "Socket needs to be set to callback"
+            assert self._community, "Community needs to be set to callback"
             source_address = self._socket.getsockname()
             destination_address = self._community._dispersy.socket.get_address()
-            message = self.create_dispersy_identity_request_message(source_address, destination_address, 0)
+            message = self.create_dispersy_callback_request_message(source_address, destination_address, 1)
+            self.send_message(message, destination_address)
+
+        if identity:
+            # update database and memory
+            # Member.get_instance(self._my_member.pem)
+
+            # update routing information
+            assert self._socket, "Socket needs to be set to callback"
+            assert self._community, "Community needs to be set to callback"
+            source_address = self._socket.getsockname()
+            destination_address = self._community._dispersy.socket.get_address()
+            message = self.create_dispersy_identity_message(source_address, 2)
             self.send_message(message, destination_address)
 
     @property
@@ -143,7 +162,19 @@ class Node(object):
             dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
             return address, message
 
-    def create_dispersy_identity_request_message(self, source_address, destination_address, global_time):
+    def create_dispersy_identity_message(self, address, global_time):
+        assert isinstance(address, tuple)
+        assert len(address) == 2
+        assert isinstance(address[0], str)
+        assert isinstance(address[1], int)
+        assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"dispersy-identity")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              IdentityPayload(address))
+
+    def create_dispersy_callback_request_message(self, source_address, destination_address, global_time):
         assert isinstance(source_address, tuple)
         assert len(source_address) == 2
         assert isinstance(source_address[0], str)
@@ -153,11 +184,11 @@ class Node(object):
         assert isinstance(destination_address[0], str)
         assert isinstance(destination_address[1], int)
         assert isinstance(global_time, (int, long))
-        meta = self._community.get_meta_message(u"dispersy-identity-request")
-        return meta.implement(meta.authentication.implement(self._my_member),
+        meta = self._community.get_meta_message(u"dispersy-callback-request")
+        return meta.implement(meta.authentication.implement(),
                               meta.distribution.implement(global_time),
                               meta.destination.implement(destination_address),
-                              IdentityRequestPayload(source_address, destination_address))
+                              CallbackRequestPayload(source_address, destination_address))
             
     def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
         assert isinstance(bloom_global_time, (int, long))
@@ -218,35 +249,3 @@ class DiscoveryNode(Node):
         destination = meta.destination.implement()
         payload = UserMetadataPayload(address, alias, comment)
         return meta.implement(authentication, distribution, destination, payload)
-    
-class ForumNode(DiscoveryNode):
-    def __init__(self, *args, **kargs):
-        super(ForumNode, self).__init__(*args, **kargs)
-        self._set_settings_message = None
-        self._create_thread_message = None
-        self._create_post_message = None
-
-    def set_community(self, community):
-        super(ForumNode, self).set_community(community)
-        self._set_settings_message = Message(community, u"set-settings", LinearResolution(), LastSyncDistribution(100, 100, 0.001), CommunityDestination())
-        self._create_thread_message = Message(community, u"create-thread", LinearResolution(), FullSyncDistribution(100, 100, 0.001), CommunityDestination())
-        self._create_post_message = Message(community, u"create-post", LinearResolution(), FullSyncDistribution(100, 100, 0.001), CommunityDestination())
-
-    def create_set_settings_message(self, title, description, global_time):
-        distribution = self._set_settings_privilege.distribution.implement(global_time)
-        destination = self._set_settings_privilege.destination.implement()
-        permission = PermitPermission(self._set_settings_privilege, (title, description))
-        return self.create_message(distribution, destination, permission)
-
-    def create_create_thread_message(self, key, title, comment, global_time, sequence_number):
-        distribution = self._create_thread_privilege.distribution.implement(global_time, sequence_number)
-        destination = self._create_thread_privilege.destination.implement()
-        permission = PermitPermission(self._create_thread_privilege, (key, title, comment))
-        return self.create_message(distribution, destination, permission)
-
-    def create_create_post_message(self, key, comment, global_time, sequence_number):
-        distribution = self._create_post_privilege.distribution.implement(global_time, sequence_number)
-        destination = self._create_post_privilege.destination.implement()
-        permission = PermitPermission(self._create_post_privilege, (key, comment))
-        return self.create_message(distribution, destination, permission)
-        

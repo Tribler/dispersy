@@ -73,9 +73,12 @@ class Community(object):
         if permission_pairs:
             community.authorize(my_member, permission_pairs, True)
 
+        # send out my initial dispersy-identity
+        community.create_identity()
+
         return community
 
-    @staticmethod
+    @classmethod
     def join_community(cls, master_pem, my_member, *args, **kargs):
         """
         Joins an existing community.  Returns a Community subclass
@@ -89,10 +92,15 @@ class Community(object):
         cid = sha1(master_pem).digest()
         database = DispersyDatabase.get_instance()
         database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)",
-                         (my_member.database_id, buffer(cid), master_pem))
+                         (my_member.database_id, buffer(cid), buffer(master_pem)))
 
         # new community instance
-        return cls(cid, *args, **kargs)
+        community = cls(cid, *args, **kargs)
+
+        # send out my initial dispersy-identity
+        community.create_identity()
+
+        return community
 
     @staticmethod
     def load_communities():
@@ -159,8 +167,8 @@ class Community(object):
         # global time increases.  The 1st bloom filter will contain
         # all stored messages from global time 1 to stepping.  The 2nd
         # from stepping to 2*stepping, etc.
-        self._bloom_filter_stepping = 100
-        self._bloom_filters = [BloomFilter(100, 0.01)]
+        self._bloom_filter_stepping = 1000
+        self._bloom_filters = [BloomFilter(10, 512)] # 10, 512 -> 640 bytes
         # todo: if we are only using LastSyncDistribution then it is
         # possible that only the last elements of the _bloom_filters
         # are used.  We should make this into a dictionary and keep it
@@ -536,6 +544,9 @@ class Community(object):
     #         self._dispersy.store_and_forward([message_impl])
 
     #     return message_impl
+
+    def create_identity(self, store_and_forward=True):
+        return self._dispersy.create_identity(self, store_and_forward)
 
     def create_signature_request(self, message, response_func, timeout=10.0, store_and_forward=True):
         """

@@ -9,7 +9,15 @@ CREATE TABLE user(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  mid BLOB,                                      -- member identifier (sha1 of pem)
  pem BLOB,                                      -- member key (public part)
+ host TEXT,
+ port INTEGER,
  UNIQUE(mid));
+
+CREATE TABLE identity(
+ user INTEGER REFERENCES user(id),
+ community INTEGER REFERENCES community(id),
+ packet BLOB,
+ UNIQUE(user, community));
 
 CREATE TABLE community(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
@@ -25,7 +33,6 @@ CREATE TABLE key(
 
 CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
- user INTEGER REFERENCES user(id),
  host TEXT,                                     -- IP address
  port INTEGER,                                  -- port number
  incoming_time TEXT,                            -- time when received data
@@ -45,9 +52,10 @@ CREATE TABLE sync_last(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
+ cluster INTEGER,
  global INTEGER,
  packet BLOB,
- UNIQUE(community, user, global));
+ UNIQUE(community, user, cluster, global));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');

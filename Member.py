@@ -91,26 +91,27 @@ class Member(Public, Parameterized1Singleton):
             self._rsa = rsa
         self._mid = sha1(public_pem).digest()
 
+        self._database_id = -1
+        self._address = ("", -1)
+
         # sync with database
         if sync_with_database:
-            database = DispersyDatabase.get_instance()
-            try:
-                self._database_id = database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(public_pem),)).next()[0]
-            except StopIteration:
-                database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(public_pem)))
+            if not self.update():
+                database = DispersyDatabase.get_instance()
+                database.execute(u"INSERT INTO user(mid, pem, host, port) VALUES(?, ?, '', -1)", (buffer(self._mid), buffer(self._public_pem)))
                 self._database_id = database.last_insert_rowid
-        else:
-            self._database_id = -1
 
-        # link to the discovery metadata
-        self._discovery = None
+    def update(self):
+        """
+        Update this instance from the database
+        """
+        try:
+            self._database_id, host, port = DispersyDatabase.get_instance().execute(u"SELECT id, host, port FROM user WHERE pem = ? LIMIT 1", (buffer(self._public_pem),)).next()
+            self._address = (str(host), port)
+            return True
 
-    @property
-    def discovery(self):
-        if not self._discovery:
-            from Tribler.Community.Discovery.UserMetadata import UserMetadata
-            self._discovery = UserMetadata.get_instance(self)
-        return self._discovery
+        except StopIteration:
+            return False
 
     @property
     def mid(self):
@@ -130,7 +131,20 @@ class Member(Public, Parameterized1Singleton):
         The database id.  This is the unsigned integer used to store
         this member in the Dispersy database.
         """
+        assert self._database_id > 0, "No database id set.  Please call member.update()"
         return self._database_id
+
+    @property
+    def address(self):
+        """
+        The most recently advertised address for this member.
+
+        Addresses are advertised using a dispersy-identity message,
+        and the most recent -per member- is stored and forwarded.  The
+        address will be ('', -1) until at least one dispersy-identity
+        message for the member is received.
+        """
+        return self._address
 
     def verify(self, data, signature, offset=0, length=0):
         assert isinstance(data, str)

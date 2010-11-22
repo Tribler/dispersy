@@ -22,11 +22,19 @@ class DelayPacketByMissingMember(DelayPacket):
     Raising this exception should result in a request for all public
     keys associated to the missing member id.
     """
-    def __init__(self, missing_member_id):
+    def __init__(self, community, missing_member_id):
+        if __debug__:
+            from Community import Community
+        assert isinstance(community, Community)
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
         super(DelayPacketByMissingMember, self).__init__("Missing member")
+        self._community = community
         self._missing_member_id = missing_member_id
+
+    @property
+    def community(self):
+        return self._community
 
     @property
     def missing_member_id(self):

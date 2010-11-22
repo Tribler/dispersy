@@ -127,47 +127,69 @@ class ResponsePayload(Permit):
     def request_id(self):
         return self._request_id
 
+class CallbackRequestPayload(Permit):
+    def __init__(self, source_address, destination_address):
+        assert isinstance(source_address, tuple)
+        assert len(source_address) == 2
+        assert isinstance(source_address[0], str)
+        assert isinstance(source_address[1], int)
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        self._source_address = source_address
+        self._destination_address = destination_address
+
+    @property
+    def source_address(self):
+        return self._source_address
+
+    @property
+    def destination_address(self):
+        return self._destination_address
+
+class CallbackResponsePayload(ResponsePayload):
+    def __init__(self, source_address, destination_address):
+        assert isinstance(source_address, tuple)
+        assert len(source_address) == 2
+        assert isinstance(source_address[0], str)
+        assert isinstance(source_address[1], int)
+        assert isinstance(destination_address, tuple)
+        assert len(destination_address) == 2
+        assert isinstance(destination_address[0], str)
+        assert isinstance(destination_address[1], int)
+        self._source_address = source_address
+        self._destination_address = destination_address
+
+    @property
+    def source_address(self):
+        return self._source_address
+
+    @property
+    def destination_address(self):
+        return self._destination_address
+
+class IdentityPayload(Permit):
+    def __init__(self, address):
+        assert isinstance(address, tuple)
+        assert len(address) == 2
+        assert isinstance(address[0], str)
+        assert isinstance(address[1], int)
+        self._address = address
+
+    @property
+    def address(self):
+        return self._address
+
 class IdentityRequestPayload(Permit):
-    def __init__(self, source_address, destination_address):
-        assert isinstance(source_address, tuple)
-        assert len(source_address) == 2
-        assert isinstance(source_address[0], str)
-        assert isinstance(source_address[1], int)
-        assert isinstance(destination_address, tuple)
-        assert len(destination_address) == 2
-        assert isinstance(destination_address[0], str)
-        assert isinstance(destination_address[1], int)
-        self._source_address = source_address
-        self._destination_address = destination_address
+    def __init__(self, mid):
+        assert isinstance(mid, str)
+        assert len(mid) == 20
+        self._mid = mid
 
     @property
-    def source_address(self):
-        return self._source_address
-
-    @property
-    def destination_address(self):
-        return self._destination_address
-
-class IdentityResponsePayload(ResponsePayload):
-    def __init__(self, source_address, destination_address):
-        assert isinstance(source_address, tuple)
-        assert len(source_address) == 2
-        assert isinstance(source_address[0], str)
-        assert isinstance(source_address[1], int)
-        assert isinstance(destination_address, tuple)
-        assert len(destination_address) == 2
-        assert isinstance(destination_address[0], str)
-        assert isinstance(destination_address[1], int)
-        self._source_address = source_address
-        self._destination_address = destination_address
-
-    @property
-    def source_address(self):
-        return self._source_address
-
-    @property
-    def destination_address(self):
-        return self._destination_address
+    def mid(self):
+        return self._mid
 
 class SyncPayload(Permit):
     def __init__(self, global_time, bloom_filter):

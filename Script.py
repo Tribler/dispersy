@@ -11,7 +11,7 @@ from Singleton import Singleton
 from Authentication import MultiMemberAuthentication
 from Community import Community
 from Conversion import DictionaryConversion, BinaryConversion
-from Debug import Node, DiscoveryNode, ForumNode
+from Debug import Node, DiscoveryNode
 from Destination import CommunityDestination
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
@@ -26,7 +26,6 @@ from DebugCommunity import DebugCommunity, DebugNode
 
 from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
 from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
-from Tribler.Community.Forum.Forum import ForumCommunity
 
 class Script(Singleton):
     class Terminator(object):
@@ -54,31 +53,33 @@ class Script(Singleton):
                 self._rawserver.add_task(self.loop, 1.0)
 
     def __init__(self):
-        self._scripts = {"discovery-user":DiscoveryUserScript,
-                         "discovery-community":DiscoveryCommunityScript,
-                         "discovery-sync":DiscoverySyncScript,
-                         "dispersy":DispersyScript,}
+        self._scripts = {}
+        self.add("discovery-user", DiscoveryUserScript)
+        self.add("discovery-community", DiscoveryCommunityScript)
+        self.add("discovery-sync", DiscoverySyncScript)
+        self.add("dispersy", DispersyScript)
 
-    def add(self, name, script):
+    def add(self, name, script, include_with_all=True):
         assert isinstance(name, str)
         assert not name in self._scripts
         assert issubclass(script, ScriptBase)
-        self._scripts[name] = script
+        self._scripts[name] = (include_with_all, script)
 
     def load(self, rawserver, name):
         dprint(name)
         terminator = Script.Terminator(rawserver)
        
         if name == "all":
-            for name, script in self._scripts.iteritems():
-                dprint(name)
-                script(terminator, name, rawserver)
+            for name, (include_with_all, script) in self._scripts.iteritems():
+                if include_with_all:
+                    dprint(name)
+                    script(terminator, name, rawserver)
 
         elif name in self._scripts:
-            self._scripts[name](terminator, name, rawserver)
+            self._scripts[name][1](terminator, name, rawserver)
 
         else:
-            for available in self._scripts:
+            for available in sorted(self._scripts):
                 dprint("Available: ", available)
             raise ValueError("Unknown script '{0}'".format(name))
 
@@ -123,7 +124,10 @@ class DiscoveryCommunityScript(ScriptBase):
         self.caller(self.drinks)
 
     def my_community_metadata(self):
-
+        """
+        SELF creates a few communities and these need to end up in the
+        discovery database.
+        """
         cid, alias, comment = (hashlib.sha1("MY-FIRST-COMMUNITY").digest(), u"My First Community", u"My First Community Comment")
         self._discovery.create_community_metadata(cid, alias, comment)
         yield 0.1
@@ -157,13 +161,14 @@ class DiscoveryCommunityScript(ScriptBase):
 
     def food(self):
         """
-        Create a community and update its metadata one by one.
+        NODE creates a community and updates its metadata one by one.
         Packets are send in order.
         """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("FOOD").digest()
@@ -189,14 +194,15 @@ class DiscoveryCommunityScript(ScriptBase):
 
     def drink(self):
         """
-        Create a community and update its metadata one by one.
+        NODE creates a community and updates its metadata one by one.
         Packets are send OUT OF order.  This must cause a request for
         the missing packet.
         """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINK").digest()
@@ -238,7 +244,7 @@ class DiscoveryCommunityScript(ScriptBase):
 
     def drinks(self):
         """
-        Create a community and update its metadata one by one.
+        NODE creates a community and updates its metadata one by one.
         Packets are send OUT OF order.  This must cause a request for
         the missing packet.
 
@@ -248,7 +254,8 @@ class DiscoveryCommunityScript(ScriptBase):
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         address = self._dispersy.socket.get_address()
         cid = hashlib.sha1("DRINKS").digest()
@@ -313,13 +320,16 @@ class DiscoveryUserScript(ScriptBase):
         self.caller(self.bob)
 
     def my_user_metadata(self):
+        """
+        SELF creates some user metadata and checks if this ends up in
+        the database.
+        """
         my_member = self._discovery.my_member
 
         address = self._dispersy.socket.get_address()
         self._discovery.create_user_metadata(address, u"My Alias", u"My Comment")
         try:
-            id_, = self._dispersy_database.execute(u"SELECT id FROM user WHERE pem = ? LIMIT 1", (buffer(my_member.pem),)).next()
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (id_,)).next()
+            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (my_member.database_id,)).next()
         except StopIteration:
             assert False, "Entry not found"
         assert tup[0] == u"My Alias"
@@ -327,10 +337,16 @@ class DiscoveryUserScript(ScriptBase):
         dprint("finished")
         
     def alice(self):
+        """
+        NODE creates several metadata versions, only the most recent
+        version should be in the database.  Versions are created
+        IN-order.
+        """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
@@ -364,10 +380,16 @@ class DiscoveryUserScript(ScriptBase):
         dprint("finished")
 
     def bob(self):
+        """
+        NODE creates several metadata versions, only the most recent
+        version should be in the database.  Versions are created
+        OUT-OF-order.
+        """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         address = self._dispersy.socket.get_address()
         node_address = node.socket.getsockname()
@@ -407,15 +429,16 @@ class DiscoverySyncScript(ScriptBase):
 
     def to_node(self):
         """
-        We ensure that SELF has a the communities COPPER and TIN.  We
-        send a dispersy-sync message with an empty bloom filter.  SELF
+        We add the communities COPPER and TIN to SELF and then we send
+        a dispersy-sync message with an empty bloom filter; SELF
         should respond by offering the COPPER and TIN metadata.
         """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
         address = self._dispersy.socket.get_address()
+        yield 0.1
 
         # create COPPER and TIN communities
         messages = []
@@ -443,14 +466,16 @@ class DiscoverySyncScript(ScriptBase):
 
     def from_node(self):
         """
-        We wait until SELF sends a dispersy-sync message to ensure
-        that the messages are in its sync message.
+        We add the communities IRON and MITHRIL to SELF and wait until
+        SELF sends a dispersy-sync message to ensure that the messages
+        (containing the communities) are in its bloom filter.
         """
         node = DiscoveryNode()
         node.init_socket()
         node.set_community(self._discovery)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
         address = self._dispersy.socket.get_address()
+        yield 0.1
 
         # create messages should show up in the bloom filter from SELF
         messages = []
@@ -490,22 +515,24 @@ class DispersyScript(ScriptBase):
     def last_1_test(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
         address = self._dispersy.socket.get_address()
+        cluster = community.get_meta_message(u"last-1-test").distribution.cluster
         
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
         node.set_community(community)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id)))
-        assert len(times) == 0
+        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
+        assert len(times) == 0, times
 
         # send a message
         global_time = 10
         node.send_message(node.create_last_1_test_message("1", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -513,21 +540,21 @@ class DispersyScript(ScriptBase):
         global_time = 11
         node.send_message(node.create_last_1_test_message("2", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (older: should be dropped)
         node.send_message(node.create_last_1_test_message("-1", 8), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (duplicate: should be dropped)
         node.send_message(node.create_last_1_test_message("2", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -535,7 +562,7 @@ class DispersyScript(ScriptBase):
         global_time = 12
         node.send_message(node.create_last_1_test_message("3", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -544,15 +571,17 @@ class DispersyScript(ScriptBase):
     def last_9_test(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
         address = self._dispersy.socket.get_address()
+        cluster = community.get_meta_message(u"last-1-test").distribution.cluster
         
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
         node.set_community(community)
-        node.init_my_member(sync_with_database=True)
+        node.init_my_member()
+        yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id)))
+        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
         assert len(times) == 0
 
         number_of_messages = 0
@@ -562,9 +591,9 @@ class DispersyScript(ScriptBase):
             node.send_message(message, address)
             number_of_messages += 1
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ?", (community.database_id, node.my_member.database_id, global_time)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             dprint(sorted(times))
             assert len(times) == number_of_messages, (len(times), number_of_messages)
             assert global_time in times
@@ -574,7 +603,7 @@ class DispersyScript(ScriptBase):
             # send a message (older: should be dropped)
             node.send_message(node.create_last_9_test_message(str(global_time), global_time), address)
             yield 0.1
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             assert len(times) == 9, len(times)
             assert not global_time in times
             
@@ -583,9 +612,9 @@ class DispersyScript(ScriptBase):
             message = node.create_last_9_test_message("wrong content!", global_time)
             node.send_message(message, address)
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ?", (community.database_id, node.my_member.database_id, global_time)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert not str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             assert sorted(times) == range(10, 19), sorted(times)
 
         match_times = sorted(times[:])
@@ -597,9 +626,9 @@ class DispersyScript(ScriptBase):
             match_times.append(global_time)
             match_times.sort()
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ?", (community.database_id, node.my_member.database_id, global_time)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ?", (community.database_id, node.my_member.database_id))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             dprint(sorted(times))
             assert sorted(times) == match_times, sorted(times)
 
@@ -613,9 +642,6 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DiscoveryNode()
         node.init_socket()
-        # Member.get_instance(node.my_member.pem)
-        # node.set_community(self._discovery)
-        # node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node.set_community(community)
         node.init_my_member()
         yield 0.1
@@ -645,9 +671,6 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node = DiscoveryNode()
         node.init_socket()
-        # Member.get_instance(node.my_member.pem)
-        # node.set_community(self._discovery)
-        # node.send_message(node.create_user_metadata_message(node.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node.set_community(community)
         node.init_my_member()
         yield 0.1
@@ -688,18 +711,13 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node1 = DiscoveryNode()
         node1.init_socket()
-        # Member.get_instance(node1.my_member.pem)
-        # node1.set_community(self._discovery)
-        # node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node1.set_community(community)
         node1.init_my_member()
+        yield 0.1
 
         # create node and ensure that SELF knows the node address
         node2 = DiscoveryNode()
         node2.init_socket()
-        # Member.get_instance(node2.my_member.pem)
-        # node2.set_community(self._discovery)
-        # node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
         node2.set_community(community)
         node2.init_my_member()
         yield 0.1
@@ -730,18 +748,13 @@ class DispersyScript(ScriptBase):
         # create node and ensure that SELF knows the node address
         node1 = DiscoveryNode()
         node1.init_socket()
-        # Member.get_instance(node1.my_member.pem)
-        # node1.set_community(self._discovery)
-        # node1.send_message(node1.create_user_metadata_message(node1.socket.getsockname(), u"Node-01", u"Commen-01", 1), address)
         node1.set_community(community)
         node1.init_my_member()
+        yield 0.1
 
         # create node and ensure that SELF knows the node address
         node2 = DiscoveryNode()
         node2.init_socket()
-        # Member.get_instance(node2.my_member.pem)
-        # node2.set_community(self._discovery)
-        # node2.send_message(node2.create_user_metadata_message(node2.socket.getsockname(), u"Node-02", u"Commen-02", 1), address)
         node2.set_community(community)
         node2.init_my_member()
         yield 0.1
@@ -784,87 +797,4 @@ class DispersyScript(ScriptBase):
 
         assert container["response"] == 2, container["response"]
         assert container["signature"] == [signature1, signature2], container["signature"]
-        dprint("finished")
-
-class ForumScript(ScriptBase):
-    def run(self):
-        self.caller(self.create_my_forum)
-        # self.caller(self.wow_forum)
-
-    def create_my_forum(self):
-        community = ForumCommunity.create_community(self._dispersy.my_member)
-        community.create_set_settings(u"My Forum", u"My Forum Description")
-        welcome_thread_message = community.create_thread(u"Welcome", u"Welcome everyone")
-        community.create_post(welcome_thread_message.payload.key, u"Anyone else here?")
-
-    def wow_forum(self):
-        def get_or_create_node(nodes, user):
-            if not user in nodes:
-                # create user
-                dprint("Creating '", user, "'")
-                node = ForumNode()
-                node.init_socket()
-                node.init_my_member()
-                node.set_community(community)
-                node.sequence_number = 0
-
-                # authorize user
-                permission_pairs = []
-                for privilege_name in [u"create-thread", u"create-post"]:
-                    privilege = community.get_privilege(privilege_name)
-                    for permission in [PermitPermission]:
-                        permission_pairs.append((privilege, permission))
-                community.authorize(node.my_member, permission_pairs)
-
-                # set Discovery metadata
-                global_time = self._discovery._timeline.global_time
-                node.set_community(self._discovery)
-                node.send_message(node.create_user_metadata_message(node.socket.getsockname(), unicode(user), u"Wow player {0}".format(user), global_time), address)
-                node.set_community(community)
-
-                # store for later
-                nodes[user] = node
-            return nodes[user]
-
-        import apsw
-        connection = apsw.Connection("/home/boudewijn/fetch_forum.db")
-        cursor = connection.cursor()
-
-        address = self._dispersy.socket.get_address()
-
-        thread_counter = 0
-        post_counter = 0
-        nodes = {}
-        community = ForumCommunity.create_community(self._dispersy.my_member)
-        community.create_forum_settings(u"World of Warcraft", u"A database scrape from the World of Warcraft forums")
-        for id_, in list(cursor.execute(u"SELECT id FROM thread ORDER BY id DESC")):
-            gen = cursor.execute(u"SELECT user, title, comment FROM post WHERE thread = ? ORDER BY id DESC", (id_,))
-            try:
-                user, title, comment = gen.next()
-            except StopIteration:
-                continue
-
-            node = get_or_create_node(nodes, user)
-            key = "key#{0}".format(id_)
-            global_time = community._timeline.global_time
-            node.sequence_number += 1
-            node.send_message(node.create_create_thread_message(key, title, comment, global_time, node.sequence_number), address)
-            thread_counter += 1
-            post_counter += 1
-            yield 0.01
-
-            while True:
-                try:
-                    user, title, comment = gen.next()
-                except StopIteration:
-                    break
-
-                node = get_or_create_node(nodes, user)
-                global_time = community._timeline.global_time
-                node.sequence_number += 1
-                node.send_message(node.create_create_post_message(key, comment, global_time, node.sequence_number), address)
-                post_counter += 1
-                yield 0.01
-
-        dprint("Threads:", thread_counter, "; Posts:", post_counter)
         dprint("finished")

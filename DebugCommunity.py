@@ -95,8 +95,8 @@ class DebugCommunity(Community):
     Community to debug Dispersy related messages and policies.
     """
     def get_meta_messages(self):
-        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(1), CommunityDestination()),
-                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(9), CommunityDestination()),
+        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(1, 1), CommunityDestination()),
+                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(2, 9), CommunityDestination()),
                 Message(self, u"double-signed-text", MultiMemberAuthentication(2, self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination()),
                 Message(self, u"triple-signed-text", MultiMemberAuthentication(3, self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination())]
 

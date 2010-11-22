@@ -23,6 +23,7 @@ class Distribution(MetaObject):
         def __init__(self, meta, global_time):
             assert isinstance(meta, Distribution)
             assert isinstance(global_time, (int, long))
+            assert global_time > 0
             super(Distribution.Implementation, self).__init__(meta)
             # the last known global time + 1 (from the user who signed the
             # message)
@@ -62,12 +63,22 @@ class LastSyncDistribution(SyncDistribution):
                 super(LastSyncDistribution.Implementation, self).__init__(meta, global_time)
 
         @property
+        def cluster(self):
+            return self._meta._cluster
+
+        @property
         def history_size(self):
             return self._meta._history_size
 
-    def __init__(self, history_size):
+    def __init__(self, cluster, history_size):
+        assert isinstance(cluster, int)
         assert isinstance(history_size, int)
+        self._cluster = cluster
         self._history_size = history_size
+
+    @property
+    def cluster(self):
+        return self._cluster
 
     @property
     def history_size(self):

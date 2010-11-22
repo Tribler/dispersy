@@ -25,12 +25,25 @@ class MemberAuthentication(Authentication):
             self._is_signed = is_signed
 
         @property
+        def encoding(self):
+            return self._meta._encoding
+
+        @property
         def member(self):
             return self._member
 
         @property
         def is_signed(self):
             return self._is_signed
+
+    def __init__(self, encoding="sha1"):
+        assert isinstance(encoding, str)
+        assert encoding in ("pem", "sha1")
+        self._encoding = encoding
+
+    @property
+    def encoding(self):
+        return self._encoding
 
 class MultiMemberAuthentication(Authentication):
     class Implementation(Authentication.Implementation):
