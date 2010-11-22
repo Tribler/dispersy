@@ -505,31 +505,31 @@ class Dispersy(Singleton):
                           FROM routing
                           WHERE community = ? AND (diff < 30 OR age > 300)
                           ORDER BY diff ASC, age DESC
-                          LIMIT 10"""
+                          LIMIT 2"""
                 addresses = set([(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id,))])
+                has_recent = bool(addresses)
 
-                if len(addresses) < 10:
-                    # we need to fallback to something... just pick
-                    # some addresses within this community.
-                    sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
-                              FROM routing
-                              WHERE community = ?
-                              ORDER BY diff ASC, age DESC
-                              LIMIT 10"""
-                    addresses.update([(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id,))])
+                # we need to fallback to something... just pick
+                # some addresses within this community.
+                sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+                          FROM routing
+                          WHERE community = ?
+                          ORDER BY diff ASC, age DESC
+                          LIMIT 3"""
+                addresses.update([(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id,))])
 
-                if len(addresses) < 10:
+                if not has_recent:
                     # we need to fallback to something else... just
                     # pick some addresses.
                     sql = u"""SELECT host, port
                               FROM routing
-                              LIMIT 10"""
+                              WHERE community = 0
+                              LIMIT 2"""
                     addresses.update([(str(host), port) for host, port in self._database.execute(sql)])
-
+                
                 if __debug__:
                     addresses = [(host, port) for host, port in addresses if not (host == "130.161.158.222" and port == self._my_external_address[1])]
-
-                # todo: make smarter...
+                
                 self._send(addresses, [message.packet])
 
             elif isinstance(message.destination, AddressDestination.Implementation):
@@ -718,24 +718,34 @@ class Dispersy(Singleton):
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
 
+        limit = self._total_send + 1024 * 5 # 5 kb per sync
+
         bloom_filter = message.payload.bloom_filter
         with self._database as execute:
-            for packet, in execute(u"SELECT packet FROM sync_full WHERE community = ? AND global >= ? ORDER BY global LIMIT 100", (message.community.database_id, message.payload.global_time)):
+            for packet, in execute(u"SELECT packet FROM sync_full WHERE community = ? AND global >= ? ORDER BY global", (message.community.database_id, message.payload.global_time)):
                 packet = str(packet)
                 if not packet in bloom_filter:
                     if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
                     self._socket.send(address, packet)
 
-            for packet, in execute(u"SELECT packet FROM sync_last WHERE community = ? AND global >= 3 ORDER BY global LIMIT 100", (message.community.database_id,)):
+                    self._total_send += len(packet)
+                    if self._total_send > limit:
+                        break
+
+            for packet, in execute(u"SELECT packet FROM sync_last WHERE community = ? AND global >= 3 ORDER BY global", (message.community.database_id,)):
             # debug: we want to test the dispersy-identity-request: so
             # dont send dispersy-identity messages, currently global =
             # 2
-            # for packet, in execute(u"SELECT packet FROM sync_last WHERE community = ? AND global >= ? ORDER BY global LIMIT 100", (message.community.database_id, message.payload.global_time)):
+            # for packet, in execute(u"SELECT packet FROM sync_last WHERE community = ? AND global >= ? ORDER BY global", (message.community.database_id, message.payload.global_time)):
 
                 packet = str(packet)
                 if not packet in bloom_filter:
                     if __debug__: dprint("Syncing ", len(packet), " bytes from sync_last to " , address[0], ":", address[1])
                     self._socket.send(address, packet)
+
+                    self._total_send += len(packet)
+                    if self._total_send > limit:
+                        break
 
     def on_missing_sequence(self, address, message):
         """
@@ -756,6 +766,7 @@ class Dispersy(Singleton):
         for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE community = ? and sequence >= ? AND sequence <= ? ORDER BY sequence LIMIT 100",
                                               (payload.message.community.database_id, payload.missing_low, payload.missing_high)):
             if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+            self._total_send += len(packet)
             self._socket.send(address, packet)
 
     def on_signature_request(self, address, message):
