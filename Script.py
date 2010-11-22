@@ -11,7 +11,7 @@ from Singleton import Singleton
 from Authentication import MultiMemberAuthentication
 from Community import Community
 from Conversion import DictionaryConversion, BinaryConversion
-from Debug import Node, DiscoveryNode
+from Debug import Node
 from Destination import CommunityDestination
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
@@ -24,8 +24,8 @@ from Resolution import PublicResolution
 
 from DebugCommunity import DebugCommunity, DebugNode
 
-from Tribler.Community.Discovery.Discovery import DiscoveryCommunity
-from Tribler.Community.Discovery.DiscoveryDatabase import DiscoveryDatabase
+from Tribler.Community.Discovery.Community import DiscoveryCommunity
+from Tribler.Community.Discovery.Database import DiscoveryDatabase
 
 class Script(Singleton):
     class Terminator(object):
@@ -54,10 +54,6 @@ class Script(Singleton):
 
     def __init__(self):
         self._scripts = {}
-        self.add("discovery-user", DiscoveryUserScript)
-        self.add("discovery-community", DiscoveryCommunityScript)
-        self.add("discovery-sync", DiscoverySyncScript)
-        self.add("dispersy", DispersyScript)
 
     def add(self, name, script, include_with_all=True):
         assert isinstance(name, str)
@@ -115,393 +111,6 @@ class ScriptBase(object):
 
     def run():
         raise NotImplementedError("Must implement a generator")
-
-class DiscoveryCommunityScript(ScriptBase):
-    def run(self):
-        self.caller(self.my_community_metadata)
-        self.caller(self.food)
-        self.caller(self.drink)
-        self.caller(self.drinks)
-
-    def my_community_metadata(self):
-        """
-        SELF creates a few communities and these need to end up in the
-        discovery database.
-        """
-        cid, alias, comment = (hashlib.sha1("MY-FIRST-COMMUNITY").digest(), u"My First Community", u"My First Community Comment")
-        self._discovery.create_community_metadata(cid, alias, comment)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == alias
-        assert tup[1] == comment
-
-        cid, alias, comment = (hashlib.sha1("MY-SECOND-COMMUNITY").digest(), u"My Second Community", u"My Second Community Comment")
-        self._discovery.create_community_metadata(cid, alias, comment)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == alias
-        assert tup[1] == comment
-
-        cid, alias, comment = (hashlib.sha1("MY-THIRD-COMMUNITY").digest(), u"My Third Community", u"My Third Community Comment")
-        self._discovery.create_community_metadata(cid, alias, comment)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == alias
-        assert tup[1] == comment
-        dprint("finished")
-
-    def food(self):
-        """
-        NODE creates a community and updates its metadata one by one.
-        Packets are send in order.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        yield 0.1
-
-        address = self._dispersy.socket.get_address()
-        cid = hashlib.sha1("FOOD").digest()
-
-        node.send_message(node.create_community_metadata_message(cid, u"Food-01", u"Comment-01", 1, 1), address)
-        yield 0.1
-        tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        assert tup[0] == u"Food-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Food-02", u"Comment-02", 2, 2), address)
-        yield 0.1
-        tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        assert tup[0] == u"Food-02"
-        assert tup[1] == u"Comment-02"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Food-03", u"Comment-03", 3, 3), address)
-        yield 0.1
-        tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        assert tup[0] == u"Food-03"
-        assert tup[1] == u"Comment-03"
-        dprint("finished")
-
-    def drink(self):
-        """
-        NODE creates a community and updates its metadata one by one.
-        Packets are send OUT OF order.  This must cause a request for
-        the missing packet.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        yield 0.1
-
-        address = self._dispersy.socket.get_address()
-        cid = hashlib.sha1("DRINK").digest()
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drink-01", u"Comment-01", 1, 1), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drink-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drink-03", u"Comment-03", 3, 3), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drink-01"
-        assert tup[1] == u"Comment-01"
-
-        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
-        # must ask for missing sequence 2
-        assert message.payload.member.pem == node.my_member.pem
-        assert message.payload.message.name == u"community-metadata"
-        assert message.payload.missing_low == 2
-        assert message.payload.missing_high == 2
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drink-02", u"Comment-02", 2, 2), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drink-03"
-        assert tup[1] == u"Comment-03"
-        dprint("finished")
-
-    def drinks(self):
-        """
-        NODE creates a community and updates its metadata one by one.
-        Packets are send OUT OF order.  This must cause a request for
-        the missing packet.
-
-        Checks the same as self.drink, but with a bigger gap between
-        the sequence numbers.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        yield 0.1
-
-        address = self._dispersy.socket.get_address()
-        cid = hashlib.sha1("DRINKS").digest()
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drinks-01", u"Comment-01", 1, 1), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drinks-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drinks-05", u"Comment-05", 5, 5), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drinks-01"
-        assert tup[1] == u"Comment-01"
-
-        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-missing-sequence"])
-        # must ask for missing sequence 2, 3, and 4
-        assert message.payload.member.pem == node.my_member.pem
-        assert message.payload.message.name == u"community-metadata"
-        assert message.payload.missing_low == 2
-        assert message.payload.missing_high == 4
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drinks-03", u"Comment-03", 3, 3), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drinks-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drinks-04", u"Comment-04", 4, 4), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drinks-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_community_metadata_message(cid, u"Drinks-02", u"Comment-02", 2, 2), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM community_metadata WHERE cid = ?", (buffer(cid),)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Drinks-05"
-        assert tup[1] == u"Comment-05"
-        dprint("finished")
-
-class DiscoveryUserScript(ScriptBase):
-    def run(self):
-        self.caller(self.my_user_metadata)
-        self.caller(self.alice)
-        self.caller(self.bob)
-
-    def my_user_metadata(self):
-        """
-        SELF creates some user metadata and checks if this ends up in
-        the database.
-        """
-        my_member = self._discovery.my_member
-
-        address = self._dispersy.socket.get_address()
-        self._discovery.create_user_metadata(address, u"My Alias", u"My Comment")
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"My Alias"
-        assert tup[1] == u"My Comment"
-        dprint("finished")
-        
-    def alice(self):
-        """
-        NODE creates several metadata versions, only the most recent
-        version should be in the database.  Versions are created
-        IN-order.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        yield 0.1
-
-        address = self._dispersy.socket.get_address()
-        node_address = node.socket.getsockname()
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Alice-01", u"Comment-01", 1), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Alice-01"
-        assert tup[1] == u"Comment-01"
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Alice-03", u"Comment-03", 3), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Alice-03"
-        assert tup[1] == u"Comment-03"
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Alice-02", u"Comment-02", 2), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Alice-03"
-        assert tup[1] == u"Comment-03"
-        dprint("finished")
-
-    def bob(self):
-        """
-        NODE creates several metadata versions, only the most recent
-        version should be in the database.  Versions are created
-        OUT-OF-order.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        yield 0.1
-
-        address = self._dispersy.socket.get_address()
-        node_address = node.socket.getsockname()
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Bob-03", u"Comment-03", 3), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Bob-03"
-        assert tup[1] == u"Comment-03"
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Bob-01", u"Comment-01", 1), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Bob-03"
-        assert tup[1] == u"Comment-03"
-
-        node.send_message(node.create_user_metadata_message(node_address, u"Bob-02", u"Comment-02", 2), address)
-        yield 0.1
-        try:
-            tup = self._discovery_database.execute(u"SELECT alias, comment FROM user_metadata WHERE user = ?", (node.my_member.database_id,)).next()
-        except StopIteration:
-            assert False, "Entry not found"
-        assert tup[0] == u"Bob-03"
-        assert tup[1] == u"Comment-03"
-        dprint("finished")
-
-class DiscoverySyncScript(ScriptBase):
-    def run(self):
-        self.caller(self.to_node)
-        self.caller(self.from_node)
-
-    def to_node(self):
-        """
-        We add the communities COPPER and TIN to SELF and then we send
-        a dispersy-sync message with an empty bloom filter; SELF
-        should respond by offering the COPPER and TIN metadata.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        address = self._dispersy.socket.get_address()
-        yield 0.1
-
-        # create COPPER and TIN communities
-        messages = []
-        messages.append(node.create_community_metadata_message(hashlib.sha1("COPPER").digest(), u"Copper Community", u"Copper Community Comment", 1, 1))
-        messages.append(node.create_community_metadata_message(hashlib.sha1("TIN").digest(), u"Tin Community", u"Tin Community Comment", 2, 2))
-        packets = [node.encode_message(message) for message in messages]
-        for packet in packets:
-            node.send_packet(packet, address)
-            yield 0.1
-
-        # send empty bloomfilter
-        node.send_message(node.create_dispersy_sync_message(1, [], 3), address)
-        yield 0.1
-
-        # receive COPPER and TIN communities
-        received = [False] * len(packets)
-        while filter(lambda x: not x, received):
-            _, pckt = node.receive_packet(addresses=[address], packets=packets)
-            for index, packet in zip(xrange(len(packets)), packets):
-                if pckt == packet:
-                    received[index] = True
-        assert not filter(lambda x: not x, received)
-
-        dprint("finished")
-
-    def from_node(self):
-        """
-        We add the communities IRON and MITHRIL to SELF and wait until
-        SELF sends a dispersy-sync message to ensure that the messages
-        (containing the communities) are in its bloom filter.
-        """
-        node = DiscoveryNode()
-        node.init_socket()
-        node.set_community(self._discovery)
-        node.init_my_member()
-        address = self._dispersy.socket.get_address()
-        yield 0.1
-
-        # create messages should show up in the bloom filter from SELF
-        messages = []
-        messages.append(node.create_community_metadata_message(hashlib.sha1("IRON").digest(), u"Iron Community", u"Iron Community Comment", 1, 1))
-        messages.append(node.create_community_metadata_message(hashlib.sha1("MITHRIL").digest(), u"Mithril Community", u"Mithril Community Comment", 2, 2))
-        packets = [node.encode_message(message) for message in messages]
-        for packet in packets:
-            node.send_packet(packet, address)
-            yield 0.1
-
-        # wait for dispersy-sync message
-        for _ in xrange(10):
-            yield 1.0
-            try:
-                _, message = node.receive_message(timeout=0.1, addresses=[address], message_names=[u"dispersy-sync"])
-            except socket.timeout:
-                continue
-
-            for packet in packets:
-                assert packet in message.payload.bloom_filter
-            break
-
-        else:
-            assert False
-
-        dprint("finished")
 
 class DispersyScript(ScriptBase):
     def run(self):
@@ -640,7 +249,7 @@ class DispersyScript(ScriptBase):
         container = {"timeout":0}
 
         # create node and ensure that SELF knows the node address
-        node = DiscoveryNode()
+        node = Node()
         node.init_socket()
         node.set_community(community)
         node.init_my_member()
@@ -669,7 +278,7 @@ class DispersyScript(ScriptBase):
         container = {"response":0, "signature":""}
 
         # create node and ensure that SELF knows the node address
-        node = DiscoveryNode()
+        node = Node()
         node.init_socket()
         node.set_community(community)
         node.init_my_member()
@@ -709,14 +318,14 @@ class DispersyScript(ScriptBase):
         container = {"timeout":0}
 
         # create node and ensure that SELF knows the node address
-        node1 = DiscoveryNode()
+        node1 = Node()
         node1.init_socket()
         node1.set_community(community)
         node1.init_my_member()
         yield 0.1
 
         # create node and ensure that SELF knows the node address
-        node2 = DiscoveryNode()
+        node2 = Node()
         node2.init_socket()
         node2.set_community(community)
         node2.init_my_member()
@@ -746,14 +355,14 @@ class DispersyScript(ScriptBase):
         container = {"response":0, "signature":[]}
 
         # create node and ensure that SELF knows the node address
-        node1 = DiscoveryNode()
+        node1 = Node()
         node1.init_socket()
         node1.set_community(community)
         node1.init_my_member()
         yield 0.1
 
         # create node and ensure that SELF knows the node address
-        node2 = DiscoveryNode()
+        node2 = Node()
         node2.init_socket()
         node2.set_community(community)
         node2.init_my_member()

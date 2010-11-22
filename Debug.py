@@ -12,8 +12,6 @@ from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
 
-from Tribler.Community.Discovery.DiscoveryPayload import UserMetadataPayload, CommunityMetadataPayload
-
 class Node(object):
     _socket_range = (8000, 8999)
     _socket_pool = {}
@@ -232,20 +230,3 @@ class Node(object):
                               meta.distribution.implement(global_time),
                               meta.destination.implement(destination_member),
                               SignatureResponsePayload(request_id, signature))
-
-class DiscoveryNode(Node):
-    def create_community_metadata_message(self, cid, alias, comment, global_time, sequence_number):
-        meta = self._community.get_meta_message(u"community-metadata")
-        authentication = meta.authentication.implement(self._my_member)
-        distribution = meta.distribution.implement(global_time, sequence_number)
-        destination = meta.destination.implement()
-        payload = CommunityMetadataPayload(cid, alias, comment)
-        return meta.implement(authentication, distribution, destination, payload)
-
-    def create_user_metadata_message(self, address, alias, comment, global_time):
-        meta = self._community.get_meta_message(u"user-metadata")
-        authentication = meta.authentication.implement(self._my_member)
-        distribution = meta.distribution.implement(global_time)
-        destination = meta.destination.implement()
-        payload = UserMetadataPayload(address, alias, comment)
-        return meta.implement(authentication, distribution, destination, payload)

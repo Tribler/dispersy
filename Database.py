@@ -97,10 +97,10 @@ class Database(Singleton):
             return self._cursor.execute(statements, bindings)
         except apsw.SQLError, exception:
             if __debug__:
-                dprint(exception=True)
-                dprint("Filename: ", self._connection.filename)
-                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.totalchanges() - changes_before)
-                dprint(statements)
+                dprint(exception=True, level="warning")
+                dprint("Filename: ", self._connection.filename, level="warning")
+                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.totalchanges() - changes_before, level="warning")
+                dprint(statements, level="warning")
             raise DatabaseException(exception)
 
     def executemany(self, statements, sequenceofbindings):
