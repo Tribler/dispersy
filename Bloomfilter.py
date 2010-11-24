@@ -151,9 +151,10 @@ class BloomFilter(Constructor):
         self._bytes = array("B", data[offset+8:offset+8+size])
 
     @property
-    def bits(self):
+    def size(self):
         """
-        Returns the number of bits in this bloom filter.
+        Returns the size of the bloom filter in bits (i.e. how many
+        bits the bloom filter uses).
         """
         return self._num_slices * self._bits_per_slice
 
@@ -192,6 +193,39 @@ class BloomFilter(Constructor):
             bytes[(offset + i) / 8] |=  1<<(offset + i) % 8
             offset += bits_per_slice
 
+    def and_occurrence(self, other):
+        """
+        Return the number of bits that are both set.
+        
+        0110 and 0100 results in 0100 ~ 1 bit
+        """
+        assert isinstance(other, BloomFilter)
+        if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
+            raise ValueError("Both bloom filters need to be the same size")
+
+        bits = (1, 2, 4, 8, 16, 32, 64, 128)
+        count = 0
+        for c in (a & b for a, b in zip(self._bytes, other._bytes)):
+            count += len(filter(lambda bit: bit & c, bits))
+        return count
+
+    def xor_occurrence(self, other):
+        """
+        Return the number of bits that are equal in value.
+
+        For instance:
+        0110 xor 0100 results in 1101 ~ 3 bits
+        """
+        assert isinstance(other, BloomFilter)
+        if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
+            raise ValueError("Both bloom filters need to be the same size")
+
+        bits = (1, 2, 4, 8, 16, 32, 64, 128)
+        count = 0
+        for c in (a ^ b for a, b in zip(self._bytes, other._bytes)):
+            count += len(filter(lambda bit: bit & c, bits))
+        return count
+            
     def __and__(self, other):
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
@@ -415,6 +449,31 @@ if __debug__:
         # dprint(t2)
         # dprint(str(b2), binary=1)
 
+    def _test_occurrence():
+        a = BloomFilter(1, 16)
+        b = BloomFilter(1, 16)
+        assert a.and_occurrence(b) == 0
+        assert a.xor_occurrence(b) == 0
+        assert a.and_occurrence(a) == 0
+        assert a.xor_occurrence(a) == 0
+        assert b.and_occurrence(a) == 0
+        assert b.xor_occurrence(a) == 0
+        assert b.and_occurrence(b) == 0
+        assert b.xor_occurrence(b) == 0
+
+        a.add("a1")
+        a.add("a2")
+        a.add("a3")
+        b.add("b1")
+        b.add("b2")
+
+        dprint(a._bytes.tostring(), binary=1)
+        dprint(b._bytes.tostring(), binary=1)
+
+        assert a.and_occurrence(b) == 1
+        assert a.xor_occurrence(b) == 3
+
     if __name__ == "__main__":
         #_performance_test()
-        _taste_test()
+        # _taste_test()
+        _test_occurrence()

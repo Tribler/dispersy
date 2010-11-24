@@ -38,24 +38,36 @@ CREATE TABLE routing(
  incoming_time TEXT,                            -- time when received data
  outgoing_time TEXT,                            -- time when data send
  UNIQUE(community, host, port));
- 
-CREATE TABLE sync_full(
+
+CREATE TABLE sync(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
- global INTEGER,
- sequence INTEGER,
- packet BLOB,
- UNIQUE(community, user, global));
+ global_time INTEGER,
+ distribution_sequence INTEGER,                 -- used for the full-sync-distribution policy
+ distribution_cluster INTEGER,                  -- used for the last-sync-distribution policy
+ destination_cluster INTEGER,                   -- used for the similarity-destination policy
+ packet BLOB);
 
-CREATE TABLE sync_last(
+CREATE TABLE similarity(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
  cluster INTEGER,
- global INTEGER,
+ similarity BLOB,
  packet BLOB,
- UNIQUE(community, user, cluster, global));
+ UNIQUE(community, user, cluster));
+
+-- TODO: remove id, community, user, and cluster columns and replace with refrence to similarity table
+-- my_similarity is used to store the similarity bits
+-- as set by the user *before* regulating
+CREATE TABLE my_similarity (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ community INTEGER REFERENCES community(id),
+ user INTEGER REFERENCES user(id),
+ cluster INTEGER,
+ similarity BLOB,
+ UNIQUE(community, user));
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '1');

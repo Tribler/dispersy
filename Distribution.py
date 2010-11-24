@@ -51,9 +51,6 @@ class FullSyncDistribution(SyncDistribution):
         def sequence_number(self):
             return self._sequence_number
 
-        def __str__(self):
-            return "<{0.meta.__class__.__name__}.{0.__class__.__name__} global_time:{0.global_time} sequence_number:{0.sequence_number}>".format(self)
-
 class LastSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
         if __debug__:
@@ -72,6 +69,7 @@ class LastSyncDistribution(SyncDistribution):
 
     def __init__(self, cluster, history_size):
         assert isinstance(cluster, int)
+        assert 0 <= cluster <= 255
         assert isinstance(history_size, int)
         self._cluster = cluster
         self._history_size = history_size
@@ -84,26 +82,6 @@ class LastSyncDistribution(SyncDistribution):
     def history_size(self):
         return self._history_size
 
-# class MinimalSyncDistribution(SyncDistribution):
-#     class Implementation(SyncDistribution.Implementation):
-#         def __init__(self, meta, global_time, minimal_count):
-#             assert isinstance(meta, MinimalSyncDistribution)
-#             assert isinstance(global_time, (int, long))
-#             assert isinstance(sequence_number, (int, long))
-#             assert isinstance(minimal_count, (int, long))
-#             super(MinimalSyncDistribution.Implementation, self).__init__(meta, sequence_number)
-
-#             # the minimal number of nodes online that should have the
-#             # message
-#             self._minimal_count = minimal_count
-
-#         @property
-#         def minimal_count(self):
-#             return self._minimal_count
-
-#         def __str__(self):
-#             return "<{0} {1}:- {2}>".format(self.__class__.__name__, self._global_time, self._minimal_count)
-
 class DirectDistribution(Distribution):
     class Implementation(Distribution.Implementation):
         pass
@@ -111,30 +89,6 @@ class DirectDistribution(Distribution):
 class RelayDistribution(Distribution):
     class Implementation(Distribution.Implementation):
         pass
-        
-# if __debug__:
-#     def main():
-#         meta = Distribution()
-#         print meta, meta.implement(42)
-
-#         meta = SyncDistribution(100, 100, 0.001)
-#         print meta, meta.implement(42)
-
-#         meta = FullSyncDistribution(100, 100, 0.001)
-#         print meta, meta.implement(42, 8)
-
-#         meta = LastSyncDistribution(100, 100, 0.001)
-#         print meta, meta.implement(42)
-
-#         meta = DirectDistribution()
-#         print meta, meta.implement(42)
-
-#         meta = RelayDistribution()
-#         print meta, meta.implement(42)
-
-
-#     if __name__ == "__main__":
-#         main()
 
 
 

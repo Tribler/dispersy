@@ -169,6 +169,15 @@ class CallbackResponsePayload(ResponsePayload):
     def destination_address(self):
         return self._destination_address
 
+class SignatureResponsePayload(ResponsePayload):
+    def __init__(self, request_id, signature):
+        super(SignatureResponsePayload, self).__init__(request_id)
+        self._signature = signature
+
+    @property
+    def signature(self):
+        return self._signature
+
 class IdentityPayload(Permit):
     def __init__(self, address):
         assert isinstance(address, tuple)
@@ -208,11 +217,63 @@ class SyncPayload(Permit):
     def bloom_filter(self):
         return self._bloom_filter
 
-class SignatureResponsePayload(ResponsePayload):
-    def __init__(self, request_id, signature):
-        super(SignatureResponsePayload, self).__init__(request_id)
-        self._signature = signature
+class SimilarityPayload(Permit):
+    def __init__(self, cluster, similarity):
+        """
+        The payload for a dispersy-similarity message.
+
+        CLUSTER is the cluster that we want the similarity for (note
+        that one member can have multiple similarity bitstrings, they
+        are identified by message.destination.cluster).
+
+        SIMILARITY is a BloomFilter containing the similarity bits.
+        The bloom filter must have the same size as is defined in the
+        meta Message.
+        """
+        if __debug__:
+            from Bloomfilter import BloomFilter
+        assert isinstance(cluster, int)
+        assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+        assert isinstance(similarity, BloomFilter)
+        self._cluster = cluster
+        self._similarity = similarity
 
     @property
-    def signature(self):
-        return self._signature
+    def cluster(self):
+        return self._cluster
+
+    @property
+    def similarity(self):
+        return self._similarity
+
+class SimilarityRequestPayload(Permit):
+    def __init__(self, cluster, members):
+        """
+        The payload for a dispersy-similarity-request message.
+
+        CLUSTER is the cluster that we want the similarity for (note
+        that one member can have multiple similarity bitstrings, they
+        are identified by message.destination.cluster).
+
+        MEMBERS is a list with Member instances for wich we want the
+        similarity.  We specifically need a list of members here,
+        because we are unable to uniquely identify a single Member
+        using the 20 byte sha1 hash.
+        """
+        if __debug__:
+            from Member import Member
+        assert isinstance(cluster, int)
+        assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+        assert isinstance(members, (tuple, list))
+        assert not filter(lambda x: not isinstance(x, Member), members)
+        self._cluster = cluster
+        self._members = members
+
+    @property
+    def cluster(self):
+        return self._cluster
+
+    @property
+    def members(self):
+        return self._members
+

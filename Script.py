@@ -114,12 +114,16 @@ class ScriptBase(object):
 
 class DispersyScript(ScriptBase):
     def run(self):
-        self.caller(self.last_1_test)
-        self.caller(self.last_9_test)
-        self.caller(self.double_signed_timeout)
-        self.caller(self.double_signed_response)
-        self.caller(self.triple_signed_timeout)
-        self.caller(self.triple_signed_response)
+        # self.caller(self.last_1_test)
+        # self.caller(self.last_9_test)
+        # self.caller(self.double_signed_timeout)
+        # self.caller(self.double_signed_response)
+        # self.caller(self.triple_signed_timeout)
+        # self.caller(self.triple_signed_response)
+        self.caller(self.similarity_check_incoming_packets)
+        # self.caller(self.similarity_fullsync)
+        # self.caller(self.similarity_lastsync)
+        # self.caller(self.similarity_missing_sim)
 
     def last_1_test(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
@@ -134,14 +138,14 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
         assert len(times) == 0, times
 
         # send a message
         global_time = 10
         node.send_message(node.create_last_1_test_message("1", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -149,21 +153,21 @@ class DispersyScript(ScriptBase):
         global_time = 11
         node.send_message(node.create_last_1_test_message("2", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (older: should be dropped)
         node.send_message(node.create_last_1_test_message("-1", 8), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (duplicate: should be dropped)
         node.send_message(node.create_last_1_test_message("2", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -171,7 +175,7 @@ class DispersyScript(ScriptBase):
         global_time = 12
         node.send_message(node.create_last_1_test_message("3", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
         assert len(times) == 1
         assert global_time in times
 
@@ -190,7 +194,7 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
         assert len(times) == 0
 
         number_of_messages = 0
@@ -200,9 +204,9 @@ class DispersyScript(ScriptBase):
             node.send_message(message, address)
             number_of_messages += 1
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             dprint(sorted(times))
             assert len(times) == number_of_messages, (len(times), number_of_messages)
             assert global_time in times
@@ -212,7 +216,7 @@ class DispersyScript(ScriptBase):
             # send a message (older: should be dropped)
             node.send_message(node.create_last_9_test_message(str(global_time), global_time), address)
             yield 0.1
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             assert len(times) == 9, len(times)
             assert not global_time in times
             
@@ -221,9 +225,9 @@ class DispersyScript(ScriptBase):
             message = node.create_last_9_test_message("wrong content!", global_time)
             node.send_message(message, address)
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert not str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             assert sorted(times) == range(10, 19), sorted(times)
 
         match_times = sorted(times[:])
@@ -235,9 +239,9 @@ class DispersyScript(ScriptBase):
             match_times.append(global_time)
             match_times.sort()
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync_last WHERE community = ? AND user = ? AND global = ? AND cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global FROM sync_last WHERE community = ? AND user = ? AND cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             dprint(sorted(times))
             assert sorted(times) == match_times, sorted(times)
 
@@ -406,4 +410,270 @@ class DispersyScript(ScriptBase):
 
         assert container["response"] == 2, container["response"]
         assert container["signature"] == [signature1, signature2], container["signature"]
+        dprint("finished")
+
+    def similarity_check_incoming_packets(self):
+        """
+        Check functionallity of accepting or rejecting
+        incoming packets based on similarity of the user
+        sending the packet
+        """
+        from Bloomfilter import BloomFilter
+        import struct
+
+        # create community
+        # taste-aware-record  uses SimilarityDestination with the following parameters
+        # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
+
+        bf = BloomFilter(struct.pack("!LLcc", 1, 8, chr(0b11110000), chr(0b00001111)), 0)
+        self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
+                                         (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
+
+        # create first node - node-01
+        node = Node()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # create similarity for node-01
+        bf = BloomFilter(struct.pack("!LLcc", 1, 8, chr(0b11110000), chr(0b00000000)), 0)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # node-01 creates and sends a message to 'self'
+        messages = []
+        messages.append(node.create_taste_aware_message(5, 1, 1))
+        packets = [node.encode_message(message) for message in messages]
+        for packet in packets:
+            node.send_packet(packet, address)
+            yield 0.1
+
+        dprint("finished")
+
+    def similarity_fullsync(self):
+        from Bloomfilter import BloomFilter
+        import struct
+
+        # create community
+        # taste-aware-record  uses SimilarityDestination with the following parameters
+        # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
+
+        # setting similarity for self
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
+                                         (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
+
+        # create first node - node-01
+        node = Node()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # create second node - node-02
+        node2 = Node()
+        node2.init_socket()
+        node2.set_community(community)
+        node2.init_my_member()
+        yield 0.1
+
+        ##
+        ## Similar Nodes
+        ##
+        dprint("Testing similar nodes")
+        
+        # create similarity for node-01
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # create similarity for node-02
+        # node node-02 has 14/16 same bits with node-01
+        # ABOVE threshold
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # node-01 creates and sends a message to 'self'
+        node.send_message(node.create_taste_aware_message(5, 1, 1), address)
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+
+        _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
+
+        ##
+        ## Not Similar Nodes
+        ##
+        dprint("Testing not similar nodes")
+
+        # create similarity for node-02
+        # node node-02 has 11/16 same bits with node-01
+        # BELOW threshold
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b00100011), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+        
+        # receive a message
+        try:
+            _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
+        except socket.timeout:
+            pass
+        else:
+            raise Exception("Message received error")
+
+    def similarity_lastsync(self):
+        from Bloomfilter import BloomFilter
+        import struct
+
+        # create community
+        # taste-aware-record  uses SimilarityDestination with the following parameters
+        # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
+
+        # setting similarity for self
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
+                                         (community.database_id, community._my_member.database_id, 2, buffer(str(bf))))
+
+        # create first node - node-01
+        node = Node()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # create second node - node-02
+        node2 = Node()
+        node2.init_socket()
+        node2.set_community(community)
+        node2.init_my_member()
+        yield 0.1
+
+        ##
+        ## Similar Nodes
+        ## 
+        dprint("Testing similar nodes")
+
+        # create similarity for node-01
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        node.send_message(node.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # create similarity for node-02
+        # node node-02 has 15/16 same bits with node-01
+        # ABOVE threshold
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # node-01 creates and sends a message to 'self'
+        node.send_message(node.create_taste_aware_message_last(5, 3), address)
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+        
+        # receive a message
+        _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record-last"])
+
+        ##
+        ## Not Similar Nodes
+        ## 
+        dprint("Testing not similar nodes")
+
+        # create similarity for node-02
+        # node node-02 has 11/16 same bits with node-01
+        # BELOW threshold
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b00100011), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+        
+        # receive a message
+        try:
+            _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record-last"])
+        except socket.timeout:
+            dprint("finished")
+        else:
+            raise Exception("Message received error")
+
+    def similarity_missing_sim(self):
+        from Bloomfilter import BloomFilter
+        import struct
+
+        # create community
+        # taste-aware-record  uses SimilarityDestination with the following parameters
+        # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
+        community = DebugCommunity.create_community(self._discovery.my_member)
+        address = self._dispersy.socket.get_address()
+        container = {"timeout":0}
+
+        # setting similarity for self
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
+                                         (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
+
+        # create first node - node-01
+        node = Node()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # create similarity for node-01
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1
+
+        # create second node - node-02
+        node2 = Node()
+        node2.init_socket()
+        node2.set_community(community)
+        node2.init_my_member()
+        yield 0.1
+        
+        # node-01 creates and sends a message to 'self'
+        node.send_message(node.create_taste_aware_message(5, 1, 1), address)
+        yield 0.1
+
+        # node-02 sends a sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+
+        # because 'self' does not have our similarity
+        # we should first receive a 'dispersy-similarity-request' message
+        # and 'synchronize' e.g. send our similarity
+        _, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-similarity-request"])
+        
+        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        yield 0.1      
+
+        # receive the taste message
+        _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
+        assert  message.number == 5
+ 
         dprint("finished")

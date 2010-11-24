@@ -4,12 +4,18 @@ from hashlib import sha1
 
 from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
-from Destination import MemberDestination, CommunityDestination, AddressDestination
+from Destination import MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from Encoding import encode, decode
 from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from Payload import Permit, Authorize, Revoke, MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, CallbackResponsePayload, IdentityPayload, IdentityRequestPayload
+from Payload import Permit, Authorize, Revoke
+from Payload import MissingSequencePayload
+from Payload import SyncPayload
+from Payload import SignatureResponsePayload
+from Payload import CallbackRequestPayload, CallbackResponsePayload
+from Payload import IdentityPayload, IdentityRequestPayload
+from Payload import SimilarityPayload, SimilarityRequestPayload
 from Member import PrivateMember, MasterMember
 
 if __debug__:
@@ -95,6 +101,8 @@ class DictionaryConversion(Conversion):
         self._message_map = dict() # message.name : (encode_payload_func, decode_payload_func)
         self.define_meta_message(community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
         self.define_meta_message(community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
+        self.define_meta_message(community.get_meta_message(u"dispersy-similarity"), self._encode_similarity_payload, self._decode_similarity_payload)
+        self.define_meta_message(community.get_meta_message(u"dispersy-similarity-request"), self._encode_similarity_request_payload, self._decode_similarity_request_payload)
 
     def define_meta_message(self, message, encode_payload_func, decode_payload_func):
         assert isinstance(message, Message)
@@ -147,6 +155,59 @@ class DictionaryConversion(Conversion):
             raise DropPacket("Invalid bloom-filter value")
 
         return SyncPayload(global_time, bloom_filter)
+
+    def _encode_similarity_payload(self, message):
+        assert isinstance(message.payload, SimilarityPayload)
+        return {"cluster":message.payload.cluster, "similarity":str(message.payload.similarity)}
+
+    def _decode_similarity_payload(self, payload):
+        if not isinstance(payload, dict):
+            raise DropPacket("Invalid payload type")
+        if not len(payload) == 2:
+            raise DropPacket("Invalid payload length")
+
+        cluster = payload.get("cluster")
+        if not isinstance(cluster, (int, long)):
+            raise DropPacket("Invalid cluster type")
+        if not 0 < cluster < 2^8:
+            raise DropPacket("Invalid cluster value")
+
+        similarity = payload.get("similarity")
+        if not isinstance(similarity, str):
+            raise DropPacket("Invalid similarity type")
+        
+        try:
+            bloom_filter = BloomFilter(similarity, 0)
+        except ValueError:
+            raise DropPacket("Invalid similarity")
+
+        return SimilarityPayload(cluster, similarity)
+
+    def _encode_similarity_request_payload(self, message):
+        assert isinstance(message.payload, SimilarityRequestPayload)
+        return {"cluster":message.payload.cluster, "members":[member.pem for member in message.payload.members]}
+
+    def _decode_similarity_request_payload(self, message):
+        if not isinstance(payload, dict):
+            raise DropPacket("Invalid payload type")
+        if not len(payload) == 2:
+            raise DropPacket("Invalid payload length")
+
+        cluster = payload.get("cluster")
+        if not isinstance(cluster, (int, long)):
+            raise DropPacket("Invalid identifier")
+        if not 0 < cluster < 2^8:
+            raise DropPacket("Invalid cluster value")
+
+        members = payload.get("members")
+        if not isinstance(members, (tuple, list)):
+            raise DropPacket("Invalid members type")
+        for pem in members:
+            if not isinstance(pem, str):
+                raise DropPacket("Invalid member type")
+        members = [Member.get_instance(pem) for pem in members]
+
+        return SimilarityRequestPayload(cluster, members)
 
     #
     # Encoding
@@ -326,14 +387,16 @@ class BinaryConversion(Conversion):
         self._encode_message_map = dict() # message.name : (byte, encode_payload_func)
         self._decode_message_map = dict() # byte : (message, decode_payload_func)
 
-        self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence_payload, self._decode_missing_sequence_payload)
-        self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync_payload, self._decode_sync_payload)
+        self.define_meta_message(chr(254), community.get_meta_message(u"dispersy-missing-sequence"), self._encode_missing_sequence, self._decode_missing_sequence)
+        self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync, self._decode_sync)
         self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
         self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-signature-response"), self._encode_signature_response, self._decode_signature_response)
         self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-callback-request"), self._encode_callback_request, self._decode_callback_request)
         self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-callback-response"), self._encode_callback_response, self._decode_callback_response)
         self.define_meta_message(chr(248), community.get_meta_message(u"dispersy-identity"), self._encode_identity, self._decode_identity)
         self.define_meta_message(chr(247), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
+        self.define_meta_message(chr(246), community.get_meta_message(u"dispersy-similarity"), self._encode_similarity, self._decode_similarity)
+        self.define_meta_message(chr(245), community.get_meta_message(u"dispersy-similarity-request"), self._encode_similarity_request, self._decode_similarity_request)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -341,7 +404,7 @@ class BinaryConversion(Conversion):
         assert isinstance(message, Message)
         assert 0 < ord(byte) < 255
         assert not message.name in self._encode_message_map
-        assert not byte in self._decode_message_map, "This byte has already been defined"
+        assert not byte in self._decode_message_map, "This byte has already been defined ({0})".format(ord(byte))
         assert callable(encode_payload_func)
         assert callable(decode_payload_func)
         self._encode_message_map[message.name] = (byte, encode_payload_func)
@@ -351,14 +414,14 @@ class BinaryConversion(Conversion):
     # Dispersy payload
     #
 
-    def _encode_missing_sequence_payload(self, message):
+    def _encode_missing_sequence(self, message):
         assert isinstance(message.payload, MissingSequencePayload)
         payload = message.payload
         assert payload.message.name in self._encode_message_map, payload.message.name
         message_id, _ = self._encode_message_map[payload.message.name]
         return payload.member.mid, message_id, pack("!LL", payload.missing_low, payload.missing_high)
 
-    def _decode_missing_sequence_payload(self, offset, data):
+    def _decode_missing_sequence(self, offset, data):
         if len(data) < offset + 29:
             raise DropPacket("Insufficient packet size")
 
@@ -384,11 +447,11 @@ class BinaryConversion(Conversion):
 
         return offset, MissingSequencePayload(member, meta_message, missing_low, missing_high)
 
-    def _encode_sync_payload(self, message):
+    def _encode_sync(self, message):
         assert isinstance(message.payload, SyncPayload)
         return pack("!L", message.payload.global_time), str(message.payload.bloom_filter)
 
-    def _decode_sync_payload(self, offset, data):
+    def _decode_sync(self, offset, data):
         if len(data) < offset + 4:
             raise DropPacket("Insufficient packet size")
 
@@ -458,6 +521,43 @@ class BinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size")
 
         return offset + 20, IdentityRequestPayload(data[offset:offset+20])
+
+    def _encode_similarity(self, message):
+        assert isinstance(message.payload, SimilarityPayload)
+        return pack("!B", message.payload.cluster), str(message.payload.similarity)
+
+    def _decode_similarity(self, offset, data):
+        if len(data) < offset + 1:
+            raise DropPacket("Insufficient packet size")
+
+        cluster, = unpack_from("!B", data, offset)
+        offset += 1
+
+        try:
+            similarity = BloomFilter(data, offset)
+        except ValueError:
+            raise DropPacket("Invalid similarity")
+        offset += len(similarity)
+
+        return offset, SimilarityPayload(cluster, similarity)
+
+    def _encode_similarity_request(self, message):
+        assert isinstance(message.payload, SimilarityRequestPayload)
+        return (pack("!B", message.payload.cluster),) + tuple([member.mid for member in message.payload.members])
+
+    def _decode_similarity_request(self, offset, data):
+        if len(data) < offset + 21:
+            raise DropPacket("Insufficient packet size")
+
+        cluster, = unpack_from("!B", data, offset)
+        offset += 1
+
+        members = []
+        while len(data) < offset + 20:
+            members.extend(self._community.get_members_from_id(data[offset:offset+20]))
+            offset += 20
+
+        return offset, SimilarityRequestPayload(cluster, members)
 
     #
     # Encoding
@@ -650,6 +750,32 @@ class BinaryConversion(Conversion):
 
         raise NotImplementedError()
 
+    def _decode_similarity_destination(self, meta_message, authentication_impl):
+        if __debug__:
+            from Authentication import Authentication
+        assert isinstance(meta_message, Message)
+        assert isinstance(authentication_impl, Authentication.Implementation)
+
+        try:
+            my_similarity, = self._dispersy_database.execute(u"SELECT similarity FROM similarity WHERE community = ? AND user = ? AND cluster = ?",
+                                                             (self._community.database_id,
+                                                              self._community._my_member.database_id,
+                                                              meta_message.destination.cluster)).next()
+        except StopIteration:
+            raise DropPacket("We don't know our own similarity... should not happen")
+        my_similarity = BloomFilter(str(my_similarity), 0)
+
+        try:
+            sender_similarity, = self._dispersy_database.execute(u"SELECT similarity FROM similarity WHERE community = ? AND user = ? AND cluster = ?",
+                                                                 (self._community.database_id,
+                                                                  authentication_impl.member.database_id,
+                                                                  meta_message.destination.cluster)).next()
+        except StopIteration:
+            raise DelayPacketBySimilarity(self._community, authentication_impl.member.mid, meta_message.destination.cluster)
+        sender_similarity = BloomFilter(str(sender_similarity), 0)
+
+        return meta_message.destination.implement(my_similarity.xor_occurrence(sender_similarity))
+
     def _decode_message(self, data, verify_all_signatures):
         """
         Decode a binary string into a Message structure, with some
@@ -683,11 +809,13 @@ class BinaryConversion(Conversion):
             raise DropPacket("Signature consists of \x00 bytes")
 
         # destination
-        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination))
+        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination))
         if isinstance(meta_message.destination, AddressDestination):
             destination_impl = meta_message.destination.implement(("", 0))
         elif isinstance(meta_message.destination, MemberDestination):
             destination_impl = meta_message.destination.implement(self._community.my_member)
+        elif isinstance(meta_message.destination, SimilarityDestination):
+            destination_impl = self._decode_similarity_destination(meta_message, authentication_impl)
         else:
             destination_impl = meta_message.destination.implement()
 

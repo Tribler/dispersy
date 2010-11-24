@@ -4,11 +4,14 @@ from Authentication import MultiMemberAuthentication, MemberAuthentication
 from Community import Community
 from Conversion import DictionaryConversion, BinaryConversion
 from Debug import Node
-from Destination import MemberDestination, CommunityDestination
-from Distribution import DirectDistribution, LastSyncDistribution
-from Message import Message
+from Destination import MemberDestination, CommunityDestination, SimilarityDestination
+from Distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
+from Message import Message, DropPacket
 from Payload import Permit
 from Resolution import PublicResolution
+
+if __debug__:
+    from Print import dprint
 
 #
 # Node
@@ -42,6 +45,8 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(2), community.get_meta_message(u"last-9-test"), self._encode_text, lambda offset, data: self._decode_text(offset, data, Last9TestPayload))
         self.define_meta_message(chr(3), community.get_meta_message(u"double-signed-text"), self._encode_text, lambda offset, data: self._decode_text(offset, data, DoubleSignedTextPayload))
         self.define_meta_message(chr(4), community.get_meta_message(u"triple-signed-text"), self._encode_text, lambda offset, data: self._decode_text(offset, data, TripleSignedTextPayload))
+        self.define_meta_message(chr(5), community.get_meta_message(u"taste-aware-record"), self._encode_taste_aware_record, self._decode_taste_aware_record)
+        self.define_meta_message(chr(6), community.get_meta_message(u"taste-aware-record-last"), self._encode_taste_aware_record, self._decode_taste_aware_record)
 
     def _encode_text(self, message):
         return pack("!B", len(message.payload.text)), message.payload.text
@@ -60,6 +65,18 @@ class DebugCommunityConversion(BinaryConversion):
         offset += text_length
 
         return offset, cls(text)
+
+    def _encode_taste_aware_record(self, message):
+        return pack("!L", message.payload.number),
+
+    def _decode_taste_aware_record(self, offset, data):
+        if len(data) < offset + 4:
+            raise DropPacket("Insufficient packet size")
+
+        number, = unpack_from("!L", data, offset)
+        offset += 8
+
+        return offset, TasteAwarePayload(number)
 
 #
 # Payload
@@ -86,6 +103,15 @@ class DoubleSignedTextPayload(TextPayload):
 class TripleSignedTextPayload(TextPayload):
     pass
 
+class TasteAwarePayload(Permit):
+    def __init__(self, number):
+        assert isinstance(number, (int, long))
+        self._number = number
+
+    @property
+    def number(self):
+        return self._number
+
 #
 # Community
 #
@@ -95,10 +121,12 @@ class DebugCommunity(Community):
     Community to debug Dispersy related messages and policies.
     """
     def get_meta_messages(self):
-        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(1, 1), CommunityDestination()),
-                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(2, 9), CommunityDestination()),
-                Message(self, u"double-signed-text", MultiMemberAuthentication(2, self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination()),
-                Message(self, u"triple-signed-text", MultiMemberAuthentication(3, self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination())]
+        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=1, history_size=1), CommunityDestination()),
+                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=2, history_size=9), CommunityDestination()),
+                Message(self, u"double-signed-text", MultiMemberAuthentication(count=2, allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination()),
+                Message(self, u"triple-signed-text", MultiMemberAuthentication(count=3, allow_signature_func=self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination()),
+                Message(self, u"taste-aware-record", MemberAuthentication(), PublicResolution(), FullSyncDistribution(), SimilarityDestination(cluster=1, size=16, minimum_bits=6, maximum_bits=10, threshold=12)),
+                Message(self, u"taste-aware-record-last", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=3, history_size=1), SimilarityDestination(cluster=2, size=16, minimum_bits=6, maximum_bits=10, threshold=12))]
 
     def __init__(self, cid):
         super(DebugCommunity, self).__init__(cid)
@@ -111,7 +139,9 @@ class DebugCommunity(Community):
         self._incoming_message_map = {u"last-1-test":self.on_last_1_test,
                                       u"last-9-test":self.on_last_9_test,
                                       u"double-signed-text":self.on_double_signed_text,
-                                      u"triple-signed-text":self.on_triple_signed_text}
+                                      u"triple-signed-text":self.on_triple_signed_text,
+                                      u"taste-aware-record":self.on_taste_aware_record,
+                                      u"taste-aware-record-last":self.on_taste_aware_record}
 
         # add the Dispersy message handlers to the
         # _incoming_message_map
@@ -166,6 +196,20 @@ class DebugCommunity(Community):
                                  DoubleSignedTextPayload(text))
         return self.create_signature_request(message, response_func, timeout, store_and_forward)
 
+    def create_taste_aware_record(self, number, sequence_number):
+        meta = self.get_meta_message(u"taste-aware-record")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(self._timeline.global_time, sequence_number),
+                              meta.destination.implement(),
+                              TasteAwarePayload(number))
+
+    def create_taste_aware_record_last(self, number, sequence_number):
+        meta = self.get_meta_message(u"taste-aware-record-last")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(self._timeline.global_time, sequence_number),
+                              meta.destination.implement(),
+                              TasteAwarePayload(number))
+
     def allow_double_signed_text(self, message):
         """
         Received a request to sign MESSAGE.
@@ -203,4 +247,10 @@ class DebugCommunity(Community):
         Received a triple signed message.
         """
         dprint(message)
+
+    def on_taste_aware_record(self, address, message):
+        """
+        Received a taste aware record.
+        """
+        dprint(message.payload.number)
 

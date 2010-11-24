@@ -16,7 +16,7 @@ from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistr
 from Encoding import encode
 from Member import Private, MasterMember, MyMember, Member
 from Message import Message, DelayMessageByProof
-from Payload import Permit, Authorize, Revoke
+from Payload import Permit, Authorize, Revoke, SimilarityPayload
 from Resolution import PublicResolution
 from Timeline import Timeline
 
@@ -473,78 +473,6 @@ class Community(object):
 
         return messages
 
-    # def permit(self, message, payload, authentication=(), distribution=(), destination=(), update_locally=True, store_and_forward=True):
-    #     """
-    #     TODO
-
-    #     SIGN_WITH_MASTER must be a boolean.  When True
-    #     self.master_member is used to sign the authorize message.
-    #     Otherwise self.my_member is used.
-
-    #     UPDATE_LOCALLY must be a boolean.  When True the
-    #     self.on_authorize_message is called with each created message.
-    #     This parameter should (almost always) be True, its inclusion
-    #     is mostly to allow certain debugging scenarios.
-
-    #     STORE_AND_FORWARD must be a boolean.  When True the created
-    #     messages are stored (as defined by the message distribution
-    #     policy) in the local Dispersy database and the messages are
-    #     forewarded to other peers (as defined bt the message
-    #     destination policy).
-    #     """
-    #     assert isinstance(message, Message)
-    #     assert isinstance(payload, Permit), type(payload)
-    #     assert isinstance(authentication, (tuple, list))
-    #     assert isinstance(distribution, (tuple, list))
-    #     assert len(distribution) == 0, "Should not contain any values, this parameter is ignored for now"
-    #     assert isinstance(destination, (tuple, list))
-    #     assert isinstance(update_locally, bool)
-    #     assert isinstance(store_and_forward, bool)
-
-    #     # authentication
-    #     if isinstance(message.authentication, NoAuthentication):
-    #         assert len(authentication) == 0
-
-    #         authentication_impl = message.authentication.implement()
-    #     elif isinstance(message.authentication, MemberAuthentication):
-    #         assert len(authentication) in (0, 1)
-    #         if authentication:
-    #             assert isinstance(authentication[0], Private)
-    #             authentication_impl = message.authentication.implement(authentication[0])
-    #         else:
-    #             authentication_impl = message.authentication.implement(self._my_member)
-    #     elif isinstance(message.authentication, MultiMemberAuthentication):
-    #         assert len(authentication) > 1
-    #         authentication_impl = message.authentication.implement(authentication)
-    #     else:
-    #         raise ValueError("Unknown authentication")
-
-    #     # distribution
-    #     distribution = message.distribution
-    #     if isinstance(distribution, FullSyncDistribution):
-    #         assert isinstance(message.authentication, MemberAuthentication)
-    #         distribution_impl = distribution.implement(self._timeline.claim_global_time(), authentication_impl.member.claim_sequence_number())
-    #     elif isinstance(distribution, LastSyncDistribution):
-    #         distribution_impl = distribution.implement(self._timeline.claim_global_time())
-    #     elif isinstance(distribution, DirectDistribution):
-    #         distribution_impl = distribution.implement(self._timeline.global_time)
-    #     else:
-    #         raise ValueError("Unknown distribution")
-
-    #     # destination
-    #     destination_impl = message.destination.implement(*destination)
-
-    #     message_impl = message.implement(authentication_impl, distribution_impl, destination_impl, payload)
-
-    #     if update_locally:
-    #         assert self._timeline.check(message_impl)
-    #         self.on_message(("", -1), message_impl)
-
-    #     if store_and_forward:
-    #         self._dispersy.store_and_forward([message_impl])
-
-    #     return message_impl
-
     def create_identity(self, store_and_forward=True):
         return self._dispersy.create_identity(self, store_and_forward)
 
@@ -594,6 +522,9 @@ class Community(object):
                 if not signature and member.verify(body, payload.signature):
                     submsg.authentication.set_signature(member, payload.signature)
                     response_func(address, request, payload)
+
+    def create_similarity(self, message, keywords, update_locally=True, store_and_forward=True):
+        return self._dispersy.create_similarity(self, message, keywords, update_locally, store_and_forward)
 
     def on_authorize_message(self, address, message):
         """

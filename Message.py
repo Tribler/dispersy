@@ -40,6 +40,38 @@ class DelayPacketByMissingMember(DelayPacket):
     def missing_member_id(self):
         return self._missing_member_id
 
+class DelayPacketBySimilarity(DelayPacket):
+    """
+    Raised during Conversion.decode_message when no similarity is
+    known for the message owner.
+
+    Delaying until a dispersy-similarity-message is received that
+    contains the missing similarity bitstream
+    """
+    def __init__(self, community, member, cluster):
+        if __debug__:
+            from Community import Community
+            from Member import Member
+        assert isinstance(community, Community)
+        assert isinstance(member, Member)
+        assert isinstance(cluster, (int, long))
+        super(DelayPacketBySimilarity, self).__init__("Missing similarity")
+        self._community = community
+        self._member = member
+        self._cluster = cluster
+
+    @property
+    def community(self):
+        return self._community
+
+    @property
+    def member(self):
+        return self._member
+
+    @property
+    def cluster(self):
+        return self._cluster
+
 class DelayPacketByUnspecifiedMember(DelayPacket):
     """
     Raised during Conversion.decode_message when an unknown member id
@@ -70,21 +102,17 @@ class DropPacket(Exception):
 class DelayMessage(Exception):
     """
     Raised during Community.on_incoming_message or
-    Community.on_incoming_dispersy_message (these call
-    Community.on_message and Community.on_dispersy_message,
-    respectively).  Delaying for 'some time' or until 'some event'
-    occurs.
+    Community.on_incoming_message; delaying for 'some time' or until
+    'some event' occurs.
     """
     pass
 
 class DelayMessageBySequence(DelayMessage):
     """
     Raised during Community.on_incoming_message or
-    Community.on_incoming_dispersy_message (these call
-    Community.on_message and Community.on_dispersy_message,
-    respectively).
+    Community.on_incoming_message.
 
-    Delaying until all missing sequence numbers have been received.  
+    Delaying until all missing sequence numbers have been received.
     """
     def __init__(self, missing_low, missing_high):
         assert isinstance(missing_low, (int, long))
@@ -108,22 +136,42 @@ class DelayMessageBySequence(DelayMessage):
 class DelayMessageByProof(DelayMessage):
     """
     Raised during Community.on_incoming_message or
-    Community.on_incoming_dispersy_message (these call
-    Community.on_message and Community.on_dispersy_message,
-    respectively).
-
+    Community.on_incoming_message.
+    
     Delaying until a message is received that proves that the message
     is permitted.
     """
     def __init__(self):
         DelayMessage.__init__(self, "Missing proof")
 
+class DelayMessageBySimilarity(DelayMessage):
+    """
+    Raised during Community.on_message when no similarity is known for
+    the message owner.
+
+    Delaying until a dispersy-similarity-message is received that
+    contains the missing similarity bitstream
+    """
+    def __init__(self, member, cluster):
+        if __debug__:
+            from Member import Member
+        assert isinstance(member, Member)
+        assert isinstance(cluster, (int, long))
+        super(DelayMessageBySimilarity, self).__init__("Missing similarity")
+        self._member = member
+        self._cluster = cluster
+
+    @property
+    def member(self):
+        return self._member
+
+    @property
+    def cluster(self):
+        return self._cluster
+
 class DropMessage(Exception):
     """
-    Raised during Community.on_incoming_message or
-    Community.on_incoming_dispersy_message (these call
-    Community.on_message and Community.on_dispersy_message,
-    respectively).
+    Raised during Community.on_message.
 
     Drops a message because it violates 'something'.  More specific
     reasons can be given with by raising a spectific subclass.
@@ -132,10 +180,7 @@ class DropMessage(Exception):
 
 class DropMessageByProof(DropMessage):
     """
-    Raised during Community.on_incoming_message or
-    Community.on_incoming_dispersy_message (these call
-    Community.on_message and Community.on_dispersy_message,
-    respectively).
+    Raised during Community.on_message.
 
     Drops a message because it violates a previously received message.
     This message should be provided to the origionator of this message

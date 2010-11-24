@@ -7,7 +7,7 @@ from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
 from Message import Message
-from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, IdentityPayload
+from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, IdentityPayload, SimilarityPayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
@@ -193,13 +193,46 @@ class Node(object):
         assert isinstance(bloom_packets, list)
         assert not filter(lambda x: not isinstance(x, str), bloom_packets)
         assert isinstance(global_time, (int, long))
-        meta = self._community.get_meta_message(u"dispersy-sync")
         bloom_filter = BloomFilter(1000, 0.001)
         map(bloom_filter.add, bloom_packets)
-        authentication = meta.authentication.implement()
+        meta = self._community.get_meta_message(u"dispersy-sync")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              SyncPayload(bloom_global_time, bloom_filter))
+
+    def create_dispersy_similarity_message(self, cluster, community, similarity, global_time):
+        assert isinstance(cluster, int)
+        assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+        assert isinstance(similarity, BloomFilter)
+        meta = self._community.get_meta_message(u"dispersy-similarity")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              SimilarityPayload(cluster, similarity))
+
+    def create_taste_aware_message(self, number, sequence, global_time):
+        assert isinstance(number, (int, long))
+        meta = self._community.get_meta_message(u"taste-aware-record")
+        authentication = meta.authentication.implement(self._my_member)
+        distribution = meta.distribution.implement(sequence, global_time)
+        destination = meta.destination.implement()
+
+        from DebugCommunity import TasteAwarePayload
+        payload = TasteAwarePayload(number)
+
+        return meta.implement(authentication, distribution, destination, payload)
+
+    def create_taste_aware_message_last(self, number, global_time):
+        assert isinstance(number, (int, long))
+        meta = self._community.get_meta_message(u"taste-aware-record-last")
+        authentication = meta.authentication.implement(self._my_member)
         distribution = meta.distribution.implement(global_time)
         destination = meta.destination.implement()
-        payload = SyncPayload(bloom_global_time, bloom_filter)
+
+        from DebugCommunity import TasteAwarePayload
+        payload = TasteAwarePayload(number)
+
         return meta.implement(authentication, distribution, destination, payload)
 
     def create_dispersy_missing_sequence_message(self, missing_member, missing_message_meta, missing_low, missing_high, global_time, destination_address):
