@@ -127,7 +127,7 @@ class ResponsePayload(Permit):
     def request_id(self):
         return self._request_id
 
-class CallbackRequestPayload(Permit):
+class RoutingRequestPayload(Permit):
     def __init__(self, source_address, destination_address):
         assert isinstance(source_address, tuple)
         assert len(source_address) == 2
@@ -148,7 +148,7 @@ class CallbackRequestPayload(Permit):
     def destination_address(self):
         return self._destination_address
 
-class CallbackResponsePayload(ResponsePayload):
+class RoutingResponsePayload(ResponsePayload):
     def __init__(self, source_address, destination_address):
         assert isinstance(source_address, tuple)
         assert len(source_address) == 2

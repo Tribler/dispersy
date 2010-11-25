@@ -13,7 +13,7 @@ from Payload import Permit, Authorize, Revoke
 from Payload import MissingSequencePayload
 from Payload import SyncPayload
 from Payload import SignatureResponsePayload
-from Payload import CallbackRequestPayload, CallbackResponsePayload
+from Payload import RoutingRequestPayload, RoutingResponsePayload
 from Payload import IdentityPayload, IdentityRequestPayload
 from Payload import SimilarityPayload, SimilarityRequestPayload
 from Member import PrivateMember, MasterMember
@@ -391,8 +391,8 @@ class BinaryConversion(Conversion):
         self.define_meta_message(chr(253), community.get_meta_message(u"dispersy-sync"), self._encode_sync, self._decode_sync)
         self.define_meta_message(chr(252), community.get_meta_message(u"dispersy-signature-request"), self._encode_signature_request, self._decode_signature_request)
         self.define_meta_message(chr(251), community.get_meta_message(u"dispersy-signature-response"), self._encode_signature_response, self._decode_signature_response)
-        self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-callback-request"), self._encode_callback_request, self._decode_callback_request)
-        self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-callback-response"), self._encode_callback_response, self._decode_callback_response)
+        self.define_meta_message(chr(250), community.get_meta_message(u"dispersy-routing-request"), self._encode_routing_request, self._decode_routing_request)
+        self.define_meta_message(chr(249), community.get_meta_message(u"dispersy-routing-response"), self._encode_routing_response, self._decode_routing_response)
         self.define_meta_message(chr(248), community.get_meta_message(u"dispersy-identity"), self._encode_identity, self._decode_identity)
         self.define_meta_message(chr(247), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
         self.define_meta_message(chr(246), community.get_meta_message(u"dispersy-similarity"), self._encode_similarity, self._decode_similarity)
@@ -478,29 +478,29 @@ class BinaryConversion(Conversion):
     def _decode_signature_response(self, offset, data):
         return len(data), SignatureResponsePayload(data[offset:offset+20], data[offset+20:])
 
-    def _encode_callback_request(self, message):
+    def _encode_routing_request(self, message):
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
-    def _decode_callback_request(self, offset, data):
+    def _decode_routing_request(self, offset, data):
         if len(data) < offset + 12:
             raise DropPacket("Insufficient packet size")
 
         source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
         destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
 
-        return offset + 12, CallbackRequestPayload(source_address, destination_address)
+        return offset + 12, RoutingRequestPayload(source_address, destination_address)
 
-    def _encode_callback_response(self, message):
+    def _encode_routing_response(self, message):
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
-    def _decode_callback_response(self, offset, data):
+    def _decode_routing_response(self, offset, data):
         if len(data) < offset + 12:
             raise DropPacket("Insufficient packet size")
 
         source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
         destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
 
-        return offset + 12, CallbackResponsePayload(source_address, destination_address)
+        return offset + 12, RoutingResponsePayload(source_address, destination_address)
 
     def _encode_identity(self, message):
         return inet_aton(message.payload.address[0]), pack("!H", message.payload.address[1])

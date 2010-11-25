@@ -24,7 +24,7 @@ from Message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMess
 from Payload import MissingSequencePayload
 from Payload import SyncPayload
 from Payload import SignatureResponsePayload
-from Payload import ResponsePayload, CallbackResponsePayload
+from Payload import ResponsePayload, RoutingResponsePayload
 from Payload import IdentityPayload, IdentityRequestPayload
 from Payload import SimilarityRequestPayload
 from Resolution import PublicResolution
@@ -577,6 +577,7 @@ class Dispersy(Singleton):
                 assert isinstance(address[1], int)
                 for packet in packets:
                     assert isinstance(packet, str)
+                    if __debug__: dprint(len(packet), " bytes to ", address[0], ":", address[1])
                     self._socket.send(address, packet)
                 execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE host = ? AND port = ?", (unicode(address[0]), address[1]))
 
@@ -605,8 +606,8 @@ class Dispersy(Singleton):
         Community should support these Messages in order for Dispersy
         to function properly.
         """
-        return [Message(community, u"dispersy-callback-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-                Message(community, u"dispersy-callback-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
+        return [Message(community, u"dispersy-routing-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
+                Message(community, u"dispersy-routing-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
                 Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(cluster=254, history_size=1), CommunityDestination()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination()),
@@ -621,8 +622,8 @@ class Dispersy(Singleton):
         Returns the handler methods for the privileges available to
         Dispersy.
         """
-        return [(community.get_meta_message(u"dispersy-callback-request"), self.on_callback_request),
-                (community.get_meta_message(u"dispersy-callback-response"), self.on_general_response),
+        return [(community.get_meta_message(u"dispersy-routing-request"), self.on_routing_request),
+                (community.get_meta_message(u"dispersy-routing-response"), self.on_general_response),
                 (community.get_meta_message(u"dispersy-identity"), self.on_identity),
                 (community.get_meta_message(u"dispersy-identity-request"), self.on_identity_request),
                 (community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
@@ -703,20 +704,20 @@ class Dispersy(Singleton):
                 if self._total_send > limit:
                     break
 
-    def on_callback_request(self, address, message):
+    def on_routing_request(self, address, message):
         """
-        We received a dispersy-callback-request message.
+        We received a dispersy-routing-request message.
 
         This message contains the external address that the sender
         believes it has (message.payload.source_address), and our
         external address (message.payload.destination_address).
 
-        We should send a dispersy-callback-response message back.
+        We should send a dispersy-routing-response message back.
         Allowing us to inform them of their external address.
         """
         if __debug__:
             from Message import Message
-        assert message.name == u"dispersy-callback-request"
+        assert message.name == u"dispersy-routing-request"
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
         # dprint("Our external address may be: ", message.payload.destination_address)
@@ -724,11 +725,11 @@ class Dispersy(Singleton):
         #                        (message.authentication.member.database_id, message.community.database_id, unicode(address[0]), address[1]))
 
         # send response
-        meta = message.community.get_meta_message(u"dispersy-callback-response")
+        meta = message.community.get_meta_message(u"dispersy-routing-response")
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(meta.community._timeline.global_time),
                                  meta.destination.implement(address),
-                                 CallbackResponsePayload(self._my_external_address, address))
+                                 RoutingResponsePayload(self._my_external_address, address))
         self.store_and_forward([message])
 
     def create_identity(self, community, store_and_forward=True):

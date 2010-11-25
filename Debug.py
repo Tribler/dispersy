@@ -7,7 +7,7 @@ from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
 from Message import Message
-from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, CallbackRequestPayload, IdentityPayload, SimilarityPayload
+from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, RoutingRequestPayload, IdentityPayload, SimilarityPayload
 from Print import dprint
 from Resolution import PublicResolution, LinearResolution
 from Member import PrivateMember
@@ -56,7 +56,7 @@ class Node(object):
     def my_member(self):
         return self._my_member
 
-    def init_my_member(self, bits=512, sync_with_database=False, callback=True, identity=True):
+    def init_my_member(self, bits=512, sync_with_database=False, routing=True, identity=True):
         class DebugPrivateMember(PrivateMember):
             @property
             def database_id(self):
@@ -68,13 +68,13 @@ class Node(object):
         rsa = rsa_generate_key(bits)
         self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=False)
 
-        if callback:
+        if routing:
             # update routing information
-            assert self._socket, "Socket needs to be set to callback"
-            assert self._community, "Community needs to be set to callback"
+            assert self._socket, "Socket needs to be set to routing"
+            assert self._community, "Community needs to be set to routing"
             source_address = self._socket.getsockname()
             destination_address = self._community._dispersy.socket.get_address()
-            message = self.create_dispersy_callback_request_message(source_address, destination_address, 1)
+            message = self.create_dispersy_routing_request_message(source_address, destination_address, 1)
             self.send_message(message, destination_address)
 
         if identity:
@@ -82,8 +82,8 @@ class Node(object):
             # Member.get_instance(self._my_member.pem)
 
             # update routing information
-            assert self._socket, "Socket needs to be set to callback"
-            assert self._community, "Community needs to be set to callback"
+            assert self._socket, "Socket needs to be set to routing"
+            assert self._community, "Community needs to be set to routing"
             source_address = self._socket.getsockname()
             destination_address = self._community._dispersy.socket.get_address()
             message = self.create_dispersy_identity_message(source_address, 2)
@@ -172,7 +172,7 @@ class Node(object):
                               meta.destination.implement(),
                               IdentityPayload(address))
 
-    def create_dispersy_callback_request_message(self, source_address, destination_address, global_time):
+    def create_dispersy_routing_request_message(self, source_address, destination_address, global_time):
         assert isinstance(source_address, tuple)
         assert len(source_address) == 2
         assert isinstance(source_address[0], str)
@@ -182,11 +182,11 @@ class Node(object):
         assert isinstance(destination_address[0], str)
         assert isinstance(destination_address[1], int)
         assert isinstance(global_time, (int, long))
-        meta = self._community.get_meta_message(u"dispersy-callback-request")
+        meta = self._community.get_meta_message(u"dispersy-routing-request")
         return meta.implement(meta.authentication.implement(),
                               meta.distribution.implement(global_time),
                               meta.destination.implement(destination_address),
-                              CallbackRequestPayload(source_address, destination_address))
+                              RoutingRequestPayload(source_address, destination_address))
             
     def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
         assert isinstance(bloom_global_time, (int, long))
