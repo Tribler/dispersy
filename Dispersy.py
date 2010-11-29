@@ -10,6 +10,7 @@ community is revealed.
 
 from hashlib import sha1
 from lencoder import log
+from re import compile as re_compile
 
 from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
@@ -37,44 +38,173 @@ class DummySocket(object):
     def send(address, data):
         pass
 
-class ExpectedResponse(object):
-    def __init__(self, request, response_func, args):
-        assert isinstance(request, Message.Implementation)
-        assert isinstance(request.payload, Message.Implementation)
-        assert isinstance(request.payload.authentication, MultiMemberAuthentication.Implementation)
-        self._request = request
+class Trigger(object):
+    def on_message(self, address, message):
+        """
+        Called with a received message.
+
+        Must return True to keep the trigger available.  Hence,
+        returning False will remove the trigger.
+        """
+        raise NotImplementedError()
+
+    def on_timeout(self):
+        raise NotImplementedError()
+
+class TriggerCallback(Trigger):
+    def __init__(self, pattern, response_func, response_args, max_responses):
+        """
+        Receiving a message matching PATTERN triggers a call to
+        RESPONSE_FUNC.
+
+        PATTERN is a python regular expression string.
+
+        RESPONSE_FUNC is called when PATTERN matches the incoming
+        message footprint.  The first argument is the sender address,
+        the second argument is the incoming message, following this
+        are optional values from RESPONSE_ARGS.
+
+        RESPONSE_ARGS is an optional tuple containing arguments passed
+        to RESPONSE_ARGS.
+
+        MAX_RESPONSES is a number.  Once MAX_RESPONSES messages are
+        received no further calls are made to RESPONSE_FUNC.
+
+        When a timeout is received and MAX_RESPONSES has not yet been
+        reached, RESPONSE_FUNC is immediately called.  The first
+        argument will be ('', -1), the second will be None, following
+        this are the optional values from RESPONSE_FUNC.
+        """
+        assert isinstance(pattern, str)
+        assert hasattr(response_func, "__call__")
+        assert isinstance(response_args, tuple)
+        assert isinstance(max_responses, int)
+        assert max_responses > 0
+        if __debug__:
+            self._debug_pattern = pattern
+        self._match = re_compile(pattern).match
         self._response_func = response_func
-        self._args = args
+        self._response_args = response_args
+        self._responses_remaining = max_responses
 
-        if isinstance(request.destination, AddressDestination.Implementation):
-            self._responses_remaining = len(request.destination.addresses)
+    def on_message(self, address, message):
+        if self._responses_remaining > 0 and self._match(message.footprint):
+            self._responses_remaining -= 1
+            # note: this callback may raise DelayMessage, etc
+            self._response_func(address, message, *self._response_args)
 
-        elif isinstance(request.destination, MemberDestination.Implementation):
-            self._responses_remaining = len(request.destination.members)
+        # False to remove the Trigger
+        return self._responses_remaining > 0
 
+    def on_timeout(self):
+        if self._responses_remaining > 0:
+            self._responses_remaining = 0
+            # note: this callback may raise DelayMessage, etc
+            self._response_func(("", -1), None, *self._response_args)
+
+class TriggerPacket(Trigger):
+    def __init__(self, pattern, on_incoming_packets, packets):
+        """
+        Receiving a message matching PATTERN triggers a call to the
+        on_incoming_packet method with PACKETS.
+
+        PATTERN is a python regular expression string.
+
+        ON_INCOMING_PACKETS is called when PATTERN matches the
+        incoming message footprint.  The only argument is PACKETS.
+
+        PACKETS is a list containing (address, packet) tuples.  These
+        packets are effectively delayed until a message matching
+        PATTERN was received.
+
+        When a timeout is received this Trigger is removed and PACKETS
+        are lost.
+        """
+        assert isinstance(pattern, str)
+        assert hasattr(on_incoming_packets, "__call__")
+        assert isinstance(packets, (tuple, list))
+        assert len(packets) > 0
+        assert not filter(lambda x: not isinstance(x, str), packets)
+        if __debug__:
+            self._debug_pattern = pattern
+        self._match = re_compile(pattern).match
+        self._on_incoming_packets = on_incoming_packet
+        self._packets = packets
+
+    def on_message(self, address, message):
+        if self._match:
+            if self._match(message.footprint):
+                self._on_incoming_packets(packets)
+                # False to remove the Trigger, because we handled the
+                # Trigger
+                return False
+            else:
+                # True to keep the Trigger, because we did not handle
+                # the Trigger yet
+                return True
         else:
-            raise NotImplementedError(type(request.destination))
+            # False to remove the Trigger, because the Trigger
+            # timed-out
+            return False
 
-    @property
-    def request(self):
-        return self._request
+    def on_timeout(self):
+        if self._match:
+            self._match = None
 
-    @property
-    def response_func(self):
-        return self._response_func
+class TriggerMessage(Trigger):
+    def __init__(self, pattern, on_incoming_message, address, message):
+        """
+        Receiving a message matching PATTERN triggers a call to the
+        on_incoming_message message with ADDRESS and MESSAGE.
 
-    @property
-    def args(self):
-        return self._args
+        PATTERN is a python regular expression string.
 
-    @property
-    def responses_remaining(self):
-        return self._responses_remaining
+        ON_INCOMING_MESSAGE is called when PATTERN matches the
+        incoming message footprint.  The first argument is ADDRESS,
+        the second argument is MESSAGE.
 
-    def on_response(self, response):
-        assert isinstance(response, Message.Implementation)
-        self._responses_remaining -= 1
+        ADDRESS and MESSAGE are a Message.Implementation and the
+        address from where this was received.  This message is
+        effectively delayed until a message matching PATTERN is
+        received.
 
+        When a timeout is received this Trigger is removed MESSAGE is
+        lost.
+        """
+        assert isinstance(pattern, str)
+        assert hasattr(on_incoming_message, "__call__")
+        assert isinstance(address, tuple)
+        assert len(address) == 2
+        assert isinstance(address[0], str)
+        assert isinstance(address[1], int)
+        assert isinstance(message, Message.Implementation)
+        if __debug__:
+            self._debug_pattern = pattern
+        self._match = re_compile(pattern).match
+        self._on_incoming_message = on_incoming_message
+        self._address = address
+        self._message = message
+
+    def on_message(self, address, message):
+        if self._match:
+            if self._match(message.footprint):
+                self._on_incoming_message(self._address, self._message)
+                # False to remove the Trigger, because we handled the
+                # Trigger
+                return False
+            else:
+                # True to keep the Trigger, because we did not handle
+                # the Trigger yet
+                return True
+        else:
+            # False to remove the Trigger, because the Trigger
+            # timed-out
+            return False
+
+    def on_timeout(self):
+        if self._match:
+            self._match = None
+        
 class Dispersy(Singleton):
     """
     The Dispersy class provides the interface to all Dispersy related
@@ -123,15 +253,8 @@ class Dispersy(Singleton):
         # outgoing communication
         self._socket = DummySocket()
 
-        # waiting for responses
-        self._expected_responses = {} # request-id:ExpectedResponse pairs
-
-        # all available communities.  cid:Community pairs.  messages
-        # that are delayed (because previous messages were missing)
-        self._delayed = {}
-        self._check_delayed_map = {FullSyncDistribution.Implementation:self._check_delayed_full_sync_distribution,
-                                   LastSyncDistribution.Implementation:self._check_delayed_last_sync_distribution,
-                                   DirectDistribution.Implementation:self._check_delayed_direct_distribution}
+        # waiting for incoming messages
+        self._triggers = []
 
         self._incoming_distribution_map = {FullSyncDistribution.Implementation:self._check_incoming_full_sync_distribution,
                                            LastSyncDistribution.Implementation:self._check_incoming_last_sync_distribution,
@@ -187,105 +310,6 @@ class Dispersy(Singleton):
         assert isinstance(cid, str)
         return self._communities[cid]
 
-    def _delay_packet(self, address, packet, delay):
-        assert isinstance(address, tuple)
-        assert len(address) == 2
-        assert isinstance(address[0], str)
-        assert isinstance(address[1], int)
-        assert isinstance(packet, str)
-        assert isinstance(delay, DelayPacket)
-        if isinstance(delay, DelayPacketByMissingMember):
-            key = "message:dispersy-identity community:{0.community.cid} member:{0.missing_member_id}".format(delay)
-            if not key in self._delayed:
-                self._delayed[key] = (address, packet)
-                meta = delay.community.get_meta_message(u"dispersy-identity-request")
-                message = meta.implement(meta.authentication.implement(),
-                                         meta.distribution.implement(meta.community._timeline.global_time),
-                                         meta.destination.implement(address),
-                                         IdentityRequestPayload(delay.missing_member_id))
-                self._send([address], [message.community.get_conversion().encode_message(message)])
-
-        elif isinstance(delay, DelayPacketBySimilarity):
-            key = "message:dispersy-similarity community:{0.community.database_id} member:{0.member.database_id} cluster:{0.cluster}".format(delay)
-            if not key in self._delayed:
-                self._delayed[key] = (address, message)
-                meta = message.community.get_meta_message(u"dispersy-similarity-request")
-                request = meta.implement(meta.authentication.implement(),
-                                         meta.distribution.implement(message.community._timeline.global_time),
-                                         meta.destination.implement(address),
-                                         SimilarityRequestPayload(delay.cluster, [delay.member]))
-                self._send([address], [meta.community.get_conversion().encode_message(request)])
-
-        else:
-            raise NotImplementedError(type(delay))
-
-    def _delay_message(self, address, message, delay):
-        if __debug__:
-            from Message import Message
-        assert isinstance(address, tuple)
-        assert len(address) == 2
-        assert isinstance(address[0], str)
-        assert isinstance(address[1], int)
-        assert isinstance(message, Message.Implementation)
-        assert isinstance(delay, DelayMessage)
-        if isinstance(delay, DelayMessageBySequence):
-            key = "message:{0.name} community:{0.community.database_id} member:{0.authentication.member.database_id} sequence:{1.missing_high}".format(message, delay)
-            if not key in self._delayed:
-                self._delayed[key] = (address, message)
-                meta = message.community.get_meta_message(u"dispersy-missing-sequence")
-                request = meta.implement(meta.authentication.implement(),
-                                         meta.distribution.implement(meta.community._timeline.global_time),
-                                         meta.destination.implement(address),
-                                         MissingSequencePayload(message.authentication.member, message.meta, delay.missing_low, delay.missing_high))
-                self._send([address], [meta.community.get_conversion().encode_message(request)])
-
-        elif isinstance(delay, DelayMessageBySimilarity):
-            cluster = message.community.get_meta_message(u"dispersy-similarity").distribution.cluster
-            key = "message:dispersy-similarity community:{0.community.database_id} member:{1.member.database_id} distribution_cluster:{2}".format(message, delay, cluster)
-            if not key in self._delayed:
-                self._delayed[key] = (address, message)
-                meta = message.community.get_meta_message(u"dispersy-similarity-request")
-                request = meta.implement(meta.authentication.implement(),
-                                         meta.distribution.implement(message.community._timeline.global_time),
-                                         meta.destination.implement(delay.member.address),
-                                         SimilarityRequestPayload(delay.cluster, [delay.member]))
-                self._send([address], [meta.community.get_conversion().encode_message(request)])
-        else:
-            raise NotImplementedError(delay)
-
-    def _check_delayed_full_sync_distribution(self, message):
-        key = "message:{0.name} community:{0.community.database_id} member:{0.authentication.member.database_id} sequence:{0.distribution.sequence_number}".format(message)
-        if key in self._delayed:
-            return self._delayed.pop(key)
-
-        key = "message:{0.name} community:{0.community.database_id} member:{0.authentication.member.database_id}".format(message)
-        if key in self._delayed:
-            return self._delayed.pop(key)
-
-        return None
-
-    def _check_delayed_last_sync_distribution(self, message):
-        dprint(message)
-        dprint(self._delayed.keys())
-
-        key = "message:{0.name} community:{0.community.database_id} member:{0.authentication.member.database_id}".format(message)
-        if key in self._delayed:
-            return self._delayed.pop(key)
-
-        if isinstance(message.distribution, LastSyncDistribution.Implementation):
-            key = "message:{0.name} community:{0.community.database_id} member:{0.authentication.member.database_id} distribution_cluster:{0.distribution.cluster}".format(message)
-            dprint(key)
-            if key in self._delayed:
-                return self._delayed.pop(key)
-
-        return None
-
-    def _check_delayed_direct_distribution(self, message):
-        pass
-
-    def _check_delayed_OTHER_distribution(self, message):
-        raise NotImplementedError(message.distribution)
-
     def _check_incoming_full_sync_distribution(self, message):
         try:
             sequence, = self._database.execute(u"""SELECT distribution_sequence
@@ -308,7 +332,7 @@ class Dispersy(Singleton):
 
         # (2) we do not have the previous message (delay and request)
         else:
-            raise DelayMessageBySequence(sequence+1, message.distribution.sequence_number-1)
+            raise DelayMessageBySequence(message, sequence+1, message.distribution.sequence_number-1)
 
         assert False
 
@@ -375,19 +399,19 @@ class Dispersy(Singleton):
                 #
                 message = conversion.decode_message(packet)
 
-                # #
-                # # Perhaps this is a message send by us?
-                # #
-                # if message.authentication.member == message.community.my_member:
-                #     # todo: perform a identity check.  if it proves to
-                #     # be us, then we can remove this address from
-                #     # routing
-                #     dprint("drop a ", len(packet), " byte packet (send by ourselves) from ", address[0], ":", address[1])
-                #     dprint("TODO: perform an identity check", level="warning")
-                #     self._database.execute(u"DELETE FROM routing WHERE community = ? AND host = ? AND port = ?",
-                #                            (message.community.database_id, unicode(address[0]), address[1]))
-                #     continue
+            except DropPacket as exception:
+                dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True)
+                log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
+ 
+            except DelayPacket as delay:
+                if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(packet), " byte packet (", delay, ")")
+                trigger = TriggerPacket(delay.pattern, self.on_incoming_packets, [(address, packet)])
+                self._triggers.append(trigger)
+                self._rawserver.add_task(trigger.on_timeout, 10.0)
+                self._send([address], [delay.request_packet])
 
+            else:
+                #
                 # Update routing table.  We know that some peer (not
                 # necessarily message.authentication.member) exists at
                 # this address.
@@ -398,66 +422,56 @@ class Dispersy(Singleton):
                     self._database.execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) VALUES(?, ?, ?, DATETIME(), '2010-01-01 00:00:00')",
                                            (message.community.database_id, unicode(address[0]), address[1]))
 
-                while True:
-                    #
-                    # Filter messages based on distribution (usually
-                    # duplicate or old messages)
-                    #
-                    self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(message)
+                #
+                # Handle the message
+                #
+                self.on_incoming_message(address, message)
 
-                    #
-                    # Allow community code to handle the message
-                    #
-                    if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
-                    if message.payload.type == u"permit":
-                        community.on_message(address, message)
-                    elif message.payload.type == u"authorize":
-                        community.on_authorize_message(address, message)
-                    elif message.payload.type == u"revoke":
-                        community.on_revoke_message(address, message)
+    def on_incoming_message(self, address, message):
+        try:
+            #
+            # Filter messages based on distribution (usually duplicate
+            # or old messages)
+            #
+            self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(message)
 
-                    #
-                    # Sync messages need to be stored (so they can be
-                    # synced later)
-                    #
-                    if isinstance(message.distribution, SyncDistribution.Implementation):
-                        self._sync_store(message)
+            #
+            # Allow community code to handle the message
+            #
+            if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
+            if message.payload.type == u"permit":
+                message.community.on_message(address, message)
+            elif message.payload.type == u"authorize":
+                message.community.on_authorize_message(address, message)
+            elif message.payload.type == u"revoke":
+                message.community.on_revoke_message(address, message)
 
-                    log("dispersy.log", "handled", address=address, packet=packet, message=message.name)
+        except DropMessage as exception:
+            dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True)
+            log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
 
-                    #
-                    # This message may 'trigger' a previously delayed message
-                    #
-                    tup = self._check_delayed_map.get(type(message.distribution), self._check_delayed_OTHER_distribution)(message)
-                    if tup:
-                        if isinstance(tup[1], str):
-                            address = tup[0]
-                            message = conversion.decode_message(tup[1])
+        except DelayMessage as delay:
+            if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(message.packet), " byte message (", delay, ")")
+            trigger = TriggerMessage(delay.pattern, self.on_incoming_message, address, message)
+            self._triggers.append(trigger)
+            self._rawserver.add_task(trigger.on_timeout, 10.0)
+            self._send([address], [delay.request_packet])
 
-                        else:
-                            address, message = tup
+        else:
+            #
+            # Sync messages need to be stored (so they can be synced
+            # later)
+            #
+            if isinstance(message.distribution, SyncDistribution.Implementation):
+                self._sync_store(message)
 
-                        assert isinstance(address, tuple)
-                        assert isinstance(message, Message.Implementation)
-                    else:
-                        break
+            log("dispersy.log", "handled", address=address, packet=message.packet, message=message.name)
 
-            except DropPacket as exception:
-                dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True)
-                log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
- 
-            except DelayPacket as delay:
-                if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(packet), " byte packet (", delay, ")")
-                self._delay_packet(address, packet, delay)
- 
-            except DropMessage as exception:
-                dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True)
-                log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
-             
-            except DelayMessage as delay:
-                if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(message.packet), " byte message (", delay, ")")
-                self._delay_message(address, message, delay)
- 
+            #
+            # This message may 'trigger' a previously delayed message
+            #
+            self._triggers = [trigger for trigger in self._triggers if trigger.on_message(address, message)]
+
     def _sync_store(self, message):
         assert isinstance(message.distribution, SyncDistribution.Implementation)
 
@@ -581,22 +595,53 @@ class Dispersy(Singleton):
                     self._socket.send(address, packet)
                 execute(u"UPDATE routing SET outgoing_time = DATETIME() WHERE host = ? AND port = ?", (unicode(address[0]), address[1]))
 
-    def await_response(self, request, response_func, timeout=10.0, *args):
-        assert isinstance(request, Message.Implementation)
-        assert request.packet
+    def await_message(self, footprint, response_func, response_args=(), timeout=10.0, max_responses=1):
+        """
+        Callback RESPONSE_FUNC when a message matching FOOTPRINT is
+        received or after TIMEOUT seconds.
+
+        When the footprint of an incoming message matches the regular
+        expression FOOTPRINT it is passed to both the RESPONSE_FUNC
+        (or several if the message matches multiple footprints) and
+        its regular message handler.  First the regular message
+        handler is called, followed by RESPONSE_FUNC.
+
+        RESPONSE_FUNC is called each time when a message is received
+        that matches FOOTPRINT or after TIMEOUT seconds when fewer
+        than MAX_RESPONSES incoming messages have matched FOOTPRINT.
+        The first argument is the sender address (or ('', -1) on a
+        timeout), the second argument is the incoming message,
+        following this are any optional arguments in RESPONSE_ARGS.
+
+        RESPONSE_ARGS is a tuple that can be given optional values
+        that are included with the call to RESPONSE_FUNC.
+
+        TIMEOUT is a positive floating point number.  When less than
+        MAX_RESPONSES messages have matched FOOTPRINT, the
+        RESPONSE_FUNC is called one last time.  For the address ('',
+        -1) and for the message None is given.  Once a timeout
+        callback is given no further callbcks will be made.
+
+        MAX_RESPONSES is a positive integer indicating the maximum
+        number that RESPONSE_FUNC is called.
+
+        The footprint matching is done as follows: for each incoming
+        message a message footprint is made.  This footprint is a
+        string that contains a summary of all the message properties.
+        Such as 'MemberAuthentication:ABCDE' and
+        'FullSyncDistribution:102'.
+        """
+        assert isinstance(footprint, str)
         assert hasattr(response_func, "__call__")
+        assert isinstance(response_args, tuple)
         assert isinstance(timeout, float)
         assert timeout > 0.0
+        assert isinstance(max_responses, (int, long))
+        assert max_responses > 0
 
-        def on_timeout():
-            expected_response = self._expected_responses.pop(request_id, None)
-            if expected_response:
-                expected_response.response_func(("", -1), expected_response.request, None, *expected_response.args)
-
-        request_id = sha1(request.packet).digest()
-        assert not request_id in self._expected_responses
-        self._expected_responses[request_id] = ExpectedResponse(request, response_func, args)
-        self._rawserver.add_task(on_timeout, timeout)
+        trigger = TriggerCallback(footprint, response_func, response_args, max_responses)
+        self._triggers.append(trigger)
+        self._rawserver.add_task(trigger.on_timeout, timeout)
 
     def get_meta_messages(self, community):
         """
@@ -623,13 +668,13 @@ class Dispersy(Singleton):
         Dispersy.
         """
         return [(community.get_meta_message(u"dispersy-routing-request"), self.on_routing_request),
-                (community.get_meta_message(u"dispersy-routing-response"), self.on_general_response),
+                # (community.get_meta_message(u"dispersy-routing-response"), self.on_general_response),
                 (community.get_meta_message(u"dispersy-identity"), self.on_identity),
                 (community.get_meta_message(u"dispersy-identity-request"), self.on_identity_request),
                 (community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
                 (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence),
                 (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
-                (community.get_meta_message(u"dispersy-signature-response"), self.on_general_response),
+                (community.get_meta_message(u"dispersy-signature-response"), self.on_ignore_message),
                 (community.get_meta_message(u"dispersy-similarity"), self.on_similarity_message),
                 (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request)]
 
@@ -666,7 +711,7 @@ class Dispersy(Singleton):
                 # this message should never have been stored in the
                 # database without a similarity.  Thus the Database is
                 # corrupted.
-                raise DelayMessageBySimilarity(message.authentication.member, cluster)
+                raise DelayMessageBySimilarity(message, cluster)
 
             for msg in message.community.get_meta_messages():
                 if isinstance(msg.destination, SimilarityDestination) and msg.destination.cluster == cluster:
@@ -1034,17 +1079,16 @@ class Dispersy(Singleton):
                 continue
 
             self._send([address], [packet])
-                
-    def on_general_response(self, address, message):
-        expected_response = self._expected_responses.pop(message.payload.request_id)
-        if expected_response:
-            # check if we expect more responses
-            expected_response.on_response(message)
-            if expected_response.responses_remaining:
-                self._expected_responses[message.payload.request_id] = expected_response
 
-            # handle the incoming response
-            expected_response.response_func(address, expected_response.request, message.payload, *expected_response.args)
+    def on_ignore_message(self, address, message):
+        """
+        Ignores the received message.
+
+        This message handler is used when the incoming message can be
+        ignored.  This can happen, for instance, when the message is
+        already handled using a trigger set using self.await_message.
+        """
+        if __debug__: dprint("Ignored ", message.name, " (will probably be picked up by a Trigger)")
 
     def _periodically_disperse(self):
         """

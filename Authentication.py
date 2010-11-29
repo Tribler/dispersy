@@ -7,11 +7,25 @@ class Authentication(MetaObject):
         def is_signed(self):
             raise NotImplementedError()
 
+        @property
+        def footprint(self):
+            return "Authentication"
+
+    def generate_footprint(self):
+        return "Authentication"
+
 class NoAuthentication(Authentication):
     class Implementation(Authentication.Implementation):
         @property
         def is_signed(self):
             return True
+
+        @property
+        def footprint(self):
+            return "NoAuthentication"
+
+    def generate_footprint(self):
+        return "NoAuthentication"
 
 class MemberAuthentication(Authentication):
     class Implementation(Authentication.Implementation):
@@ -36,6 +50,10 @@ class MemberAuthentication(Authentication):
         def is_signed(self):
             return self._is_signed
 
+        @property
+        def footprint(self):
+            return "MemberAuthentication:" + self._member.mid.encode("HEX")
+
     def __init__(self, encoding="sha1"):
         assert isinstance(encoding, str)
         assert encoding in ("pem", "sha1")
@@ -44,6 +62,12 @@ class MemberAuthentication(Authentication):
     @property
     def encoding(self):
         return self._encoding
+
+    def generate_footprint(self, mids):
+        assert isinstance(mids, (tuple, list))
+        assert not filter(lambda x: not isinstance(x, str), mids)
+        assert not filter(lambda x: not len(x) == 20, mids)
+        return "MemberAuthentication:(" + "|".join([mid.encode("HEX") for mid in mids]) + ")"
 
 class MultiMemberAuthentication(Authentication):
     class Implementation(Authentication.Implementation):
@@ -97,6 +121,10 @@ class MultiMemberAuthentication(Authentication):
             assert member in self._members
             self._signatures[self._members.index(member)] = signature
 
+        @property
+        def footprint(self):
+            return "MultiMemberAuthentication:" + ",".join([member.mid.encode("HEX") for member in self._members])
+
     def __init__(self, count, allow_signature_func):
         assert isinstance(count, int)
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
@@ -110,3 +138,12 @@ class MultiMemberAuthentication(Authentication):
     @property
     def allow_signature_func(self):
         return self._allow_signature_func
+
+    def generate_footprint(self, *midss):
+        assert isinstance(midss, (tuple, list))
+        assert len(midss) == self._count
+        if __debug__:
+            for mids in midss:
+                assert not filter(lambda x: not isinstance(x, str), mids)
+                assert not filter(lambda x: not len(x) == 20, mids)
+        return "MultiMemberAuthentication:" + ",".join(["(" + "|".join([mid.encode("HEX") for mid in mids]) + ")" for mids in midss])

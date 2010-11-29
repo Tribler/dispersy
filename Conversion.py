@@ -771,7 +771,7 @@ class BinaryConversion(Conversion):
                                                                   authentication_impl.member.database_id,
                                                                   meta_message.destination.cluster)).next()
         except StopIteration:
-            raise DelayPacketBySimilarity(self._community, authentication_impl.member.mid, meta_message.destination.cluster)
+            raise DelayPacketBySimilarity(self._community, authentication_impl.member, meta_message.destination)
         sender_similarity = BloomFilter(str(sender_similarity), 0)
 
         return meta_message.destination.implement(my_similarity.xor_occurrence(sender_similarity))

@@ -2,7 +2,12 @@ from Meta import MetaObject
 
 class Destination(MetaObject):
     class Implementation(MetaObject.Implementation):
-        pass
+        @property
+        def footprint(self):
+            return "Destination"
+
+    def generate_footprint(self):
+        return "Destination"
     
 # class NoDestination(Destination):
 #     """
@@ -18,7 +23,7 @@ class AddressDestination(Destination):
     class Implementation(Destination.Implementation):
         def __init__(self, meta, *addresses):
             assert isinstance(addresses, tuple)
-            assert len(addresses) > 0
+            assert len(addresses) >= 0
             assert not filter(lambda x: not isinstance(x, tuple), addresses)
             assert not filter(lambda x: not len(x) == 2, addresses)
             assert not filter(lambda x: not isinstance(x[0], str), addresses)
@@ -31,6 +36,13 @@ class AddressDestination(Destination):
         def addresses(self):
             return self._addresses
 
+        @property
+        def footprint(self):
+            return "AddressDestination"
+
+    def generate_footprint(self):
+        return "AddressDestination"
+
 class MemberDestination(Destination):
     """
     The message is send to the destination Member.
@@ -39,7 +51,7 @@ class MemberDestination(Destination):
         def __init__(self, meta, *members):
             if __debug__:
                 from Member import Member
-            assert len(members) > 0
+            assert len(members) >= 0
             assert not filter(lambda x: not isinstance(x, Member), members)
             super(MemberDestination.Implementation, self).__init__(meta)
             self._members = members
@@ -48,12 +60,24 @@ class MemberDestination(Destination):
         def members(self):
             return self._members
 
+        @property
+        def footprint(self):
+            return "MemberDestination"
+
+    def generate_footprint(self):
+        return "MemberDestination"
+
 class CommunityDestination(Destination):
     """
     The message is send to one or more peers in the Community.
     """
     class Implementation(Destination.Implementation):
-        pass
+        @property
+        def footprint(self):
+            return "CommunityDestination"
+
+    def generate_footprint(self):
+        return "CommunityDestination"
 
 class SimilarityDestination(Destination):
     class Implementation(Destination.Implementation):
@@ -88,8 +112,13 @@ class SimilarityDestination(Destination):
         
         @property
         def is_similar(self):
-            return self._xor_occurrence < self._meta._threshold
+            return (self._meta._size - self._xor_occurrence) >= self._meta._threshold
+            # return self._xor_occurrence < self._meta._threshold
     
+        @property
+        def footprint(self):
+            return "SimilarityDestination:" + str(self._meta._cluster)
+
     def __init__(self, cluster, size, minimum_bits, maximum_bits, threshold):
         assert isinstance(cluster, int)
         assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
@@ -126,6 +155,9 @@ class SimilarityDestination(Destination):
     @property
     def threshold(self):
         return self._threshold
+
+    def generate_footprint(self):
+        return "SimilarityDestination:" + str(self._cluster)
 
 # class PrivilegedDestination(Destination):
 #     class Implementation(Destination.Implementation):

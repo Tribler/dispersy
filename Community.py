@@ -15,7 +15,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Encoding import encode
 from Member import Private, MasterMember, MyMember, Member
-from Message import Message, DelayMessageByProof
+from Message import Message, DropMessage
 from Payload import Permit, Authorize, Revoke, SimilarityPayload
 from Resolution import PublicResolution
 from Timeline import Timeline
@@ -502,14 +502,16 @@ class Community(object):
             self._dispersy.store_and_forward([request])
 
         # set callback and timeout
-        self._dispersy.await_response(request, self.on_signature_response, timeout, response_func)
+        # self._dispersy.await_response(request, self.on_signature_response, timeout, response_func)
+        footprint = self.get_meta_message(u"dispersy-signature-response").generate_footprint()
+        self._dispersy.await_message(footprint, self.on_signature_response, (request, response_func), timeout, len(members))
 
         return request
 
-    def on_signature_response(self, address, request, payload, response_func):
+    def on_signature_response(self, address, response, request, response_func):
         # check for timeout
-        if payload is None:
-            response_func(address, request, payload)
+        if response is None:
+            response_func(address, response, request)
 
         else:
             # the multi signed message
@@ -519,9 +521,13 @@ class Community(object):
             body = submsg.packet[:first_signature_offset]
 
             for signature, member in submsg.authentication.signed_members:
-                if not signature and member.verify(body, payload.signature):
-                    submsg.authentication.set_signature(member, payload.signature)
-                    response_func(address, request, payload)
+                if not signature and member.verify(body, response.payload.signature):
+                    submsg.authentication.set_signature(member, response.payload.signature)
+                    response_func(address, response, request)
+
+                    # assuming this signature only matches one member,
+                    # we can break
+                    break
 
     def create_similarity(self, message, keywords, update_locally=True, store_and_forward=True):
         return self._dispersy.create_similarity(self, message, keywords, update_locally, store_and_forward)
@@ -536,7 +542,7 @@ class Community(object):
         if self._timeline.check(message):
             self._timeline.update(message)
         else:
-            raise DelayMessageByProof()
+            raise DropMessage("TODO: implement delay by proof")
 
     def on_revoke_message(self, address, message):
         """
@@ -548,7 +554,7 @@ class Community(object):
         if self._timeline.check(message):
             self._timeline.update(message)
         else:
-            raise DelayMessageByProof()
+            raise DropMessage("TODO: implement delay by proof")
 
     def on_message(self, address, message):
         """

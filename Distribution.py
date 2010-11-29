@@ -33,9 +33,21 @@ class Distribution(MetaObject):
         def global_time(self):
             return self._global_time
 
+        @property
+        def footprint(self):
+            return "Distribution"
+
+    def generate_footprint(self):
+        return "Distribution"
+
 class SyncDistribution(Distribution):
     class Implementation(Distribution.Implementation):
-        pass
+        @property
+        def footprint(self):
+            return "SyncDistribution"
+
+    def generate_footprint(self):
+        return "SyncDistribution"
 
 class FullSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
@@ -50,6 +62,13 @@ class FullSyncDistribution(SyncDistribution):
         @property
         def sequence_number(self):
             return self._sequence_number
+
+        @property
+        def footprint(self):
+            return "FullSyncDistribution:" + str(self._sequence_number)
+
+    def generate_footprint(self, sequence_number):
+        return "FullSyncDistribution:" + str(sequence_number)
 
 class LastSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
@@ -67,6 +86,10 @@ class LastSyncDistribution(SyncDistribution):
         def history_size(self):
             return self._meta._history_size
 
+        @property
+        def footprint(self):
+            return "LastSyncDistribution"
+
     def __init__(self, cluster, history_size):
         assert isinstance(cluster, int)
         assert 0 <= cluster <= 255
@@ -82,13 +105,26 @@ class LastSyncDistribution(SyncDistribution):
     def history_size(self):
         return self._history_size
 
+    def generate_footprint(self):
+        return "LastSyncDistribution"
+
 class DirectDistribution(Distribution):
     class Implementation(Distribution.Implementation):
-        pass
+        @property
+        def footprint(self):
+            return "DirectDistribution"
+
+    def generate_footprint(self):
+        return "DirectDistribution"
 
 class RelayDistribution(Distribution):
     class Implementation(Distribution.Implementation):
-        pass
+        @property
+        def footprint(self):
+            return "RelayDistribution"
+
+    def generate_footprint(self):
+        return "RelayDistribution"
 
 
 

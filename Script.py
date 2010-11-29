@@ -114,12 +114,12 @@ class ScriptBase(object):
 
 class DispersyScript(ScriptBase):
     def run(self):
-        # self.caller(self.last_1_test)
-        # self.caller(self.last_9_test)
-        # self.caller(self.double_signed_timeout)
-        # self.caller(self.double_signed_response)
-        # self.caller(self.triple_signed_timeout)
-        # self.caller(self.triple_signed_response)
+        self.caller(self.last_1_test)
+        self.caller(self.last_9_test)
+        self.caller(self.double_signed_timeout)
+        self.caller(self.double_signed_response)
+        self.caller(self.triple_signed_timeout)
+        self.caller(self.triple_signed_response)
         self.caller(self.similarity_check_incoming_packets)
         # self.caller(self.similarity_fullsync)
         # self.caller(self.similarity_lastsync)
@@ -260,7 +260,7 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # SELF requests NODE to double sign
-        def on_response(address, request, response):
+        def on_response(address, response, request):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
@@ -289,12 +289,12 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # SELF requests NODE to double sign
-        def on_response(address, request, response):
+        def on_response(address, response, request):
             assert container["response"] == 0, container["response"]
             assert address == node.socket.getsockname(), address
             assert request.authentication.is_signed
             container["response"] += 1
-            container["signature"] = response.signature
+            container["signature"] = response.payload.signature
         request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
 
         # receive dispersy-signature-request message
@@ -336,7 +336,7 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # SELF requests NODE1 and NODE2 to double sign
-        def on_response(address, request, response):
+        def on_response(address, response, request):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
@@ -373,10 +373,10 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # SELF requests NODE1 and NODE2 to add their signature
-        def on_response(address, request, response):
+        def on_response(address, response, request):
             assert container["response"] == 0 or request.authentication.is_signed
             container["response"] += 1
-            container["signature"].append(response.signature)
+            container["signature"].append(response.payload.signature)
         request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
 
         # receive dispersy-signature-request message
