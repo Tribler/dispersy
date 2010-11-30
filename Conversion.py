@@ -774,7 +774,7 @@ class BinaryConversion(Conversion):
             raise DelayPacketBySimilarity(self._community, authentication_impl.member, meta_message.destination)
         sender_similarity = BloomFilter(str(sender_similarity), 0)
 
-        return meta_message.destination.implement(my_similarity.xor_occurrence(sender_similarity))
+        return meta_message.destination.implement(my_similarity.bic_occurrence(sender_similarity))
 
     def _decode_message(self, data, verify_all_signatures):
         """

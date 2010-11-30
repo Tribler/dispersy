@@ -211,7 +211,25 @@ class BloomFilter(Constructor):
 
     def xor_occurrence(self, other):
         """
-        Return the number of bits that are equal in value.
+        Return the number of bits activated by xor.
+
+        For instance:
+        0110 xor 0100 results in 0010 ~ 1 bits
+        """
+        assert isinstance(other, BloomFilter)
+        if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
+            raise ValueError("Both bloom filters need to be the same size")
+
+        bits = (1, 2, 4, 8, 16, 32, 64, 128)
+        count = 0
+        for c in (a ^ b for a, b in zip(self._bytes, other._bytes)):
+            count += len(filter(lambda bit: bit & c, bits))
+        return count
+
+    def bic_occurrence(self, other):
+        """
+        bic as in Logical Bicondictional, return the number of bits
+        that are equal in value.
 
         For instance:
         0110 xor 0100 results in 1101 ~ 3 bits
@@ -224,8 +242,8 @@ class BloomFilter(Constructor):
         count = 0
         for c in (a ^ b for a, b in zip(self._bytes, other._bytes)):
             count += len(filter(lambda bit: bit & c, bits))
-        return count
-            
+        return (self._num_slices * self._bits_per_slice) - count
+
     def __and__(self, other):
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):

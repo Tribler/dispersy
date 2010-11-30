@@ -81,10 +81,10 @@ class CommunityDestination(Destination):
 
 class SimilarityDestination(Destination):
     class Implementation(Destination.Implementation):
-        def __init__(self, meta, xor_occurrence=0):
-            assert isinstance(xor_occurrence, (int, long))
+        def __init__(self, meta, bic_occurrence=0):
+            assert isinstance(bic_occurrence, (int, long))
             super(SimilarityDestination.Implementation, self).__init__(meta)
-            self._xor_occurrence = xor_occurrence
+            self._bic_occurrence = bic_occurrence
 
         @property
         def cluster(self):
@@ -107,13 +107,12 @@ class SimilarityDestination(Destination):
             return self._meta._threshold
         
         @property
-        def xor_occurrence(self):
-            return self._xor_occurrence
+        def bic_occurrence(self):
+            return self._bic_occurrence
         
         @property
         def is_similar(self):
-            return (self._meta._size - self._xor_occurrence) >= self._meta._threshold
-            # return self._xor_occurrence < self._meta._threshold
+            return self._bic_occurrence >= self._meta._threshold
     
         @property
         def footprint(self):

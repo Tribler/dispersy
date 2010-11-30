@@ -478,7 +478,7 @@ class Dispersy(Singleton):
         # we do not store a message when it uses SimilarityDestination
         # and it its not similar
         if isinstance(message.destination, SimilarityDestination.Implementation) and not message.destination.is_similar:
-            dprint("Not storing message.  xor:", message.destination.xor_occurrence, "  threshold:", message.destination.threshold)
+            dprint("Not storing message.  bic:", message.destination.bic_occurrence, "  threshold:", message.destination.threshold)
             return
 
         # sync bloomfilter
@@ -737,7 +737,7 @@ class Dispersy(Singleton):
                         similarity, threshold = get_similarity(similarity_cluster)
                         similarity_cache[similarity_cluster] = (similarity, threshold)
 
-                    if similarity.xor_occurrence(BloomFilter(str(packet_similarity), 0)) >= threshold:
+                    if similarity.bic_occurrence(BloomFilter(str(packet_similarity), 0)) < threshold:
                         dprint("do not send this packet: not similar")
                         # do not send this packet: not similar
                         continue

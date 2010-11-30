@@ -57,7 +57,7 @@ class DelayPacketByMissingMember(DelayPacket):
                                  meta.destination.implement(),
                                  IdentityRequestPayload(missing_member_id))
 
-        super(DelayPacketByMissingMember, self).__init__("Missing member", footprint, community.get_conversion().encode_message(message))
+        super(DelayPacketByMissingMember, self).__init__("Missing member", footprint, message.encode())
 
 class DelayPacketBySimilarity(DelayPacket):
     """
@@ -88,7 +88,7 @@ class DelayPacketBySimilarity(DelayPacket):
                                  meta.destination.implement(),
                                  IdentityRequestPayload(member.mid))
 
-        super(DelayPacketBySimilarity, self).__init__("Missing similarity", footprint, community.get_conversion().encode_message(message))
+        super(DelayPacketBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
 
 class DropPacket(Exception):
     """
@@ -152,7 +152,7 @@ class DelayMessageBySequence(DelayMessage):
                                  meta.destination.implement(),
                                  MissingSequencePayload(message.authentication.member, message.meta, missing_low, missing_high))
 
-        super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.community.get_conversion().encode_message(message))
+        super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.encode())
 
 class DelayMessageBySimilarity(DelayMessage):
     """
@@ -162,15 +162,14 @@ class DelayMessageBySimilarity(DelayMessage):
     Delaying until a dispersy-similarity-message is received that
     contains the missing similarity bitstream
     """
-    def __init__(self, message, cluser):
+    def __init__(self, message, cluster):
         if __debug__:
             from Message import Message
         assert isinstance(message, Message.Implementation)
         assert isinstance(cluster, int)
         # the footprint that will trigger the delayed packet
-        meta = community.get_meta_message(u"dispersy-similarity")
-        footprint = meta.generate_footprint()
-        # footprint = "dispersy-similarity Community:{0.community.cid} MemberAuthentication:{0.authentication.member.mid} SimilarityDestination{1}".format(message, cluster)
+        meta = message.community.get_meta_message(u"dispersy-similarity")
+        footprint = meta.generate_footprint(authentication=([message.authentication.member.mid],))
 
         # the request message that asks for the message that will
         # trigger the delayed packet
@@ -178,9 +177,9 @@ class DelayMessageBySimilarity(DelayMessage):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(message.community._timeline.global_time),
                                  meta.destination.implement(),
-                                 SimilarityRequestPayload(message.destination.cluster, [message.authentication.member]))
+                                 SimilarityRequestPayload(cluster, [message.authentication.member]))
 
-        super(DelayMessageBySimilarity, self).__init__("Missing similarity", footprint, community.get_conversion().encode_message(message))
+        super(DelayMessageBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
 
 class DropMessage(Exception):
     """
@@ -277,6 +276,12 @@ class Message(MetaObject):
             assert isinstance(self._distribution.footprint, str)
             assert isinstance(self._destination.footprint, str)
             return "".join((self._meta._name.encode("UTF-8"), " Community:", self._meta._community.cid.encode("HEX"), " ", self._authentication.footprint, " ", self._distribution.footprint, " ", self._destination.footprint))
+
+        def encode(self, prefix=None):
+            """
+            Shortcut for message.community.get_conversion(prefix).encode_message(message)
+            """
+            return self._meta._community.get_conversion(prefix).encode_message(self)
 
         def __str__(self):
             return "<{0.meta.__class__.__name__}.{0.__class__.__name__} {0.name} {1}>".format(self, len(self._packet))

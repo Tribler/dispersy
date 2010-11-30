@@ -121,9 +121,9 @@ class DispersyScript(ScriptBase):
         self.caller(self.triple_signed_timeout)
         self.caller(self.triple_signed_response)
         self.caller(self.similarity_check_incoming_packets)
-        # self.caller(self.similarity_fullsync)
-        # self.caller(self.similarity_lastsync)
-        # self.caller(self.similarity_missing_sim)
+        self.caller(self.similarity_fullsync)
+        self.caller(self.similarity_lastsync)
+        self.caller(self.similarity_missing_sim)
 
     def last_1_test(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
@@ -428,7 +428,7 @@ class DispersyScript(ScriptBase):
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
-        bf = BloomFilter(struct.pack("!LLcc", 1, 8, chr(0b11110000), chr(0b00001111)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b00000000)), 0)
         self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
                                          (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
 
@@ -439,18 +439,41 @@ class DispersyScript(ScriptBase):
         node.init_my_member()
         yield 0.1
 
+        ##
+        ## Similar Nodes
+        ##
+        
         # create similarity for node-01
-        bf = BloomFilter(struct.pack("!LLcc", 1, 8, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
         yield 0.1
 
-        # node-01 creates and sends a message to 'self'
-        messages = []
-        messages.append(node.create_taste_aware_message(5, 1, 1))
-        packets = [node.encode_message(message) for message in messages]
-        for packet in packets:
-            node.send_packet(packet, address)
-            yield 0.1
+        msg = node.create_taste_aware_message(5, 1, 1)
+        msg_blob = node.encode_message(msg)
+        node.send_message(msg, address)
+        yield 0.1
+
+        with self._dispersy.database as execute:
+            d, = execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(str(msg_blob)),)).next()
+            assert d == 1
+
+        ##
+        ## Not Similar Nodes
+        ##
+
+        # create similarity for node-01
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b11111111)), 0)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 3), address)
+        yield 0.1
+
+        msg = node.create_taste_aware_message(5, 2, 2)
+        msg_blob = node.encode_message(msg)
+        node.send_message(msg, address)
+        yield 0.1
+
+        with self._dispersy.database as execute:
+            d,= execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(str(msg_blob)),)).next()
+            assert d == 0
 
         dprint("finished")
 
@@ -463,10 +486,9 @@ class DispersyScript(ScriptBase):
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
         community = DebugCommunity.create_community(self._discovery.my_member)
         address = self._dispersy.socket.get_address()
-        container = {"timeout":0}
 
         # setting similarity for self
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
                                          (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
 
@@ -485,19 +507,19 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         ##
-        ## Similar Nodes
+        ## Similar Nodes Threshold 12 Similarity 14
         ##
         dprint("Testing similar nodes")
         
         # create similarity for node-01
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
         yield 0.1
 
         # create similarity for node-02
         # node node-02 has 14/16 same bits with node-01
         # ABOVE threshold
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
         node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
         yield 0.1
 
@@ -512,15 +534,34 @@ class DispersyScript(ScriptBase):
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
 
         ##
-        ## Not Similar Nodes
+        ## Similar Nodes Threshold 12 Similarity 12
+        ##
+        dprint("Testing similar nodes 2")
+
+        # create similarity for node-02
+        # node node-02 has 12/16 same bits with node-01
+        # ABOVE threshold
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110011), chr(0b11000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 3), address)
+        yield 0.1
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+
+        _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
+
+        ##
+        ## Not Similar Nodes Threshold 12 Similarity 2
         ##
         dprint("Testing not similar nodes")
 
         # create similarity for node-02
-        # node node-02 has 11/16 same bits with node-01
+        # node node-02 has 2/16 same bits with node-01
         # BELOW threshold
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b00100011), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b00001111), chr(0b11111100)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 4), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -536,6 +577,34 @@ class DispersyScript(ScriptBase):
         else:
             raise Exception("Message received error")
 
+        yield 1.0
+        ##
+        ## Not Similar Nodes Threshold 12 Similarity 11
+        ##
+        dprint("Testing not similar nodes 2")
+
+        # create similarity for node-02
+        # node node-02 has 11/16 same bits with node-01
+        # BELOW threshold
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110010), chr(0b00110011)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 5), address)
+        yield 0.1
+
+        # node-02 sends an sync message with an empty bloomfilter
+        # to 'self'. It should collect the message
+        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        yield 0.1
+        
+        # receive a message
+        try:
+            _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
+        except socket.timeout:
+            pass
+        else:
+            raise Exception("Message received error")
+
+        dprint("finished")
+
     def similarity_lastsync(self):
         from Bloomfilter import BloomFilter
         import struct
@@ -548,7 +617,7 @@ class DispersyScript(ScriptBase):
         container = {"timeout":0}
 
         # setting similarity for self
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
                                          (community.database_id, community._my_member.database_id, 2, buffer(str(bf))))
 
@@ -572,14 +641,14 @@ class DispersyScript(ScriptBase):
         dprint("Testing similar nodes")
 
         # create similarity for node-01
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
         yield 0.1
 
         # create similarity for node-02
         # node node-02 has 15/16 same bits with node-01
         # ABOVE threshold
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
         node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
         yield 0.1
 
@@ -602,8 +671,8 @@ class DispersyScript(ScriptBase):
         # create similarity for node-02
         # node node-02 has 11/16 same bits with node-01
         # BELOW threshold
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b00100011), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b00100011), chr(0b00000000)), 0)
+        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 3), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -631,7 +700,7 @@ class DispersyScript(ScriptBase):
         container = {"timeout":0}
 
         # setting similarity for self
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         self._dispersy._database.execute(u"INSERT INTO similarity (community, user, cluster, similarity) VALUES (?, ?, ?, ?)",
                                          (community.database_id, community._my_member.database_id, 1, buffer(str(bf))))
 
@@ -643,7 +712,7 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # create similarity for node-01
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b11110000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
         yield 0.1
 
@@ -668,12 +737,12 @@ class DispersyScript(ScriptBase):
         # and 'synchronize' e.g. send our similarity
         _, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-similarity-request"])
         
-        bf = BloomFilter(struct.pack("!LLcc", 0x01, 0x10, chr(0b10111000), chr(0b00000000)), 0)
+        bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
         node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
         yield 0.1      
 
         # receive the taste message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
-        assert  message.number == 5
+        assert  message.payload.number == 5
  
         dprint("finished")
