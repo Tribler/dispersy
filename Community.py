@@ -8,7 +8,7 @@ from hashlib import sha1
 from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
 from Conversion import DefaultConversion
-from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 from Destination import CommunityDestination, AddressDestination
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
@@ -48,9 +48,9 @@ class Community(object):
         assert isinstance(my_member, MyMember)
 
         # master key and community id
-        rsa = rsa_generate_key(1024 * 2)
-        public_pem = rsa_to_public_pem(rsa)
-        private_pem = rsa_to_private_pem(rsa)
+        ec = ec_generate_key("high")
+        public_pem = ec_to_public_pem(ec)
+        private_pem = ec_to_private_pem(ec)
         cid = sha1(public_pem).digest()
 
         database = DispersyDatabase.get_instance()

@@ -5,11 +5,10 @@ Special Member subclasses exist to identify, for instance, youself.
 """
 
 from hashlib import sha1
-from M2Crypto.RSA import RSAError
 
 from Singleton import Parameterized1Singleton
 from DispersyDatabase import DispersyDatabase
-from Crypto import rsa_from_private_pem, rsa_from_public_pem, rsa_to_public_pem
+from Crypto import ec_from_private_pem, ec_from_public_pem, ec_to_public_pem, ec_signature_length, ec_verify, ec_sign
 from Encoding import encode, decode
 
 if __debug__:
@@ -35,7 +34,7 @@ class Public(object):
     @property
     def signature_length(self):
         """
-        The length, in bytes, a a signature.
+        The length, in bytes, of a signature.
         """
         raise NotImplementedError()
 
@@ -72,23 +71,24 @@ class Member(Public, Parameterized1Singleton):
     in the database.  To ensure this, each Member instance must be
     created or retrieved using has_instance or get_instance.
     """
-    def __init__(self, public_pem, rsa=None, sync_with_database=True):
+    def __init__(self, public_pem, ec=None, sync_with_database=True):
         """
         Create a new Member instance.  Member instances must be reated
         or retrieved using has_instance or get_instance.
 
-        PUBLIC_PEM must be a string giving the public RSA key in PEM format.
-        RSA is an optional RSA object (given when created from private PEM).
+        PUBLIC_PEM must be a string giving the public EC key in PEM format.
+        EC is an optional EC object (given when created from private PEM).
         """
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
-        assert rsa is None or len(rsa) % 8 == 0
         assert isinstance(sync_with_database, bool)
         self._public_pem = public_pem
-        if rsa is None:
-            self._rsa = rsa_from_public_pem(public_pem)
+        if ec is None:
+            self._ec = ec_from_public_pem(public_pem)
         else:
-            self._rsa = rsa
+            self._ec = ec
+
+        self._signature_length = ec_signature_length(self._ec)
         self._mid = sha1(public_pem).digest()
 
         self._database_id = -1
@@ -123,7 +123,7 @@ class Member(Public, Parameterized1Singleton):
 
     @property
     def signature_length(self):
-        return len(self._rsa) / 8
+        return self._signature_length
 
     @property
     def database_id(self):
@@ -152,10 +152,7 @@ class Member(Public, Parameterized1Singleton):
         assert isinstance(offset, (int, long))
         assert isinstance(length, (int, long))
         length = length or len(data)
-        try:
-            return len(signature) == len(self._rsa) / 8 and bool(self._rsa.verify(sha1(data[offset:offset+length]).digest(), signature))
-        except RSAError:
-            return False
+        return self._signature_length == len(signature) and ec_verify(self._ec, sha1(data[offset:offset+length]).digest(), signature)
 
     def __hash__(self):
         """
@@ -174,7 +171,7 @@ class PrivateMember(Private, Member):
         assert isinstance(public_pem, str)
         assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
         assert isinstance(private_pem, (type(None), str))
-        assert private_pem is None or private_pem[:31] == "-----BEGIN RSA PRIVATE KEY-----"
+        assert private_pem is None or private_pem[:30] == "-----BEGIN EC PRIVATE KEY-----", private_pem
         assert isinstance(sync_with_database, bool)
 
         if sync_with_database:
@@ -192,11 +189,11 @@ class PrivateMember(Private, Member):
                 database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
 
         if private_pem is None:
-            rsa = rsa_from_public_pem(public_pem)
+            ec = ec_from_public_pem(public_pem)
         else:
-            rsa = rsa_from_private_pem(private_pem)
+            ec = ec_from_private_pem(private_pem)
 
-        super(PrivateMember, self).__init__(public_pem, rsa, sync_with_database)
+        super(PrivateMember, self).__init__(public_pem, ec, sync_with_database)
         self._private_pem = private_pem
         self._sequence_number = 0
 
@@ -214,7 +211,7 @@ class PrivateMember(Private, Member):
         Sign DATA using our private key.  Returns the signature.
         """
         assert not self._private_pem is None
-        return self._rsa.sign(sha1(data[offset:length or len(data)]).digest())
+        return ec_sign(self._ec, sha1(data[offset:length or len(data)]).digest())
 
 class MasterMember(PrivateMember):
     pass
@@ -223,20 +220,17 @@ class MyMember(PrivateMember):
     pass
 
 if __name__ == "__main__":
-    from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+    from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 
-    rsa = rsa_generate_key(512)
-    public_pem = rsa_to_public_pem(rsa)
-    private_pem = rsa_to_private_pem(rsa)
+    ec = ec_generate_key("low")
+    public_pem = ec_to_public_pem(ec)
+    private_pem = ec_to_private_pem(ec)
     public_member = Member(public_pem, sync_with_database=False)
     private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
 
     data = "Hello World! " * 1000
     sig = private_member.sign(data)
     digest = sha1(data).digest()
-    assert sig == rsa.sign(digest)
-    assert rsa.verify(digest, sig)
-    assert public_member._rsa.verify(digest, sig)
     dprint(sig.encode("HEX"))
     assert public_member.verify(data, sig)
     assert private_member.verify(data, sig)

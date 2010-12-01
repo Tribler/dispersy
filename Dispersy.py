@@ -14,7 +14,7 @@ from re import compile as re_compile
 
 from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from Bloomfilter import BloomFilter
-from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 from Destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
@@ -239,9 +239,9 @@ class Dispersy(Singleton):
         except StopIteration:
             # one of the keys was not found in the database, we need
             # to generate a new one
-            rsa = rsa_generate_key(512)
-            public_pem = rsa_to_public_pem(rsa)
-            private_pem = rsa_to_private_pem(rsa)
+            ec = ec_generate_key("low")
+            public_pem = ec_to_public_pem(ec)
+            private_pem = ec_to_private_pem(ec)
             self._database.execute(u"INSERT INTO option VALUES('my_public_pem', ?)", (buffer(public_pem),))
             
         # this is yourself

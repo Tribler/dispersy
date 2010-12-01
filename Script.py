@@ -2,7 +2,6 @@
 Run some python code, usually to test one or more features.
 """
 
-import socket
 import hashlib
 import types
 from struct import pack, unpack_from
@@ -116,14 +115,6 @@ class DispersyScript(ScriptBase):
     def run(self):
         self.caller(self.last_1_test)
         self.caller(self.last_9_test)
-        self.caller(self.double_signed_timeout)
-        self.caller(self.double_signed_response)
-        self.caller(self.triple_signed_timeout)
-        self.caller(self.triple_signed_response)
-        self.caller(self.similarity_check_incoming_packets)
-        self.caller(self.similarity_fullsync)
-        self.caller(self.similarity_lastsync)
-        self.caller(self.similarity_missing_sim)
 
     def last_1_test(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
@@ -247,6 +238,13 @@ class DispersyScript(ScriptBase):
 
         dprint("finished")
 
+class DispersySignatureScript(ScriptBase):
+    def run(self):
+        self.caller(self.double_signed_timeout)
+        self.caller(self.double_signed_response)
+        self.caller(self.triple_signed_timeout)
+        self.caller(self.triple_signed_response)
+
     def double_signed_timeout(self):
         community = DebugCommunity.create_community(self._discovery.my_member)
         address = self._dispersy.socket.get_address()
@@ -265,6 +263,7 @@ class DispersyScript(ScriptBase):
             assert response is None
             container["timeout"] += 1
         request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        yield 0.1
 
         # receive dispersy-signature-request message
         _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
@@ -296,6 +295,7 @@ class DispersyScript(ScriptBase):
             container["response"] += 1
             container["signature"] = response.payload.signature
         request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        yield 0.1
 
         # receive dispersy-signature-request message
         address, message = node.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
@@ -341,6 +341,7 @@ class DispersyScript(ScriptBase):
             assert response is None
             container["timeout"] += 1
         request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
+        yield 0.1
 
         # receive dispersy-signature-request message
         _, message = node1.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
@@ -412,6 +413,13 @@ class DispersyScript(ScriptBase):
         assert container["signature"] == [signature1, signature2], container["signature"]
         dprint("finished")
 
+class DispersySimilarityScript(ScriptBase):
+    def run(self):
+        # self.caller(self.similarity_check_incoming_packets)
+        self.caller(self.similarity_fullsync)
+        self.caller(self.similarity_lastsync)
+        self.caller(self.similarity_missing_sim)
+
     def similarity_check_incoming_packets(self):
         """
         Check functionallity of accepting or rejecting
@@ -455,7 +463,7 @@ class DispersyScript(ScriptBase):
 
         with self._dispersy.database as execute:
             d, = execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(str(msg_blob)),)).next()
-            assert d == 1
+            assert d == 1, d
 
         ##
         ## Not Similar Nodes
@@ -525,12 +533,14 @@ class DispersyScript(ScriptBase):
 
         # node-01 creates and sends a message to 'self'
         node.send_message(node.create_taste_aware_message(5, 1, 1), address)
+        yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
 
+        # should receive a message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
 
         ##
@@ -550,6 +560,7 @@ class DispersyScript(ScriptBase):
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
 
+        # should receive a message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
 
         ##
@@ -568,14 +579,13 @@ class DispersyScript(ScriptBase):
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
-        
-        # receive a message
+
+        # should NOT receive a message
         try:
             _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
-        except socket.timeout:
+            assert False
+        except:
             pass
-        else:
-            raise Exception("Message received error")
 
         yield 1.0
         ##
@@ -595,13 +605,12 @@ class DispersyScript(ScriptBase):
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
         
-        # receive a message
+        # should NOT receive a message
         try:
             _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
-        except socket.timeout:
+            assert False
+        except:
             pass
-        else:
-            raise Exception("Message received error")
 
         dprint("finished")
 
@@ -683,10 +692,11 @@ class DispersyScript(ScriptBase):
         # receive a message
         try:
             _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record-last"])
-        except socket.timeout:
-            dprint("finished")
-        else:
-            raise Exception("Message received error")
+            assert False
+        except:
+            pass
+
+        dprint("finished")
 
     def similarity_missing_sim(self):
         from Bloomfilter import BloomFilter

@@ -2,7 +2,7 @@ import socket
 
 from Authentication import NoAuthentication
 from Bloomfilter import BloomFilter
-from Crypto import rsa_generate_key, rsa_to_public_pem, rsa_to_private_pem
+from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 from Destination import CommunityDestination, AddressDestination
 from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from Member import MyMember, Member
@@ -34,7 +34,8 @@ class Node(object):
         if not port in Node._socket_pool:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
-            s.setblocking(True)
+            s.setblocking(False)
+            s.settimeout(0.0)
             while True:
                 try:
                     s.bind(("localhost", port))
@@ -56,17 +57,18 @@ class Node(object):
     def my_member(self):
         return self._my_member
 
-    def init_my_member(self, bits=512, sync_with_database=False, routing=True, identity=True):
+    def init_my_member(self, bits=None, sync_with_database=None, routing=True, identity=True):
         class DebugPrivateMember(PrivateMember):
             @property
             def database_id(self):
                 return Member.get_instance(self.pem).database_id
 
-        assert not sync_with_database, "The parameter sync_with_database is depricated and must be False"
+        assert bits is None, "The parameter bits is depricated and must be None"
+        assert sync_with_database is None, "The parameter sync_with_database is depricated and must be None"
 
         # specifically do NOT use PrivateMember.get_instance(...) here!
-        rsa = rsa_generate_key(bits)
-        self._my_member = DebugPrivateMember(rsa_to_public_pem(rsa), rsa_to_private_pem(rsa), sync_with_database=False)
+        ec = ec_generate_key("low")
+        self._my_member = DebugPrivateMember(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=False)
 
         if routing:
             # update routing information
@@ -108,11 +110,11 @@ class Node(object):
         dprint(message.payload.type, "^", message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
         return self.send_packet(message.packet, address)
 
-    def receive_packet(self, timeout=10.0, addresses=None, packets=None):
-        assert isinstance(timeout, float)
+    def receive_packet(self, timeout=None, addresses=None, packets=None):
+        assert timeout is None, "The parameter TIMEOUT is depricated and must be None"
         assert isinstance(addresses, (type(None), list))
         assert isinstance(packets, (type(None), list))
-        self._socket.settimeout(timeout)
+
         while True:
             try:
                 packet, address = self._socket.recvfrom(10240)
@@ -128,17 +130,18 @@ class Node(object):
             dprint(len(packet), " bytes from ", address[0], ":", address[1])
             return address, packet
         
-    def receive_message(self, timeout=10.0, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
-        assert isinstance(timeout, float)
+    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+        assert timeout is None, "The parameter TIMEOUT is depricated and must be None"
         assert isinstance(addresses, (type(None), list))
         assert isinstance(packets, (type(None), list))
         assert isinstance(message_names, (type(None), list))
         assert isinstance(payload_types, (type(None), list))
         assert isinstance(distributions, (type(None), list))
         assert isinstance(destinations, (type(None), list))
-        self._socket.settimeout(timeout)
+
         while True:
             address, packet = self.receive_packet(timeout, addresses, packets)
+
             try:
                 message = self._community.get_conversion(packet[:22]).decode_message(packet)
             except KeyError:

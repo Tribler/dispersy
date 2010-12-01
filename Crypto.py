@@ -1,31 +1,100 @@
-from random import randint
 from hashlib import sha1, sha224, sha256, sha512, md5
+from math import ceil
+from random import randint
+from struct import pack
 import M2Crypto
+
+# We want to provide a few default curves.  We will change these
+# curves as new become available and old ones to small to provide
+# sufficient security.
+_curves = {"low":M2Crypto.EC.NID_sect233k1,
+           "medium":M2Crypto.EC.NID_sect409k1, 
+           "high":M2Crypto.EC.NID_sect571r1}
 
 def _progress(*args):
     pass
 
-def _uint_to_binary16(value):
+def ec_generate_key(security):
     """
-    Convert a positive integer into 2 bytes in big-endian order.
-    """
-    assert isinstance(value, int), "VALUE has invalid type: %s" % type(value)
-    assert value >= 0, "VALUE has invalid value: %d" % value
-    return chr((value >> 8) & 0xFF) + chr(value & 0xFF)
+    Generate a new Elliptic Curve object with a new public / private
+    key pair.
 
-def _binary16_to_uint(stream, offset=0):
-    """
-    Convert 2 bytes, starting at OFFSET and assuming big-endian order,
-    from STREAM into an unsigned integer.
-    """
-    assert isinstance(stream, bytes), "STREAM has invalid type: %s" % type(stream)
-    assert isinstance(offset, int), "OFFSET has invalid type: %s" % type(offset)
-    assert len(stream) >= offset + 2, "STREAM has invalid length: %d" % len(stream)
-    return ord(stream[offset]) << 8 | ord(stream[offset+1])
+    SECURITY can be 'low', 'medium', or 'high' depending on how secure
+    you need your Elliptic Curve to be.  Currently these values
+    translate into:
+    - low:    NID_sect233k1  ~64 byte signatures
+    - medium: NID_sect409k1 ~108 byte signatures
+    - high:   NID_sect571k1 ~151 byte signatures
 
-def rsa_generate_key(bits=1024, exponent=5, progress=None):
+    Note that the NID must always be 160 bits or more, otherwise it
+    will not be able to sign a sha1 digest.
     """
-    Generate a new RSA public / private key pair.
+    assert security in _curves
+    ec = M2Crypto.EC.gen_params(_curves[security])
+    ec.gen_key()
+    return ec
+
+def ec_to_private_pem(ec, cipher="aes_128_cbc", password=None):
+    """
+    Get the private key in PEM format.
+    """
+    def get_password(*args):
+        return password or "-empty-"
+    bio = M2Crypto.BIO.MemoryBuffer()
+    ec.save_key_bio(bio, cipher, get_password)
+    return bio.read_all()
+
+def ec_to_public_pem(ec):
+    """
+    Get the public key in PEM format.
+    """
+    bio = M2Crypto.BIO.MemoryBuffer()
+    ec.save_pub_key_bio(bio)
+    return bio.read_all()
+
+def ec_from_private_pem(pem, password=None):
+    """
+    Get the EC from a private PEM.
+    """
+    def get_password(*args):
+        return password or "-empty-"
+    return M2Crypto.EC.load_key_bio(M2Crypto.BIO.MemoryBuffer(pem), get_password)
+
+def ec_from_public_pem(pem):
+    """
+    Get the EC from a public PEM.
+    """
+    return M2Crypto.EC.load_pub_key_bio(M2Crypto.BIO.MemoryBuffer(pem))
+
+def ec_signature_length(ec):
+    """
+    Returns the length, in bytes, of each signature made using EC.
+    """
+    return int(ceil(len(ec) / 8.0)) * 2
+
+def ec_sign(ec, digest):
+    """
+    Returns the signature of DIGEST made using EC.
+    """
+    length = int(ceil(len(ec) / 8.0))
+    r, s = ec.sign_dsa(digest)
+    return "\x00" * (length - len(r) + 4) + r[4:] + "\x00" * (length - len(s) + 4) + s[4:]
+
+def ec_verify(ec, digest, signature):
+    """
+    Returns True when SIGNATURE matches the DIGEST made using EC.
+    """
+    assert len(signature) == ec_signature_length(ec)
+    length = len(signature) / 2
+    prefix = pack("!L", length)
+    try:
+        return bool(ec.verify_dsa(digest, prefix + signature[:length], prefix + signature[length:]))
+    except:
+        return False
+
+def rsa_generate_key(bits=1024, exponent=5, progress=_progress):
+    """
+    Generate a new RSA object with a new public / private key pair.
 
     Note: with RSA it is dangerous to use a small exponent to encrypt
     the same message to multiple recipients, as this can lead to an
@@ -34,13 +103,13 @@ def rsa_generate_key(bits=1024, exponent=5, progress=None):
     assert isinstance(bits, (int, long))
     assert bits % 8 == 0
     assert isinstance(exponent, int)
-    assert progress is None or callable(progress)
+    assert hasattr("__call__", progress)
     # assert bits >= 512, "Need at least 512 bits to sign sha1 message digests"
-    return M2Crypto.RSA.gen_key(bits, exponent, progress or _progress)
+    return M2Crypto.RSA.gen_key(bits, exponent, progress)
 
 def rsa_to_private_pem(rsa, cipher="aes_128_cbc", password=None):
     """
-    Get the private key in binary format from RSA.
+    Get the private key in PEM format.
     """
     assert isinstance(rsa, M2Crypto.RSA.RSA)
     assert password is None or isinstance(password, str)
@@ -55,16 +124,7 @@ def rsa_to_private_bin(rsa, cipher="aes_128_cbc", password=None):
     lines = pem.split("\n")
     return "".join(lines[4:-2]).decode("BASE64")
 
-# def rsa_to_private_der(rsa):
-#     """
-#     Get the private key in binary format from RSA.
-#     """
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     bio = M2Crypto.BIO.MemoryBuffer()
-#     rsa.save_key_der_bio(bio)
-#     return bio.read_all()
-
-def rsa_to_public_pem(rsa, cipher="aes_128_cbc", password=None):
+def rsa_to_public_pem(rsa):
     """
     Get the public key in binary format from RSA.
 
@@ -73,7 +133,6 @@ def rsa_to_public_pem(rsa, cipher="aes_128_cbc", password=None):
     # therefore ignored.
     """
     assert isinstance(rsa, M2Crypto.RSA.RSA)
-    assert password is None or isinstance(password, str)
     bio = M2Crypto.BIO.MemoryBuffer()
     rsa.save_pub_key_bio(bio)
     return bio.read_all()
@@ -100,200 +159,189 @@ def rsa_from_public_pem(pem):
     assert isinstance(pem, str)
     return M2Crypto.RSA.load_pub_key_bio(M2Crypto.BIO.MemoryBuffer(pem))
 
-def rsa_encrypt(rsa, data):
-    """
-    RSA can only encrypt data that is the same length as it has bits.
-    This function adds padding and encypts longer DATA in multiple
-    passes.
-
-    Resulting encrypted data will contain, in sequence, two bytes
-    indicating len(DATA), followed by DATA, followed by random
-    padding.
-    """
-    # TODO: use standard!
-    assert isinstance(rsa, M2Crypto.RSA.RSA)
-    assert len(rsa) % 8 == 0
-    assert isinstance(data, str)
-    assert len(data) < 2 ** 16
-    chunk_length = len(rsa) / 8
-    data = _uint_to_binary16(len(data)) + data + "".join((chr(randint(0, 255)) for _ in xrange(chunk_length - len(data) % chunk_length - 2)))
-    return "".join((rsa.private_encrypt(data[offset:offset+chunk_length], M2Crypto.RSA.no_padding) for offset in xrange(0, len(data), chunk_length)))
-
-def rsa_decrypt(rsa, data):
-    """
-    RSA can only encrypt data that is the same length as it has bits.
-    This function removes padding and decypts longer DATA in multiple
-    passes.
-    """
-    # TODO: use standard!
-    assert isinstance(rsa, M2Crypto.RSA.RSA)
-    assert len(rsa) % 8 == 0
-    assert isinstance(data, str)
-    chunk_length = len(rsa) / 8
-    data = "".join((rsa.public_decrypt(data[offset:offset+chunk_length], M2Crypto.RSA.no_padding) for offset in xrange(0, len(data), chunk_length)))
-    return data[2:_binary16_to_uint(data)+2]
-
-# def choose_digest_method(rsa):
-#     """
-#     returns a hashlib digest method and its corresponding name.
-
-#     When signing, the message (or digest) that is signed must always
-#     be 11 bytes smaller than the RSA key.  11 bytes is the minimal
-#     amount of bytes required for the header / padding.
-
-#     Possible return values are:
-#     - (hashlib.sha1, 'sha1')
-#     - (hashlib.sha224, 'sha224')
-#     - (hashlib.sha256, 'sha256')
-#     - (hashlib.sha512, 'sha512')
-#     """
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     assert len(rsa) % 8 == 0
-#     length = len(rsa) / 8
-#     if length > 64 + 25: return (sha512, "sha512")
-#     if length > 32 + 25: return (sha256, "sha256")
-#     if length > 28 + 25: return (sha224, "sha224")
-#     if length > 20 + 25: return (sha1, "sha1")
-#     raise ValueError("This data length can not be signed using a RSA key with this length")
-
 if __name__ == "__main__":
-    bits = 1024
-    exponent = 5
-    rsa = rsa_generate_key(bits, exponent)
-    public_pem = rsa_to_public_pem(rsa)
-    public_bin = rsa_to_public_bin(rsa)
-    private_pem = rsa_to_private_pem(rsa)
-    private_bin = rsa_to_private_bin(rsa)
+    import math
+    ec = ec_generate_key("high")
+    length = int(math.ceil(len(ec) / 8.0)) * 2
+    print "Len:", len(ec), "-->", length
+    print ec_to_private_pem(ec)
+    print ec_to_public_pem(ec)
 
-    print "Generating public / private key pair"
-    print "Bits:", bits
-    print "Exponent:", exponent
-    print "SHA1(pub-pem).HEX:", len(public_pem), sha1(public_pem).digest().encode("HEX")
-    print "SHA1(pub-str).HEX:", len(public_bin), sha1(public_bin).digest().encode("HEX")
-    print "SHA1(prv-pem).HEX:", len(private_pem), sha1(private_pem).digest().encode("HEX")
-    print "SHA1(prv-str).HEX:", len(private_bin), sha1(private_bin).digest().encode("HEX")
-    print public_pem
-    print private_pem
+    # for i in xrange(100000):
+    #     digest = sha1(str(i)).digest()
+    #     sig = ec_sign(ec, digest)
+    #     assert ec_verify(ec, digest, sig)
 
-    data = "Hello World! " * 1000
-    digest = sha1(data).digest()
-    sig = rsa.sign(digest)
-    assert rsa.verify(digest, sig)
-    print "Verify = OK"
-    print
+    # lengths_r = {}
+    # lengths_s = {}
+    # for i in xrange(100):
+    #     digest = sha1(str(i)).digest()
+    #     # a = len(ec.sign_dsa_asn1(digest))
+    #     # if a in lengths:
+    #     #     lengths[a] += 1
+    #     # else:
+    #     #     lengths[a] = 1
 
-    # # smallest sha1 (20 bytes)
-    # bits = 20 * 8
-    # rsa = rsa_generate_key(bits, 5)
+    # # for i, j in lengths.items():
+    # #     print "Len:", i, "x", j, "times"
+
+    #     r, s = ec.sign_dsa(digest)
+    #     r = len(r)
+    #     if r in lengths_r:
+    #         lengths_r[r] += 1
+    #     else:
+    #         lengths_r[r] = 1
+
+    #     s = len(s)
+    #     if s in lengths_s:
+    #         lengths_s[s] += 1
+    #     else:
+    #         lengths_s[s] = 1
+
+    # for i, j in lengths_r.items():
+    #     print "Len r:", i, "x", j, "times"
+    # for i, j in lengths_s.items():
+    #     print "Len s:", i, "x", j, "times"
+
+
+
+    # bits = 1024
+    # exponent = 5
+    # rsa = rsa_generate_key(bits, exponent)
+    # public_pem = rsa_to_public_pem(rsa)
+    # public_bin = rsa_to_public_bin(rsa)
+    # private_pem = rsa_to_private_pem(rsa)
+    # private_bin = rsa_to_private_bin(rsa)
+
+    # print "Generating public / private key pair"
+    # print "Bits:", bits
+    # print "Exponent:", exponent
+    # print "SHA1(pub-pem).HEX:", len(public_pem), sha1(public_pem).digest().encode("HEX")
+    # print "SHA1(pub-str).HEX:", len(public_bin), sha1(public_bin).digest().encode("HEX")
+    # print "SHA1(prv-pem).HEX:", len(private_pem), sha1(private_pem).digest().encode("HEX")
+    # print "SHA1(prv-str).HEX:", len(private_bin), sha1(private_bin).digest().encode("HEX")
+    # print public_pem
+    # print private_pem
+
+    # data = "Hello World! " * 1000
     # digest = sha1(data).digest()
-    # sig = ""
-    # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
-    
-    # # smallest md5 (16 bytes)
-    # bits = 16 * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # digest = md5(data).digest()
-    # sig = ""
-    # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
+    # sig = rsa.sign(digest)
+    # assert rsa.verify(digest, sig)
+    # print "Verify = OK"
+    # print
 
-    # # record with md5 signature: users are identified by 20 bytes.
-    # # the 16 byte signature is added, and the FROM USER is removed on
-    # # the wire
+    # # # smallest sha1 (20 bytes)
+    # # bits = 20 * 8
+    # # rsa = rsa_generate_key(bits, 5)
+    # # digest = sha1(data).digest()
+    # # sig = ""
+    # # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
+    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
+    
+    # # # smallest md5 (16 bytes)
+    # # bits = 16 * 8
+    # # rsa = rsa_generate_key(bits, 5)
+    # # digest = md5(data).digest()
+    # # sig = ""
+    # # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
+    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
+
+    # # # record with md5 signature: users are identified by 20 bytes.
+    # # # the 16 byte signature is added, and the FROM USER is removed on
+    # # # the wire
+    # # from struct import pack
+    # # uid_length = 20
+    # # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
+    # # bits = 16 * 8
+    # # rsa = rsa_generate_key(bits, 5)
+    # # digest = md5(record).digest()
+    # # enc = record[uid_length:] + rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
+    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "ENC:", len(enc)
+    
+
     # from struct import pack
     # uid_length = 20
     # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
     # bits = 16 * 8
     # rsa = rsa_generate_key(bits, 5)
-    # digest = md5(record).digest()
-    # enc = record[uid_length:] + rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "ENC:", len(enc)
+    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
+    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
+    # msg = record + sig
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+
+    # from struct import pack
+    # uid_length = 5
+    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
+    # bits = 16 * 8
+    # rsa = rsa_generate_key(bits, 5)
+    # # todo: sometimes crashes: M2Crypto.RSA.RSAError: data too large for modulus
+    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
+    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
+    # msg = record + sig
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+
+    # from struct import pack
+    # uid_length = 4
+    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
+    # bits = 16 * 8
+    # rsa = rsa_generate_key(bits, 5)
+    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
+    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
+    # msg = record + sig
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+
+    # # encrypted record: users are identified by 20 bytes.  this
+    # # results in a 416 bits rsa key
+    # uid_length = 20
+    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
+    # bits = len(record) * 8
+    # rsa = rsa_generate_key(bits, 5)
+    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
+    # msg = ("A" * uid_length) + enc
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
     
+    # # encrypted record: users are identified by 4 bytes.  this results
+    # # in a 160 bits rsa key
+    # uid_length = 5
+    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
+    # bits = len(record) * 8
+    # rsa = rsa_generate_key(bits, 5)
+    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
+    # msg = ("A" * uid_length) + enc
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
 
-    from struct import pack
-    uid_length = 20
-    record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    bits = 16 * 8
-    rsa = rsa_generate_key(bits, 5)
-    sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    msg = record + sig
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+    # # encrypted record: users are identified by 4 bytes.  this results
+    # # in a 160 bits rsa key
+    # uid_length = 4
+    # record = ("A" * uid_length) + ("B" * uid_length) + ("T" * 8) + ("U" * 4) + ("D" * 4)
+    # bits = len(record) * 8
+    # rsa = rsa_generate_key(bits, 5)
+    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
+    # msg = ("A" * uid_length) + enc
+    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
 
-    from struct import pack
-    uid_length = 5
-    record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    bits = 16 * 8
-    rsa = rsa_generate_key(bits, 5)
-    # todo: sometimes crashes: M2Crypto.RSA.RSAError: data too large for modulus
-    sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    msg = record + sig
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+    # print
 
-    from struct import pack
-    uid_length = 4
-    record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    bits = 16 * 8
-    rsa = rsa_generate_key(bits, 5)
-    sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    msg = record + sig
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+    # #
+    # # EC
+    # #
 
-    # encrypted record: users are identified by 20 bytes.  this
-    # results in a 416 bits rsa key
-    uid_length = 20
-    record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    bits = len(record) * 8
-    rsa = rsa_generate_key(bits, 5)
-    enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    msg = ("A" * uid_length) + enc
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-    
-    # encrypted record: users are identified by 4 bytes.  this results
-    # in a 160 bits rsa key
-    uid_length = 5
-    record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    bits = len(record) * 8
-    rsa = rsa_generate_key(bits, 5)
-    enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    msg = ("A" * uid_length) + enc
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+    # # def ec_to_private_bin(rsa, cipher="aes_128_cbc", password=None):
+    # #     pem = rsa_to_private_pem(rsa, cipher, password)
+    # #     lines = pem.split("\n")
+    # #     return "".join(lines[4:-2]).decode("BASE64")
 
-    # encrypted record: users are identified by 4 bytes.  this results
-    # in a 160 bits rsa key
-    uid_length = 4
-    record = ("A" * uid_length) + ("B" * uid_length) + ("T" * 8) + ("U" * 4) + ("D" * 4)
-    bits = len(record) * 8
-    rsa = rsa_generate_key(bits, 5)
-    enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    msg = ("A" * uid_length) + enc
-    print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
+    # from M2Crypto import EC
+    # record = "A" * 20
+    # for attr in dir(EC):
+    #     if attr.startswith("NID_"):
+    #         nid = getattr(EC, attr)
 
-    print
-
-    #
-    # EC
-    #
-
-    # def ec_to_private_bin(rsa, cipher="aes_128_cbc", password=None):
-    #     pem = rsa_to_private_pem(rsa, cipher, password)
-    #     lines = pem.split("\n")
-    #     return "".join(lines[4:-2]).decode("BASE64")
-
-    from M2Crypto import EC
-    record = "A" * 20
-    for attr in dir(EC):
-        if attr.startswith("NID_"):
-            nid = getattr(EC, attr)
-
-            # ec = EC.gen_params(EC.NID_sect233k1)
-            ec = EC.gen_params(nid)
-            ec.gen_key()
-            try:
-                sig = ec.sign_dsa_asn1(record)
-                print "SIG:", len(sig), "B64:", len(sig.encode("BASE64")), "NID:", attr
-            except Exception as e:
-                print "SIG: --", "NID:", attr, e
+    #         # ec = EC.gen_params(EC.NID_sect233k1)
+    #         ec = EC.gen_params(nid)
+    #         ec.gen_key()
+    #         try:
+    #             sig = ec.sign_dsa_asn1(record)
+    #             print "SIG:", len(sig), "B64:", len(sig.encode("BASE64")), "NID:", attr
+    #         except Exception as e:
+    #             print "SIG: --", "NID:", attr, e
