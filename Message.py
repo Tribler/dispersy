@@ -1,6 +1,4 @@
 from Meta import MetaObject
-from Payload import Permit
-from Payload import IdentityRequestPayload, MissingSequencePayload, SimilarityRequestPayload
 
 #
 # Exceptions
@@ -55,7 +53,7 @@ class DelayPacketByMissingMember(DelayPacket):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(community._timeline.global_time),
                                  meta.destination.implement(),
-                                 IdentityRequestPayload(missing_member_id))
+                                 meta.payload.implement(missing_member_id))
 
         super(DelayPacketByMissingMember, self).__init__("Missing member", footprint, message.encode())
 
@@ -86,7 +84,7 @@ class DelayPacketBySimilarity(DelayPacket):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(community._timeline.global_time),
                                  meta.destination.implement(),
-                                 IdentityRequestPayload(member.mid))
+                                 meta.payload.implement(member.mid))
 
         super(DelayPacketBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
 
@@ -150,7 +148,7 @@ class DelayMessageBySequence(DelayMessage):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(message.community._timeline.global_time),
                                  meta.destination.implement(),
-                                 MissingSequencePayload(message.authentication.member, message.meta, missing_low, missing_high))
+                                 meta.payload.implement(message.authentication.member, message.meta, missing_low, missing_high))
 
         super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.encode())
 
@@ -177,7 +175,7 @@ class DelayMessageBySimilarity(DelayMessage):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(message.community._timeline.global_time),
                                  meta.destination.implement(),
-                                 SimilarityRequestPayload(cluster, [message.authentication.member]))
+                                 meta.payload.implement(cluster, [message.authentication.member]))
 
         super(DelayMessageBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
 
@@ -210,18 +208,15 @@ class DropMessageByProof(DropMessage):
 # message
 #
 class Message(MetaObject):
-    class Implementation(MetaObject.Implementation, Permit):
+    class Implementation(MetaObject.Implementation):
         def __init__(self, meta, authentication, distribution, destination, payload):
             if __debug__:
-                from Authentication import Authentication
-                from Destination import Destination
-                from Distribution import Distribution
-                from Payload import Authorize, Revoke
+                from Payload import Payload
             assert isinstance(meta, Message), "META has invalid type '{0}'".format(type(meta))
-            assert isinstance(authentication, Authentication.Implementation), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
-            assert isinstance(distribution, Distribution.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
-            assert isinstance(destination, Destination.Implementation), "DESTINATION has invalid type '{0}'".format(type(destination))
-            assert isinstance(payload, (Permit, Authorize, Revoke)), "PAYLOAD has invalid type '{0}'".format(type(payload))
+            assert isinstance(authentication, meta._authentication.Implementation), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
+            assert isinstance(distribution, meta._distribution.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
+            assert isinstance(destination, meta._destination.Implementation), "DESTINATION has invalid type '{0}'".format(type(destination))
+            assert isinstance(payload, meta._payload.Implementation), "PAYLOAD has invalid type '{0}'".format(type(payload))
             super(Message.Implementation, self).__init__(meta)
             self._authentication = authentication
             self._distribution = distribution
@@ -238,10 +233,6 @@ class Message(MetaObject):
             return self._meta._name
 
         @property
-        def database_id(self):
-            return self._meta._database_id
-
-        @property
         def resolution(self):
             return self._meta._resolution
 
@@ -256,7 +247,7 @@ class Message(MetaObject):
         @property
         def destination(self):
             return self._destination
-        
+
         @property
         def payload(self):
             return self._payload
@@ -275,7 +266,8 @@ class Message(MetaObject):
             assert isinstance(self._authentication.footprint, str)
             assert isinstance(self._distribution.footprint, str)
             assert isinstance(self._destination.footprint, str)
-            return "".join((self._meta._name.encode("UTF-8"), " Community:", self._meta._community.cid.encode("HEX"), " ", self._authentication.footprint, " ", self._distribution.footprint, " ", self._destination.footprint))
+            assert isinstance(self._payload.footprint, str)
+            return "".join((self._meta._name.encode("UTF-8"), " Community:", self._meta._community.cid.encode("HEX"), " ", self._authentication.footprint, " ", self._distribution.footprint, " ", self._destination.footprint, " ", self._payload.footprint))
 
         def encode(self, prefix=None):
             """
@@ -286,19 +278,21 @@ class Message(MetaObject):
         def __str__(self):
             return "<{0.meta.__class__.__name__}.{0.__class__.__name__} {0.name} {1}>".format(self, len(self._packet))
 
-    def __init__(self, community, name, authentication, resolution, distribution, destination):
+    def __init__(self, community, name, authentication, resolution, distribution, destination, payload):
         if __debug__:
             from Community import Community
             from Authentication import Authentication
             from Resolution import Resolution
             from Destination import Destination
             from Distribution import Distribution
+            from Payload import Payload
         assert isinstance(community, Community), "COMMUNITY has invalid type '{0}'".format(type(community))
         assert isinstance(name, unicode), "NAME has invalid type '{0}'".format(type(name))
         assert isinstance(authentication, Authentication), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
         assert isinstance(resolution, Resolution), "RESOLUTION has invalid type '{0}'".format(type(resolution))
         assert isinstance(distribution, Distribution), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
         assert isinstance(destination, Destination), "DESTINATION has invalid type '{0}'".format(type(destination))
+        assert isinstance(payload, Payload), "PAYLOAD has invalid type '{0}'".format(type(payload))
         assert self.check_policy_combination(authentication.__class__, resolution.__class__, distribution.__class__, destination.__class__)
         self._community = community
         self._name = name
@@ -306,6 +300,7 @@ class Message(MetaObject):
         self._resolution = resolution
         self._distribution = distribution
         self._destination = destination
+        self._payload = payload
 
     @property
     def community(self):
@@ -331,15 +326,21 @@ class Message(MetaObject):
     def destination(self):
         return self._destination
 
-    def generate_footprint(self, authentication=(), distribution=(), destination=()):
+    @property
+    def payload(self):
+        return self._payload
+
+    def generate_footprint(self, authentication=(), distribution=(), destination=(), payload=()):
         assert isinstance(authentication, tuple)
         assert isinstance(distribution, tuple)
         assert isinstance(destination, tuple)
+        assert isinstance(payload, tuple)
         return "".join((self._name.encode("UTF-8"),
                         " Community:", self._community.cid.encode("HEX"),
                         " ", self._authentication.generate_footprint(*authentication),
                         " ", self._distribution.generate_footprint(*distribution),
-                        " ", self._destination.generate_footprint(*destination)))
+                        " ", self._destination.generate_footprint(*destination),
+                        " ", self._payload.generate_footprint(*payload)))
 
     def __str__(self):
         return "<{0.__class__.__name__} {0.name}>".format(self)
@@ -404,7 +405,7 @@ class Message(MetaObject):
             require(distribution, destination, (CommunityDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__name__} is not supported".format(distribution))
-        
+
         if issubclass(destination, AddressDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))

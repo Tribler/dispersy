@@ -45,7 +45,7 @@ class Community(object):
 
         Returns the created community.
         """
-        assert isinstance(my_member, MyMember)
+        assert isinstance(my_member, MyMember), my_member
 
         # master key and community id
         ec = ec_generate_key("high")
@@ -496,14 +496,15 @@ class Community(object):
         request = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(self._timeline.global_time),
                                  meta.destination.implement(*members),
-                                 message)
+                                 meta.payload.implement(message))
 
         if store_and_forward:
             self._dispersy.store_and_forward([request])
 
         # set callback and timeout
-        # self._dispersy.await_response(request, self.on_signature_response, timeout, response_func)
-        footprint = self.get_meta_message(u"dispersy-signature-response").generate_footprint()
+        assert request.packet
+        identifier = sha1(request.packet).digest()
+        footprint = self.get_meta_message(u"dispersy-signature-response").generate_footprint(payload=(identifier,))
         self._dispersy.await_message(footprint, self.on_signature_response, (request, response_func), timeout, len(members))
 
         return request
@@ -577,11 +578,12 @@ class Community(object):
         assert isinstance(name, unicode)
         return self._meta_messages[name]
 
-    def get_meta_messages(self):
-        """
-        Returns all the Message instances available in this Community.
-        """
-        return self._meta_messages.itervalues()
+    # todo: name clash
+    # def get_meta_messages(self):
+    #     """
+    #     Returns all the Message instances available in this Community.
+    #     """
+    #     return self._meta_messages.itervalues()
 
     def get_meta_messages(self):
         """
@@ -589,3 +591,4 @@ class Community(object):
         Community.
         """
         raise NotImplementedError()
+

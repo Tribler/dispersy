@@ -18,16 +18,16 @@ from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 from Destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
 from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
-from Member import MyMember, PrivateMember, MasterMember
+from Member import PrivateMember, MasterMember
 from Message import Message
 from Message import DropPacket, DelayPacket, DelayPacketByMissingMember, DelayPacketBySimilarity
 from Message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
 from Payload import MissingSequencePayload
 from Payload import SyncPayload
-from Payload import SignatureResponsePayload
-from Payload import ResponsePayload, RoutingResponsePayload
+from Payload import SignatureRequestPayload, SignatureResponsePayload
+from Payload import RoutingRequestPayload, RoutingResponsePayload
 from Payload import IdentityPayload, IdentityRequestPayload
-from Payload import SimilarityRequestPayload
+from Payload import SimilarityRequestPayload, SimilarityPayload
 from Resolution import PublicResolution
 from Singleton import Singleton
 
@@ -204,13 +204,47 @@ class TriggerMessage(Trigger):
     def on_timeout(self):
         if self._match:
             self._match = None
-        
+
 class Dispersy(Singleton):
     """
     The Dispersy class provides the interface to all Dispersy related
     commands.  It manages the in- and outgoing data for, possibly,
     multiple communities.
     """
+    def get_meta_messages(self, community):
+        """
+        Returns the Message instances available to Dispersy.
+
+        Each Message has a name prefixed with dispersy, and each
+        Community should support these Messages in order for Dispersy
+        to function properly.
+        """
+        return [Message(community, u"dispersy-routing-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
+                Message(community, u"dispersy-routing-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(cluster=254, history_size=1), CommunityDestination(), IdentityPayload()),
+                Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
+                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(), SyncPayload()),
+                Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
+                Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
+                Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureResponsePayload()),
+                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=253, history_size=1), CommunityDestination(), SimilarityPayload()),
+                Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
+
+    def get_message_handlers(self, community):
+        """
+        Returns the handler methods for the privileges available to
+        Dispersy.
+        """
+        return [(community.get_meta_message(u"dispersy-routing-request"), self.on_routing_request),
+                # (community.get_meta_message(u"dispersy-routing-response"), self.on_general_response),
+                (community.get_meta_message(u"dispersy-identity"), self.on_identity),
+                (community.get_meta_message(u"dispersy-identity-request"), self.on_identity_request),
+                (community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
+                (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence),
+                (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
+                (community.get_meta_message(u"dispersy-signature-response"), self.on_ignore_message),
+                (community.get_meta_message(u"dispersy-similarity"), self.on_similarity_message),
+                (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request)]
 
     def __init__(self, rawserver, working_directory):
         # the raw server
@@ -223,7 +257,7 @@ class Dispersy(Singleton):
 
         # our data storage
         self._database = DispersyDatabase.get_instance(working_directory)
-        
+
         # our external address
         try:
             ip, = self._database.execute(u"SELECT value FROM option WHERE key = 'my_external_ip' LIMIT 1").next()
@@ -243,9 +277,9 @@ class Dispersy(Singleton):
             public_pem = ec_to_public_pem(ec)
             private_pem = ec_to_private_pem(ec)
             self._database.execute(u"INSERT INTO option VALUES('my_public_pem', ?)", (buffer(public_pem),))
-            
+
         # this is yourself
-        self._my_member = MyMember.get_instance(public_pem, private_pem)
+        # self._my_member = MyMember.get_instance(public_pem, private_pem)
 
         # all available communities.  cid:Community pairs.
         self._communities = {}
@@ -278,9 +312,9 @@ class Dispersy(Singleton):
         if self._my_external_address == ("", -1):
             self._my_external_address = socket.get_address()
 
-    @property
-    def my_member(self):
-        return self._my_member
+    # @property
+    # def my_member(self):
+    #     return self._my_member
 
     @property
     def database(self):
@@ -321,7 +355,7 @@ class Dispersy(Singleton):
                                                 message.authentication.member.database_id)).next()
         except StopIteration:
             sequence = 0
-            
+
         # (1) we already have this message (drop)
         if sequence >= message.distribution.sequence_number:
             raise DropMessage("duplicate message")
@@ -402,7 +436,7 @@ class Dispersy(Singleton):
             except DropPacket as exception:
                 dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True)
                 log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
- 
+
             except DelayPacket as delay:
                 if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(packet), " byte packet (", delay, ")")
                 trigger = TriggerPacket(delay.pattern, self.on_incoming_packets, [(address, packet)])
@@ -566,10 +600,10 @@ class Dispersy(Singleton):
                               WHERE community = 0
                               LIMIT 2"""
                     addresses.update([(str(host), port) for host, port in self._database.execute(sql)])
-                
+
                 if __debug__:
                     addresses = [(host, port) for host, port in addresses if not (host == "130.161.158.222" and port == self._my_external_address[1])]
-                
+
                 self._send(addresses, [message.packet])
 
             elif isinstance(message.destination, AddressDestination.Implementation):
@@ -643,41 +677,6 @@ class Dispersy(Singleton):
         self._triggers.append(trigger)
         self._rawserver.add_task(trigger.on_timeout, timeout)
 
-    def get_meta_messages(self, community):
-        """
-        Returns the Message instances available to Dispersy.
-
-        Each Message has a name prefixed with dispersy, and each
-        Community should support these Messages in order for Dispersy
-        to function properly.
-        """
-        return [Message(community, u"dispersy-routing-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-                Message(community, u"dispersy-routing-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(cluster=254, history_size=1), CommunityDestination()),
-                Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination()),
-                Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination()),
-                Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination()),
-                Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination()),
-                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=253, history_size=1), CommunityDestination()),
-                Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination())]
-
-    def get_message_handlers(self, community):
-        """
-        Returns the handler methods for the privileges available to
-        Dispersy.
-        """
-        return [(community.get_meta_message(u"dispersy-routing-request"), self.on_routing_request),
-                # (community.get_meta_message(u"dispersy-routing-response"), self.on_general_response),
-                (community.get_meta_message(u"dispersy-identity"), self.on_identity),
-                (community.get_meta_message(u"dispersy-identity-request"), self.on_identity_request),
-                (community.get_meta_message(u"dispersy-sync"), self.on_sync_message),
-                (community.get_meta_message(u"dispersy-missing-sequence"), self.on_missing_sequence),
-                (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
-                (community.get_meta_message(u"dispersy-signature-response"), self.on_ignore_message),
-                (community.get_meta_message(u"dispersy-similarity"), self.on_similarity_message),
-                (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request)]
-
     def on_sync_message(self, address, message):
         """
         We received a dispersy-sync message.
@@ -690,7 +689,7 @@ class Dispersy(Singleton):
         just sends back data.  So if multiple nodes receive this
         dispersy-sync message they will probably all send the same
         messages back.  So we need to make things smarter!
-        """            
+        """
         if __debug__:
             from Message import Message
         assert isinstance(message, Message.Implementation)
@@ -698,7 +697,7 @@ class Dispersy(Singleton):
         if __debug__: dprint(message)
 
         # 5 kb per sync (or max N packets, see limit in query)
-        limit = self._total_send + 1024 * 5 
+        limit = self._total_send + 1024 * 5
 
         similarity_cache = {}
         bloom_filter = message.payload.bloom_filter
@@ -774,7 +773,7 @@ class Dispersy(Singleton):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(meta.community._timeline.global_time),
                                  meta.destination.implement(address),
-                                 RoutingResponsePayload(self._my_external_address, address))
+                                 meta.payload.implement(self._my_external_address, address))
         self.store_and_forward([message])
 
     def create_identity(self, community, store_and_forward=True):
@@ -793,7 +792,7 @@ class Dispersy(Singleton):
         message = meta.implement(meta.authentication.implement(community.my_member),
                                  meta.distribution.implement(community._timeline.global_time),
                                  meta.destination.implement(),
-                                 IdentityPayload(self._my_external_address))
+                                 meta.payload.implement(self._my_external_address))
         if store_and_forward:
             self.store_and_forward([message])
         return message
@@ -824,7 +823,7 @@ class Dispersy(Singleton):
         message = meta.implement(meta.authentication.implement(),
                                  meta.distribution.implement(),
                                  meta.destination.implement(address),
-                                 IdentityRequestPayload(mid))
+                                 meta.payload.implement(mid))
         if store_and_forward:
             self.store_and_forward(message)
         return message
@@ -855,7 +854,7 @@ class Dispersy(Singleton):
         assert not filter(lambda x: not isinstance(x, str), keywords)
         assert isinstance(update_locally, bool)
         assert isinstance(store_and_forward, bool)
-        
+
         similarity_owner = community.get_meta_message(message)
         meta = community.get_meta_message(u"dispersy-similarity")
 
@@ -869,15 +868,15 @@ class Dispersy(Singleton):
                                 community.my_member.database_id,
                                 similarity_owner.destination.cluster,
                                 buffer(str(similarity))))
-        
+
         similarity = self.regulate_similarity(similarity_owner.destination)
 
         # implement the message
         message = meta.implement(meta.authentication.implement(community.my_member),
                                  meta.distribution.implement(community._timeline.claim_global_time()),
                                  meta.destination.implement(),
-                                 SimilarityPayload(similarity_owner.destination.identifier, similarity))
-        
+                                 meta.payload.implement(similarity_owner.destination.identifier, similarity))
+
         if update_locally:
             assert community._timeline.check(message)
             community.on_message(("", -1), message)
@@ -921,7 +920,7 @@ class Dispersy(Singleton):
         if __debug__:
             from Destination import SimilarityDestination
         assert isinstance(similarity_destination, SimilarityDestination)
-        
+
         minimum_bits = similarity_destination.minimum_bits
         maximum_bits = similarity_destination.maximum_bits
 
@@ -936,7 +935,7 @@ class Dispersy(Singleton):
         # <str> type internally
         similarity = BloomFilter(str(my_similarity), 0)
 
-        # todo: make this into a bloomfilter method 
+        # todo: make this into a bloomfilter method
         # count the 1's
         set_bits = 0
         for c in similarity._bytes.tostring():
@@ -1025,7 +1024,7 @@ class Dispersy(Singleton):
             # the message must be valid
             submsg.community._timeline.check(submsg) and \
             # the community must allow this signature
-            submsg.authentication.allow_signature_func(submsg)): 
+            submsg.authentication.allow_signature_func(submsg)):
 
             if __debug__:
                 has_added_signature = False
@@ -1088,7 +1087,10 @@ class Dispersy(Singleton):
         ignored.  This can happen, for instance, when the message is
         already handled using a trigger set using self.await_message.
         """
-        if __debug__: dprint("Ignored ", message.name, " (will probably be picked up by a Trigger)")
+        if __debug__:
+            i = len([trigger for trigger in self._triggers if trigger._match(message.footprint)])
+            j = len(self._triggers)
+            dprint("Ignored ", message.name, " (matches ", i, "/", j, " triggers)")
 
     def _periodically_disperse(self):
         """
@@ -1106,11 +1108,10 @@ class Dispersy(Singleton):
             messages.append(meta.implement(meta.authentication.implement(community._my_member),
                                            meta.distribution.implement(community._timeline.global_time),
                                            meta.destination.implement(),
-                                           SyncPayload(global_time, bloom_filter)))
+                                           meta.payload.implement(global_time, bloom_filter)))
         self.store_and_forward(messages)
         self._rawserver.add_task(self._periodically_disperse, 10.0)
 
     def _periodically_stats(self):
         log("dispersy.log", "statistics", total_send=self._total_send, total_received=self._total_received)
         self._rawserver.add_task(self._periodically_stats, 1.0)
-        

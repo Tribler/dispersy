@@ -15,16 +15,14 @@ from Destination import CommunityDestination
 from Dispersy import Dispersy
 from DispersyDatabase import DispersyDatabase
 from Distribution import FullSyncDistribution, LastSyncDistribution
-from Member import Member
+from Member import Member, MyMember
 from Message import Message
 from Payload import Permit
 from Print import dprint
 from Resolution import PublicResolution
+from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 
 from DebugCommunity import DebugCommunity, DebugNode
-
-from Tribler.Community.Discovery.Community import DiscoveryCommunity
-from Tribler.Community.Discovery.Database import DiscoveryDatabase
 
 class Script(Singleton):
     class Terminator(object):
@@ -63,7 +61,7 @@ class Script(Singleton):
     def load(self, rawserver, name):
         dprint(name)
         terminator = Script.Terminator(rawserver)
-       
+
         if name == "all":
             for name, (include_with_all, script) in self._scripts.iteritems():
                 if include_with_all:
@@ -87,8 +85,6 @@ class ScriptBase(object):
         self._rawserver = rawserver
         self._dispersy = Dispersy.get_instance()
         self._dispersy_database = DispersyDatabase.get_instance()
-        self._discovery = DiscoveryCommunity.get_instance()
-        self._discovery_database = DiscoveryDatabase.get_instance()
         self.caller(self.run)
 
     def caller(self, run):
@@ -113,14 +109,17 @@ class ScriptBase(object):
 
 class DispersyScript(ScriptBase):
     def run(self):
+        ec = ec_generate_key("low")
+        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+
         self.caller(self.last_1_test)
         self.caller(self.last_9_test)
 
     def last_1_test(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         cluster = community.get_meta_message(u"last-1-test").distribution.cluster
-        
+
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
@@ -173,10 +172,10 @@ class DispersyScript(ScriptBase):
         dprint("finished")
 
     def last_9_test(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         cluster = community.get_meta_message(u"last-1-test").distribution.cluster
-        
+
         # create node and ensure that SELF knows the node address
         node = DebugNode()
         node.init_socket()
@@ -210,7 +209,7 @@ class DispersyScript(ScriptBase):
             times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
             assert len(times) == 9, len(times)
             assert not global_time in times
-            
+
         for global_time in [11, 10, 18, 17, 12, 13, 14, 16, 15]:
             # send a message (duplicate: should be dropped)
             message = node.create_last_9_test_message("wrong content!", global_time)
@@ -240,13 +239,16 @@ class DispersyScript(ScriptBase):
 
 class DispersySignatureScript(ScriptBase):
     def run(self):
+        ec = ec_generate_key("low")
+        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+
         self.caller(self.double_signed_timeout)
         self.caller(self.double_signed_response)
         self.caller(self.triple_signed_timeout)
         self.caller(self.triple_signed_response)
 
     def double_signed_timeout(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
@@ -262,7 +264,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
-        request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        request = community.create_double_signed_text("Accept=<does not reach this point>", Member.get_instance(node.my_member.pem), on_response, 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -276,7 +278,9 @@ class DispersySignatureScript(ScriptBase):
         dprint("finished")
 
     def double_signed_response(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"response":0, "signature":""}
 
@@ -294,7 +298,7 @@ class DispersySignatureScript(ScriptBase):
             assert request.authentication.is_signed
             container["response"] += 1
             container["signature"] = response.payload.signature
-        request = community.create_double_signed_text("Hello World!", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        request = community.create_double_signed_text("Accept=False", Member.get_instance(node.my_member.pem), on_response, 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -317,7 +321,9 @@ class DispersySignatureScript(ScriptBase):
         dprint("finished")
 
     def triple_signed_timeout(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
@@ -355,7 +361,9 @@ class DispersySignatureScript(ScriptBase):
         dprint("finished")
 
     def triple_signed_response(self):
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"response":0, "signature":[]}
 
@@ -415,6 +423,9 @@ class DispersySignatureScript(ScriptBase):
 
 class DispersySimilarityScript(ScriptBase):
     def run(self):
+        ec = ec_generate_key("low")
+        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+
         # self.caller(self.similarity_check_incoming_packets)
         self.caller(self.similarity_fullsync)
         self.caller(self.similarity_lastsync)
@@ -432,7 +443,7 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
@@ -450,7 +461,7 @@ class DispersySimilarityScript(ScriptBase):
         ##
         ## Similar Nodes
         ##
-        
+
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
@@ -461,8 +472,15 @@ class DispersySimilarityScript(ScriptBase):
         node.send_message(msg, address)
         yield 0.1
 
+        dprint(len(msg_blob), "-", len(msg.packet))
+        dprint(msg_blob.encode("HEX"))
+        dprint(msg.packet.encode("HEX"))
+        assert msg_blob == msg.packet
+
+        dprint(msg_blob.encode("HEX"))
+
         with self._dispersy.database as execute:
-            d, = execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(str(msg_blob)),)).next()
+            d, = execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(msg.packet),)).next()
             assert d == 1, d
 
         ##
@@ -492,7 +510,9 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
 
         # setting similarity for self
@@ -518,7 +538,7 @@ class DispersySimilarityScript(ScriptBase):
         ## Similar Nodes Threshold 12 Similarity 14
         ##
         dprint("Testing similar nodes")
-        
+
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
         node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
@@ -604,7 +624,7 @@ class DispersySimilarityScript(ScriptBase):
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
-        
+
         # should NOT receive a message
         try:
             _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
@@ -621,7 +641,9 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
@@ -646,7 +668,7 @@ class DispersySimilarityScript(ScriptBase):
 
         ##
         ## Similar Nodes
-        ## 
+        ##
         dprint("Testing similar nodes")
 
         # create similarity for node-01
@@ -668,13 +690,13 @@ class DispersySimilarityScript(ScriptBase):
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
-        
+
         # receive a message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record-last"])
 
         ##
         ## Not Similar Nodes
-        ## 
+        ##
         dprint("Testing not similar nodes")
 
         # create similarity for node-02
@@ -688,7 +710,7 @@ class DispersySimilarityScript(ScriptBase):
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1
-        
+
         # receive a message
         try:
             _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record-last"])
@@ -705,7 +727,9 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        community = DebugCommunity.create_community(self._discovery.my_member)
+        ec = ec_generate_key("low")
+        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
 
@@ -732,7 +756,7 @@ class DispersySimilarityScript(ScriptBase):
         node2.set_community(community)
         node2.init_my_member()
         yield 0.1
-        
+
         # node-01 creates and sends a message to 'self'
         node.send_message(node.create_taste_aware_message(5, 1, 1), address)
         yield 0.1
@@ -746,13 +770,13 @@ class DispersySimilarityScript(ScriptBase):
         # we should first receive a 'dispersy-similarity-request' message
         # and 'synchronize' e.g. send our similarity
         _, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-similarity-request"])
-        
+
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
         node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
-        yield 0.1      
+        yield 0.1
 
         # receive the taste message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
         assert  message.payload.number == 5
- 
+
         dprint("finished")

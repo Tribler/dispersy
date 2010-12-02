@@ -12,7 +12,7 @@ from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
 from Payload import Permit, Authorize, Revoke
 from Payload import MissingSequencePayload
 from Payload import SyncPayload
-from Payload import SignatureResponsePayload
+from Payload import SignatureRequestPayload, SignatureResponsePayload
 from Payload import RoutingRequestPayload, RoutingResponsePayload
 from Payload import IdentityPayload, IdentityRequestPayload
 from Payload import SimilarityPayload, SimilarityRequestPayload
@@ -175,7 +175,7 @@ class DictionaryConversion(Conversion):
         similarity = payload.get("similarity")
         if not isinstance(similarity, str):
             raise DropPacket("Invalid similarity type")
-        
+
         try:
             bloom_filter = BloomFilter(similarity, 0)
         except ValueError:
@@ -232,8 +232,6 @@ class DictionaryConversion(Conversion):
         container["distribution"] = {"debug-type":"direct-message", "global-time":message.distribution.global_time}
 
     def encode_message(self, message):
-        if __debug__:
-            from Member import PrivateMember
         assert isinstance(message, Message.Implementation)
         assert isinstance(message.signed_by, PrivateMember)
         assert not message.signed_by.private_pem is None
@@ -415,13 +413,13 @@ class BinaryConversion(Conversion):
     #
 
     def _encode_missing_sequence(self, message):
-        assert isinstance(message.payload, MissingSequencePayload)
+        assert isinstance(message.payload, MissingSequencePayload.Implementation)
         payload = message.payload
         assert payload.message.name in self._encode_message_map, payload.message.name
         message_id, _ = self._encode_message_map[payload.message.name]
         return payload.member.mid, message_id, pack("!LL", payload.missing_low, payload.missing_high)
 
-    def _decode_missing_sequence(self, offset, data):
+    def _decode_missing_sequence(self, meta_message, offset, data):
         if len(data) < offset + 29:
             raise DropPacket("Insufficient packet size")
 
@@ -437,21 +435,21 @@ class BinaryConversion(Conversion):
             raise DropPacket("Unrecoverable: ambiguous member")
         member = members[0]
 
-        meta_message, _ = self._decode_message_map.get(data[offset], (None, None))
-        if meta_message is None:
+        missing_meta_message, _ = self._decode_message_map.get(data[offset], (None, None))
+        if missing_meta_message is None:
             raise DropPacket("Invalid message")
         offset += 1
-        
+
         missing_low, missing_high = unpack_from("!LL", data, offset)
         offset += 8
 
-        return offset, MissingSequencePayload(member, meta_message, missing_low, missing_high)
+        return offset, meta_message.payload.implement(member, missing_meta_message, missing_low, missing_high)
 
     def _encode_sync(self, message):
-        assert isinstance(message.payload, SyncPayload)
+        assert isinstance(message.payload, SyncPayload.Implementation)
         return pack("!L", message.payload.global_time), str(message.payload.bloom_filter)
 
-    def _decode_sync(self, offset, data):
+    def _decode_sync(self, meta_message, offset, data):
         if len(data) < offset + 4:
             raise DropPacket("Insufficient packet size")
 
@@ -464,69 +462,75 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid bloom filter")
         offset += len(bloom_filter)
 
-        return offset, SyncPayload(global_time, bloom_filter)
+        return offset, meta_message.payload.implement(global_time, bloom_filter)
 
     def _encode_signature_request(self, message):
-        return self.encode_message(message.payload),
+        assert isinstance(message.payload, SignatureRequestPayload.Implementation)
+        return self.encode_message(message.payload.message),
 
-    def _decode_signature_request(self, offset, data):
-        return len(data), self._decode_message(data[offset:], False)
+    def _decode_signature_request(self, meta_message, offset, data):
+        return len(data), meta_message.payload.implement(self._decode_message(data[offset:], False))
 
     def _encode_signature_response(self, message):
-        return message.payload.request_id, message.payload.signature
+        assert isinstance(message.payload, SignatureResponsePayload.Implementation)
+        return message.payload.identifier, message.payload.signature
 
-    def _decode_signature_response(self, offset, data):
-        return len(data), SignatureResponsePayload(data[offset:offset+20], data[offset+20:])
+    def _decode_signature_response(self, meta_message, offset, data):
+        return len(data), meta_message.payload.implement(data[offset:offset+20], data[offset+20:])
 
     def _encode_routing_request(self, message):
+        assert isinstance(message.payload, RoutingRequestPayload.Implementation)
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
-    def _decode_routing_request(self, offset, data):
+    def _decode_routing_request(self, meta_message, offset, data):
         if len(data) < offset + 12:
             raise DropPacket("Insufficient packet size")
 
         source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
         destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
 
-        return offset + 12, RoutingRequestPayload(source_address, destination_address)
+        return offset + 12, meta_message.payload.implement(source_address, destination_address)
 
     def _encode_routing_response(self, message):
+        assert isinstance(message.payload, RoutingResponsePayload.Implementation)
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
-    def _decode_routing_response(self, offset, data):
+    def _decode_routing_response(self, meta_message, offset, data):
         if len(data) < offset + 12:
             raise DropPacket("Insufficient packet size")
 
         source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
         destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
 
-        return offset + 12, RoutingResponsePayload(source_address, destination_address)
+        return offset + 12, meta_message.payload.implement(source_address, destination_address)
 
     def _encode_identity(self, message):
+        assert isinstance(message.payload, IdentityPayload.Implementation)
         return inet_aton(message.payload.address[0]), pack("!H", message.payload.address[1])
 
-    def _decode_identity(self, offset, data):
+    def _decode_identity(self, meta_message, offset, data):
         if len(data) < offset + 6:
             raise DropPacket("Insufficient packet size")
 
         address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
 
-        return offset + 6, IdentityPayload(address)
+        return offset + 6, meta_message.payload.implement(address)
 
     def _encode_identity_request(self, message):
+        assert isinstance(message.payload, IdentityRequestPayload.Implementation)
         return message.payload.mid,
 
-    def _decode_identity_request(self, offset, data):
+    def _decode_identity_request(self, meta_message, offset, data):
         if len(data) < offset + 20:
             raise DropPacket("Insufficient packet size")
 
-        return offset + 20, IdentityRequestPayload(data[offset:offset+20])
+        return offset + 20, meta_message.payload.implement(data[offset:offset+20])
 
     def _encode_similarity(self, message):
-        assert isinstance(message.payload, SimilarityPayload)
+        assert isinstance(message.payload, SimilarityPayload.Implementation)
         return pack("!B", message.payload.cluster), str(message.payload.similarity)
 
-    def _decode_similarity(self, offset, data):
+    def _decode_similarity(self, meta_message, offset, data):
         if len(data) < offset + 1:
             raise DropPacket("Insufficient packet size")
 
@@ -539,13 +543,13 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid similarity")
         offset += len(similarity)
 
-        return offset, SimilarityPayload(cluster, similarity)
+        return offset, meta_message.payload.implement(cluster, similarity)
 
     def _encode_similarity_request(self, message):
-        assert isinstance(message.payload, SimilarityRequestPayload)
+        assert isinstance(message.payload, SimilarityRequestPayload.Implementation)
         return (pack("!B", message.payload.cluster),) + tuple([member.mid for member in message.payload.members])
 
-    def _decode_similarity_request(self, offset, data):
+    def _decode_similarity_request(self, meta_message, offset, data):
         if len(data) < offset + 21:
             raise DropPacket("Insufficient packet size")
 
@@ -557,7 +561,7 @@ class BinaryConversion(Conversion):
             members.extend(self._community.get_members_from_id(data[offset:offset+20]))
             offset += 20
 
-        return offset, SimilarityRequestPayload(cluster, members)
+        return offset, meta_message.payload.implement(cluster, members)
 
     #
     # Encoding
@@ -576,9 +580,7 @@ class BinaryConversion(Conversion):
         container.append(pack("!Q", message.distribution.global_time))
 
     def encode_message(self, message):
-        if __debug__:
-            from Member import PrivateMember
-        assert isinstance(message, Message.Implementation)
+        assert isinstance(message, Message.Implementation), message
 
         assert message.name in self._encode_message_map, message.name
         message_id, encode_payload_func = self._encode_message_map[message.name]
@@ -608,29 +610,29 @@ class BinaryConversion(Conversion):
         self._encode_distribution_map[type(message.distribution)](container, message)
 
         # Payload
-        if isinstance(message.payload, Permit):
+        if isinstance(message.payload, Permit.Implementation):
             container.append(self._encode_payload_type_map[u"permit"])
-            if __debug__:
-                tup = encode_payload_func(message)
-                assert isinstance(tup, tuple), (type(tup), encode_payload_func)
-                assert not filter(lambda x: not isinstance(x, str), tup)
-                container.extend(tup)
-            else:
-                container.extend(encode_payload_func(message))
+            tup = encode_payload_func(message)
+            assert isinstance(tup, tuple), (type(tup), encode_payload_func)
+            assert not filter(lambda x: not isinstance(x, str), tup)
+            container.extend(tup)
 
-        elif isinstance(message.payload, Authorize):
+        elif isinstance(message.payload, Authorize.Implementation):
             public_key = message.payload.to.pem
             container.extend((self._encode_payload_type_map[message.payload.payload.get_static_type()], pack("H", len(public_key)), public_key))
 
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(message.payload)
 
         # Sign
         if isinstance(message.authentication, NoAuthentication.Implementation):
             message.packet = "".join(container)
+
         elif isinstance(message.authentication, MemberAuthentication.Implementation):
+            assert isinstance(message.authentication.member, PrivateMember)
             data = "".join(container)
             message.packet = data + message.authentication.member.sign(data)
+
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
             data = "".join(container)
             signatures = []
@@ -642,6 +644,7 @@ class BinaryConversion(Conversion):
                 else:
                     signatures.append("\x00" * member.signature_length)
             message.packet = data + "".join(signatures)
+
         else:
             raise NotImplementedError(type(message.authentication))
 
@@ -829,10 +832,14 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid payload type")
         offset += 1
         if payload_type == u"permit":
-            offset, payload = decode_payload_func(offset, data[:first_signature_offset])
+            try:
+                offset, payload = decode_payload_func(meta_message, offset, data[:first_signature_offset])
+            except:
+                dprint(decode_payload_func)
+                raise
             assert isinstance(offset, (int, long))
-            assert isinstance(payload, Permit), type(payload)
-            
+            assert isinstance(payload, Permit.Implementation), type(payload)
+
         elif payload_type == u"authorize":
             authorized_payload = self._decode_payload_type_map.get(data[offset])
             if authorized_payload is None:

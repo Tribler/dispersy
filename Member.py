@@ -228,6 +228,12 @@ if __name__ == "__main__":
     public_member = Member(public_pem, sync_with_database=False)
     private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
 
+    print
+    print public_pem
+    print
+    print private_pem
+    print
+
     data = "Hello World! " * 1000
     sig = private_member.sign(data)
     digest = sha1(data).digest()
