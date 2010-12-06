@@ -52,7 +52,7 @@ class Timeline(object):
         """
         if __debug__:
             from Message import Message
-        assert isinstance(message, Message.Implementation)
+        assert isinstance(message, Message.Implementation), message
 
         # everyone is allowed PublicResolution
         if isinstance(message.resolution, PublicResolution):

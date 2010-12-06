@@ -27,7 +27,7 @@ class Conversion(object):
     different, often more recent, community version.  If also allows
     outgoing messages to be converted to a different, often older,
     community version.
-    """ 
+    """
     def __init__(self, community, version):
         """
         COMMUNITY instance that this conversion belongs to.
@@ -65,7 +65,7 @@ class Conversion(object):
         DATA is a string, where the first 20 bytes indicate the CID,
         the next 2 bytes the on-the-wite VERSION, and the rest forms
         the message payload.
-        
+
         Returns a Message instance.
         """
         assert isinstance(data, str)
@@ -276,7 +276,7 @@ class DictionaryConversion(Conversion):
         if sequence_number <= 0:
             raise DropPacket("Invalid sequence number value {sequence_number}".format(sequence_number=sequence_number))
         return sequence_number
-    
+
     @staticmethod
     def _check_payload_type(payload_type):
         if not isinstance(payload_type, unicode):
@@ -609,6 +609,9 @@ class BinaryConversion(Conversion):
         assert type(message.distribution) in self._encode_distribution_map
         self._encode_distribution_map[type(message.distribution)](container, message)
 
+        if __debug__:
+            dprint(message.name, "          head ", sum(map(len, container)) + 1, " bytes")
+
         # Payload
         if isinstance(message.payload, Permit.Implementation):
             container.append(self._encode_payload_type_map[u"permit"])
@@ -623,6 +626,9 @@ class BinaryConversion(Conversion):
 
         else:
             raise NotImplementedError(message.payload)
+
+        if __debug__:
+            dprint(message.name, "     head+body ", sum(map(len, container)), " bytes")
 
         # Sign
         if isinstance(message.authentication, NoAuthentication.Implementation):
@@ -648,6 +654,9 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError(type(message.authentication))
 
+        if __debug__:
+            dprint(message.name, " head+body+sig ", len(message.packet), " bytes")
+
         # dprint(message.packet.encode("HEX"))
         return message.packet
 
@@ -659,7 +668,7 @@ class BinaryConversion(Conversion):
     def _decode_full_sync_distribution(offset, data, meta_message):
         global_time, sequence_number = unpack_from("!QL", data, offset)
         return offset + 12, meta_message.distribution.implement(global_time, sequence_number)
- 
+
     @staticmethod
     def _decode_last_sync_distribution(offset, data, meta_message):
         global_time, = unpack_from("!Q", data, offset)
@@ -688,7 +697,7 @@ class BinaryConversion(Conversion):
                         return offset, authentication.implement(member, is_signed=True), first_signature_offset
 
                 raise DelayPacketByMissingMember(self._community, member_id)
-            
+
             elif authentication.encoding == "pem":
                 pem_length, = unpack_from("!H", data, offset)
                 offset += 2
@@ -809,7 +818,7 @@ class BinaryConversion(Conversion):
         # authentication
         offset, authentication_impl, first_signature_offset = self._decode_authentication(meta_message.authentication, offset, data)
         if verify_all_signatures and not authentication_impl.is_signed:
-            raise DropPacket("Signature consists of \x00 bytes")
+            raise DropPacket("Signature consists of \\x00 bytes")
 
         # destination
         assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination))

@@ -8,7 +8,7 @@ class Destination(MetaObject):
 
     def generate_footprint(self):
         return "Destination"
-    
+
 # class NoDestination(Destination):
 #     """
 #     The message does not contain any destination.
@@ -105,15 +105,15 @@ class SimilarityDestination(Destination):
         @property
         def threshold(self):
             return self._meta._threshold
-        
+
         @property
         def bic_occurrence(self):
             return self._bic_occurrence
-        
+
         @property
         def is_similar(self):
             return self._bic_occurrence >= self._meta._threshold
-    
+
         @property
         def footprint(self):
             return "SimilarityDestination:" + str(self._meta._cluster)

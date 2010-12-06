@@ -202,38 +202,6 @@ class SignatureRequestPayload(Permit):
         def message(self):
             return self._message
 
-        @property
-        def community(self):
-            return self._message.community
-
-        @property
-        def name(self):
-            return self._message.name
-
-        @property
-        def resolution(self):
-            return self._message.meta.resolution
-
-        @property
-        def authentication(self):
-            return self._message.authentication
-
-        @property
-        def distribution(self):
-            return self._message.distribution
-
-        @property
-        def destination(self):
-            return self._message.destination
-
-        @property
-        def payload(self):
-            return self._message.payload
-
-        @property
-        def packet(self):
-            return self._message.packet
-
 class SignatureResponsePayload(Permit):
     class Implementation(Permit.Implementation):
         def __init__(self, meta, identifier, signature):

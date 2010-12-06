@@ -226,7 +226,7 @@ class Dispersy(Singleton):
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
-                Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureResponsePayload()),
+                Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
                 Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=253, history_size=1), CommunityDestination(), SimilarityPayload()),
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
 
@@ -1000,12 +1000,12 @@ class Dispersy(Singleton):
             from Message import Message
             from Authentication import MultiMemberAuthentication
         assert isinstance(message, Message.Implementation), type(message)
-        assert isinstance(message.payload, Message.Implementation), type(message.payload)
-        assert isinstance(message.payload.authentication, MultiMemberAuthentication.Implementation)
+        assert isinstance(message.payload.message, Message.Implementation), type(message.payload)
+        assert isinstance(message.payload.message.authentication, MultiMemberAuthentication.Implementation)
 
         # submsg contains the message that should receive multiple
         # signatures
-        submsg = message.payload
+        submsg = message.payload.message
 
         has_private_member = False
         for is_signed, member in submsg.authentication.signed_members:
@@ -1019,48 +1019,32 @@ class Dispersy(Singleton):
                 has_private_member = True
                 break
 
-        if (# we must be one of the members that needs to sign
-            has_private_member and \
-            # the message must be valid
-            submsg.community._timeline.check(submsg) and \
-            # the community must allow this signature
-            submsg.authentication.allow_signature_func(submsg)):
-
-            if __debug__:
-                has_added_signature = False
-                origional_packet_length = len(payload.packet)
-
-            # adds one or more signature to the packet
-            first_signature_offset = len(payload.packet) - sum([member.signature_length for member in submsg.members])
-            signature_offset = first_signature_offset
-            for member in submsg.members:
-                if isinstance(member, PrivateMember):
-                    payload.packet = payload.packet[:signature_offset] + \
-                                     member.sign(payload.packet, 0, first_signature_offset) + \
-                                     payload.packet[signature_offset+member.signature_length:]
-                    if __debug__:
-                        has_added_signature = True
-                signature_offset += member.signature_length
-
-            if __debug__:
-                assert has_added_signature
-                assert origional_packet_length == len(payload.packet)
-
-            # if all signatures are set: update_locally
-            # todo:
-            if True:
-                self.on_message(address, payload)
-
-            # send response
-            meta = message.community.get_meta_message(u"dispersy-signature-response")
-            message = meta.implement(meta.authentication.implement(),
-                                     meta.distribution.implement(),
-                                     meta.destination_address(message.authentication.member,),
-                                     message)
-            self.store_and_forward(message)
-
-        else:
+        # we must be one of the members that needs to sign
+        if not has_private_member:
             raise DropMessage("Nothing to sign")
+
+        # the message must be valid
+        if not submsg.community._timeline.check(submsg):
+            raise DropMessage("Doesn't fit timeline")
+
+        # the community must allow this signature
+        if not submsg.authentication.allow_signature_func(submsg):
+            raise DropMessage("We choose not to add our signature")
+
+        # create signature(s) and reply
+        identifier = sha1(message.packet).digest()
+        first_signature_offset = len(submsg.packet) - sum([member.signature_length for member in submsg.authentication.members])
+        for member in submsg.authentication.members:
+            if isinstance(member, PrivateMember):
+                signature = member.sign(submsg.packet, 0, first_signature_offset)
+
+                # send response
+                meta = message.community.get_meta_message(u"dispersy-signature-response")
+                message = meta.implement(meta.authentication.implement(),
+                                         meta.distribution.implement(message.community._timeline.global_time),
+                                         meta.destination.implement(address,),
+                                         meta.payload.implement(identifier, signature))
+                self.store_and_forward([message])
 
     def on_similarity_request(self, address, message):
         """

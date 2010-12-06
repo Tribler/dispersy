@@ -33,6 +33,22 @@ class DebugNode(Node):
                               meta.destination.implement(),
                               meta.payload.implement(text))
 
+    def create_taste_aware_message(self, number, sequence, global_time):
+        assert isinstance(number, (int, long))
+        meta = self._community.get_meta_message(u"taste-aware-record")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(sequence, global_time),
+                              meta.destination.implement(),
+                              meta.payload.implement(number))
+
+    def create_taste_aware_message_last(self, number, global_time):
+        assert isinstance(number, (int, long))
+        meta = self._community.get_meta_message(u"taste-aware-record-last")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              meta.payload.implement(number))
+
 #
 # Conversion
 #

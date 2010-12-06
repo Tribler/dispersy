@@ -71,6 +71,13 @@ class Member(Public, Parameterized1Singleton):
     in the database.  To ensure this, each Member instance must be
     created or retrieved using has_instance or get_instance.
     """
+
+    # This _singleton_instances is very important.  It ensures that
+    # all subclasses of Member use the same dictionary when looking
+    # for a public_pem.  Otherwise each subclass would get its own
+    # _singleton_instances dictionary.
+    _singleton_instances = {}
+
     def __init__(self, public_pem, ec=None, sync_with_database=True):
         """
         Create a new Member instance.  Member instances must be reated

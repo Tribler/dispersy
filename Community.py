@@ -35,12 +35,12 @@ class Community(object):
 
         CLS is a Community subclass.  A new instance of this is
         returned.
-        
+
         MY_MEMBER is a Member that will be granted Permit, Authorize,
         and Revoke for all messages.
-        
+
         *ARGS are passed along to cls.__init__(...).
-        
+
         **KARGS are passed along to cls.__init__(...).
 
         Returns the created community.
@@ -83,7 +83,7 @@ class Community(object):
         """
         Joins an existing community.  Returns a Community subclass
         instance.
-        
+
         TODO: we should probably change MASTER_PEM to require a master
         member instance, or the cid that we want to join.
         """
@@ -147,7 +147,7 @@ class Community(object):
             # <str> type internally
             master_pem = str(master_pem)
             user_pem = str(user_pem)
-           
+
         except StopIteration:
             raise ValueError(u"Community not found in database")
         self._database_id = community_id
@@ -227,7 +227,7 @@ class Community(object):
     @property
     def master_member(self):
         """
-        The community MasterMember instance.  
+        The community MasterMember instance.
         """
         return self._master_member
 
@@ -238,7 +238,7 @@ class Community(object):
         that we create.
         """
         return self._my_member
-        
+
     def get_member(self, public_key):
         """
         Returns a Member instance associated with PUBLIC_KEY.
@@ -283,7 +283,7 @@ class Community(object):
         PREFIX is an optional 22 byte sting.  Where the first 20 bytes
         are the community id and the last 2 bytes are the conversion
         version.
-        
+
         When no PREFIX is given, i.e. PREFIX is None, then the default
         Conversion is returned.  Conversions are assigned to a
         community using add_conversion().
@@ -324,7 +324,7 @@ class Community(object):
 
         PERMISSIONS_PAIRS must be a list or tuple containing (Message,
         Payload) tuples.  Where Message is the meta message for which
-        Member may send Payload. 
+        Member may send Payload.
 
         SIGN_WITH_MASTER must be a boolean.  When True
         self.master_member is used to sign the authorize message.
@@ -404,7 +404,7 @@ class Community(object):
 
         PERMISSIONS_PAIRS must be a list or tuple containing (Message,
         Payload) tuples.  Where Message is the meta message for which
-        Member may send Payload. 
+        Member may send Payload.
 
         SIGN_WITH_MASTER must be a boolean.  When True
         self.master_member is used to sign the revoke message.
@@ -512,11 +512,11 @@ class Community(object):
     def on_signature_response(self, address, response, request, response_func):
         # check for timeout
         if response is None:
-            response_func(address, response, request)
+            response_func(address, response)
 
         else:
             # the multi signed message
-            submsg = request.payload
+            submsg = request.payload.message
 
             first_signature_offset = len(submsg.packet) - sum([member.signature_length for member in submsg.authentication.members])
             body = submsg.packet[:first_signature_offset]
@@ -524,7 +524,7 @@ class Community(object):
             for signature, member in submsg.authentication.signed_members:
                 if not signature and member.verify(body, response.payload.signature):
                     submsg.authentication.set_signature(member, response.payload.signature)
-                    response_func(address, response, request)
+                    response_func(address, submsg)
 
                     # assuming this signature only matches one member,
                     # we can break
