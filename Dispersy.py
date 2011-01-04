@@ -345,6 +345,10 @@ class Dispersy(Singleton):
         return self._communities[cid]
 
     def _check_incoming_full_sync_distribution(self, message):
+
+        # TODO: we are not checking the global time!  No one may send
+        # messages with the same global time.
+
         try:
             sequence, = self._database.execute(u"""SELECT distribution_sequence
                                                    FROM sync
@@ -1093,7 +1097,8 @@ class Dispersy(Singleton):
                                            meta.distribution.implement(community._timeline.global_time),
                                            meta.destination.implement(),
                                            meta.payload.implement(global_time, bloom_filter)))
-        self.store_and_forward(messages)
+        if messages:
+            self.store_and_forward(messages)
         self._rawserver.add_task(self._periodically_disperse, 10.0)
 
     def _periodically_stats(self):
