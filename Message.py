@@ -55,7 +55,7 @@ class DelayPacketByMissingMember(DelayPacket):
                                  meta.destination.implement(),
                                  meta.payload.implement(missing_member_id))
 
-        super(DelayPacketByMissingMember, self).__init__("Missing member", footprint, message.encode())
+        super(DelayPacketByMissingMember, self).__init__("Missing member", footprint, message.packet)
 
 class DelayPacketBySimilarity(DelayPacket):
     """
@@ -86,7 +86,7 @@ class DelayPacketBySimilarity(DelayPacket):
                                  meta.destination.implement(),
                                  meta.payload.implement(member.mid))
 
-        super(DelayPacketBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
+        super(DelayPacketBySimilarity, self).__init__("Missing similarity", footprint, message.packet)
 
 class DropPacket(Exception):
     """
@@ -150,7 +150,7 @@ class DelayMessageBySequence(DelayMessage):
                                  meta.destination.implement(),
                                  meta.payload.implement(message.authentication.member, message.meta, missing_low, missing_high))
 
-        super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.encode())
+        super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.packet)
 
 class DelayMessageBySimilarity(DelayMessage):
     """
@@ -177,7 +177,7 @@ class DelayMessageBySimilarity(DelayMessage):
                                  meta.destination.implement(),
                                  meta.payload.implement(cluster, [message.authentication.member]))
 
-        super(DelayMessageBySimilarity, self).__init__("Missing similarity", footprint, message.encode())
+        super(DelayMessageBySimilarity, self).__init__("Missing similarity", footprint, message.packet)
 
 class DropMessage(Exception):
     """
@@ -209,20 +209,33 @@ class DropMessageByProof(DropMessage):
 #
 class Message(MetaObject):
     class Implementation(MetaObject.Implementation):
-        def __init__(self, meta, authentication, distribution, destination, payload):
+        def __init__(self, meta, authentication, distribution, destination, payload, conversion=None, packet=""):
             if __debug__:
                 from Payload import Payload
+                from Conversion import Conversion
             assert isinstance(meta, Message), "META has invalid type '{0}'".format(type(meta))
             assert isinstance(authentication, meta._authentication.Implementation), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
             assert isinstance(distribution, meta._distribution.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
             assert isinstance(destination, meta._destination.Implementation), "DESTINATION has invalid type '{0}'".format(type(destination))
             assert isinstance(payload, meta._payload.Implementation), "PAYLOAD has invalid type '{0}'".format(type(payload))
+            assert conversion is None or isinstance(conversion, Conversion), "CONVERSION has invalid type '{0}'".format(type(conversion))
+            assert isinstance(packet, str)
             super(Message.Implementation, self).__init__(meta)
             self._authentication = authentication
             self._distribution = distribution
             self._destination = destination
             self._payload = payload
-            self._packet = ""
+            self._footprint = "".join((meta._name.encode("UTF-8"), " Community:", meta._community.cid.encode("HEX"), " ", authentication.footprint, " ", distribution.footprint, " ", destination.footprint, " ", payload.footprint))
+
+            if conversion:
+                self._conversion = conversion
+            else:
+                self._conversion = meta._community.get_conversion()
+
+            if packet:
+                self._packet = packet
+            else:
+                self._packet = self._conversion.encode_message(self)
 
         @property
         def community(self):
@@ -249,6 +262,10 @@ class Message(MetaObject):
             return self._destination
 
         @property
+        def conversion(self):
+            return self._conversion
+
+        @property
         def payload(self):
             return self._payload
 
@@ -256,24 +273,9 @@ class Message(MetaObject):
         def packet(self):
             return self._packet
 
-        @packet.setter
-        def packet(self, packet):
-            assert isinstance(packet, str)
-            self._packet = packet
-
         @property
         def footprint(self):
-            assert isinstance(self._authentication.footprint, str)
-            assert isinstance(self._distribution.footprint, str)
-            assert isinstance(self._destination.footprint, str)
-            assert isinstance(self._payload.footprint, str)
-            return "".join((self._meta._name.encode("UTF-8"), " Community:", self._meta._community.cid.encode("HEX"), " ", self._authentication.footprint, " ", self._distribution.footprint, " ", self._destination.footprint, " ", self._payload.footprint))
-
-        def encode(self, prefix=None):
-            """
-            Shortcut for message.community.get_conversion(prefix).encode_message(message)
-            """
-            return self._meta._community.get_conversion(prefix).encode_message(self)
+            return self._footprint
 
         def __str__(self):
             return "<{0.meta.__class__.__name__}.{0.__class__.__name__} {0.name} {1}>".format(self, len(self._packet))

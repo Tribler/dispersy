@@ -632,12 +632,12 @@ class BinaryConversion(Conversion):
 
         # Sign
         if isinstance(message.authentication, NoAuthentication.Implementation):
-            message.packet = "".join(container)
+            packet = "".join(container)
 
         elif isinstance(message.authentication, MemberAuthentication.Implementation):
             assert isinstance(message.authentication.member, PrivateMember)
             data = "".join(container)
-            message.packet = data + message.authentication.member.sign(data)
+            packet = data + message.authentication.member.sign(data)
 
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
             data = "".join(container)
@@ -649,16 +649,16 @@ class BinaryConversion(Conversion):
                     signatures.append(member.sign(data))
                 else:
                     signatures.append("\x00" * member.signature_length)
-            message.packet = data + "".join(signatures)
+            packet = data + "".join(signatures)
 
         else:
             raise NotImplementedError(type(message.authentication))
 
         if __debug__:
-            dprint(message.name, " head+body+sig ", len(message.packet), " bytes")
+            dprint(message.name, " head+body+sig ", len(packet), " bytes")
 
         # dprint(message.packet.encode("HEX"))
-        return message.packet
+        return packet
 
     #
     # Decoding
@@ -869,9 +869,7 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError()
 
-        message_impl =  meta_message.implement(authentication_impl, distribution_impl, destination_impl, payload)
-        message_impl.packet = data
-        return message_impl
+        return meta_message.implement(authentication_impl, distribution_impl, destination_impl, payload, conversion=self, packet=data)
 
     def decode_message(self, data):
         """
