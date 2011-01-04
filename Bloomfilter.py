@@ -453,11 +453,42 @@ if __debug__:
             pri(a^c, "A XOR C -->  0%", invert=True)
             pri(b^c, "B XOR C --> 50%", invert=True)
 
-        # t1 = ["cake", "lemonade", "kittens", "puppies"]
-        # b1 = BloomFilter(10, 0.8)
-        # map(b1.add, t1)
+    def _test_documentation():
+        alice = ["cake", "lemonade", "kittens", "puppies"]
+        for x in alice:
+            b = BloomFilter(1, 32)
+            b.add(x)
+            dprint(x)
+            dprint(b._bytes.tostring(), binary=1)
 
-        # t2 = ["beer", "booze", "women", "pubs"]
+        bob = ["cake", "lemonade", "beer", "pubs"]
+
+        carol = ["beer", "booze", "women", "pubs"]
+        for x in carol:
+            b = BloomFilter(1, 32)
+            b.add(x)
+            dprint(x)
+            dprint(b._bytes.tostring(), binary=1)
+
+        a = BloomFilter(1, 32)
+        map(a.add, alice)
+        dprint(alice)
+        dprint(a._bytes.tostring(), binary=1)
+
+        b = BloomFilter(1, 32)
+        map(b.add, bob)
+        dprint(bob)
+        dprint(b._bytes.tostring(), binary=1)
+
+        c = BloomFilter(1, 32)
+        map(c.add, carol)
+        dprint(carol)
+        dprint(c._bytes.tostring(), binary=1)
+
+        dprint("Alice bic Bob: ", a.bic_occurrence(b))
+        dprint("Alice bic Carol: ", a.bic_occurrence(c))
+        dprint("Bob bic Carol: ", b.bic_occurrence(c))
+
         # b2 = BloomFilter(10, 0.8)
         # map(b2.add, t2)
 
@@ -494,4 +525,5 @@ if __debug__:
     if __name__ == "__main__":
         #_performance_test()
         # _taste_test()
-        _test_occurrence()
+        # _test_occurrence()
+        _test_documentation()
