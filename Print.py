@@ -711,8 +711,9 @@ def dprint(*args, **kargs):
     # print each variable in args
     if kargs["binary"]:
         string = kargs["glue"].join([str(v) for v in args])
-        for index, char in zip(xrange(len(string)), string):
-            messages.append("{0:3d} {1:08d} \\x{2}".format(index, int(bin(ord(char))[2:]), char.encode("HEX")))
+        messages.append(" ".join(["{0:08d}".format(int(bin(ord(char))[2:])) for char in string]))
+        # for index, char in zip(xrange(len(string)), string):
+        #     messages.append("{0:3d} {1:08d} \\x{2}".format(index, int(bin(ord(char))[2:]), char.encode("HEX")))
     elif kargs["meta"]:
         messages.extend([dprint_format_variable(v) for v in args])
     elif kargs["lines"] and len(args) == 1 and type(args[0]) in (list, tuple):
