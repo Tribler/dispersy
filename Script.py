@@ -118,7 +118,7 @@ class DispersyScript(ScriptBase):
     def last_1_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
-        cluster = community.get_meta_message(u"last-1-test").distribution.cluster
+        message = community.get_meta_message(u"last-1-test")
 
         # create node and ensure that SELF knows the node address
         node = DebugNode()
@@ -128,44 +128,44 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
         assert len(times) == 0, times
 
         # send a message
         global_time = 10
-        node.send_message(node.create_last_1_test_message("1", global_time), address)
+        node.send_message(node.create_last_1_test_message("should be accepted (1)", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message
         global_time = 11
-        node.send_message(node.create_last_1_test_message("2", global_time), address)
+        node.send_message(node.create_last_1_test_message("should be accepted (2)", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (older: should be dropped)
-        node.send_message(node.create_last_1_test_message("-1", 8), address)
+        node.send_message(node.create_last_1_test_message("should be dropped (1)", 8), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message (duplicate: should be dropped)
-        node.send_message(node.create_last_1_test_message("2", global_time), address)
+        node.send_message(node.create_last_1_test_message("should be dropped (2)", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
 
         # send a message
         global_time = 12
-        node.send_message(node.create_last_1_test_message("3", global_time), address)
+        node.send_message(node.create_last_1_test_message("should be accepted (3)", global_time), address)
         yield 0.1
-        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
 
@@ -174,7 +174,7 @@ class DispersyScript(ScriptBase):
     def last_9_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
-        cluster = community.get_meta_message(u"last-1-test").distribution.cluster
+        message = community.get_meta_message(u"last-1-test")
 
         # create node and ensure that SELF knows the node address
         node = DebugNode()
@@ -184,7 +184,7 @@ class DispersyScript(ScriptBase):
         yield 0.1
 
         # should be no messages from NODE yet
-        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster)))
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
         assert len(times) == 0
 
         number_of_messages = 0
@@ -194,9 +194,9 @@ class DispersyScript(ScriptBase):
             node.send_message(message, address)
             number_of_messages += 1
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             dprint(sorted(times))
             assert len(times) == number_of_messages, (len(times), number_of_messages)
             assert global_time in times
@@ -206,7 +206,7 @@ class DispersyScript(ScriptBase):
             # send a message (older: should be dropped)
             node.send_message(node.create_last_9_test_message(str(global_time), global_time), address)
             yield 0.1
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             assert len(times) == 9, len(times)
             assert not global_time in times
 
@@ -215,9 +215,9 @@ class DispersyScript(ScriptBase):
             message = node.create_last_9_test_message("wrong content!", global_time)
             node.send_message(message, address)
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
             assert not str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             assert sorted(times) == range(10, 19), sorted(times)
 
         match_times = sorted(times[:])
@@ -229,9 +229,9 @@ class DispersyScript(ScriptBase):
             match_times.append(global_time)
             match_times.sort()
             yield 0.1
-            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, global_time, cluster)).next()
+            packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
             assert str(packet) == message.packet
-            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ?", (community.database_id, node.my_member.database_id, cluster))]
+            times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             dprint(sorted(times))
             assert sorted(times) == match_times, sorted(times)
 

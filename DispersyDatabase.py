@@ -50,7 +50,6 @@ CREATE TABLE sync(
  name INTEGER REFERENCES name(id),
  global_time INTEGER,
  distribution_sequence INTEGER,                 -- used for the sync-distribution policy
- distribution_cluster INTEGER,                  -- used for the last-sync-distribution policy
  destination_cluster INTEGER,                   -- used for the similarity-destination policy
  packet BLOB);
 

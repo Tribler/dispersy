@@ -151,17 +151,10 @@ class LastSyncDistribution(SyncDistribution):
         def history_size(self):
             return self._meta._history_size
 
-    def __init__(self, enable_sequence_number, cluster, history_size):
-        assert isinstance(cluster, int)
-        assert 0 <= cluster <= 255
+    def __init__(self, enable_sequence_number, history_size):
         assert isinstance(history_size, int)
         super(LastSyncDistribution, self).__init__(enable_sequence_number)
-        self._cluster = cluster
         self._history_size = history_size
-
-    @property
-    def cluster(self):
-        return self._cluster
 
     @property
     def history_size(self):

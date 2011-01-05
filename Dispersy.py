@@ -233,13 +233,13 @@ class Dispersy(Singleton):
         """
         return [Message(community, u"dispersy-routing-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, cluster=254, history_size=1), CommunityDestination(), IdentityPayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
-                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, cluster=253, history_size=1), CommunityDestination(), SimilarityPayload()),
+                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), SimilarityPayload()),
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
 
     def get_message_handlers(self, community):
@@ -357,47 +357,113 @@ class Dispersy(Singleton):
         return self._communities[cid]
 
     def _check_incoming_full_sync_distribution(self, message):
+        """
+        Ensure that we do not yet have MESSAGE and that, if sequence
+        numbers are enabled, we are not missing any previous messages.
 
-        # TODO: we are not checking the global time!  No one may send
-        # messages with the same global time.
+        DropMessage is raised when we already have MESSAGE.
+        DelayMessageBySequence is raised when we are missing messages.
+        """
+        if message.distribution.enable_sequence_number:
+            try:
+                # TODO: we are not checking the global time!  No one
+                # may send messages with the same global time.  This
+                # is currently ignored to save one select query.
 
-        try:
-            sequence, = self._database.execute(u"""SELECT distribution_sequence
-                                                   FROM sync
-                                                   WHERE community = ? AND user = ? AND distribution_sequence > 0
-                                                   ORDER BY distribution_sequence DESC
-                                                   LIMIT 1""",
-                                               (message.community.database_id,
-                                                message.authentication.member.database_id)).next()
-        except StopIteration:
-            sequence = 0
+                sequence_number, = self._database.execute(
+                    u"""SELECT distribution_sequence
+                        FROM sync
+                        WHERE community = ? AND user = ? AND name = ?
+                        ORDER BY distribution_sequence DESC
+                        LIMIT 1""",
+                    (message.community.database_id,
+                     message.authentication.member.database_id,
+                     message.database_id)).next()
+            except StopIteration:
+                sequence_number = 0
 
-        # (1) we already have this message (drop)
-        if sequence >= message.distribution.sequence_number:
-            raise DropMessage("duplicate message")
+            if sequence_number >= message.distribution.sequence_number:
+                # we already have this message (drop)
+                raise DropMessage("duplicate message")
 
-        # (3) we have the previous message (process)
-        elif sequence + 1 == message.distribution.sequence_number:
-            return
+            elif sequence_number + 1 == message.distribution.sequence_number:
+                # we have the previous message (process)
+                pass
 
-        # (2) we do not have the previous message (delay and request)
+            else:
+                #  we do not have the previous message (delay and request)
+                raise DelayMessageBySequence(message, sequence_number+1, message.distribution.sequence_number-1)
+
         else:
-            raise DelayMessageBySequence(message, sequence+1, message.distribution.sequence_number-1)
+            try:
+                self._database.execute(
+                    u"""SELECT 1
+                        FROM sync
+                        WHERE community = ? AND user = ? AND name = ? AND global_time = ?
+                        LIMIT 1""",
+                    (message.community.database_id,
+                     message.authentication.member.database_id,
+                     message.database_id,
+                     message.distribution.global_time)).next()
 
-        assert False
+            except StopIteration:
+                # we have the previous message (process)
+                pass
+
+            else:
+                # we have the previous message (drop)
+                raise DropMessage("duplicate message")
 
     def _check_incoming_last_sync_distribution(self, message):
-        times = [x for x, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ? LIMIT ?",
-                                                    (message.community.database_id,
-                                                     message.authentication.member.database_id,
-                                                     message.distribution.cluster,
-                                                     message.distribution.history_size))]
+        """
+        Ensure that we do not yet have MESSAGE and that, if sequence
+        numbers are enabled, we are not missing any previous messages.
 
-        if message.distribution.global_time in times:
-            raise DropMessage("duplicate message")
+        DropMessage is raised when we already have MESSAGE.
+        DelayMessageBySequence is raised when we are missing messages.
+        """
+        if message.distribution.enable_sequence_number:
+            try:
+                # TODO: we are not checking the global time!  No one
+                # may send messages with the same global time.  This
+                # is currently ignored to save one select query.
 
-        if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
-            raise DropMessage("older message")
+                sequence_number, = self._database.execute(
+                    u"""SELECT distribution_sequence
+                        FROM sync
+                        WHERE community = ? AND user = ? AND name = ?
+                        ORDER BY distribution_sequence DESC
+                        LIMIT 1""",
+                    (message.community.database_id,
+                     message.authentication.member.database_id,
+                     message.database_id)).next()
+            except StopIteration:
+                sequence_number = 0
+
+            if sequence_number >= message.distribution.sequence_number:
+                # we already have this message (drop)
+                raise DropMessage("duplicate message")
+
+            elif sequence_number + 1 == message.distribution.sequence_number:
+                # we have the previous message (process)
+                pass
+
+            else:
+                #  we do not have the previous message (delay and request)
+                raise DelayMessageBySequence(message, max(sequence_number+1, message.distribution.sequence_number-message.distribution.history_size), message.distribution.sequence_number-1)
+
+        else:
+            times = [x for x, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ? LIMIT ?",
+                                                        (message.community.database_id,
+                                                         message.authentication.member.database_id,
+                                                         message.database_id,
+                                                         message.distribution.history_size))]
+
+            if message.distribution.global_time in times:
+                raise DropMessage("duplicate message")
+
+            if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
+                raise DropMessage("old message")
 
     def _check_incoming_direct_distribution(self, message):
         return
@@ -539,11 +605,10 @@ class Dispersy(Singleton):
             # delete packet if there are to many stored
             if isinstance(message.distribution, LastSyncDistribution.Implementation):
                 try:
-                    id_, = execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? AND distribution_cluster = ? ORDER BY global_time DESC LIMIT 1 OFFSET ?",
+                    id_, = execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? ORDER BY global_time DESC LIMIT 1 OFFSET ?",
                                    (message.community.database_id,
                                     message.authentication.member.database_id,
                                     message.database_id,
-                                    message.distribution.cluster,
                                     message.distribution.history_size - 1)).next()
                 except StopIteration:
                     pass
@@ -551,14 +616,14 @@ class Dispersy(Singleton):
                     execute(u"DELETE FROM sync WHERE id = ?", (id_,))
 
             # add packet to database
-            execute(u"INSERT INTO sync (community, user, name, global_time, distribution_sequence, distribution_cluster, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            execute(u"INSERT INTO sync (community, user, name, global_time, distribution_sequence, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (message.community.database_id,
                      message.authentication.member.database_id,
                      message.database_id,
                      message.distribution.global_time,
                      isinstance(message.distribution, FullSyncDistribution.Implementation) and message.distribution.sequence_number or 0,
-                     isinstance(message.distribution, LastSyncDistribution.Implementation) and message.distribution.cluster or 0,
-                                    isinstance(message.destination, SimilarityDestination.Implementation) and message.destination.cluster or 0,
+                     # isinstance(message.distribution, LastSyncDistribution.Implementation) and message.distribution.cluster or 0,
+                     isinstance(message.destination, SimilarityDestination.Implementation) and message.destination.cluster or 0,
                      buffer(message.packet)))
 
     def store_and_forward(self, messages):
