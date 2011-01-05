@@ -569,11 +569,17 @@ class BinaryConversion(Conversion):
 
     @staticmethod
     def _encode_full_sync_distribution(container, message):
-        container.append(pack("!QL", message.distribution.global_time, message.distribution.sequence_number))
+        if message.distribution.enable_sequence_number:
+            container.append(pack("!QL", message.distribution.global_time, message.distribution.sequence_number))
+        else:
+            container.append(pack("!Q", message.distribution.global_time))
 
     @staticmethod
     def _encode_last_sync_distribution(container, message):
-        container.append(pack("!Q", message.distribution.global_time))
+        if message.distribution.enable_sequence_number:
+            container.append(pack("!QL", message.distribution.global_time, message.distribution.sequence_number))
+        else:
+            container.append(pack("!Q", message.distribution.global_time))
 
     @staticmethod
     def _encode_direct_distribution(container, message):
@@ -666,13 +672,21 @@ class BinaryConversion(Conversion):
 
     @staticmethod
     def _decode_full_sync_distribution(offset, data, meta_message):
-        global_time, sequence_number = unpack_from("!QL", data, offset)
-        return offset + 12, meta_message.distribution.implement(global_time, sequence_number)
+        if meta_message.distribution.enable_sequence_number:
+            global_time, sequence_number = unpack_from("!QL", data, offset)
+            return offset + 12, meta_message.distribution.implement(global_time, sequence_number)
+        else:
+            global_time, = unpack_from("!Q", data, offset)
+            return offset + 8, meta_message.distribution.implement(global_time)
 
     @staticmethod
     def _decode_last_sync_distribution(offset, data, meta_message):
-        global_time, = unpack_from("!Q", data, offset)
-        return offset + 8, meta_message.distribution.implement(global_time)
+        if meta_message.distribution.enable_sequence_number:
+            global_time, sequence_number = unpack_from("!QL", data, offset)
+            return offset + 12, meta_message.distribution.implement(global_time, sequence_number)
+        else:
+            global_time, = unpack_from("!Q", data, offset)
+            return offset + 8, meta_message.distribution.implement(global_time)
 
     @staticmethod
     def _decode_direct_distribution(offset, data, meta_message):

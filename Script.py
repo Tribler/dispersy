@@ -683,7 +683,7 @@ class DispersySimilarityScript(ScriptBase):
         yield 0.1
 
         # node-01 creates and sends a message to 'self'
-        node.send_message(node.create_taste_aware_message_last(5, 3), address)
+        node.send_message(node.create_taste_aware_message_last(5, 3, 1), address)
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message

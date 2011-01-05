@@ -20,7 +20,7 @@ from DispersyDatabase import DispersyDatabase
 from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from Member import PrivateMember, MasterMember
 from Message import Message
-from Message import DropPacket, DelayPacket, DelayPacketByMissingMember, DelayPacketBySimilarity
+from Message import DropPacket, DelayPacket, DelayPacketByMissingMember
 from Message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
 from Payload import MissingSequencePayload
 from Payload import SyncPayload
@@ -88,6 +88,10 @@ class TriggerCallback(Trigger):
         self._responses_remaining = max_responses
 
     def on_message(self, address, message):
+        if __debug__:
+            dprint("Does it match? ", bool(self._responses_remaining > 0 and self._match(message.footprint)))
+            dprint("Expression: ", self._debug_pattern)
+            dprint(" Footprint: ", message.footprint)
         if self._responses_remaining > 0 and self._match(message.footprint):
             self._responses_remaining -= 1
             # note: this callback may raise DelayMessage, etc
@@ -132,6 +136,10 @@ class TriggerPacket(Trigger):
         self._packets = packets
 
     def on_message(self, address, message):
+        if __debug__:
+            dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
+            dprint("Expression: ", self._debug_pattern)
+            dprint(" Footprint: ", message.footprint)
         if self._match:
             if self._match(message.footprint):
                 self._on_incoming_packets(packets)
@@ -186,6 +194,10 @@ class TriggerMessage(Trigger):
         self._message = message
 
     def on_message(self, address, message):
+        if __debug__:
+            dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
+            dprint("Expression: ", self._debug_pattern)
+            dprint(" Footprint: ", message.footprint)
         if self._match:
             if self._match(message.footprint):
                 self._on_incoming_message(self._address, self._message)
@@ -221,13 +233,13 @@ class Dispersy(Singleton):
         """
         return [Message(community, u"dispersy-routing-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(cluster=254, history_size=1), CommunityDestination(), IdentityPayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, cluster=254, history_size=1), CommunityDestination(), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
-                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=253, history_size=1), CommunityDestination(), SimilarityPayload()),
+                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, cluster=253, history_size=1), CommunityDestination(), SimilarityPayload()),
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
 
     def get_message_handlers(self, community):
@@ -466,6 +478,7 @@ class Dispersy(Singleton):
                 self.on_incoming_message(address, message)
 
     def on_incoming_message(self, address, message):
+        if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
         try:
             #
             # Filter messages based on distribution (usually duplicate
@@ -476,7 +489,6 @@ class Dispersy(Singleton):
             #
             # Allow community code to handle the message
             #
-            if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
             if message.payload.type == u"permit":
                 message.community.on_message(address, message)
             elif message.payload.type == u"authorize":
@@ -527,9 +539,10 @@ class Dispersy(Singleton):
             # delete packet if there are to many stored
             if isinstance(message.distribution, LastSyncDistribution.Implementation):
                 try:
-                    id_, = execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND distribution_cluster = ? ORDER BY global_time DESC LIMIT 1 OFFSET ?",
+                    id_, = execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? AND distribution_cluster = ? ORDER BY global_time DESC LIMIT 1 OFFSET ?",
                                    (message.community.database_id,
                                     message.authentication.member.database_id,
+                                    message.database_id,
                                     message.distribution.cluster,
                                     message.distribution.history_size - 1)).next()
                 except StopIteration:
@@ -538,9 +551,10 @@ class Dispersy(Singleton):
                     execute(u"DELETE FROM sync WHERE id = ?", (id_,))
 
             # add packet to database
-            execute(u"INSERT INTO sync(community, user, global_time, distribution_sequence, distribution_cluster, destination_cluster, packet) VALUES(?, ?, ?, ?, ?, ?, ?)",
+            execute(u"INSERT INTO sync (community, user, name, global_time, distribution_sequence, distribution_cluster, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (message.community.database_id,
                      message.authentication.member.database_id,
+                     message.database_id,
                      message.distribution.global_time,
                      isinstance(message.distribution, FullSyncDistribution.Implementation) and message.distribution.sequence_number or 0,
                      isinstance(message.distribution, LastSyncDistribution.Implementation) and message.distribution.cluster or 0,
@@ -621,7 +635,7 @@ class Dispersy(Singleton):
 
     def _send(self, addresses, packets):
         self._total_send += len(addresses) * sum([len(packet) for packet in packets])
-        
+
         with self._database as execute:
             for address in addresses:
                 assert isinstance(address, tuple)
@@ -794,7 +808,7 @@ class Dispersy(Singleton):
         """
         meta = community.get_meta_message(u"dispersy-identity")
         message = meta.implement(meta.authentication.implement(community.my_member),
-                                 meta.distribution.implement(community._timeline.global_time),
+                                 meta.distribution.implement(community._timeline.global_time, 0),
                                  meta.destination.implement(),
                                  meta.payload.implement(self._my_external_address))
         if store_and_forward:

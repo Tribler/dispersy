@@ -30,6 +30,14 @@ class Payload(MetaObject):
         """
         raise NotImplementedError()
 
+    def setup(self, message):
+        """
+        Setup is called after the meta message is initially created.
+        """
+        if __debug__:
+            from Message import Message
+        assert isinstance(message, Message)
+
     def generate_footprint(self):
         raise NotImplementedError()
 

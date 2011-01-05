@@ -139,7 +139,7 @@ class DelayMessageBySequence(DelayMessage):
         footprint = "".join((message.name.encode("UTF-8"),
                              " Community:", message.community.cid.encode("HEX"),
                              " MemberAuthentication:", message.authentication.member.mid.encode("HEX"),
-                             " FullSyncDistribution:", str(missing_high),
+                             " SyncDistribution:", str(missing_high),
                              " CommunityDestination"))
 
         # the request message that asks for the message that will
@@ -246,6 +246,10 @@ class Message(MetaObject):
             return self._meta._name
 
         @property
+        def database_id(self):
+            return self._meta._database_id
+
+        @property
         def resolution(self):
             return self._meta._resolution
 
@@ -295,7 +299,7 @@ class Message(MetaObject):
         assert isinstance(distribution, Distribution), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
         assert isinstance(destination, Destination), "DESTINATION has invalid type '{0}'".format(type(destination))
         assert isinstance(payload, Payload), "PAYLOAD has invalid type '{0}'".format(type(payload))
-        assert self.check_policy_combination(authentication.__class__, resolution.__class__, distribution.__class__, destination.__class__)
+        assert self.check_policy_combination(authentication, resolution, distribution, destination)
         self._community = community
         self._name = name
         self._authentication = authentication
@@ -304,6 +308,25 @@ class Message(MetaObject):
         self._destination = destination
         self._payload = payload
 
+        # setup
+        database = community.dispersy.database
+
+        # ensure that there is a database id associated to this
+        # meta message name
+        try:
+            self._database_id, = database.execute(u"SELECT id FROM name WHERE value = ?", (name,)).next()
+        except StopIteration:
+            database.execute(u"INSERT INTO name (value) VALUES (?)", (name,))
+            self._database_id = database.last_insert_rowid
+
+        # allow optional setup methods to initialize the specific
+        # parts of the meta message
+        self._authentication.setup(self)
+        self._resolution.setup(self)
+        self._distribution.setup(self)
+        self._destination.setup(self)
+        self._payload.setup(self)
+
     @property
     def community(self):
         return self._community
@@ -311,6 +334,10 @@ class Message(MetaObject):
     @property
     def name(self):
         return self._name
+
+    @property
+    def database_id(self):
+        return self._database_id
 
     @property
     def authentication(self):
@@ -354,73 +381,77 @@ class Message(MetaObject):
         from Distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
         from Destination import Destination, AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination
 
-        assert issubclass(authentication, Authentication)
-        assert issubclass(resolution, Resolution)
-        assert issubclass(distribution, Distribution)
-        assert issubclass(destination, Destination)
+        assert isinstance(authentication, Authentication)
+        assert isinstance(resolution, Resolution)
+        assert isinstance(distribution, Distribution)
+        assert isinstance(destination, Destination)
 
         def require(a, b, c):
-            if not issubclass(b, c):
+            if not isinstance(b, c):
                 raise ValueError("{0.__name__} does not support {1.__name__}".format(a, b))
 
-        if issubclass(authentication, NoAuthentication):
+        if isinstance(authentication, NoAuthentication):
             require(authentication, resolution, PublicResolution)
             require(authentication, distribution, (RelayDistribution, DirectDistribution))
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination))
-        elif issubclass(authentication, MemberAuthentication):
+        elif isinstance(authentication, MemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
-        elif issubclass(authentication, MultiMemberAuthentication):
+        elif isinstance(authentication, MultiMemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, LastSyncDistribution))
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__name__} is not supported".format(authentication))
 
-        if issubclass(resolution, PublicResolution):
+        if isinstance(resolution, PublicResolution):
             require(resolution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
-        elif issubclass(resolution, LinearResolution):
+        elif isinstance(resolution, LinearResolution):
             require(resolution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__name__} is not supported".format(resolution))
 
-        if issubclass(distribution, RelayDistribution):
+        if isinstance(distribution, RelayDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
             require(distribution, destination, (AddressDestination, MemberDestination))
-        elif issubclass(distribution, DirectDistribution):
+        elif isinstance(distribution, DirectDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
             require(distribution, destination, (AddressDestination, MemberDestination, CommunityDestination))
-        elif issubclass(distribution, FullSyncDistribution):
-            require(distribution, authentication, MemberAuthentication)
-            require(distribution, resolution, (PublicResolution, LinearResolution))
-            require(distribution, destination, (CommunityDestination, SimilarityDestination))
-        elif issubclass(distribution, LastSyncDistribution):
+        elif isinstance(distribution, FullSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
             require(distribution, destination, (CommunityDestination, SimilarityDestination))
+            if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
+                raise ValueError("{0.__name__} may not be used with {1.__name__} when sequence numbers are enabled".format(distribution, authentication))
+        elif isinstance(distribution, LastSyncDistribution):
+            require(distribution, authentication, (MemberAuthentication, MultiMemberAuthentication))
+            require(distribution, resolution, (PublicResolution, LinearResolution))
+            require(distribution, destination, (CommunityDestination, SimilarityDestination))
+            if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
+                raise ValueError("{0.__name__} may not be used with {1.__name__} when sequence numbers are enabled".format(distribution, authentication))
         else:
             raise ValueError("{0.__name__} is not supported".format(distribution))
 
-        if issubclass(destination, AddressDestination):
+        if isinstance(destination, AddressDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (RelayDistribution, DirectDistribution))
-        elif issubclass(destination, MemberDestination):
+        elif isinstance(destination, MemberDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (RelayDistribution, DirectDistribution))
-        elif issubclass(destination, CommunityDestination):
+        elif isinstance(destination, CommunityDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-        elif issubclass(destination, SimilarityDestination):
+        elif isinstance(destination, SimilarityDestination):
             require(destination, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (FullSyncDistribution, LastSyncDistribution))

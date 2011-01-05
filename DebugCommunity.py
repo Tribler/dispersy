@@ -33,19 +33,19 @@ class DebugNode(Node):
                               meta.destination.implement(),
                               meta.payload.implement(text))
 
-    def create_taste_aware_message(self, number, sequence, global_time):
+    def create_taste_aware_message(self, number, global_time, sequence_number):
         assert isinstance(number, (int, long))
         meta = self._community.get_meta_message(u"taste-aware-record")
         return meta.implement(meta.authentication.implement(self._my_member),
-                              meta.distribution.implement(sequence, global_time),
+                              meta.distribution.implement(global_time, sequence_number),
                               meta.destination.implement(),
                               meta.payload.implement(number))
 
-    def create_taste_aware_message_last(self, number, global_time):
+    def create_taste_aware_message_last(self, number, global_time, sequence_number):
         assert isinstance(number, (int, long))
         meta = self._community.get_meta_message(u"taste-aware-record-last")
         return meta.implement(meta.authentication.implement(self._my_member),
-                              meta.distribution.implement(global_time),
+                              meta.distribution.implement(global_time, sequence_number),
                               meta.destination.implement(),
                               meta.payload.implement(number))
 
@@ -140,12 +140,12 @@ class DebugCommunity(Community):
     Community to debug Dispersy related messages and policies.
     """
     def get_meta_messages(self):
-        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=1, history_size=1), CommunityDestination(), Last1TestPayload()),
-                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=2, history_size=9), CommunityDestination(), Last9TestPayload()),
+        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=True, cluster=1, history_size=1), CommunityDestination(), Last1TestPayload()),
+                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=True, cluster=2, history_size=9), CommunityDestination(), Last9TestPayload()),
                 Message(self, u"double-signed-text", MultiMemberAuthentication(count=2, allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), DoubleSignedTextPayload()),
                 Message(self, u"triple-signed-text", MultiMemberAuthentication(count=3, allow_signature_func=self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), TripleSignedTextPayload()),
-                Message(self, u"taste-aware-record", MemberAuthentication(), PublicResolution(), FullSyncDistribution(), SimilarityDestination(cluster=1, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload()),
-                Message(self, u"taste-aware-record-last", MemberAuthentication(), PublicResolution(), LastSyncDistribution(cluster=3, history_size=1), SimilarityDestination(cluster=2, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload())]
+                Message(self, u"taste-aware-record", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True), SimilarityDestination(cluster=1, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload()),
+                Message(self, u"taste-aware-record-last", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=True, cluster=3, history_size=1), SimilarityDestination(cluster=2, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload())]
 
     def __init__(self, cid):
         super(DebugCommunity, self).__init__(cid)

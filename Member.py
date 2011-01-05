@@ -202,12 +202,6 @@ class PrivateMember(Private, Member):
 
         super(PrivateMember, self).__init__(public_pem, ec, sync_with_database)
         self._private_pem = private_pem
-        self._sequence_number = 0
-
-    def claim_sequence_number(self):
-        assert not self._private_pem is None
-        self._sequence_number += 1
-        return self._sequence_number
 
     @property
     def private_pem(self):
@@ -226,24 +220,25 @@ class MasterMember(PrivateMember):
 class MyMember(PrivateMember):
     pass
 
-if __name__ == "__main__":
-    from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+if __debug__:
+    if __name__ == "__main__":
+        from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 
-    ec = ec_generate_key("low")
-    public_pem = ec_to_public_pem(ec)
-    private_pem = ec_to_private_pem(ec)
-    public_member = Member(public_pem, sync_with_database=False)
-    private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
+        ec = ec_generate_key("low")
+        public_pem = ec_to_public_pem(ec)
+        private_pem = ec_to_private_pem(ec)
+        public_member = Member(public_pem, sync_with_database=False)
+        private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
 
-    print
-    print public_pem
-    print
-    print private_pem
-    print
+        print
+        print public_pem
+        print
+        print private_pem
+        print
 
-    data = "Hello World! " * 1000
-    sig = private_member.sign(data)
-    digest = sha1(data).digest()
-    dprint(sig.encode("HEX"))
-    assert public_member.verify(data, sig)
-    assert private_member.verify(data, sig)
+        data = "Hello World! " * 1000
+        sig = private_member.sign(data)
+        digest = sha1(data).digest()
+        dprint(sig.encode("HEX"))
+        assert public_member.verify(data, sig)
+        assert private_member.verify(data, sig)

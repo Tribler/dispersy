@@ -39,12 +39,17 @@ CREATE TABLE routing(
  outgoing_time TEXT,                            -- time when data send
  UNIQUE(community, host, port));
 
+CREATE TABLE name(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ value TEXT);
+
 CREATE TABLE sync(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
  user INTEGER REFERENCES user(id),
+ name INTEGER REFERENCES name(id),
  global_time INTEGER,
- distribution_sequence INTEGER,                 -- used for the full-sync-distribution policy
+ distribution_sequence INTEGER,                 -- used for the sync-distribution policy
  distribution_cluster INTEGER,                  -- used for the last-sync-distribution policy
  destination_cluster INTEGER,                   -- used for the similarity-destination policy
  packet BLOB);
@@ -76,7 +81,7 @@ INSERT INTO option(key, value) VALUES('database_version', '1');
 class DispersyDatabase(Database):
     if __debug__:
         __doc__ = schema
-    
+
     def __init__(self, working_directory):
         assert isinstance(working_directory, unicode)
         return Database.__init__(self, path.join(working_directory, u"dispersy.db"))

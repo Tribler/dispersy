@@ -239,6 +239,13 @@ class Community(object):
         """
         return self._my_member
 
+    @property
+    def dispersy(self):
+        """
+        The Dispersy instance.
+        """
+        return self._dispersy
+
     def get_member(self, public_key):
         """
         Returns a Member instance associated with PUBLIC_KEY.
@@ -373,7 +380,7 @@ class Community(object):
         distribution = FullSyncDistribution()
         destination = CommunityDestination()
         for message, allowed in permission_pairs:
-            distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
+            distribution_impl = distribution.implement(self._timeline.claim_global_time())
             destination_impl = destination.implement()
             payload = Authorize(member, allowed)
             messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))
@@ -453,7 +460,7 @@ class Community(object):
         distribution = FullSyncDistribution()
         destination = CommunityDestination()
         for message, revoked in permission_pairs:
-            distribution_impl = distribution.implement(self._timeline.claim_global_time(), signed_by.claim_sequence_number())
+            distribution_impl = distribution.implement(self._timeline.claim_global_time())
             destination_impl = destination.implement()
             payload = Revoke(member, revoked)
             messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))

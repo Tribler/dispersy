@@ -37,27 +37,56 @@ class Distribution(MetaObject):
         def footprint(self):
             return "Distribution"
 
+    def setup(self, message):
+        """
+        Setup is called after the meta message is initially created.
+        """
+        if __debug__:
+            from Message import Message
+        assert isinstance(message, Message)
+
     def generate_footprint(self):
         return "Distribution"
 
 class SyncDistribution(Distribution):
+    """
+    Allows gossiping and synchronization of messages thoughout the
+    community.
+
+    Sequence numbers can be enabled or disabled per meta-message.
+    When disabled the sequence number is always zero.  When enabled
+    the claim_sequence_number method can be called to obtain the next
+    requence number in sequence.
+
+    Currently there is one situation where disabling sequence numbers
+    is required.  This is when the message will be signed by multiple
+    members.  In this case the sequence number is claimed but may not
+    be used (if the other members refuse to add their signature).
+    This causes a missing sequence message.  This in turn could be
+    solved by creating a placeholder message, however, this is not
+    currently, and my never be, implemented.
+    """
     class Implementation(Distribution.Implementation):
-        @property
-        def footprint(self):
-            return "SyncDistribution"
-
-    def generate_footprint(self):
-        return "SyncDistribution"
-
-class FullSyncDistribution(SyncDistribution):
-    class Implementation(SyncDistribution.Implementation):
-        def __init__(self, meta, global_time, sequence_number):
-            assert isinstance(meta, FullSyncDistribution)
-            assert isinstance(global_time, (int, long))
+        def __init__(self, meta, global_time, sequence_number=0):
+            assert isinstance(meta, SyncDistribution)
             assert isinstance(sequence_number, (int, long))
-            super(FullSyncDistribution.Implementation, self).__init__(meta, global_time)
-            # the sequence number (from the user who signed the messaged)
-            self._sequence_number = sequence_number
+            # assert (meta._enable_sequence_number and sequence_number > 0) or (not meta._enable_sequence_number and sequence_number == 0), "enable_sequence_number:{0} sequence_number:{1}".format(meta._enable_sequence_number, sequence_number)
+            super(SyncDistribution.Implementation, self).__init__(meta, global_time)
+            if sequence_number:
+                assert sequence_number > 0
+                self._sequence_number = sequence_number
+            elif meta._enable_sequence_number:
+                self._sequence_number = meta.claim_sequence_number()
+            else:
+                self._sequence_number = 0
+
+        @property
+        def enable_sequence_number(self):
+            return self._meta._enable_sequence_number
+
+        @property
+        def database_id(self):
+            return self._meta._database_id
 
         @property
         def sequence_number(self):
@@ -65,19 +94,55 @@ class FullSyncDistribution(SyncDistribution):
 
         @property
         def footprint(self):
-            return "FullSyncDistribution:" + str(self._sequence_number)
+            return "SyncDistribution:" + str(self._sequence_number)
 
-    def generate_footprint(self, sequence_number):
-        return "FullSyncDistribution:" + str(sequence_number)
+    def __init__(self, enable_sequence_number):
+        assert isinstance(enable_sequence_number, bool)
+        self._enable_sequence_number = enable_sequence_number
+        self._current_sequence_number = 0
+        self._database_id = 0
+
+    @property
+    def enable_sequence_number(self):
+        return self._enable_sequence_number
+
+    @property
+    def database_id(self):
+        return self._database_id
+
+    def setup(self, message):
+        """
+        Setup is called after the meta message is initially created.
+
+        It is used to determine the current sequence number, based on
+        which messages are already in the database.
+        """
+        if __debug__:
+            from Message import Message
+        assert isinstance(message, Message)
+        if self._enable_sequence_number:
+            # obtain the most recent sequence number that we have used
+            self._current_sequence_number, = message.community.dispersy.database.execute(u"SELECT MAX(distribution_sequence) FROM sync WHERE community = ? AND user = ? AND name = ?", (message.community.database_id, message.community.my_member.database_id, message.database_id)).next()
+            if self._current_sequence_number is None:
+                # no entries in the database yet
+                self._current_sequence_number = 0
+
+    def claim_sequence_number(self):
+        assert self._enable_sequence_number
+        self._current_sequence_number += 1
+        return self._current_sequence_number
+
+    def generate_footprint(self, sequence_number=0):
+        assert isinstance(sequence_number, (int, long))
+        assert (self._enable_sequence_number and sequence_number > 0) or (not self._enable_sequence_number and sequence_number == 0)
+        return "SyncDistribution:" + str(sequence_number)
+
+class FullSyncDistribution(SyncDistribution):
+    class Implementation(SyncDistribution.Implementation):
+        pass
 
 class LastSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
-        if __debug__:
-            def __init__(self, meta, global_time):
-                assert isinstance(meta, LastSyncDistribution)
-                assert isinstance(global_time, (int, long))
-                super(LastSyncDistribution.Implementation, self).__init__(meta, global_time)
-
         @property
         def cluster(self):
             return self._meta._cluster
@@ -86,14 +151,11 @@ class LastSyncDistribution(SyncDistribution):
         def history_size(self):
             return self._meta._history_size
 
-        @property
-        def footprint(self):
-            return "LastSyncDistribution"
-
-    def __init__(self, cluster, history_size):
+    def __init__(self, enable_sequence_number, cluster, history_size):
         assert isinstance(cluster, int)
         assert 0 <= cluster <= 255
         assert isinstance(history_size, int)
+        super(LastSyncDistribution, self).__init__(enable_sequence_number)
         self._cluster = cluster
         self._history_size = history_size
 
@@ -104,9 +166,6 @@ class LastSyncDistribution(SyncDistribution):
     @property
     def history_size(self):
         return self._history_size
-
-    def generate_footprint(self):
-        return "LastSyncDistribution"
 
 class DirectDistribution(Distribution):
     class Implementation(Distribution.Implementation):
