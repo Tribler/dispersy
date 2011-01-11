@@ -1,3 +1,11 @@
+"""
+This module provides basic database functionalty and simple version control.
+
+@author: Boudewijn Schoon
+@organization: Technical University Delft
+@contact: dispersy@frayja.com
+"""
+
 import thread
 import hashlib
 import apsw
@@ -15,6 +23,12 @@ class DatabaseException(Exception):
 
 class Database(Singleton):
     def __init__(self, file_path):
+        """
+        Initialize a new Database instance.
+
+        @param file_path: the path to the database file.
+        @type file_path: unicode
+        """
         if __debug__:
             assert isinstance(file_path, unicode)
             dprint(file_path)
@@ -38,12 +52,6 @@ class Database(Singleton):
             if __debug__: dprint("synchronous: ", synchronous, " (", {0:"OFF", 1:"NORMAL", 2:"FULL"}[synchronous], ") --> 0 (OFF)")
             self._cursor.execute(u"PRAGMA synchronous = 0")
 
-        count_changes, = self._cursor.execute(u"PRAGMA count_changes").next()
-        if __debug__: dprint("count_changes: ", count_changes, " (", {0:"False", 1:"True"}[count_changes], ")")
-        if not count_changes == 0:
-            if __debug__: dprint("count_changes: ", count_changes, " (", {0:"False", 1:"True"}[count_changes], ") --> 0 (False)")
-            self._cursor.execute(u"PRAGMA count_changes = 0")
-
         temp_store, = self._cursor.execute(u"PRAGMA temp_store").next()
         if __debug__: dprint("temp_store: ", temp_store, " (", {0:"DEFAULT", 1:"FILE", 2:"MEMORY"}[temp_store])
         if not temp_store == 3:
@@ -52,7 +60,7 @@ class Database(Singleton):
 
         # get version from required 'option' table
         try:
-            version = self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1").next()[0]
+            version, = self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1").next()
         except DatabaseException:
             # the 'option' table probably hasn't been created yet
             version = u"0"
@@ -63,28 +71,76 @@ class Database(Singleton):
         self.check_database(version)
 
     def __enter__(self):
+        """
+        Start a database transaction block.
+
+        Each insert or update query requires a transaction block, hence performing multiple insert
+        or update queries after another will result in as many transaction blocks.
+
+        Using the __enter__ and __exit__ methods we can group multiple insert and update queries
+        together, causing only one transaction block to be used, hence increasing database
+        performance.
+
+        >>> with database as execute:
+        >>>    execute(u"INSERT INTO ...")
+        >>>    execute(u"INSERT INTO ...")
+        >>>    execute(u"INSERT INTO ...")
+
+        @return: The method self.execute
+        """
         self._cursor.execute("BEGIN TRANSACTION")
         return self.execute
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """
+        End a database transaction block.
+
+        @see: _enter__
+        """
         self._cursor.execute("END TRANSACTION")
 
     @property
     def last_insert_rowid(self):
+        """
+        The row id of the most recent insert query.
+        @rtype: int or long
+        """
         assert self._thread_ident == thread.get_ident()
         return self._connection.last_insert_rowid()
 
     @property
     def changes(self):
+        """
+        The number of changes that resulted from the that the most recent query.
+        @rtype: int or long
+        """
         assert self._thread_ident == thread.get_ident()
         return self._connection.changes()
 
     def execute(self, statements, bindings=()):
         """
-        Use a cursor object to execute the sql STATEMENTS.  BINDINGS
-        optionally provides replacements for markers in STATEMENTS.
+        Execute one of more SQL statements.
 
-        http://apsw.googlecode.com/svn/publish/cursor.html#cursors
+        All SQL queries must be presented in unicode format.  This is to ensure that no unicode
+        exeptions occur when the bindings are merged into the statements.
+
+        Furthermore, the bindings may not contain any strings either.  For a 'string' the unicode
+        type must be used.  For a binary string the buffer(...) type must be used.
+
+        The SQL query may contain placeholder entries defined with a '?'.  Each of these
+        placeholders will be used to store one value from bindings.  The placeholders are filled by
+        sqlite and all proper escaping is done, making this the preferred way of adding variables to
+        the SQL query.
+
+        @param statements: the SQL statements that are to be executed.
+        @type statements: unicode
+
+        @param bindings: the values that must be set to the placeholders in statements.
+        @type bindings: tuple
+
+        @returns: unknown
+        @raise DatabaseException: unknown
+        @see: http://apsw.googlecode.com/svn/publish/cursor.html#cursors
         """
         assert self._thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
@@ -105,15 +161,29 @@ class Database(Singleton):
 
     def executemany(self, statements, sequenceofbindings):
         """
-        Use a cursor object to execute the sql STATEMENTS.
-        SEQUENCEOFBINDINGS provides a list with replacements for
-        markers in STATEMENTS.
+        Execute one of more SQL statements several times.
 
-        Conceptually executemany performs:
-        # for bindings in sequenceofbindings:
-        #     execute(statements, bindings)
+        All SQL queries must be presented in unicode format.  This is to ensure that no unicode
+        exeptions occur when the bindings are merged into the statements.
 
-        http://apsw.googlecode.com/svn/publish/cursor.html#cursors
+        Furthermore, the bindings may not contain any strings either.  For a 'string' the unicode
+        type must be used.  For a binary string the buffer(...) type must be used.
+
+        The SQL query may contain placeholder entries defined with a '?'.  Each of these
+        placeholders will be used to store one value from bindings.  The placeholders are filled by
+        sqlite and all proper escaping is done, making this the preferred way of adding variables to
+        the SQL query.
+
+        @param statements: the SQL statements that are to be executed.
+        @type statements: unicode
+
+        @param bindings: a sequence of values that must be set to the placeholders in statements.
+         Each element in sequence is another tuple containing bindings.
+        @type bindings: list containing tuples
+
+        @returns: unknown
+        @raise DatabaseException: unknown
+        @see: http://apsw.googlecode.com/svn/publish/cursor.html#cursors
         """
         assert self._thread_ident == thread.get_ident()
         assert isinstance(statements, unicode)
@@ -139,15 +209,18 @@ class Database(Singleton):
 
     def check_database(self, database_version):
         """
-        This method is called once for each Database instance to
-        ensure that the database structure and version is correct.
+        Check the database and upgrade if required.
 
-        DATABASE_VERSION is the 'value' field in the 'option' table
-        that is associated to 'key'='database_version'.  The value
-        reverts to u'0' when the table could not be accessed.
+        This method is called once for each Database instance to ensure that the database structure
+        and version is correct.  Each Database must contain one table of the structure below where
+        the database_version is stored.  This value is used to keep track of the current database
+        version.
 
-        The 'option' table must always exist:
-        CREATE TABLE option(key STRING, value STRING);
+        >>> CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
+        >>> INSERT INTO option(key, value) VALUES('database_version', '1');
+
+        @param database_version: the current database_version value from the option table. This
+         value reverts to u'0' when the table could not be accessed.
+        @type database_version: unicode
         """
         raise NotImplementedError()
-    

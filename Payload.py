@@ -198,7 +198,24 @@ class RoutingRequestPayload(RoutingPayload):
 
 class RoutingResponsePayload(RoutingPayload):
     class Implementation(RoutingPayload.Implementation):
-        pass
+        def __init__(self, meta, request_identifier, source_address, destination_address):
+            assert isinstance(request_identifier, str)
+            assert len(request_identifier) == 20
+            super(RoutingResponsePayload.Implementation, self).__init__(meta, source_address, destination_address)
+            self._request_identifier = request_identifier
+
+        @property
+        def request_identifier(self):
+            return self._request_identifier
+
+        @property
+        def footprint(self):
+            return "RoutingResponsePayload:" + self._request_identifier.encode("HEX")
+
+    def generate_footprint(self, request_identifier):
+        assert isinstance(request_identifier, str)
+        assert len(request_identifier) == 20
+        return "RoutingResponsePayload:" + request_identifier.encode("HEX")
 
 class SignatureRequestPayload(Permit):
     class Implementation(Permit.Implementation):

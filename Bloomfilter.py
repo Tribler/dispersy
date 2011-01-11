@@ -1,13 +1,23 @@
 """
-Bloomfilter implementation based on pybloom by Jay Baird
-<jay@mochimedia.com> and Bob Ippolito <bob@redivi.com>.
+This module provides the bloom filter support.
 
-Simplified, and optimized to use just python code by Boudewijn Schoon.
+The Bloom filter, conceived by Burton Howard Bloom in 1970, is a space-efficient probabilistic data
+structure that is used to test whether an element is a member of a set.  False positives are
+possible, but false negatives are not.  Elements can be added to the set, but not removed (though
+this can be addressed with a counting filter).  The more elements that are added to the set, the
+larger the probability of false positives.
+
+Initial Bloomfilter implementation based on pybloom by Jay Baird <jay@mochimedia.com> and Bob
+Ippolito <bob@redivi.com>.  Simplified, and optimized to use just python code.
+
+@author: Boudewijn Schoon
+@organization: Technical University Delft
+@contact: dispersy@frayja.com
 """
 
-import hashlib
-import math
 from array import array
+from hashlib import sha1, sha256, sha384, sha512, md5
+from math import ceil, log, pow
 from struct import unpack_from, unpack, pack
 
 from Decorator import Constructor, constructor
@@ -25,15 +35,15 @@ def _make_hashfuncs(num_slices, num_bits):
         fmt_code, chunk_size = 'H', 2
     total_hash_bits = 8 * num_slices * chunk_size
     if total_hash_bits > 384:
-        hashfn = hashlib.sha512
+        hashfn = sha512
     elif total_hash_bits > 256:
-        hashfn = hashlib.sha384
+        hashfn = sha384
     elif total_hash_bits > 160:
-        hashfn = hashlib.sha256
+        hashfn = sha256
     elif total_hash_bits > 128:
-        hashfn = hashlib.sha1
+        hashfn = sha1
     else:
-        hashfn = hashlib.md5
+        hashfn = md5
     fmt = fmt_code * (hashfn().digest_size // chunk_size)
     num_salts, extra = divmod(num_slices, len(fmt))
     if extra:
@@ -64,18 +74,14 @@ class BloomFilter(Constructor):
      - __init__(NUM_SLICES, BITS_PER_SLICE)
      - __init__(DATA, OFFSET)
 
-    CAPACITY: this BloomFilter must be able to store at least CAPACITY
-    elements while maintaining no more than ERROR_RATE chance of false
-    positives.
+    CAPACITY: this BloomFilter must be able to store at least CAPACITY elements while maintaining no
+    more than ERROR_RATE chance of false positives.
 
-    ERROR_RATE: the error_rate of the filter returning false
-    positives. This determines the filters capacity. Inserting more
-    than capacity elements greatly increases the chance of false
-    positives.
+    ERROR_RATE: the error_rate of the filter returning false positives. This determines the filters
+    capacity. Inserting more than capacity elements greatly increases the chance of false positives.
 
-    NUM_SLICES: the number of slices.  More slices makes the
-    BloomFilter more fault tolerant as well as bigger.  Each slice has
-    its own hash function, and each key added to the BloomFilter will
+    NUM_SLICES: the number of slices.  More slices makes the BloomFilter more fault tolerant as well
+    as bigger.  Each slice has its own hash function, and each key added to the BloomFilter will
     (potentially) set one bit per slice.
 
     BITS_PER_SLICE: the number of bits in each slice.
@@ -108,7 +114,19 @@ class BloomFilter(Constructor):
     """
 
     @constructor((int, long), (int, long))
-    def _init_size(self, num_slices, bits_per_slice):
+    def _init_size_(self, num_slices, bits_per_slice):
+        """
+        Initialize a new BloomFilter instance.
+
+        Each time an item is added to the BloomFilter a bit will be set in each slice.  Therefore,
+        having more slices will reduce the chance of false positives at the cost of using more bits.
+
+        @param num_slices: The number of slices.
+        @type num_slices: int or long
+
+        @param bits_per_slice: The number of bits per slice.
+        @type bits_per_slice: int or long
+        """
         assert isinstance(num_slices, (int, long))
         assert num_slices > 0
         assert isinstance(bits_per_slice, (int, long))
@@ -116,10 +134,24 @@ class BloomFilter(Constructor):
         self._num_slices = num_slices
         self._bits_per_slice = bits_per_slice
         self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
-        self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
+        self._bytes = array("B", (0 for _ in xrange(int(ceil(self._num_slices * self._bits_per_slice / 8.0)))))
 
     @constructor((int, long), float)
-    def _init_capacity(self, capacity, error_rate):
+    def _init_capacity_(self, capacity, error_rate):
+        """
+        Initialize a new BloomFilter instance.
+
+        The optimal number of slices and slice size is choosen based on how many items are expected
+        to be stored in the BloomFilter and how many false positives are allowed to occur.
+
+        @param capacity: How many items are expected to be stored in the BloomFilter.  Storing more
+         than this value will result in higher chances for false positives.
+        @type capacity: (int, long)
+
+        @param error_rate: The chance a false positive occurs given that there are no more than
+         capacity items in the BloomFilter.
+        @type error_rate: float
+        """
         assert isinstance(capacity, (int, long))
         assert isinstance(error_rate, float)
         assert 0 < error_rate < 1, "Error_Rate must be between 0 and 1"
@@ -129,21 +161,40 @@ class BloomFilter(Constructor):
         # n ~= M * ((ln(2) ** 2) / abs(ln(P)))
         # n ~= (k * m) * ((ln(2) ** 2) / abs(ln(P)))
         # m ~= n * abs(ln(P)) / (k * (ln(2) ** 2))
-        self._num_slices = int(math.ceil(math.log(1 / error_rate, 2)))
+        self._num_slices = int(ceil(log(1 / error_rate, 2)))
         # the error_rate constraint assumes a fill rate of 1/2
         # so we double the capacity to simplify the API
-        self._bits_per_slice = int(((capacity * math.log(error_rate)) / math.log(1.0 / (math.pow(2.0, math.log(2.0)))) ) / self._num_slices)
+        self._bits_per_slice = int(((capacity * log(error_rate)) / log(1.0 / (pow(2.0, log(2.0)))) ) / self._num_slices)
         self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
-        self._bytes = array("B", (0 for _ in xrange(int(math.ceil(self._num_slices * self._bits_per_slice / 8.0)))))
+        self._bytes = array("B", (0 for _ in xrange(int(ceil(self._num_slices * self._bits_per_slice / 8.0)))))
 
     @constructor(str, (int, long))
-    def _init_load(self, data, offset):
+    def _init_load_(self, data, offset):
+        """
+        Initialize a new BloomFilter instance.
+
+        Loads an existing BloomFilter from a string representation.
+
+        @todo: We are planning to remove the first bytes that contain the number of bits and the
+         number of bits per slice.
+
+        @param data: The binary sting containing the BloomFilter.
+        @type data: string
+
+        @param offset: The first index in the binary string where the BloomFilter starts.
+        @type offset: int or long
+        @note: offset should have a default value of zero.  However, currently the Constructor
+         overloading does not support this.
+
+        @raise ValueError: When there are to few bytes available.
+        """
         assert isinstance(data, str)
+        assert isinstance(offset, (int, long))
         if len(data) < offset + 8:
             raise ValueError("Insufficient bytes")
 
         self._num_slices, self._bits_per_slice = unpack_from("!LL", data, offset)
-        size = int(math.ceil(self._num_slices * self._bits_per_slice / 8.0))
+        size = int(ceil(self._num_slices * self._bits_per_slice / 8.0))
         if len(data) < offset + 8 + size:
             raise ValueError("Insufficient bytes")
 
@@ -153,10 +204,18 @@ class BloomFilter(Constructor):
     @property
     def size(self):
         """
-        Returns the size of the bloom filter in bits (i.e. how many
-        bits the bloom filter uses).
+        The size of the bloom filter in bits, i.e. how many bits the bloom filter uses.
+        @rtype: int or long
         """
         return self._num_slices * self._bits_per_slice
+
+    def __len__(self):
+        """
+        @return: the size of the bloom filter and its adminitration value in bytes.
+        @rtype: int or long
+        @note: This is the same as len(str(bloom_filter)), only faster.
+        """
+        return 8 + len(self._bytes)
 
     def __contains__(self, key):
         """
@@ -166,6 +225,12 @@ class BloomFilter(Constructor):
         >>> b.add("hello")
         >>> "hello" in b
         True
+
+        @param key: The key to test.
+        @type key: string
+
+        @return: True when key is contained in the BloomFilter.
+        @rtype: bool
         """
         assert isinstance(key, str), "Key must be a binary string"
         bits_per_slice = self._bits_per_slice
@@ -179,11 +244,14 @@ class BloomFilter(Constructor):
 
     def add(self, key):
         """
-        Adds a key to this bloom filter. 
+        Adds a key to this bloom filter.
 
         >>> b = BloomFilter(capacity=100)
         >>> b.add("hello")
         >>> b.add("hello")
+
+        @param key: The key to add.
+        @type key: string
         """
         assert isinstance(key, str), "Key must be a binary string"
         bytes = self._bytes
@@ -195,9 +263,24 @@ class BloomFilter(Constructor):
 
     def and_occurrence(self, other):
         """
-        Return the number of bits that are both set.
-        
-        0110 and 0100 results in 0100 ~ 1 bit
+        Counts the number of bits that are set at the same indexes in this and the other
+        BloomFilter.
+
+        >>> b = BloomFilter(binary_to_string("01110"))
+        >>> o = BloomFilter(binary_to_string("01000"))
+        >>> b.and_occurrence(o)             #  ^
+        >>> 1
+
+        In order to compare, both BloomFilters need to be compatible.  In other words, they need to
+        have the same number of slices and number of bits per slice.
+
+        @param other: The other BloomFilter to compare with.
+        @type other: BloomFilter
+
+        @return: The number of bits counted.
+        @rtype: int or long
+        @raise ValueError: When both BloomFilters are are incompatible, i.e. have different number
+         of slices or bits per slice.
         """
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
@@ -211,10 +294,24 @@ class BloomFilter(Constructor):
 
     def xor_occurrence(self, other):
         """
-        Return the number of bits activated by xor.
+        Counts the number of bits that are set in either this of the other BloomFilter, at the same
+        indexes, but not in both at the same time.
 
-        For instance:
-        0110 xor 0100 results in 0010 ~ 1 bits
+        >>> b = BloomFilter(binary_to_string("01110"))
+        >>> o = BloomFilter(binary_to_string("01000"))
+        >>> b.xor_occurrence(o)             #   ^^
+        >>> 2
+
+        In order to compare, both BloomFilters need to be compatible.  In other words, they need to
+        have the same number of slices and number of bits per slice.
+
+        @param other: The other BloomFilter to compare with.
+        @type other: BloomFilter
+
+        @return: The number of bits counted.
+        @rtype: int or long
+        @raise ValueError: When both BloomFilters are are incompatible, i.e. have different number
+         of slices or bits per slice.
         """
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
@@ -228,11 +325,24 @@ class BloomFilter(Constructor):
 
     def bic_occurrence(self, other):
         """
-        bic as in Logical Bicondictional, return the number of bits
-        that are equal in value.
+        Counts the number of bits that are biconditional, i.e. have the same value in both this and
+        the other BloomFilter, at the same indexes.
 
-        For instance:
-        0110 xor 0100 results in 1101 ~ 3 bits
+        >>> b = BloomFilter(binary_to_string("01110"))
+        >>> o = BloomFilter(binary_to_string("01000"))
+        >>> b.bic_occurrence(o)             # ^^  ^
+        >>> 3
+
+        In order to compare, both BloomFilters need to be compatible.  In other words, they need to
+        have the same number of slices and number of bits per slice.
+
+        @param other: The other BloomFilter to compare with.
+        @type other: BloomFilter
+
+        @return: The number of bits counted.
+        @rtype: int or long
+        @raise ValueError: When both BloomFilters are are incompatible, i.e. have different number
+         of slices or bits per slice.
         """
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
@@ -245,15 +355,40 @@ class BloomFilter(Constructor):
         return (self._num_slices * self._bits_per_slice) - count
 
     def __and__(self, other):
+        """
+        Create a new BloomFilter by merging this and the other BloomFilter using the AND operator.
+
+        In order to merge, both BloomFilters need to be compatible.  In other words, they need to
+        have the same number of slices and number of bits per slice.
+
+        @param other: The other BloomFilter to merge with.
+        @type other: BloomFilter
+
+        @return: A new BloomFilter.
+        @rtype: BloomFilter
+        @raise ValueError: When both BloomFilters are are incompatible, i.e. have different number
+         of slices or bits per slice.
+        """
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
             raise ValueError("Both bloom filters need to be the same size")
         return BloomFilter(pack("!LL", self._num_slices, self._bits_per_slice) + array("B", [i&j for i, j in zip(self._bytes, other._bytes)]).tostring(), 0)
 
-    def __or__(self, other):
-        raise NotImplementedError()
-
     def __xor__(self, other):
+        """
+        Create a new BloomFilter by merging this and the other BloomFilter using the XOR operator.
+
+        In order to merge, both BloomFilters need to be compatible.  In other words, they need to
+        have the same number of slices and number of bits per slice.
+
+        @param other: The other BloomFilter to merge with.
+        @type other: BloomFilter
+
+        @return: A new BloomFilter.
+        @rtype: BloomFilter
+        @raise ValueError: When both BloomFilters are are incompatible, i.e. have different number
+         of slices or bits per slice.
+        """
         assert isinstance(other, BloomFilter)
         if not (self._num_slices == other._num_slices and self._bits_per_slice == other._bits_per_slice):
             raise ValueError("Both bloom filters need to be the same size")
@@ -262,23 +397,19 @@ class BloomFilter(Constructor):
     def __str__(self):
         """
         Create a string representation of the BloomFilter.
+
+        @return: The string representation.
+        @rtype: string
+        @note: This method will change in the future.  The num_slices and bits_per_slice will be
+         removed and the method renamed.
         """
         return pack("!LL", self._num_slices, self._bits_per_slice) + self._bytes.tostring()
-
-    def __len__(self):
-        """
-        Returns the size of the bloom filter and its adminitration
-        value in bytes.  Note that this is the same as
-        len(str(bloom_filter)), only faster.
-        """
-        return 8 + len(self._bytes)
 
 if __debug__:
     def _performance_test():
         def test2(bits, count):
             generate_begin = time()
             ok = 0
-            sha1 = hashlib.sha1
             data = [(i, sha1(str(i)).digest()) for i in xrange(count)]
             create_begin = time()
             bloom = BloomFilter(bits, 0.0001)
@@ -526,4 +657,6 @@ if __debug__:
         #_performance_test()
         # _taste_test()
         # _test_occurrence()
-        _test_documentation()
+        # _test_documentation()
+
+        print BloomFilter._init_size

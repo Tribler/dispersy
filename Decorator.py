@@ -40,9 +40,20 @@ class Constructor(object):
 __constructor_order = 0
 def constructor(*types):
     def helper(func):
+        if __debug__:
+            # do not do anything when running epydoc
+            import sys
+            if sys.argv[0] == "(imported)":
+                return func
         global __constructor_order
         __constructor_order += 1
         return "CONSTRUCTOR", __constructor_order, types, func
+    return helper
+
+def documentation(documented_func):
+    def helper(func):
+        func.__doc__ = documented_func.__doc__ + "\n\n        @note: This documentation is copied from " + documented_func.__class__.__name__ + "." + documented_func.__name__
+        return func
     return helper
 
 if __debug__:

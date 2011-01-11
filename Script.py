@@ -264,7 +264,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
-        request = community.create_double_signed_text("Accept=<does not reach this point>", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        request = community.create_double_signed_text("Accept=<does not reach this point>", Member.get_instance(node.my_member.pem), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -297,7 +297,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == node.socket.getsockname(), address
             assert request.authentication.is_signed
             container["response"] += 1
-        request = community.create_double_signed_text("Accept=False", Member.get_instance(node.my_member.pem), on_response, 3.0)
+        request = community.create_double_signed_text("Accept=False", Member.get_instance(node.my_member.pem), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -345,7 +345,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
-        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -384,7 +384,7 @@ class DispersySignatureScript(ScriptBase):
         def on_response(address, response):
             assert container["response"] == 0 or request.authentication.is_signed
             container["response"] += 1
-        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, 3.0)
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, (), 3.0)
 
         # receive dispersy-signature-request message
         address, message = node1.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])

@@ -45,7 +45,7 @@ class DelayPacketByMissingMember(DelayPacket):
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
         # the footprint that will trigger the delayed packet
-        footprint = community.get_meta_message(u"dispersy-identity").generate_footprint()
+        footprint = community.get_meta_message(u"dispersy-identity").generate_footprint(authentication=([missing_member_id],))
 
         # the request message that asks for the message that will
         # trigger the delayed packet

@@ -201,7 +201,7 @@ class Node(object):
         assert isinstance(destination_address[1], int)
         assert isinstance(global_time, (int, long))
         meta = self._community.get_meta_message(u"dispersy-routing-request")
-        return meta.implement(meta.authentication.implement(),
+        return meta.implement(meta.authentication.implement(self._my_member),
                               meta.distribution.implement(global_time),
                               meta.destination.implement(destination_address),
                               meta.payload.implement(source_address, destination_address))

@@ -139,7 +139,7 @@ class DebugCommunity(Community):
     """
     Community to debug Dispersy related messages and policies.
     """
-    def get_meta_messages(self):
+    def initiate_meta_messages(self):
         return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), Last1TestPayload()),
                 Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=9), CommunityDestination(), Last9TestPayload()),
                 Message(self, u"double-signed-text", MultiMemberAuthentication(count=2, allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), DoubleSignedTextPayload()),
@@ -207,13 +207,13 @@ class DebugCommunity(Community):
     # double-signed-text
     #
 
-    def create_double_signed_text(self, text, member, response_func, timeout=10.0, store_and_forward=True):
+    def create_double_signed_text(self, text, member, response_func, response_args=(), timeout=10.0, store_and_forward=True):
         meta = self.get_meta_message(u"double-signed-text")
         message = meta.implement(meta.authentication.implement((self._my_member, member)),
                                  meta.distribution.implement(self._timeline.global_time),
                                  meta.destination.implement(member),
                                  meta.payload.implement(text))
-        return self.create_signature_request(message, response_func, timeout, store_and_forward)
+        return self.create_signature_request(message, response_func, response_args, timeout, store_and_forward)
 
     def create_taste_aware_record(self, number, sequence_number):
         meta = self.get_meta_message(u"taste-aware-record")
@@ -247,13 +247,13 @@ class DebugCommunity(Community):
     # triple-signed-text
     #
 
-    def create_triple_signed_text(self, text, member1, member2, response_func, timeout=10.0, store_and_forward=True):
+    def create_triple_signed_text(self, text, member1, member2, response_func, response_args=(), timeout=10.0, store_and_forward=True):
         meta = self.get_meta_message(u"triple-signed-text")
         message = meta.implement(meta.authentication.implement((self._my_member, member1, member2)),
                                  meta.distribution.implement(self._timeline.global_time),
                                  meta.destination.implement(member1, member2),
                                  meta.payload.implement(text))
-        return self.create_signature_request(message, response_func, timeout, store_and_forward)
+        return self.create_signature_request(message, response_func, response_args, timeout, store_and_forward)
 
     def allow_triple_signed_text(self, message):
         """

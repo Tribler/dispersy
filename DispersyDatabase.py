@@ -1,3 +1,11 @@
+"""
+This module provides an interface to the Dispersy database.
+
+@author: Boudewijn Schoon
+@organization: Technical University Delft
+@contact: dispersy@frayja.com
+"""
+
 from socket import gethostbyname
 from hashlib import sha1
 from os import path
@@ -82,21 +90,34 @@ class DispersyDatabase(Database):
         __doc__ = schema
 
     def __init__(self, working_directory):
+        """
+        Initialize a new DispersyDatabase instance.
+
+        @type working_directory: unicode
+        @param working_directory: the directory name where the database file should be stored.
+        """
         assert isinstance(working_directory, unicode)
         return Database.__init__(self, path.join(working_directory, u"dispersy.db"))
 
     def check_database(self, database_version):
-        if database_version == "0":
+        assert isinstance(database_version, unicode)
+        if database_version == u"0":
             self.execute(schema)
 
             # Add bootstrap users
             self.bootstrap()
 
-        elif database_version == "1":
+        elif database_version == u"1":
             # current version requires no action
             pass
 
     def bootstrap(self):
+        """
+        Populate the database with initial data.
+
+        This method is called after the database is initially created.  It ensures that one or more
+        bootstrap nodes are known.  Without these bootstrap nodes no other nodes will ever be found.
+        """
 #         host = unicode(gethostbyname(u"mughal.tribler.org"))
 #         port = 6711
 #         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")

@@ -493,16 +493,20 @@ class BinaryConversion(Conversion):
 
     def _encode_routing_response(self, message):
         assert isinstance(message.payload, RoutingResponsePayload.Implementation)
-        return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
+        return message.payload.request_identifier, inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
     def _decode_routing_response(self, meta_message, offset, data):
-        if len(data) < offset + 12:
+        if len(data) < offset + 32:
             raise DropPacket("Insufficient packet size")
 
+        request_identifier = data[offset:offset+20]
+        offset += 20
         source_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
-        destination_address = (inet_ntoa(data[offset+6:offset+10]), unpack_from("!H", data, offset+10)[0])
+        offset += 6
+        destination_address = (inet_ntoa(data[offset:offset+4]), unpack_from("!H", data, offset+4)[0])
+        offset += 6
 
-        return offset + 12, meta_message.payload.implement(source_address, destination_address)
+        return offset, meta_message.payload.implement(request_identifier, source_address, destination_address)
 
     def _encode_identity(self, message):
         assert isinstance(message.payload, IdentityPayload.Implementation)
