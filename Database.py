@@ -8,7 +8,7 @@ This module provides basic database functionalty and simple version control.
 
 import thread
 import hashlib
-import apsw
+import sqlite3
 
 from Singleton import Singleton
 
@@ -34,7 +34,7 @@ class Database(Singleton):
             dprint(file_path)
             self._thread_ident = thread.get_ident()
 
-        self._connection = apsw.Connection(file_path)
+        self._connection = sqlite3.Connection(file_path)
         # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
 
@@ -88,7 +88,7 @@ class Database(Singleton):
 
         @return: The method self.execute
         """
-        self._cursor.execute("BEGIN TRANSACTION")
+        # self._cursor.execute("BEGIN TRANSACTION")
         return self.execute
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -97,7 +97,7 @@ class Database(Singleton):
 
         @see: _enter__
         """
-        self._cursor.execute("END TRANSACTION")
+        # self._cursor.execute("END TRANSACTION")
 
     @property
     def last_insert_rowid(self):
@@ -106,16 +106,18 @@ class Database(Singleton):
         @rtype: int or long
         """
         assert self._thread_ident == thread.get_ident()
-        return self._connection.last_insert_rowid()
+        assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
+        return self._cursor.lastrowid
 
     @property
     def changes(self):
         """
-        The number of changes that resulted from the that the most recent query.
+        The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
         assert self._thread_ident == thread.get_ident()
-        return self._connection.changes()
+        return self._cursor.rowcount
+        # return self._connection.changes()
 
     def execute(self, statements, bindings=()):
         """
@@ -140,22 +142,21 @@ class Database(Singleton):
 
         @returns: unknown
         @raise DatabaseException: unknown
-        @see: http://apsw.googlecode.com/svn/publish/cursor.html#cursors
         """
         assert self._thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict)), "The bindinds must be a tuple, list, or dictionary"
         assert not filter(lambda x: isinstance(x, str), bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings]) 
         if __debug__:
-            changes_before = self._connection.totalchanges()
+            changes_before = self._connection.total_changes
             dprint(statements)
         try:
             return self._cursor.execute(statements, bindings)
-        except apsw.SQLError, exception:
+        except sqlite3.SQLError, exception:
             if __debug__:
                 dprint(exception=True, level="warning")
                 dprint("Filename: ", self._connection.filename, level="warning")
-                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.totalchanges() - changes_before, level="warning")
+                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before, level="warning")
                 dprint(statements, level="warning")
             raise DatabaseException(exception)
 
@@ -183,7 +184,6 @@ class Database(Singleton):
 
         @returns: unknown
         @raise DatabaseException: unknown
-        @see: http://apsw.googlecode.com/svn/publish/cursor.html#cursors
         """
         assert self._thread_ident == thread.get_ident()
         assert isinstance(statements, unicode)
@@ -191,15 +191,15 @@ class Database(Singleton):
         assert not filter(lambda x: isinstance(x, (tuple, list, dict)), sequenceofbindings)
         assert not filter(lambda x: not filter(lambda y: isinstance(y, str), bindings), sequenceofbindings), "None of the bindings may be string type"
         if __debug__:
-            changes_before = self._connection.totalchanges()
+            changes_before = self._connection.total_changes
             dprint(statements)
         try:
             return self._cursor.executemany(statements, sequenceofbindings)
-        except apsw.SQLError, exception:
+        except sqlite3.SQLError, exception:
             if __debug__:
                 dprint(exception=True)
                 dprint("Filename: ", self._connection.filename)
-                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.totalchanges() - changes_before)
+                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before)
                 dprint(statements)
             raise DatabaseException(exception)
 
