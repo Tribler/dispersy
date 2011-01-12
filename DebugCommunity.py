@@ -2,7 +2,7 @@ from struct import pack, unpack_from
 
 from Authentication import MultiMemberAuthentication, MemberAuthentication
 from Community import Community
-from Conversion import DictionaryConversion, BinaryConversion
+from Conversion import BinaryConversion
 from Debug import Node
 from Destination import MemberDestination, CommunityDestination, SimilarityDestination
 from Distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution

@@ -6,10 +6,10 @@ import hashlib
 import types
 from struct import pack, unpack_from
 
-from Singleton import Singleton
 from Authentication import MultiMemberAuthentication
 from Community import Community
-from Conversion import DictionaryConversion, BinaryConversion
+from Conversion import BinaryConversion
+from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 from Debug import Node
 from Destination import CommunityDestination
 from Dispersy import Dispersy
@@ -20,7 +20,7 @@ from Message import Message
 from Payload import Permit
 from Print import dprint
 from Resolution import PublicResolution
-from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from Singleton import Singleton
 
 from DebugCommunity import DebugCommunity, DebugNode
 
