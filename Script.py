@@ -52,24 +52,24 @@ class Script(Singleton):
     def __init__(self):
         self._scripts = {}
 
-    def add(self, name, script, include_with_all=True):
+    def add(self, name, script, args={}, include_with_all=True):
         assert isinstance(name, str)
         assert not name in self._scripts
         assert issubclass(script, ScriptBase)
-        self._scripts[name] = (include_with_all, script)
+        self._scripts[name] = (include_with_all, script, args)
 
     def load(self, rawserver, name):
         dprint(name)
         terminator = Script.Terminator(rawserver)
 
         if name == "all":
-            for name, (include_with_all, script) in self._scripts.iteritems():
+            for name, (include_with_all, script, args) in self._scripts.iteritems():
                 if include_with_all:
                     dprint(name)
-                    script(terminator, name, rawserver)
+                    script(terminator, name, rawserver, **args)
 
         elif name in self._scripts:
-            self._scripts[name][1](terminator, name, rawserver)
+            self._scripts[name][1](terminator, name, rawserver, **self._scripts[name][2])
 
         else:
             for available in sorted(self._scripts):
@@ -79,7 +79,7 @@ class Script(Singleton):
         terminator.run()
 
 class ScriptBase(object):
-    def __init__(self, terminator, name, rawserver):
+    def __init__(self, terminator, name, rawserver, **kargs):
         self._terminator = terminator
         self._name = name
         self._rawserver = rawserver

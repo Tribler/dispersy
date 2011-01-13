@@ -140,8 +140,8 @@ class DebugCommunity(Community):
     Community to debug Dispersy related messages and policies.
     """
     def initiate_meta_messages(self):
-        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), Last1TestPayload()),
-                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=9), CommunityDestination(), Last9TestPayload()),
+        return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), Last1TestPayload()),
+                Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=9), CommunityDestination(node_count=10), Last9TestPayload()),
                 Message(self, u"double-signed-text", MultiMemberAuthentication(count=2, allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), DoubleSignedTextPayload()),
                 Message(self, u"triple-signed-text", MultiMemberAuthentication(count=3, allow_signature_func=self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), TripleSignedTextPayload()),
                 Message(self, u"taste-aware-record", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True), SimilarityDestination(cluster=1, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload()),
@@ -274,4 +274,3 @@ class DebugCommunity(Community):
         Received a taste aware record.
         """
         dprint(message.payload.number)
-

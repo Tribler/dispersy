@@ -15,12 +15,6 @@ from Singleton import Singleton
 if __debug__:
     from Tribler.Core.Dispersy.Print import dprint
 
-class DatabaseException(Exception):
-    pass
-
-# class DatabaseRollbackException(DatabaseException):
-#     pass
-
 class Database(Singleton):
     def __init__(self, file_path):
         """
@@ -32,7 +26,8 @@ class Database(Singleton):
         if __debug__:
             assert isinstance(file_path, unicode)
             dprint(file_path)
-            self._thread_ident = thread.get_ident()
+            self._debug_thread_ident = thread.get_ident()
+            self._debug_file_path = file_path
 
         self._connection = sqlite3.Connection(file_path)
         # self._connection.setrollbackhook(self._on_rollback)
@@ -61,7 +56,7 @@ class Database(Singleton):
         # get version from required 'option' table
         try:
             version, = self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1").next()
-        except DatabaseException:
+        except sqlite3.Error:
             # the 'option' table probably hasn't been created yet
             version = u"0"
         except StopIteration:
@@ -105,7 +100,7 @@ class Database(Singleton):
         The row id of the most recent insert query.
         @rtype: int or long
         """
-        assert self._thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident()
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._cursor.lastrowid
 
@@ -115,7 +110,7 @@ class Database(Singleton):
         The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
-        assert self._thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident()
         return self._cursor.rowcount
         # return self._connection.changes()
 
@@ -141,24 +136,40 @@ class Database(Singleton):
         @type bindings: tuple
 
         @returns: unknown
-        @raise DatabaseException: unknown
+        @raise sqlite.Error: unknown
         """
-        assert self._thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict)), "The bindinds must be a tuple, list, or dictionary"
-        assert not filter(lambda x: isinstance(x, str), bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings]) 
+        assert not filter(lambda x: isinstance(x, str), bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
         if __debug__:
             changes_before = self._connection.total_changes
             dprint(statements)
         try:
             return self._cursor.execute(statements, bindings)
-        except sqlite3.SQLError, exception:
+        except sqlite3.Error, exception:
             if __debug__:
                 dprint(exception=True, level="warning")
-                dprint("Filename: ", self._connection.filename, level="warning")
+                dprint("Filename: ", self._debug_file_path, level="warning")
                 dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before, level="warning")
                 dprint(statements, level="warning")
-            raise DatabaseException(exception)
+            raise
+
+    def executescript(self, statements):
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
+        if __debug__:
+            changes_before = self._connection.total_changes
+            dprint(statements)
+        try:
+            return self._cursor.executescript(statements)
+        except sqlite3.Error, exception:
+            if __debug__:
+                dprint(exception=True, level="warning")
+                dprint("Filename: ", self._debug_file_path, level="warning")
+                dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before, level="warning")
+                dprint(statements, level="warning")
+            raise
 
     def executemany(self, statements, sequenceofbindings):
         """
@@ -183,9 +194,9 @@ class Database(Singleton):
         @type bindings: list containing tuples
 
         @returns: unknown
-        @raise DatabaseException: unknown
+        @raise sqlite.Error: unknown
         """
-        assert self._thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident()
         assert isinstance(statements, unicode)
         assert isinstance(sequenceofbindings, (tuple, list))
         assert not filter(lambda x: isinstance(x, (tuple, list, dict)), sequenceofbindings)
@@ -195,13 +206,13 @@ class Database(Singleton):
             dprint(statements)
         try:
             return self._cursor.executemany(statements, sequenceofbindings)
-        except sqlite3.SQLError, exception:
+        except sqlite3.Error, exception:
             if __debug__:
                 dprint(exception=True)
-                dprint("Filename: ", self._connection.filename)
+                dprint("Filename: ", self._debug_file_path)
                 dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before)
                 dprint(statements)
-            raise DatabaseException(exception)
+            raise
 
     # def _on_rollback(self):
     #     if __debug__: dprint("ROLLBACK", level="warning")

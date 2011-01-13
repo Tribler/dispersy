@@ -400,7 +400,7 @@ class Message(MetaObject):
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         elif isinstance(authentication, MultiMemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution))
-            require(authentication, distribution, (RelayDistribution, DirectDistribution, LastSyncDistribution))
+            require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__name__} is not supported".format(authentication))

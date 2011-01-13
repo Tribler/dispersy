@@ -97,11 +97,9 @@ class Dispersy(Singleton):
         @param working_directory: The directory where all files should be stored.
         @type working_directory: unicode
         """
-        assert isinstance(working_directory, unicode)
-
         # the raw server
         self._rawserver = rawserver
-        self._rawserver.add_task(self._periodically_disperse, 3.0)
+        self._rawserver.add_task(self._periodically_disperse, 1.0)
         self._rawserver.add_task(self._periodically_stats, 1.0)
 
         # where we store all data
@@ -201,13 +199,13 @@ class Dispersy(Singleton):
         """
         return [Message(community, u"dispersy-routing-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), IdentityPayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
-                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(), SyncPayload()),
+                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=10), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
-                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(), SimilarityPayload()),
+                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), SimilarityPayload()),
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
 
     def get_message_handlers(self, community):
@@ -477,6 +475,7 @@ class Dispersy(Singleton):
                 # Converty binary date to internal Message
                 #
                 message = conversion.decode_message(packet)
+                dprint(community._my_member)
 
             except DropPacket as exception:
                 dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True)
@@ -488,6 +487,7 @@ class Dispersy(Singleton):
                 self._triggers.append(trigger)
                 self._rawserver.add_task(trigger.on_timeout, 10.0)
                 self._send([address], [delay.request_packet])
+                log("dispersy.log", "delay-packet", address=address, packet=packet, pattern=delay.pattern)
 
             else:
                 #
@@ -686,28 +686,29 @@ class Dispersy(Singleton):
                 sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
                           FROM routing
                           WHERE community = ? AND (diff < 30 OR age > 300)
-                          ORDER BY diff ASC, age DESC
-                          LIMIT 2"""
-                addresses = set([(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id,))])
-                has_recent = bool(addresses)
+                          ORDER BY RANDOM()
+                          LIMIT ?"""
+                addresses = [(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id, message.destination.node_count))]
 
-                # we need to fallback to something... just pick
-                # some addresses within this community.
-                sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
-                          FROM routing
-                          WHERE community = ?
-                          ORDER BY diff ASC, age DESC
-                          LIMIT 3"""
-                addresses.update([(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id,))])
+                if not addresses:
+                    # we need to fallback to something... just pick
+                    # some addresses within this community.
+                    sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
+                              FROM routing
+                              WHERE community = ?
+                              ORDER BY RANDOM()
+                              LIMIT ?"""
+                    addresses = [(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id, message.destination.node_count))]
 
-                if not has_recent:
+                if not addresses:
                     # we need to fallback to something else... just
                     # pick some addresses.
                     sql = u"""SELECT host, port
                               FROM routing
                               WHERE community = 0
-                              LIMIT 2"""
-                    addresses.update([(str(host), port) for host, port in self._database.execute(sql)])
+                              ORDER BY RANDOM()
+                              LIMIT ?"""
+                    addresses = [(str(host), port) for host, port in self._database.execute(sql, (message.destination.node_count,))]
 
                 if __debug__:
                     addresses = [(host, port) for host, port in addresses if not (host == "130.161.158.222" and port == self._my_external_address[1])]
@@ -1262,6 +1263,7 @@ class Dispersy(Singleton):
                 continue
 
             self._send([address], [packet])
+            log("dispersy.log", "dispersy-missing-sequence - send back packet", length=len(packet), packet=packet, low=message.payload.missing_low, high=message.payload.missing_high)
 
     def create_signature_request(self, community, message, response_func, response_args=(), timeout=10.0, store_and_forward=True):
         """
@@ -1648,7 +1650,8 @@ class Dispersy(Singleton):
                                            meta.payload.implement(global_time, bloom_filter)))
         if messages:
             self.store_and_forward(messages)
-        self._rawserver.add_task(self._periodically_disperse, 10.0)
+
+        self._rawserver.add_task(self._periodically_disperse, 20.0)
 
     def _periodically_stats(self):
         """

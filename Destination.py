@@ -84,6 +84,19 @@ class CommunityDestination(Destination):
         def footprint(self):
             return "CommunityDestination"
 
+        @property
+        def node_count(self):
+            return self._meta._node_count
+
+    def __init__(self, node_count):
+        assert isinstance(node_count, int)
+        assert node_count > 0
+        self._node_count = node_count
+
+    @property
+    def node_count(self):
+        return self._node_count
+
     def generate_footprint(self):
         return "CommunityDestination"
 
