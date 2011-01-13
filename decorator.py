@@ -35,7 +35,7 @@ class Constructor(object):
                     break
             else:
                 return method(self, *args)
-        raise RuntimeError("No constructor found for", tuple(map(type, args)))            
+        raise RuntimeError("No constructor found for", tuple(map(type, args)))
 
 __constructor_order = 0
 def constructor(*types):

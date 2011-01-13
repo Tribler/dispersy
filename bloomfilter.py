@@ -20,10 +20,10 @@ from hashlib import sha1, sha256, sha384, sha512, md5
 from math import ceil, log, pow
 from struct import unpack_from, unpack, pack
 
-from Decorator import Constructor, constructor
+from decorator import Constructor, constructor
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
     from time import time
 
 def _make_hashfuncs(num_slices, num_bits):

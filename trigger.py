@@ -16,7 +16,7 @@ previous message will trigger the processing of the delayed message.
 from re import compile as expression_compile
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class Trigger(object):
     def on_message(self, address, message):
@@ -169,7 +169,7 @@ class TriggerMessage(Trigger):
         lost.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(pattern, str)
         assert hasattr(on_incoming_message, "__call__")
         assert isinstance(address, tuple)

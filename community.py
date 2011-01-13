@@ -10,24 +10,24 @@ Community instance.
 
 from hashlib import sha1
 
-from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
-from Bloomfilter import BloomFilter
-from Conversion import DefaultConversion
-from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
-from Decorator import documentation
-from Destination import CommunityDestination, AddressDestination
-from Dispersy import Dispersy
-from DispersyDatabase import DispersyDatabase
-from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
-from Encoding import encode
-from Member import Private, MasterMember, MyMember, Member
-from Message import Message, DropMessage
-from Payload import Permit, Authorize, Revoke, SimilarityPayload
-from Resolution import PublicResolution
-from Timeline import Timeline
+from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
+from bloomfilter import BloomFilter
+from conversion import DefaultConversion
+from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from decorator import documentation
+from destination import CommunityDestination, AddressDestination
+from dispersy import Dispersy
+from dispersydatabase import DispersyDatabase
+from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from encoding import encode
+from member import Private, MasterMember, MyMember, Member
+from message import Message, DropMessage
+from payload import Permit, Authorize, Revoke, SimilarityPayload
+from resolution import PublicResolution
+from timeline import Timeline
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class Community(object):
     @classmethod
@@ -375,7 +375,7 @@ class Community(object):
         @type default: bool
         """
         if __debug__:
-            from Conversion import Conversion
+            from conversion import Conversion
         assert isinstance(conversion, Conversion)
         assert isinstance(default, bool)
         assert not conversion.prefix in self._conversions
@@ -627,7 +627,7 @@ class Community(object):
          message immediately.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(address, (type(None), tuple))
         assert isinstance(message, Message.Implementation)
         raise NotImplementedError()

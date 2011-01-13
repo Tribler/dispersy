@@ -2,24 +2,24 @@ from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from
 from hashlib import sha1
 
-from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
-from Bloomfilter import BloomFilter
-from Destination import MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination
-from DispersyDatabase import DispersyDatabase
-from Distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
-from Encoding import encode, decode
-from Member import PrivateMember, MasterMember
-from Message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from Payload import IdentityPayload, IdentityRequestPayload
-from Payload import MissingSequencePayload
-from Payload import Permit, Authorize, Revoke
-from Payload import RoutingRequestPayload, RoutingResponsePayload
-from Payload import SignatureRequestPayload, SignatureResponsePayload
-from Payload import SimilarityPayload, SimilarityRequestPayload
-from Payload import SyncPayload
+from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
+from bloomfilter import BloomFilter
+from destination import MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination
+from dispersydatabase import DispersyDatabase
+from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
+from encoding import encode, decode
+from member import PrivateMember, MasterMember
+from message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
+from payload import IdentityPayload, IdentityRequestPayload
+from payload import MissingSequencePayload
+from payload import Permit, Authorize, Revoke
+from payload import RoutingRequestPayload, RoutingResponsePayload
+from payload import SignatureRequestPayload, SignatureResponsePayload
+from payload import SimilarityPayload, SimilarityRequestPayload
+from payload import SyncPayload
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class Conversion(object):
     """
@@ -32,7 +32,7 @@ class Conversion(object):
         COMMUNITY instance that this conversion belongs to.
         VERSION is the conversion identifyer (on the wire version).
         """
-        if __debug__: from Community import Community
+        if __debug__: from community import Community
         assert isinstance(community, Community)
         assert isinstance(version, str)
         assert len(version) == 2
@@ -500,7 +500,7 @@ class BinaryConversion(Conversion):
 
     def _decode_similarity_destination(self, meta_message, authentication_impl):
         if __debug__:
-            from Authentication import Authentication
+            from authentication import Authentication
         assert isinstance(meta_message, Message)
         assert isinstance(authentication_impl, Authentication.Implementation)
 

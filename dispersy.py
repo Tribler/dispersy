@@ -41,28 +41,28 @@ from hashlib import sha1
 from lencoder import log
 from os.path import abspath
 
-from Authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
-from Bloomfilter import BloomFilter
-from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
-from Destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
-from DispersyDatabase import DispersyDatabase
-from Distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
-from Member import PrivateMember, MasterMember
-from Message import Message
-from Message import DropPacket, DelayPacket, DelayPacketByMissingMember
-from Message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
-from Payload import MissingSequencePayload
-from Payload import SyncPayload
-from Payload import SignatureRequestPayload, SignatureResponsePayload
-from Payload import RoutingRequestPayload, RoutingResponsePayload
-from Payload import IdentityPayload, IdentityRequestPayload
-from Payload import SimilarityRequestPayload, SimilarityPayload
-from Resolution import PublicResolution
-from Singleton import Singleton
-from Trigger import TriggerCallback, TriggerPacket, TriggerMessage
+from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
+from bloomfilter import BloomFilter
+from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
+from dispersydatabase import DispersyDatabase
+from distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from member import PrivateMember, MasterMember
+from message import Message
+from message import DropPacket, DelayPacket, DelayPacketByMissingMember
+from message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
+from payload import MissingSequencePayload
+from payload import SyncPayload
+from payload import SignatureRequestPayload, SignatureResponsePayload
+from payload import RoutingRequestPayload, RoutingResponsePayload
+from payload import IdentityPayload, IdentityRequestPayload
+from payload import SimilarityRequestPayload, SimilarityPayload
+from resolution import PublicResolution
+from singleton import Singleton
+from trigger import TriggerCallback, TriggerPacket, TriggerMessage
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class DummySocket(object):
     """
@@ -242,7 +242,7 @@ class Dispersy(Singleton):
         @type community: Community
         """
         if __debug__:
-            from Community import Community
+            from community import Community
         assert isinstance(community, Community)
         assert not community.cid in self._communities
         self._communities[community.cid] = community
@@ -656,7 +656,7 @@ class Dispersy(Singleton):
          members.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(messages, (tuple, list))
         assert len(messages) > 0
         assert not filter(lambda x: not isinstance(x, Message.Implementation), messages)
@@ -894,7 +894,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert message.name == u"dispersy-routing-request"
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
@@ -933,7 +933,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert message.name == u"dispersy-routing-response"
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
@@ -965,7 +965,7 @@ class Dispersy(Singleton):
         @type store_and_forward: bool
         """
         if __debug__:
-            from Community import Community
+            from community import Community
         assert isinstance(community, Community)
         assert isinstance(store_and_forward, bool)
         meta = community.get_meta_message(u"dispersy-identity")
@@ -990,7 +990,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
         assert message.name == u"dispersy-identity"
         if __debug__: dprint(message)
@@ -1169,7 +1169,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
 
         self._database.execute(u"INSERT OR REPLACE INTO similarity(community, user, cluster, similarity, packet) VALUES(?, ?, ?, ?, ?)",
@@ -1189,7 +1189,7 @@ class Dispersy(Singleton):
         """
         # assert here
         if __debug__:
-            from Destination import SimilarityDestination
+            from destination import SimilarityDestination
         assert isinstance(similarity_destination, SimilarityDestination)
 
         minimum_bits = similarity_destination.minimum_bits
@@ -1251,7 +1251,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation), type(message)
         assert message.name == u"dispersy-similarity-request"
 
@@ -1309,7 +1309,7 @@ class Dispersy(Singleton):
         @type store_and_forward: bool
         """
         if __debug__:
-            from Community import Community
+            from community import Community
         assert isinstance(community, Community)
         assert isinstance(message, Message.Implementation)
         assert isinstance(message.authentication, MultiMemberAuthentication.Implementation)
@@ -1370,8 +1370,8 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            from Message import Message
-            from Authentication import MultiMemberAuthentication
+            from message import Message
+            from authentication import MultiMemberAuthentication
         assert isinstance(message, Message.Implementation), type(message)
         assert isinstance(message.payload.message, Message.Implementation), type(message.payload.message)
         assert isinstance(message.payload.message.authentication, MultiMemberAuthentication.Implementation), type(message.payload.message.authentication)
@@ -1516,7 +1516,7 @@ class Dispersy(Singleton):
          easilly force us to send arbitrary large amounts of data.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
         assert message.name == u"dispersy-missing-sequence"
 
@@ -1558,7 +1558,7 @@ class Dispersy(Singleton):
          easilly force us to send arbitrary large amounts of data.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
         assert message.name == u"dispersy-sync"
         if __debug__: dprint(message)

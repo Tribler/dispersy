@@ -1,18 +1,18 @@
 from struct import pack, unpack_from
 
-from Authentication import MultiMemberAuthentication, MemberAuthentication
-from Community import Community
-from Conversion import BinaryConversion
-from Debug import Node
-from Destination import MemberDestination, CommunityDestination, SimilarityDestination
-from Distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
-from Message import Message, DropPacket
-from Member import MyMember
-from Payload import Permit
-from Resolution import PublicResolution
+from authentication import MultiMemberAuthentication, MemberAuthentication
+from community import Community
+from conversion import BinaryConversion
+from debug import Node
+from destination import MemberDestination, CommunityDestination, SimilarityDestination
+from distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
+from message import Message, DropPacket
+from member import MyMember
+from payload import Permit
+from resolution import PublicResolution
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 #
 # Node

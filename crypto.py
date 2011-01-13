@@ -8,7 +8,7 @@ import M2Crypto
 # curves as new become available and old ones to small to provide
 # sufficient security.
 _curves = {"low":M2Crypto.EC.NID_sect233k1,
-           "medium":M2Crypto.EC.NID_sect409k1, 
+           "medium":M2Crypto.EC.NID_sect409k1,
            "high":M2Crypto.EC.NID_sect571r1}
 
 def _progress(*args):
@@ -141,7 +141,7 @@ def rsa_to_public_bin(rsa, cipher="aes_128_cbc", password=None):
     pem = rsa_to_public_pem(rsa, cipher, password)
     lines = pem.split("\n")
     return "".join(lines[1:-2]).decode("BASE64")
-    
+
 def rsa_from_private_pem(pem, password=None):
     """
     Create a RSA public / private key pair from a PEM binary string.

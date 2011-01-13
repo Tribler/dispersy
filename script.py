@@ -6,23 +6,23 @@ import hashlib
 import types
 from struct import pack, unpack_from
 
-from Authentication import MultiMemberAuthentication
-from Community import Community
-from Conversion import BinaryConversion
-from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
-from Debug import Node
-from Destination import CommunityDestination
-from Dispersy import Dispersy
-from DispersyDatabase import DispersyDatabase
-from Distribution import FullSyncDistribution, LastSyncDistribution
-from Member import Member, MyMember
-from Message import Message
-from Payload import Permit
-from Print import dprint
-from Resolution import PublicResolution
-from Singleton import Singleton
+from authentication import MultiMemberAuthentication
+from community import Community
+from conversion import BinaryConversion
+from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from debug import Node
+from destination import CommunityDestination
+from dispersy import Dispersy
+from dispersydatabase import DispersyDatabase
+from distribution import FullSyncDistribution, LastSyncDistribution
+from member import Member, MyMember
+from message import Message
+from payload import Permit
+from dprint import dprint
+from resolution import PublicResolution
+from singleton import Singleton
 
-from DebugCommunity import DebugCommunity, DebugNode
+from debugcommunity import DebugCommunity, DebugNode
 
 class Script(Singleton):
     class Terminator(object):
@@ -436,7 +436,7 @@ class DispersySimilarityScript(ScriptBase):
         incoming packets based on similarity of the user
         sending the packet
         """
-        from Bloomfilter import BloomFilter
+        from bloomfilter import BloomFilter
         import struct
 
         # create community
@@ -503,7 +503,7 @@ class DispersySimilarityScript(ScriptBase):
         dprint("finished")
 
     def similarity_fullsync(self):
-        from Bloomfilter import BloomFilter
+        from bloomfilter import BloomFilter
         import struct
 
         # create community
@@ -634,7 +634,7 @@ class DispersySimilarityScript(ScriptBase):
         dprint("finished")
 
     def similarity_lastsync(self):
-        from Bloomfilter import BloomFilter
+        from bloomfilter import BloomFilter
         import struct
 
         # create community
@@ -720,7 +720,7 @@ class DispersySimilarityScript(ScriptBase):
         dprint("finished")
 
     def similarity_missing_sim(self):
-        from Bloomfilter import BloomFilter
+        from bloomfilter import BloomFilter
         import struct
 
         # create community

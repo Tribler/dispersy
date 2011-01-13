@@ -1,4 +1,4 @@
-from Meta import MetaObject
+from meta import MetaObject
 
 class Destination(MetaObject):
     class Implementation(MetaObject.Implementation):
@@ -11,7 +11,7 @@ class Destination(MetaObject):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
 
     def generate_footprint(self):
@@ -58,7 +58,7 @@ class MemberDestination(Destination):
     class Implementation(Destination.Implementation):
         def __init__(self, meta, *members):
             if __debug__:
-                from Member import Member
+                from member import Member
             assert len(members) >= 0
             assert not filter(lambda x: not isinstance(x, Member), members)
             super(MemberDestination.Implementation, self).__init__(meta)

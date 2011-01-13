@@ -1,4 +1,4 @@
-from Meta import MetaObject
+from meta import MetaObject
 
 """
 Each Privilege can be distributed, usualy through the transfer of a
@@ -42,7 +42,7 @@ class Distribution(MetaObject):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
 
     def generate_footprint(self):
@@ -118,7 +118,7 @@ class SyncDistribution(Distribution):
         which messages are already in the database.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
         if self._enable_sequence_number:
             # obtain the most recent sequence number that we have used

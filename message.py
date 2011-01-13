@@ -1,4 +1,4 @@
-from Meta import MetaObject
+from meta import MetaObject
 
 #
 # Exceptions
@@ -40,7 +40,7 @@ class DelayPacketByMissingMember(DelayPacket):
     """
     def __init__(self, community, missing_member_id):
         if __debug__:
-            from Community import Community
+            from community import Community
         assert isinstance(community, Community)
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
@@ -67,9 +67,9 @@ class DelayPacketBySimilarity(DelayPacket):
     """
     def __init__(self, community, member, destination):
         if __debug__:
-            from Community import Community
-            from Member import Member
-            from Destination import SimilarityDestination
+            from community import Community
+            from member import Member
+            from destination import SimilarityDestination
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(destination, SimilarityDestination)
@@ -130,7 +130,7 @@ class DelayMessageBySequence(DelayMessage):
     """
     def __init__(self, message, missing_low, missing_high):
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
         assert isinstance(missing_low, (int, long))
         assert isinstance(missing_high, (int, long))
@@ -162,7 +162,7 @@ class DelayMessageBySimilarity(DelayMessage):
     """
     def __init__(self, message, cluster):
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
         assert isinstance(cluster, int)
         # the footprint that will trigger the delayed packet
@@ -211,8 +211,8 @@ class Message(MetaObject):
     class Implementation(MetaObject.Implementation):
         def __init__(self, meta, authentication, distribution, destination, payload, conversion=None, packet=""):
             if __debug__:
-                from Payload import Payload
-                from Conversion import Conversion
+                from payload import Payload
+                from conversion import Conversion
             assert isinstance(meta, Message), "META has invalid type '{0}'".format(type(meta))
             assert isinstance(authentication, meta._authentication.Implementation), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
             assert isinstance(distribution, meta._distribution.Implementation), "DISTRIBUTION has invalid type '{0}'".format(type(distribution))
@@ -286,12 +286,12 @@ class Message(MetaObject):
 
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload):
         if __debug__:
-            from Community import Community
-            from Authentication import Authentication
-            from Resolution import Resolution
-            from Destination import Destination
-            from Distribution import Distribution
-            from Payload import Payload
+            from community import Community
+            from authentication import Authentication
+            from resolution import Resolution
+            from destination import Destination
+            from distribution import Distribution
+            from payload import Payload
         assert isinstance(community, Community), "COMMUNITY has invalid type '{0}'".format(type(community))
         assert isinstance(name, unicode), "NAME has invalid type '{0}'".format(type(name))
         assert isinstance(authentication, Authentication), "AUTHENTICATION has invalid type '{0}'".format(type(authentication))
@@ -376,10 +376,10 @@ class Message(MetaObject):
 
     @staticmethod
     def check_policy_combination(authentication, resolution, distribution, destination):
-        from Authentication import Authentication, NoAuthentication, MemberAuthentication, MultiMemberAuthentication
-        from Resolution import Resolution, PublicResolution, LinearResolution
-        from Distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
-        from Destination import Destination, AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination
+        from authentication import Authentication, NoAuthentication, MemberAuthentication, MultiMemberAuthentication
+        from resolution import Resolution, PublicResolution, LinearResolution
+        from distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
+        from destination import Destination, AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination
 
         assert isinstance(authentication, Authentication)
         assert isinstance(resolution, Resolution)

@@ -10,8 +10,8 @@ creator of this message.
 @contact: dispersy@frayja.com
 """
 
-from Member import PrivateMember
-from Meta import MetaObject
+from member import PrivateMember
+from meta import MetaObject
 
 class Authentication(MetaObject):
     """
@@ -52,7 +52,7 @@ class Authentication(MetaObject):
         @type message: Message
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
 
     def generate_footprint(self):
@@ -124,7 +124,7 @@ class MemberAuthentication(Authentication):
             @type is_signed: bool
             """
             if __debug__:
-                from Member import Member
+                from member import Member
             assert isinstance(member, Member)
             assert isinstance(is_signed, bool)
             super(MemberAuthentication.Implementation, self).__init__(meta)
@@ -247,7 +247,7 @@ class MultiMemberAuthentication(Authentication):
             @type signatures: list containing strings
             """
             if __debug__:
-                from Member import Member
+                from member import Member
             assert isinstance(members, (tuple, list)), type(members)
             assert not filter(lambda x: not isinstance(x, Member), members)
             assert len(members) == meta._count

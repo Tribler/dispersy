@@ -10,7 +10,7 @@ from socket import gethostbyname
 from hashlib import sha1
 from os import path
 
-from Database import Database
+from database import Database
 
 schema = u"""
 CREATE TABLE user(

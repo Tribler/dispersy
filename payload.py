@@ -1,6 +1,6 @@
 from hashlib import sha1
 
-from Meta import MetaObject
+from meta import MetaObject
 
 class Payload(MetaObject):
     class Implementation(MetaObject.Implementation):
@@ -35,7 +35,7 @@ class Payload(MetaObject):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
 
     def generate_footprint(self):
@@ -54,8 +54,8 @@ class Authorize(Payload):
             PAYLOAD is the kind of payload that is allowed {Authorize, Revoke, Permit}.
             """
             if __debug__:
-                from Member import Member
-                from Payload import Payload
+                from member import Member
+                from payload import Payload
                 assert isinstance(to, Member)
                 assert issubclass(payload, Payload)
             super(Authorize.Implementation, self).__init__(meta)
@@ -91,8 +91,8 @@ class Revoke(Payload):
             PAYLOAD is the payload type that is revoked {Authorize, Revoke, Permit}.
             """
             if __debug__:
-                from Member import Member
-                from Payload import Payload
+                from member import Member
+                from payload import Payload
                 assert isinstance(to, Member)
                 assert issubclass(payload, Payload)
             super(Revoke.Implementation, self).__init__(meta)
@@ -140,8 +140,8 @@ class MissingSequencePayload(Permit):
             missing_high.
             """
             if __debug__:
-                from Member import Member
-                from Message import Message
+                from member import Member
+                from message import Message
             assert isinstance(member, Member)
             assert isinstance(message, Message)
             assert isinstance(missing_low, (int, long))
@@ -283,7 +283,7 @@ class SyncPayload(Permit):
     class Implementation(Permit.Implementation):
         def __init__(self, meta, global_time, bloom_filter):
             if __debug__:
-                from Bloomfilter import BloomFilter
+                from bloomfilter import BloomFilter
             assert isinstance(global_time, (int, long))
             assert isinstance(bloom_filter, BloomFilter)
             super(SyncPayload.Implementation, self).__init__(meta)
@@ -313,7 +313,7 @@ class SimilarityPayload(Permit):
             meta Message.
             """
             if __debug__:
-                from Bloomfilter import BloomFilter
+                from bloomfilter import BloomFilter
             assert isinstance(cluster, int)
             assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
             assert isinstance(similarity, BloomFilter)
@@ -345,7 +345,7 @@ class SimilarityRequestPayload(Permit):
             using the 20 byte sha1 hash.
             """
             if __debug__:
-                from Member import Member
+                from member import Member
             assert isinstance(cluster, int)
             assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
             assert isinstance(members, (tuple, list))

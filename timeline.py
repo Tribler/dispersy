@@ -3,12 +3,12 @@ The Timeline is an important part of Dispersy.  The Timeline can be
 queried as to who had what actions at some point in time.
 """
 
-from Member import Member, MasterMember
-from Payload import Authorize, Revoke
-from Resolution import PublicResolution, LinearResolution
+from member import Member, MasterMember
+from payload import Authorize, Revoke
+from resolution import PublicResolution, LinearResolution
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class Timeline(object):
     class Node(object):
@@ -51,7 +51,7 @@ class Timeline(object):
         Check if message is allowed.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation), message
 
         # everyone is allowed PublicResolution
@@ -82,11 +82,11 @@ class Timeline(object):
         """
         Update the timeline according to the Authorize or Revoke
         message.
-        
+
         Returns True on success, otherwise False is returned.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message.Implementation)
         assert isinstance(message.payload, (Authorize, Revoke))
         assert self.check(message)

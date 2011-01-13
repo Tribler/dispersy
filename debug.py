@@ -1,16 +1,16 @@
 import socket
 
-from Authentication import NoAuthentication
-from Bloomfilter import BloomFilter
-from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
-from Destination import CommunityDestination, AddressDestination
-from Distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
-from Member import MyMember, Member
-from Message import Message
-from Payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, RoutingRequestPayload, IdentityPayload, SimilarityPayload
-from Print import dprint
-from Resolution import PublicResolution, LinearResolution
-from Member import PrivateMember, MyMember
+from authentication import NoAuthentication
+from bloomfilter import BloomFilter
+from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from destination import CommunityDestination, AddressDestination
+from distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
+from dprint import dprint
+from member import MyMember, Member
+from member import PrivateMember, MyMember
+from message import Message
+from payload import MissingSequencePayload, SyncPayload, SignatureResponsePayload, RoutingRequestPayload, IdentityPayload, SimilarityPayload
+from resolution import PublicResolution, LinearResolution
 
 class DebugOnlyMembers(object):
     _singleton_instances = {}

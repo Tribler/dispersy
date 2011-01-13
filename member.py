@@ -6,13 +6,13 @@ Special Member subclasses exist to identify, for instance, youself.
 
 from hashlib import sha1
 
-from Singleton import Parameterized1Singleton
-from DispersyDatabase import DispersyDatabase
-from Crypto import ec_from_private_pem, ec_from_public_pem, ec_to_public_pem, ec_signature_length, ec_verify, ec_sign
-from Encoding import encode, decode
+from singleton import Parameterized1Singleton
+from dispersydatabase import DispersyDatabase
+from crypto import ec_from_private_pem, ec_from_public_pem, ec_to_public_pem, ec_signature_length, ec_verify, ec_sign
+from encoding import encode, decode
 
 if __debug__:
-    from Print import dprint
+    from dprint import dprint
 
 class Public(object):
     @property
@@ -222,7 +222,7 @@ class MyMember(PrivateMember):
 
 if __debug__:
     if __name__ == "__main__":
-        from Crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+        from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
 
         ec = ec_generate_key("low")
         public_pem = ec_to_public_pem(ec)

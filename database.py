@@ -10,10 +10,10 @@ import thread
 import hashlib
 import sqlite3
 
-from Singleton import Singleton
+from singleton import Singleton
 
 if __debug__:
-    from Tribler.Core.Dispersy.Print import dprint
+    from dprint import dprint
 
 class Database(Singleton):
     def __init__(self, file_path):

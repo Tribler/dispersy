@@ -4,7 +4,7 @@ class Resolution(object):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from Message import Message
+            from message import Message
         assert isinstance(message, Message)
 
 class PublicResolution(Resolution):

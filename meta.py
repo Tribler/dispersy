@@ -1,5 +1,5 @@
 import inspect
-from Print import dprint
+from dprint import dprint
 
 class MetaObject(object):
     class Implementation(object):

@@ -24,7 +24,7 @@ class Singleton(object):
     foo = Foo.get_instance(456)
     assert foo.bar == 123
     """
-    
+
     _singleton_lock = RLock()
 
     @classmethod
@@ -42,7 +42,7 @@ class Singleton(object):
         """
         if hasattr(cls, "_singleton_instance"):
             return getattr(cls, "_singleton_instance")
-        
+
         with cls._singleton_lock:
             if not hasattr(cls, "_singleton_instance"):
                 setattr(cls, "_singleton_instance", cls(*args, **kargs))
