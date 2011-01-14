@@ -371,14 +371,14 @@ class DispersySignatureScript(ScriptBase):
         node1.init_socket()
         node1.set_community(community)
         node1.init_my_member()
-        yield 0.1
+        yield 0.2
 
         # create node and ensure that SELF knows the node address
         node2 = Node()
         node2.init_socket()
         node2.set_community(community)
         node2.init_my_member()
-        yield 0.1
+        yield 0.2
 
         # SELF requests NODE1 and NODE2 to add their signature
         def on_response(address, response):
