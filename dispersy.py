@@ -478,7 +478,7 @@ class Dispersy(Singleton):
                 dprint(community._my_member)
 
             except DropPacket as exception:
-                dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True)
+                if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True, level="warning")
                 log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
 
             except DelayPacket as delay:
@@ -553,7 +553,7 @@ class Dispersy(Singleton):
                 message.community.on_revoke_message(address, message)
 
         except DropMessage as exception:
-            dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True)
+            if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True, level="warning")
             log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
 
         except DelayMessage as delay:
