@@ -99,7 +99,6 @@ class Dispersy(Singleton):
         """
         # the raw server
         self._rawserver = rawserver
-        self._rawserver.add_task(self._periodically_disperse, 1.0)
         self._rawserver.add_task(self._periodically_stats, 1.0)
 
         # where we store all data
@@ -174,10 +173,19 @@ class Dispersy(Singleton):
     @property
     def database(self):
         """
-        The the Dispersy database singleton.
+        The Dispersy database singleton.
         @rtype: DispersyDatabase
         """
         return self._database
+
+    # @property
+    # def rawserver(self):
+    #     """
+    #     The rawserver is an object that allows a callback to take place at a certain point in time
+    #     using the add_task method.
+    #     @rtype: Object with an add_task method.
+    #     """
+    #     return self._rawserver
 
     def initiate_meta_messages(self, community):
         """
@@ -197,11 +205,14 @@ class Dispersy(Singleton):
         @return: The new meta messages.
         @rtype: [Message]
         """
+        if __debug__:
+            from community import Community
+        assert isinstance(community, Community)
         return [Message(community, u"dispersy-routing-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
                 Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
-                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=10), SyncPayload()),
+                Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=community.dispersy_sync_member_count), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
@@ -254,6 +265,9 @@ class Dispersy(Singleton):
 
             for global_time, packet in execute(u"SELECT global_time, packet FROM sync WHERE community = ? ORDER BY global_time", (community.database_id,)):
                 community.get_bloom_filter(global_time).add(str(packet))
+
+        # periodically send dispery-sync messages
+        self._rawserver.add_task(lambda: self._periodically_disperse(community), community.dispersy_sync_interval)
 
     def get_community(self, cid):
         """
@@ -1062,6 +1076,7 @@ class Dispersy(Singleton):
         """
         assert message.name == u"dispersy-identity-request"
         if __debug__: dprint(message)
+        # todo: we are assuming here that no more than 10 members have the same sha1 digest.
         sql = u"SELECT identity.packet FROM identity JOIN user ON user.id = identity.user WHERE identity.community = ? AND user.mid = ? LIMIT 10"
         self._send([address], [str(packet) for packet, in self._database.execute(sql, (message.community.database_id, buffer(message.payload.mid)))])
 
@@ -1520,17 +1535,18 @@ class Dispersy(Singleton):
         assert isinstance(message, Message)
         assert message.name == u"dispersy-missing-sequence"
 
-        # 10 kb per sync (or max N packets, see limit in query)
-        limit = self._total_send + 1024 * 10
+        # we limit the response by packet_limit packets or byte_limit bytes
+        packet_limit, byte_limit = message.community.dispersy_missing_sequence_response_limit
+        byte_limit += self._total_send
 
         payload = message.payload
-        for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE community = ? and sequence >= ? AND sequence <= ? ORDER BY sequence LIMIT 100",
-                                              (payload.message.community.database_id, payload.missing_low, payload.missing_high)):
+        for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE community = ? and sequence >= ? AND sequence <= ? ORDER BY sequence LIMIT ?",
+                                              (payload.message.community.database_id, payload.missing_low, payload.missing_high, packet_limit)):
             if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
             self._socket.send(address, packet)
 
             self._total_send += len(packet)
-            if self._total_send > limit:
+            if self._total_send > byte_limit:
                 if __debug__: dprint("Bandwidth throttle")
                 break
 
@@ -1563,8 +1579,9 @@ class Dispersy(Singleton):
         assert message.name == u"dispersy-sync"
         if __debug__: dprint(message)
 
-        # 5 kb per sync (or max N packets, see limit in query)
-        limit = self._total_send + 1024 * 5
+        # we limit the response by packet_limit packets or byte_limit bytes
+        packet_limit, byte_limit = message.community.dispersy_sync_response_limit
+        byte_limit += self._total_send
 
         similarity_cache = {}
         bloom_filter = message.payload.bloom_filter
@@ -1591,8 +1608,8 @@ class Dispersy(Singleton):
                   FROM sync
                   LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
                   WHERE sync.community = ? AND sync.global_time >= ?
-                  ORDER BY sync.global_time LIMIT 50"""
-        for packet, similarity_cluster, packet_similarity in self._database.execute(sql, (message.community.database_id, message.payload.global_time)):
+                  ORDER BY sync.global_time LIMIT ?"""
+        for packet, similarity_cluster, packet_similarity in self._database.execute(sql, (message.community.database_id, message.payload.global_time, packet_limit)):
             packet = str(packet)
             if not packet in bloom_filter:
                 # check if the packet uses the SimilarityDestination policy
@@ -1611,47 +1628,44 @@ class Dispersy(Singleton):
                 self._socket.send(address, packet)
 
                 self._total_send += len(packet)
-                if self._total_send > limit:
+                if self._total_send > byte_limit:
                     if __debug__: dprint("Bandwidth throttle")
                     break
 
-    def _periodically_disperse(self):
+    def _periodically_disperse(self, community):
         """
-        Periodically disperse the latest bloom filters for each community.
+        Periodically disperse the latest bloom filters for this community.
 
         Every N seconds one or more dispersy-sync message will be send for each community.  This may
         result in members detecting that we are missing messages and them sending them to us.
 
         Note that there are several magic numbers involved:
 
-         1. The frequency of calling _periodically_disperse.  See add_task in the
-            _periodically_disperse method.
+         1. The frequency of calling _periodically_disperse.  This is determined by
+            self.dispersy_sync_interval.  This defaults to 20.0 (currently).
 
-         2. To how many members do we send the dispersy-sync message each time
-            _periodically_disperse is called.  See the store_and_forward method.
+         2. Each time a dispersy-sync message is send, it is send to C different members.  This is
+            determined by the self.dispersy_sync_member_count.  This defaults to 10 (currently).
 
-         3. How many packets -at most- are sent back in response to a dispersy-sync message. See
-            limit in the query in the on_sync_message method.
+         3. How many packets -at most- are sent back in response to a dispersy-sync message.  This
+            is determined by the self.dispersy_sync_response_limit[0].  This defaults to 50.
 
-         4. How many bytes -at most- are sent back in response to a dispersy-sync message. See limit
-            variable in the on_sync_message method.
+         4. How many bytes -at most- are sent back in response to a dispersy-sync message.  This is
+            determined by the self.dispersy_sync_response_limit[1].  This defaults to 5KB.
         """
         #
-        # Advertise the packages that we sync.  This means sending
-        # a 'sync' message containing one or more bloom filters.
+        # Advertise the packages that we sync.  This means sending a 'sync' message containing one
+        # or more bloom filters.
         #
-        messages = []
-        for community in self._communities.itervalues():
-            global_time, bloom_filter = community.get_current_bloom_filter()
-            meta = community.get_meta_message(u"dispersy-sync")
-            messages.append(meta.implement(meta.authentication.implement(community._my_member),
-                                           meta.distribution.implement(community._timeline.global_time),
-                                           meta.destination.implement(),
-                                           meta.payload.implement(global_time, bloom_filter)))
-        if messages:
-            self.store_and_forward(messages)
+        global_time, bloom_filter = community.get_current_bloom_filter()
+        meta = community.get_meta_message(u"dispersy-sync")
+        message = meta.implement(meta.authentication.implement(community.my_member),
+                                 meta.distribution.implement(community._timeline.global_time),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(global_time, bloom_filter))
+        self.store_and_forward([message])
 
-        self._rawserver.add_task(self._periodically_disperse, 20.0)
+        self._rawserver.add_task(lambda: self._periodically_disperse(community), community.dispersy_sync_interval)
 
     def _periodically_stats(self):
         """

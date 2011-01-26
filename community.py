@@ -217,6 +217,40 @@ class Community(object):
         self._dispersy.add_community(self)
 
     @property
+    def dispersy_sync_interval(self):
+        """
+        The interval between sending dispersy-sync messages.
+        @rtype float
+        """
+        return 20.0
+
+    @property
+    def dispersy_sync_member_count(self):
+        """
+        The number of members that are selected each time a dispersy-sync message is send.
+        @rtype int
+        """
+        return 10
+
+    @property
+    def dispersy_sync_response_limit(self):
+        """
+        The maximum number of packets and the maximum number of bytes to send back per received
+        dispersy-sync message.
+        @rtype (int, int)
+        """
+        return (50, 5 * 1025)
+
+    @property
+    def dispersy_missing_sequence_response_limit(self):
+        """
+        The maximum number of packets and the maximum number of bytes to send back per received
+        dispersy-missing-sequence message.
+        @rtype (int, int)
+        """
+        return (100, 10 * 1025)
+
+    @property
     def cid(self):
         """
         The 20 byte sha1 digest of the public master key, in other words: the community identifier.
