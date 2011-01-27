@@ -85,6 +85,14 @@ class SyncDistribution(Distribution):
             return self._meta._enable_sequence_number
 
         @property
+        def synchronization_direction(self):
+            return self._meta._synchronization_direction
+
+        @property
+        def synchronization_direction_id(self):
+            return self._meta._synchronization_direction_id
+
+        @property
         def database_id(self):
             return self._meta._database_id
 
@@ -96,15 +104,27 @@ class SyncDistribution(Distribution):
         def footprint(self):
             return "SyncDistribution:" + str(self._sequence_number)
 
-    def __init__(self, enable_sequence_number):
+    def __init__(self, enable_sequence_number, synchronization_direction):
         assert isinstance(enable_sequence_number, bool)
+        assert isinstance(synchronization_direction, unicode)
+        assert synchronization_direction in (u"in-order", u"out-order", u"random-order")
         self._enable_sequence_number = enable_sequence_number
+        self._synchronization_direction = synchronization_direction
         self._current_sequence_number = 0
         self._database_id = 0
+        self._synchronization_direction_id = 0
 
     @property
     def enable_sequence_number(self):
         return self._enable_sequence_number
+
+    @property
+    def synchronization_direction(self):
+        return self._synchronization_direction
+
+    @property
+    def synchronization_direction_id(self):
+        return self._synchronization_direction_id
 
     @property
     def database_id(self):
@@ -126,6 +146,8 @@ class SyncDistribution(Distribution):
             if self._current_sequence_number is None:
                 # no entries in the database yet
                 self._current_sequence_number = 0
+
+        self._synchronization_direction_id, = message.community.dispersy.database.execute(u"SELECT key FROM tag WHERE value = ?", (self._synchronization_direction,)).next()
 
     def claim_sequence_number(self):
         assert self._enable_sequence_number
@@ -151,9 +173,10 @@ class LastSyncDistribution(SyncDistribution):
         def history_size(self):
             return self._meta._history_size
 
-    def __init__(self, enable_sequence_number, history_size):
+    def __init__(self, enable_sequence_number, synchronization_direction, history_size):
         assert isinstance(history_size, int)
-        super(LastSyncDistribution, self).__init__(enable_sequence_number)
+        assert history_size > 0
+        super(LastSyncDistribution, self).__init__(enable_sequence_number, synchronization_direction)
         self._history_size = history_size
 
     @property

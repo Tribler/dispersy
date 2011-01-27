@@ -25,11 +25,14 @@ CREATE TABLE user(
 CREATE TABLE tag(
  key INTEGER,
  value TEXT,
- UNIQUE(key));
+ UNIQUE(value));
 
 INSERT INTO tag (key, value) VALUES (1, 'store');
 INSERT INTO tag (key, value) VALUES (2, 'ignore');
 INSERT INTO tag (key, value) VALUES (4, 'drop');
+INSERT INTO tag (key, value) VALUES (1, 'in-order');
+INSERT INTO tag (key, value) VALUES (2, 'out-order');
+INSERT INTO tag (key, value) VALUES (3, 'random-order');
 
 CREATE TABLE identity(
  user INTEGER REFERENCES user(id),
@@ -67,6 +70,7 @@ CREATE TABLE sync(
  user INTEGER REFERENCES user(id),
  name INTEGER REFERENCES name(id),
  global_time INTEGER,
+ synchronization_direction INTEGER REFERENCES tag(key),
  distribution_sequence INTEGER DEFAULT 0,       -- used for the sync-distribution policy
  destination_cluster INTEGER DEFAULT 0,         -- used for the similarity-destination policy
  packet BLOB);

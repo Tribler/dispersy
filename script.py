@@ -217,13 +217,200 @@ class DispersyMemberTagScript(ScriptBase):
 
         dprint("finished")
 
-class DispersyScript(ScriptBase):
+class DispersySyncScript(ScriptBase):
     def run(self):
         ec = ec_generate_key("low")
         self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
 
+        self.caller(self.in_order_test)
+        self.caller(self.out_order_test)
+        self.caller(self.random_order_test)
+        self.caller(self.mixed_order_test)
         self.caller(self.last_1_test)
         self.caller(self.last_9_test)
+
+    def in_order_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"in-order-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # create some data
+        global_times = range(10, 15)
+        for global_time in global_times:
+            node.send_message(node.create_in_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+
+        # send an empty sync message to obtain all messages in-order
+        node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+        yield 0.1
+
+        for global_time in global_times:
+            _, message = node.receive_message(addresses=[address], message_names=[u"in-order-text"])
+            assert message.distribution.global_time == global_time
+
+        dprint("finished")
+
+    def out_order_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"out-order-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # create some data
+        global_times = range(10, 15)
+        for global_time in global_times:
+            node.send_message(node.create_out_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+
+        # send an empty sync message to obtain all messages out-order
+        node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+        yield 0.1
+
+        for global_time in reversed(global_times):
+            _, message = node.receive_message(addresses=[address], message_names=[u"out-order-text"])
+            assert message.distribution.global_time == global_time
+
+        dprint("finished")
+
+    def random_order_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"random-order-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # create some data
+        global_times = range(10, 15)
+        for global_time in global_times:
+            node.send_message(node.create_random_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+
+        def get_messages_back():
+            received_times = []
+            for _ in range(len(global_times)):
+                _, message = node.receive_message(addresses=[address], message_names=[u"random-order-text"])
+                received_times.append(message.distribution.global_time)
+
+            return received_times
+
+        lists = []
+        for _ in range(5):
+            # send an empty sync message to obtain all messages in random-order
+            node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+            yield 0.1
+
+            received_times = get_messages_back()
+            if not received_times in lists:
+                lists.append(received_times)
+
+        dprint(lists, lines=True)
+        assert len(lists) > 1
+
+        dprint("finished")
+
+    def mixed_order_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        in_order_message = community.get_meta_message(u"in-order-text")
+        out_order_message = community.get_meta_message(u"out-order-text")
+        random_order_message = community.get_meta_message(u"random-order-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND (name = ? OR name = ? OR name = ?)", (community.database_id, node.my_member.database_id, in_order_message.database_id, out_order_message.database_id, random_order_message.database_id)))
+        assert len(times) == 0, times
+
+        # create some data
+        global_times = range(10, 25, 3)
+        in_order_times = []
+        out_order_times = []
+        random_order_times = []
+        for global_time in global_times:
+            in_order_times.append(global_time)
+            node.send_message(node.create_in_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+            global_time += 1
+            out_order_times.append(global_time)
+            node.send_message(node.create_out_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+            global_time += 1
+            random_order_times.append(global_time)
+            node.send_message(node.create_random_order_text_message("Message #{0}".format(global_time), global_time), address)
+            yield 0.1
+        out_order_times.sort(reverse=True)
+
+        def get_messages_back():
+            received_times = []
+            for _ in range(len(global_times) * 3):
+                _, message = node.receive_message(addresses=[address], message_names=[u"in-order-text", u"out-order-text", u"random-order-text"])
+                received_times.append(message.distribution.global_time)
+
+            return received_times
+
+        lists = []
+        for _ in range(5):
+            # send an empty sync message to obtain all messages in random-order
+            node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+            yield 0.1
+
+            received_times = get_messages_back()
+
+            # the first items must be in-order
+            received_in_times = received_times[0:len(in_order_times)]
+            assert in_order_times == received_in_times
+
+            # followed by out-order
+            received_out_times = received_times[len(in_order_times):len(in_order_times) + len(out_order_times)]
+            assert out_order_times == received_out_times
+
+            # followed by random-order
+            received_random_times = received_times[len(in_order_times) + len(out_order_times):]
+            for global_time in received_random_times:
+                assert global_time in random_order_times
+
+            if not received_times in lists:
+                lists.append(received_times)
+
+        dprint(lists, lines=True)
+        assert len(lists) > 1
+
+        dprint("finished")
 
     def last_1_test(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -795,7 +982,7 @@ class DispersySimilarityScript(ScriptBase):
         # node-01 creates and sends a message to 'self'
         node.send_message(node.create_taste_aware_message_last(5, 3, 1), address)
 
-        # node-02 sends an sync message with an empty bloomfilter
+        # node-02 sends a sync message with an empty bloomfilter
         # to 'self'. It should collect the message
         node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
         yield 0.1

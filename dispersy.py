@@ -210,13 +210,13 @@ class Dispersy(Singleton):
         assert isinstance(community, Community)
         return [Message(community, u"dispersy-routing-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=community.dispersy_sync_member_count), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
-                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), CommunityDestination(node_count=10), SimilarityPayload()),
+                Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), SimilarityPayload()),
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
 
     def get_message_handlers(self, community):
@@ -629,11 +629,12 @@ class Dispersy(Singleton):
                     execute(u"DELETE FROM sync WHERE id = ?", (id_,))
 
             # add packet to database
-            execute(u"INSERT INTO sync (community, user, name, global_time, distribution_sequence, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            execute(u"INSERT INTO sync (community, user, name, global_time, synchronization_direction, distribution_sequence, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (message.community.database_id,
                      message.authentication.member.database_id,
                      message.database_id,
                      message.distribution.global_time,
+                     message.distribution.synchronization_direction_id,
                      isinstance(message.distribution, FullSyncDistribution.Implementation) and message.distribution.sequence_number or 0,
                      # isinstance(message.distribution, LastSyncDistribution.Implementation) and message.distribution.cluster or 0,
                      isinstance(message.destination, SimilarityDestination.Implementation) and message.destination.cluster or 0,
@@ -1601,12 +1602,38 @@ class Dispersy(Singleton):
 
             return BloomFilter(str(similarity), 0), threshold
 
-        sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
-                  FROM sync
-                  LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                  WHERE sync.community = ? AND sync.global_time >= ?
-                  ORDER BY sync.global_time LIMIT ?"""
-        for packet, similarity_cluster, packet_similarity in self._database.execute(sql, (message.community.database_id, message.payload.global_time, packet_limit)):
+        def get_packets(community_id, global_time, packet_limit):
+            # first priority is to return the 'in-order' packets
+            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+                      FROM sync
+                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
+                      WHERE sync.community = ? AND synchronization_direction = 1 AND sync.global_time >= ?
+                      ORDER BY sync.global_time ASC
+                      LIMIT ?"""
+            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                yield tup
+
+            # second priority is to return the 'out-order' packets
+            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+                      FROM sync
+                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
+                      WHERE sync.community = ? AND synchronization_direction = 2 AND sync.global_time >= ?
+                      ORDER BY sync.global_time DESC
+                      LIMIT ?"""
+            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                yield tup
+
+            # third priority is to return the 'random-order' packets
+            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+                      FROM sync
+                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
+                      WHERE sync.community = ? AND synchronization_direction = 3 AND sync.global_time >= ?
+                      ORDER BY RANDOM()
+                      LIMIT ?"""
+            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                yield tup
+
+        for packet, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.global_time, packet_limit):
             packet = str(packet)
             if not packet in bloom_filter:
                 # check if the packet uses the SimilarityDestination policy
