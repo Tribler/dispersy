@@ -107,6 +107,116 @@ class ScriptBase(object):
     def run():
         raise NotImplementedError("Must implement a generator")
 
+class DispersyMemberTagScript(ScriptBase):
+    def run(self):
+        ec = ec_generate_key("low")
+        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+
+        self.caller(self.ignore_test)
+        self.caller(self.drop_test)
+
+    def ignore_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"full-sync-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # send a message
+        global_time = 10
+        node.send_message(node.create_full_sync_text_message("should be accepted (1)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 1
+        assert global_time in times
+
+        # we now tag the member as ignore
+        Member.get_instance(node.my_member.pem).must_ignore = True
+
+        tags, = self._dispersy_database.execute(u"SELECT tags FROM user WHERE id = ?", (node.my_member.database_id,)).next()
+        assert tags & 2
+
+        # send a message and ensure it is in the database
+        global_time = 20
+        node.send_message(node.create_full_sync_text_message("should be accepted (2)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 2
+        assert global_time in times
+
+        # we now tag the member not to ignore
+        Member.get_instance(node.my_member.pem).must_ignore = False
+
+        # send a message
+        global_time = 30
+        node.send_message(node.create_full_sync_text_message("should be accepted (3)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 3
+        assert global_time in times
+
+        dprint("finished")
+
+    def drop_test(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"full-sync-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # send a message
+        global_time = 10
+        node.send_message(node.create_full_sync_text_message("should be accepted (1)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 1
+        assert global_time in times
+
+        # we now tag the member as drop
+        Member.get_instance(node.my_member.pem).must_drop = True
+
+        tags, = self._dispersy_database.execute(u"SELECT tags FROM user WHERE id = ?", (node.my_member.database_id,)).next()
+        assert tags & 4
+
+        # send a message and ensure it is not in the database
+        global_time = 20
+        node.send_message(node.create_full_sync_text_message("should NOT be accepted (2)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 1
+        assert global_time not in times
+
+        # we now tag the member not to drop
+        Member.get_instance(node.my_member.pem).must_drop = False
+
+        # send a message
+        global_time = 30
+        node.send_message(node.create_full_sync_text_message("should be accepted (3)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 2
+        assert global_time in times
+
+        dprint("finished")
+
 class DispersyScript(ScriptBase):
     def run(self):
         ec = ec_generate_key("low")

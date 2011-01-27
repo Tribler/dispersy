@@ -388,7 +388,7 @@ class Message(MetaObject):
 
         def require(a, b, c):
             if not isinstance(b, c):
-                raise ValueError("{0.__name__} does not support {1.__name__}".format(a, b))
+                raise ValueError("{0.__class__.__name__} does not support {1.__class__.__name__}.  Allowed options are: {2}".format(a, b, ", ".join([x.__name__ for x in c])))
 
         if isinstance(authentication, NoAuthentication):
             require(authentication, resolution, PublicResolution)
@@ -403,7 +403,7 @@ class Message(MetaObject):
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         else:
-            raise ValueError("{0.__name__} is not supported".format(authentication))
+            raise ValueError("{0.__class__.__name__} is not supported".format(authentication))
 
         if isinstance(resolution, PublicResolution):
             require(resolution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
@@ -414,7 +414,7 @@ class Message(MetaObject):
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
             require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
         else:
-            raise ValueError("{0.__name__} is not supported".format(resolution))
+            raise ValueError("{0.__class__.__name__} is not supported".format(resolution))
 
         if isinstance(distribution, RelayDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
@@ -429,15 +429,15 @@ class Message(MetaObject):
             require(distribution, resolution, (PublicResolution, LinearResolution))
             require(distribution, destination, (CommunityDestination, SimilarityDestination))
             if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
-                raise ValueError("{0.__name__} may not be used with {1.__name__} when sequence numbers are enabled".format(distribution, authentication))
+                raise ValueError("{0.__class__.__name__} may not be used with {1.__class__.__name__} when sequence numbers are enabled".format(distribution, authentication))
         elif isinstance(distribution, LastSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
             require(distribution, destination, (CommunityDestination, SimilarityDestination))
             if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
-                raise ValueError("{0.__name__} may not be used with {1.__name__} when sequence numbers are enabled".format(distribution, authentication))
+                raise ValueError("{0.__class__.__name__} may not be used with {1.__class__.__name__} when sequence numbers are enabled".format(distribution, authentication))
         else:
-            raise ValueError("{0.__name__} is not supported".format(distribution))
+            raise ValueError("{0.__class__.__name__} is not supported".format(distribution))
 
         if isinstance(destination, AddressDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
@@ -456,6 +456,6 @@ class Message(MetaObject):
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (FullSyncDistribution, LastSyncDistribution))
         else:
-            raise ValueError("{0.__name__} is not supported".format(destination))
+            raise ValueError("{0.__class__.__name__} is not supported".format(destination))
 
         return True

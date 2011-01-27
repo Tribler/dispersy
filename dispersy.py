@@ -466,18 +466,14 @@ class Dispersy(Singleton):
             if __debug__: dprint(address[0], ":", address[1], ": ", len(packet), " bytes were received")
             self._total_received += len(packet)
 
-            #
-            # Find associated community
-            #
+            # find associated community
             try:
                 community = self.get_community(packet[:20])
             except KeyError:
                 dprint("drop a ", len(packet), " byte packet (received packet for unknown community) from ", address[0], ":", address[1])
                 continue
 
-            #
-            # Find associated conversion
-            #
+            # find associated conversion
             try:
                 conversion = community.get_conversion(packet[:22])
             except KeyError:
@@ -485,9 +481,7 @@ class Dispersy(Singleton):
                 continue
 
             try:
-                #
-                # Converty binary date to internal Message
-                #
+                # converty binary date to internal Message
                 message = conversion.decode_message(packet)
                 dprint(community._my_member)
 
@@ -504,20 +498,15 @@ class Dispersy(Singleton):
                 log("dispersy.log", "delay-packet", address=address, packet=packet, pattern=delay.pattern)
 
             else:
-                #
-                # Update routing table.  We know that some peer (not
-                # necessarily message.authentication.member) exists at
-                # this address.
-                #
+                # update routing table.  We know that some peer (not necessarily
+                # message.authentication.member) exists at this address.
                 self._database.execute(u"UPDATE routing SET incoming_time = DATETIME() WHERE community = ? AND host = ? AND port = ?",
                                        (message.community.database_id, unicode(address[0]), address[1]))
                 if self._database.changes == 0:
                     self._database.execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) VALUES(?, ?, ?, DATETIME(), '2010-01-01 00:00:00')",
                                            (message.community.database_id, unicode(address[0]), address[1]))
 
-                #
-                # Handle the message
-                #
+                # handle the message
                 self.on_incoming_message(address, message)
 
     def on_incoming_message(self, address, message):
@@ -530,15 +519,18 @@ class Dispersy(Singleton):
 
         Each message is processed in the following way:
 
-         1. The distribution policy is checked.  Failure occurs when this message is already
+         1. When the member is tagged with 'drop' the message is dropped.
+
+         2. The distribution policy is checked.  Failure occurs when this message is already
             processed or when the message is to old.
 
-         2. The community is allowed to process the message though the on_message,
-            on_authorize_message, or on_revoke_message methods.
+         3. The community is allowed to process the message though the on_message,
+            on_authorize_message, or on_revoke_message methods.  Note that even though the member
+            may be tagged with 'ignore', these callbacks will take place.
 
-         3. If the message uses the SyncDistribution policy is may be stored in the database.
+         4. If the message uses the SyncDistribution policy is may be stored in the database.
 
-         4. The message may match one of the existing Triggers causing a callback or a delayed
+         5. The message may match one of the existing Triggers causing a callback or a delayed
             packet or message to be processed.
 
         @param address: The address where we got this message from.  Will be ('', -1) when the
@@ -550,15 +542,16 @@ class Dispersy(Singleton):
         """
         if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
         try:
-            #
-            # Filter messages based on distribution (usually duplicate
-            # or old messages)
-            #
+            # drop if this is a blacklisted member
+            if isinstance(message.authentication, (MemberAuthentication.Implementation, MultiMemberAuthentication.Implementation)) and message.authentication.member.must_drop:
+                # todo: we currently do not add this message in the bloomfilter, hence we will
+                # continually receive this packet.
+                raise DropMessage("Packets from this member are explicitly dropped")
+
+            # filter messages based on distribution (usually duplicate or old messages)
             self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(message)
 
-            #
-            # Allow community code to handle the message
-            #
+            # allow community code to handle the message
             if message.payload.type == u"permit":
                 message.community.on_message(address, message)
             elif message.payload.type == u"authorize":
@@ -599,19 +592,23 @@ class Dispersy(Singleton):
         Messages with the Last- or Full-SyncDistribution policies need to be stored in the database
         to allow them to propagate to other members.
 
-        Furthermore, messages with the LastSyncDistribution policy may also cause an older message
-        to be removed from the database.
+        Messages with the LastSyncDistribution policy may also cause an older message to be removed
+        from the database.
+
+        Messages created by a member that we have marked with must_store will also be stored in the
+        database, and hence forwarded to others.
 
         @param message: The unstored message with the SyncDistribution policy.
         @type message: Message.Implementation
         """
         assert isinstance(message.distribution, SyncDistribution.Implementation)
 
-        # we do not store a message when it uses SimilarityDestination
-        # and it its not similar
+        # we do not store a message when it uses SimilarityDestination and it its not similar
         if isinstance(message.destination, SimilarityDestination.Implementation) and not message.destination.is_similar:
-            dprint("Not storing message.  bic:", message.destination.bic_occurrence, "  threshold:", message.destination.threshold)
-            return
+            # however, ignore the SimilarityDestination when we are forced so store this message
+            if not message.authentication.member.must_store:
+                dprint("Not storing message.  bic:", message.destination.bic_occurrence, "  threshold:", message.destination.threshold)
+                return
 
         # sync bloomfilter
         message.community.get_bloom_filter(message.distribution.global_time).add(message.packet)

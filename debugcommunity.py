@@ -49,6 +49,15 @@ class DebugNode(Node):
                               meta.destination.implement(),
                               meta.payload.implement(number))
 
+    def  create_full_sync_text_message(self, text, global_time):
+        assert isinstance(text, str)
+        assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"full-sync-text")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              meta.payload.implement(text))
+
 #
 # Conversion
 #
@@ -62,6 +71,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(4), community.get_meta_message(u"triple-signed-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(5), community.get_meta_message(u"taste-aware-record"), self._encode_taste_aware_record, self._decode_taste_aware_record)
         self.define_meta_message(chr(6), community.get_meta_message(u"taste-aware-record-last"), self._encode_taste_aware_record, self._decode_taste_aware_record)
+        self.define_meta_message(chr(7), community.get_meta_message(u"full-sync-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         return pack("!B", len(message.payload.text)), message.payload.text
@@ -108,6 +118,9 @@ class TextPayload(Permit):
         def text(self):
             return self._text
 
+class FullSyncTestPayload(TextPayload):
+    pass
+
 class Last1TestPayload(TextPayload):
     pass
 
@@ -145,7 +158,8 @@ class DebugCommunity(Community):
                 Message(self, u"double-signed-text", MultiMemberAuthentication(count=2, allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), DoubleSignedTextPayload()),
                 Message(self, u"triple-signed-text", MultiMemberAuthentication(count=3, allow_signature_func=self.allow_triple_signed_text), PublicResolution(), DirectDistribution(), MemberDestination(), TripleSignedTextPayload()),
                 Message(self, u"taste-aware-record", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True), SimilarityDestination(cluster=1, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload()),
-                Message(self, u"taste-aware-record-last", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), SimilarityDestination(cluster=2, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload())]
+                Message(self, u"taste-aware-record-last", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, history_size=1), SimilarityDestination(cluster=2, size=16, minimum_bits=6, maximum_bits=10, threshold=12), TasteAwarePayload()),
+                Message(self, u"full-sync-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False), CommunityDestination(node_count=10), FullSyncTestPayload())]
 
     def __init__(self, cid):
         super(DebugCommunity, self).__init__(cid)
@@ -160,7 +174,8 @@ class DebugCommunity(Community):
                                       u"double-signed-text":self.on_double_signed_text,
                                       u"triple-signed-text":self.on_triple_signed_text,
                                       u"taste-aware-record":self.on_taste_aware_record,
-                                      u"taste-aware-record-last":self.on_taste_aware_record}
+                                      u"taste-aware-record-last":self.on_taste_aware_record,
+                                      u"full-sync-text":self.on_full_sync_text}
 
         # add the Dispersy message handlers to the
         # _incoming_message_map
@@ -233,7 +248,7 @@ class DebugCommunity(Community):
         """
         Received a request to sign MESSAGE.
         """
-        dprint(message)
+        dprint(message, " \"", message.payload.text, "\"")
         assert message.payload.text in ("Allow=True", "Allow=False")
         return message.payload.text == "Allow=True"
 
@@ -241,7 +256,7 @@ class DebugCommunity(Community):
         """
         Received a double signed message.
         """
-        dprint(message)
+        dprint(message, " \"", message.payload.text, "\"")
 
     #
     # triple-signed-text
@@ -274,3 +289,13 @@ class DebugCommunity(Community):
         Received a taste aware record.
         """
         dprint(message.payload.number)
+
+    #
+    # full-sync-text
+    #
+
+    def on_full_sync_text(self, address, message):
+        """
+        Received a text message.
+        """
+        dprint(message, " \"", message.payload.text, "\"")

@@ -69,12 +69,13 @@ class Database(Singleton):
         """
         Start a database transaction block.
 
-        Each insert or update query requires a transaction block, hence performing multiple insert
-        or update queries after another will result in as many transaction blocks.
+        Each insert or update query requires a transaction block.  The sqlite3 module that we use
+        will create transaction blocks automatically.  However, a transaction block needs to be
+        committed.
 
         Using the __enter__ and __exit__ methods we can group multiple insert and update queries
         together, causing only one transaction block to be used, hence increasing database
-        performance.
+        performance.  When __exit__ is called the transaction block is commited.
 
         >>> with database as execute:
         >>>    execute(u"INSERT INTO ...")
@@ -83,7 +84,7 @@ class Database(Singleton):
 
         @return: The method self.execute
         """
-        # self._cursor.execute("BEGIN TRANSACTION")
+        self._connection.__enter__()
         return self.execute
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -92,7 +93,7 @@ class Database(Singleton):
 
         @see: _enter__
         """
-        # self._cursor.execute("END TRANSACTION")
+        return self._connection.__exit__(exc_type, exc_value, traceback)
 
     @property
     def last_insert_rowid(self):
@@ -144,15 +145,17 @@ class Database(Singleton):
         assert not filter(lambda x: isinstance(x, str), bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
         if __debug__:
             changes_before = self._connection.total_changes
-            dprint(statements)
+            dprint(statements, " <-- ", bindings)
         try:
             return self._cursor.execute(statements, bindings)
+
         except sqlite3.Error, exception:
             if __debug__:
                 dprint(exception=True, level="warning")
                 dprint("Filename: ", self._debug_file_path, level="warning")
                 dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before, level="warning")
                 dprint(statements, level="warning")
+                dprint(bindings, level="warning")
             raise
 
     def executescript(self, statements):
@@ -163,6 +166,7 @@ class Database(Singleton):
             dprint(statements)
         try:
             return self._cursor.executescript(statements)
+
         except sqlite3.Error, exception:
             if __debug__:
                 dprint(exception=True, level="warning")
@@ -206,6 +210,7 @@ class Database(Singleton):
             dprint(statements)
         try:
             return self._cursor.executemany(statements, sequenceofbindings)
+
         except sqlite3.Error, exception:
             if __debug__:
                 dprint(exception=True)
@@ -213,6 +218,9 @@ class Database(Singleton):
                 dprint("Changes (UPDATE, INSERT, DELETE): ", self._connection.total_changes - changes_before)
                 dprint(statements)
             raise
+
+    def commit(self):
+        return self._connection.commit()
 
     # def _on_rollback(self):
     #     if __debug__: dprint("ROLLBACK", level="warning")

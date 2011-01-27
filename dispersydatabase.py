@@ -17,9 +17,19 @@ CREATE TABLE user(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  mid BLOB,                                      -- member identifier (sha1 of pem)
  pem BLOB,                                      -- member key (public part)
- host TEXT,
- port INTEGER,
+ host TEXT DEFAULT '',
+ port INTEGER DEFAULT -1,
+ tags INTEGER DEFAULT 0,
  UNIQUE(mid));
+
+CREATE TABLE tag(
+ key INTEGER,
+ value TEXT,
+ UNIQUE(key));
+
+INSERT INTO tag (key, value) VALUES (1, 'store');
+INSERT INTO tag (key, value) VALUES (2, 'ignore');
+INSERT INTO tag (key, value) VALUES (4, 'drop');
 
 CREATE TABLE identity(
  user INTEGER REFERENCES user(id),
@@ -57,8 +67,8 @@ CREATE TABLE sync(
  user INTEGER REFERENCES user(id),
  name INTEGER REFERENCES name(id),
  global_time INTEGER,
- distribution_sequence INTEGER,                 -- used for the sync-distribution policy
- destination_cluster INTEGER,                   -- used for the similarity-destination policy
+ distribution_sequence INTEGER DEFAULT 0,       -- used for the sync-distribution policy
+ destination_cluster INTEGER DEFAULT 0,         -- used for the similarity-destination policy
  packet BLOB);
 
 CREATE TABLE similarity(

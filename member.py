@@ -100,12 +100,13 @@ class Member(Public, Parameterized1Singleton):
 
         self._database_id = -1
         self._address = ("", -1)
+        self._tags = []
 
         # sync with database
         if sync_with_database:
             if not self.update():
                 database = DispersyDatabase.get_instance()
-                database.execute(u"INSERT INTO user(mid, pem, host, port) VALUES(?, ?, '', -1)", (buffer(self._mid), buffer(self._public_pem)))
+                database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(self._public_pem)))
                 self._database_id = database.last_insert_rowid
 
     def update(self):
@@ -113,8 +114,13 @@ class Member(Public, Parameterized1Singleton):
         Update this instance from the database
         """
         try:
-            self._database_id, host, port = DispersyDatabase.get_instance().execute(u"SELECT id, host, port FROM user WHERE pem = ? LIMIT 1", (buffer(self._public_pem),)).next()
+            execute = DispersyDatabase.get_instance().execute
+
+            self._database_id, host, port, tags = execute(u"SELECT id, host, port, tags FROM user WHERE pem = ? LIMIT 1", (buffer(self._public_pem),)).next()
             self._address = (str(host), port)
+            self._tags = []
+            if tags:
+                self._tags = list(execute(u"SELECT key FROM tag WHERE value & ?", (tags,)))
             return True
 
         except StopIteration:
@@ -152,6 +158,55 @@ class Member(Public, Parameterized1Singleton):
         message for the member is received.
         """
         return self._address
+
+    def _set_tag(self, tag, value):
+        assert isinstance(tag, unicode)
+        assert tag in [u"store", u"ignore", u"drop"]
+        assert isinstance(value, bool)
+        if value:
+            if tag in self._tags:
+                # the tag is already set
+                return False
+            self._tags.append(tag)
+
+        else:
+            if not tag in self._tags:
+                # the tag isn't there to begin with
+                return False
+            self._tags.remove(tag)
+
+        with DispersyDatabase.get_instance() as execute:
+            # todo: at some point we may want to optimize this.  for now this is a feature that will
+            # probably not be used often hence we leave it like this.
+            tags = list(execute(u"SELECT key, value FROM tag"))
+            int_tags = [0, 0] + [key for key, value in tags if value in self._tags]
+            reduced = reduce(lambda a, b: a | b, int_tags)
+            execute(u"UPDATE user SET tags = ? WHERE pem = ?", (reduced, buffer(self._public_pem),))
+        return True
+
+    @property
+    def must_store(self):
+        return u"store" in self._tags
+
+    @must_store.setter
+    def must_store(self, value):
+        return self._set_tag(u"store", value)
+
+    @property
+    def must_ignore(self):
+        return u"ignore" in self._tags
+
+    @must_ignore.setter
+    def must_ignore(self, value):
+        return self._set_tag(u"ignore", value)
+
+    @property
+    def must_drop(self):
+        return u"drop" in self._tags
+
+    @must_drop.setter
+    def must_drop(self, value):
+        return self._set_tag(u"drop", value)
 
     def verify(self, data, signature, offset=0, length=0):
         assert isinstance(data, str)
