@@ -220,7 +220,7 @@ class Community(object):
     def dispersy_sync_interval(self):
         """
         The interval between sending dispersy-sync messages.
-        @rtype float
+        @rtype: float
         """
         return 20.0
 
@@ -228,7 +228,7 @@ class Community(object):
     def dispersy_sync_member_count(self):
         """
         The number of members that are selected each time a dispersy-sync message is send.
-        @rtype int
+        @rtype: int
         """
         return 10
 
@@ -237,7 +237,7 @@ class Community(object):
         """
         The maximum number of packets and the maximum number of bytes to send back per received
         dispersy-sync message.
-        @rtype (int, int)
+        @rtype: (int, int)
         """
         return (50, 5 * 1025)
 
@@ -246,7 +246,7 @@ class Community(object):
         """
         The maximum number of packets and the maximum number of bytes to send back per received
         dispersy-missing-sequence message.
-        @rtype (int, int)
+        @rtype: (int, int)
         """
         return (100, 10 * 1025)
 
