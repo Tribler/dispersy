@@ -1,12 +1,10 @@
 """
-The Trigger module provides the objects that sit and wait for incoming
-messages.  Each message that was successfully processed may 'trigger'
-one of the Trigger objects defined in this module.
+The Trigger module provides the objects that sit and wait for incoming messages.  Each message that
+was successfully processed may 'trigger' one of the Trigger objects defined in this module.
 
-Triggers allow us to wait for something, for instance, when a message
-is received out of sequence it is delayed until the previous message
-in the sequence is successfully processed.  Hence, processing this
-previous message will trigger the processing of the delayed message.
+Triggers allow us to wait for something, for instance, when a message is received out of sequence it
+is delayed until the previous message in the sequence is successfully processed.  Hence, processing
+this previous message will trigger the processing of the delayed message.
 
 @author: Boudewijn Schoon
 @organization: Technical University Delft
@@ -23,8 +21,8 @@ class Trigger(object):
         """
         Called with a received message.
 
-        Must return True to keep the trigger available.  Hence,
-        returning False will remove the trigger.
+        Must return True to keep the trigger available.  Hence, returning False will remove the
+        trigger.
         """
         raise NotImplementedError()
 
@@ -34,25 +32,21 @@ class Trigger(object):
 class TriggerCallback(Trigger):
     def __init__(self, pattern, response_func, response_args, max_responses):
         """
-        Receiving a message matching PATTERN triggers a call to
-        RESPONSE_FUNC.
+        Receiving a message matching PATTERN triggers a call to RESPONSE_FUNC.
 
         PATTERN is a python regular expression string.
 
-        RESPONSE_FUNC is called when PATTERN matches the incoming
-        message footprint.  The first argument is the sender address,
-        the second argument is the incoming message, following this
+        RESPONSE_FUNC is called when PATTERN matches the incoming message footprint.  The first
+        argument is the sender address, the second argument is the incoming message, following this
         are optional values from RESPONSE_ARGS.
 
-        RESPONSE_ARGS is an optional tuple containing arguments passed
-        to RESPONSE_ARGS.
+        RESPONSE_ARGS is an optional tuple containing arguments passed to RESPONSE_ARGS.
 
-        MAX_RESPONSES is a number.  Once MAX_RESPONSES messages are
-        received no further calls are made to RESPONSE_FUNC.
+        MAX_RESPONSES is a number.  Once MAX_RESPONSES messages are received no further calls are
+        made to RESPONSE_FUNC.
 
-        When a timeout is received and MAX_RESPONSES has not yet been
-        reached, RESPONSE_FUNC is immediately called.  The first
-        argument will be ('', -1), the second will be None, following
+        When a timeout is received and MAX_RESPONSES has not yet been reached, RESPONSE_FUNC is
+        immediately called.  The first argument will be ('', -1), the second will be None, following
         this are the optional values from RESPONSE_FUNC.
         """
         assert isinstance(pattern, str)
@@ -69,9 +63,10 @@ class TriggerCallback(Trigger):
 
     def on_message(self, address, message):
         if __debug__:
-            dprint("Does it match? ", bool(self._responses_remaining > 0 and self._match(message.footprint)))
-            dprint("Expression: ", self._debug_pattern)
-            dprint(" Footprint: ", message.footprint)
+            if self._responses_remaining > 0:
+                dprint("Does it match? ", bool(self._responses_remaining > 0 and self._match(message.footprint)))
+                dprint("Expression: ", self._debug_pattern)
+                dprint(" Footprint: ", message.footprint)
         if self._responses_remaining > 0 and self._match(message.footprint):
             self._responses_remaining -= 1
             # note: this callback may raise DelayMessage, etc
@@ -89,20 +84,18 @@ class TriggerCallback(Trigger):
 class TriggerPacket(Trigger):
     def __init__(self, pattern, on_incoming_packets, packets):
         """
-        Receiving a message matching PATTERN triggers a call to the
-        on_incoming_packet method with PACKETS.
+        Receiving a message matching PATTERN triggers a call to the on_incoming_packet method with
+        PACKETS.
 
         PATTERN is a python regular expression string.
 
-        ON_INCOMING_PACKETS is called when PATTERN matches the
-        incoming message footprint.  The only argument is PACKETS.
+        ON_INCOMING_PACKETS is called when PATTERN matches the incoming message footprint.  The only
+        argument is PACKETS.
 
-        PACKETS is a list containing (address, packet) tuples.  These
-        packets are effectively delayed until a message matching
-        PATTERN was received.
+        PACKETS is a list containing (address, packet) tuples.  These packets are effectively
+        delayed until a message matching PATTERN was received.
 
-        When a timeout is received this Trigger is removed and PACKETS
-        are lost.
+        When a timeout is received this Trigger is removed and PACKETS are lost.
         """
         if __debug__:
             assert isinstance(pattern, str)
@@ -123,23 +116,23 @@ class TriggerPacket(Trigger):
         self._packets = packets
 
     def on_message(self, address, message):
-        if __debug__:
-            dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
-            dprint("Expression: ", self._debug_pattern)
-            dprint(" Footprint: ", message.footprint)
         if self._match:
+            if __debug__:
+                dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
+                dprint("Expression: ", self._debug_pattern)
+                dprint(" Footprint: ", message.footprint)
             if self._match(message.footprint):
+                # set self._match to None to avoid this regular expression again
+                self._match = None
+
                 self._on_incoming_packets(self._packets)
-                # False to remove the Trigger, because we handled the
-                # Trigger
+                # False to remove the Trigger, because we handled the Trigger
                 return False
             else:
-                # True to keep the Trigger, because we did not handle
-                # the Trigger yet
+                # True to keep the Trigger, because we did not handle the Trigger yet
                 return True
         else:
-            # False to remove the Trigger, because the Trigger
-            # timed-out
+            # False to remove the Trigger, because the Trigger timed-out
             return False
 
     def on_timeout(self):
@@ -149,22 +142,18 @@ class TriggerPacket(Trigger):
 class TriggerMessage(Trigger):
     def __init__(self, pattern, on_incoming_message, address, message):
         """
-        Receiving a message matching PATTERN triggers a call to the
-        on_incoming_message message with ADDRESS and MESSAGE.
+        Receiving a message matching PATTERN triggers a call to the on_incoming_message message with
+        ADDRESS and MESSAGE.
 
         PATTERN is a python regular expression string.
 
-        ON_INCOMING_MESSAGE is called when PATTERN matches the
-        incoming message footprint.  The first argument is ADDRESS,
-        the second argument is MESSAGE.
+        ON_INCOMING_MESSAGE is called when PATTERN matches the incoming message footprint.  The
+        first argument is ADDRESS, the second argument is MESSAGE.
 
-        ADDRESS and MESSAGE are a Message.Implementation and the
-        address from where this was received.  This message is
-        effectively delayed until a message matching PATTERN is
-        received.
+        ADDRESS and MESSAGE are a Message.Implementation and the address from where this was
+        received.  This message is effectively delayed until a message matching PATTERN is received.
 
-        When a timeout is received this Trigger is removed MESSAGE is
-        lost.
+        When a timeout is received this Trigger is removed MESSAGE is lost.
         """
         if __debug__:
             from message import Message
@@ -183,23 +172,23 @@ class TriggerMessage(Trigger):
         self._message = message
 
     def on_message(self, address, message):
-        if __debug__:
-            dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
-            dprint("Expression: ", self._debug_pattern)
-            dprint(" Footprint: ", message.footprint)
         if self._match:
+            if __debug__:
+                dprint("Does it match? ", bool(self._match and self._match(message.footprint)))
+                dprint("Expression: ", self._debug_pattern)
+                dprint(" Footprint: ", message.footprint)
             if self._match(message.footprint):
+                # set self._match to None to avoid this regular expression again
+                self._match = None
+
                 self._on_incoming_message(self._address, self._message)
-                # False to remove the Trigger, because we handled the
-                # Trigger
+                # False to remove the Trigger, because we handled the Trigger
                 return False
             else:
-                # True to keep the Trigger, because we did not handle
-                # the Trigger yet
+                # True to keep the Trigger, because we did not handle the Trigger yet
                 return True
         else:
-            # False to remove the Trigger, because the Trigger
-            # timed-out
+            # False to remove the Trigger, because the Trigger timed-out
             return False
 
     def on_timeout(self):
