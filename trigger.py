@@ -67,8 +67,6 @@ class TriggerCallback(Trigger):
         self._response_args = response_args
         self._responses_remaining = max_responses
 
-        dprint(self._response_args)
-
     def on_message(self, address, message):
         if __debug__:
             dprint("Does it match? ", bool(self._responses_remaining > 0 and self._match(message.footprint)))
