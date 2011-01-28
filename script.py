@@ -25,30 +25,6 @@ from singleton import Singleton
 from debugcommunity import DebugCommunity, DebugNode
 
 class Script(Singleton):
-    class Terminator(object):
-        def __init__(self, rawserver):
-            self._rawserver = rawserver
-            self._counter = 0
-
-        def start(self):
-            self._counter += 1
-
-        def stop(self):
-            assert self._counter > 0
-            self._counter -= 1
-
-        def run(self):
-            self._rawserver.add_task(self.loop, 0.0)
-
-        def loop(self):
-            if self._counter == 0:
-                dprint("Shutdown")
-                self._rawserver.doneflag.set()
-                self._rawserver.shutdown()
-
-            else:
-                self._rawserver.add_task(self.loop, 1.0)
-
     def __init__(self):
         self._scripts = {}
 
@@ -60,52 +36,56 @@ class Script(Singleton):
 
     def load(self, rawserver, name):
         dprint(name)
-        terminator = Script.Terminator(rawserver)
 
         if name == "all":
             for name, (include_with_all, script, args) in self._scripts.iteritems():
                 if include_with_all:
                     dprint(name)
-                    script(terminator, name, rawserver, **args)
+                    script(name, rawserver, **args)
 
         elif name in self._scripts:
-            self._scripts[name][1](terminator, name, rawserver, **self._scripts[name][2])
+            self._scripts[name][1](name, rawserver, **self._scripts[name][2])
 
         else:
             for available in sorted(self._scripts):
                 dprint("Available: ", available)
             raise ValueError("Unknown script '{0}'".format(name))
 
-        terminator.run()
-
 class ScriptBase(object):
-    def __init__(self, terminator, name, rawserver, **kargs):
-        self._terminator = terminator
+    def __init__(self, name, rawserver, **kargs):
         self._name = name
         self._rawserver = rawserver
         self._dispersy = Dispersy.get_instance()
         self._dispersy_database = DispersyDatabase.get_instance()
+        self._call_generators = []
         self.caller(self.run)
 
     def caller(self, run):
-        def helper():
-            try:
-                delay = run_generator.next()
-            except StopIteration:
-                self._terminator.stop()
-            else:
-                assert isinstance(delay, float)
-                self._rawserver.add_task(helper, delay)
-
-        self._terminator.start()
         run_generator = run()
         if isinstance(run_generator, types.GeneratorType):
-            self._rawserver.add_task(helper, 0.0)
+            self._call_generators.append(run_generator)
+            if len(self._call_generators) == 1:
+                self._rawserver.add_task(self._process_generators, 0.0)
+
+    def _process_generators(self):
+        if self._call_generators:
+            try:
+                delay = self._call_generators[0].next()
+
+            except StopIteration:
+                generator = self._call_generators.pop(0)
+                delay = 0.1
+                dprint("finished: ", generator)
+
+            self._rawserver.add_task(self._process_generators, delay)
+
         else:
-            self._terminator.stop()
+            dprint("shutdown")
+            self._rawserver.doneflag.set()
+            self._rawserver.shutdown()
 
     def run():
-        raise NotImplementedError("Must implement a generator")
+        raise NotImplementedError("Must implement a generator or use self.caller(...)")
 
 class DispersyMemberTagScript(ScriptBase):
     def run(self):
@@ -164,8 +144,6 @@ class DispersyMemberTagScript(ScriptBase):
         assert len(times) == 3
         assert global_time in times
 
-        dprint("finished")
-
     def drop_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
@@ -215,8 +193,6 @@ class DispersyMemberTagScript(ScriptBase):
         assert len(times) == 2
         assert global_time in times
 
-        dprint("finished")
-
 class DispersySyncScript(ScriptBase):
     def run(self):
         ec = ec_generate_key("low")
@@ -259,8 +235,6 @@ class DispersySyncScript(ScriptBase):
             _, message = node.receive_message(addresses=[address], message_names=[u"in-order-text"])
             assert message.distribution.global_time == global_time
 
-        dprint("finished")
-
     def out_order_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
@@ -290,8 +264,6 @@ class DispersySyncScript(ScriptBase):
         for global_time in reversed(global_times):
             _, message = node.receive_message(addresses=[address], message_names=[u"out-order-text"])
             assert message.distribution.global_time == global_time
-
-        dprint("finished")
 
     def random_order_test(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -335,8 +307,6 @@ class DispersySyncScript(ScriptBase):
 
         dprint(lists, lines=True)
         assert len(lists) > 1
-
-        dprint("finished")
 
     def mixed_order_test(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -410,8 +380,6 @@ class DispersySyncScript(ScriptBase):
         dprint(lists, lines=True)
         assert len(lists) > 1
 
-        dprint("finished")
-
     def last_1_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
@@ -465,8 +433,6 @@ class DispersySyncScript(ScriptBase):
         times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         assert len(times) == 1
         assert global_time in times
-
-        dprint("finished")
 
     def last_9_test(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -532,8 +498,6 @@ class DispersySyncScript(ScriptBase):
             dprint(sorted(times))
             assert sorted(times) == match_times, sorted(times)
 
-        dprint("finished")
-
 class DispersySignatureScript(ScriptBase):
     def run(self):
         ec = ec_generate_key("low")
@@ -572,7 +536,6 @@ class DispersySignatureScript(ScriptBase):
         yield 4.0
 
         assert container["timeout"] == 1, container["timeout"]
-        dprint("finished")
 
     def double_signed_response(self):
         ec = ec_generate_key("low")
@@ -614,7 +577,6 @@ class DispersySignatureScript(ScriptBase):
         yield 4.0
 
         assert container["response"] == 1, container["response"]
-        dprint("finished")
 
     def triple_signed_timeout(self):
         ec = ec_generate_key("low")
@@ -654,7 +616,6 @@ class DispersySignatureScript(ScriptBase):
         yield 4.0
 
         assert container["timeout"] == 1, container["timeout"]
-        dprint("finished")
 
     def triple_signed_response(self):
         ec = ec_generate_key("low")
@@ -715,7 +676,6 @@ class DispersySignatureScript(ScriptBase):
         yield 4.0
 
         assert container["response"] == 2, container["response"]
-        dprint("finished")
 
 class DispersySimilarityScript(ScriptBase):
     def run(self):
@@ -796,8 +756,6 @@ class DispersySimilarityScript(ScriptBase):
         with self._dispersy.database as execute:
             d,= execute(u"SELECT count(*) FROM sync WHERE packet = ?", (buffer(str(msg_blob)),)).next()
             assert d == 0
-
-        dprint("finished")
 
     def similarity_fullsync(self):
         from bloomfilter import BloomFilter
@@ -928,8 +886,6 @@ class DispersySimilarityScript(ScriptBase):
         except:
             pass
 
-        dprint("finished")
-
     def similarity_lastsync(self):
         from bloomfilter import BloomFilter
         import struct
@@ -1014,8 +970,6 @@ class DispersySimilarityScript(ScriptBase):
         except:
             pass
 
-        dprint("finished")
-
     def similarity_missing_sim(self):
         from bloomfilter import BloomFilter
         import struct
@@ -1074,5 +1028,3 @@ class DispersySimilarityScript(ScriptBase):
         # receive the taste message
         _, message = node2.receive_message(addresses=[address], message_names=[u"taste-aware-record"])
         assert  message.payload.number == 5
-
-        dprint("finished")
