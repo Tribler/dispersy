@@ -38,7 +38,6 @@ of, the name it uses as an internal identifier, and the class that will contain 
 """
 
 from hashlib import sha1
-from lencoder import log
 from os.path import abspath
 
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
@@ -63,6 +62,7 @@ from trigger import TriggerCallback, TriggerPacket, TriggerMessage
 
 if __debug__:
     from dprint import dprint
+    from lencoder import log
 
 class DummySocket(object):
     """
@@ -75,8 +75,7 @@ class DummySocket(object):
     but throw away all packets it is supposed to sent.
     """
     def send(address, data):
-        if __debug__:
-            dprint("Thrown away ", len(data), " bytes worth of outgoing data")
+        if __debug__: dprint("Thrown away ", len(data), " bytes worth of outgoing data")
 
 class Dispersy(Singleton):
     """
@@ -470,24 +469,23 @@ class Dispersy(Singleton):
             try:
                 community = self.get_community(packet[:20])
             except KeyError:
-                dprint("drop a ", len(packet), " byte packet (received packet for unknown community) from ", address[0], ":", address[1])
+                if __debug__: dprint("drop a ", len(packet), " byte packet (received packet for unknown community) from ", address[0], ":", address[1])
                 continue
 
             # find associated conversion
             try:
                 conversion = community.get_conversion(packet[:22])
             except KeyError:
-                dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", address[0], ":", address[1])
+                if __debug__: dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", address[0], ":", address[1])
                 continue
 
             try:
                 # converty binary date to internal Message
                 message = conversion.decode_message(packet)
-                dprint(community._my_member)
 
             except DropPacket as exception:
                 if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True, level="warning")
-                log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
+                if __debug__: log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
 
             except DelayPacket as delay:
                 if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(packet), " byte packet (", delay, ")")
@@ -495,7 +493,7 @@ class Dispersy(Singleton):
                 self._triggers.append(trigger)
                 self._rawserver.add_task(trigger.on_timeout, 10.0)
                 self._send([address], [delay.request_packet])
-                log("dispersy.log", "delay-packet", address=address, packet=packet, pattern=delay.pattern)
+                if __debug__: log("dispersy.log", "delay-packet", address=address, packet=packet, pattern=delay.pattern)
 
             else:
                 # update routing table.  We know that some peer (not necessarily
@@ -561,7 +559,7 @@ class Dispersy(Singleton):
 
         except DropMessage as exception:
             if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True, level="warning")
-            log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
+            if __debug__: log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
 
         except DelayMessage as delay:
             if __debug__: dprint(address[0], ":", address[1], ": delay a ", len(message.packet), " byte message (", delay, ")")
@@ -578,7 +576,7 @@ class Dispersy(Singleton):
             if isinstance(message.distribution, SyncDistribution.Implementation):
                 self._sync_distribution_store(message)
 
-            log("dispersy.log", "handled", address=address, packet=message.packet, message=message.name)
+            if __debug__: log("dispersy.log", "handled", address=address, packet=message.packet, message=message.name)
 
             #
             # This message may 'trigger' a previously delayed message
@@ -607,7 +605,7 @@ class Dispersy(Singleton):
         if isinstance(message.destination, SimilarityDestination.Implementation) and not message.destination.is_similar:
             # however, ignore the SimilarityDestination when we are forced so store this message
             if not message.authentication.member.must_store:
-                dprint("Not storing message.  bic:", message.destination.bic_occurrence, "  threshold:", message.destination.threshold)
+                if __debug__: dprint("Not storing message.  bic:", message.destination.bic_occurrence, "  threshold:", message.destination.threshold)
                 return
 
         # sync bloomfilter
@@ -674,9 +672,6 @@ class Dispersy(Singleton):
         assert not filter(lambda x: not isinstance(x, Message.Implementation), messages)
 
         for message in messages:
-            if not message.packet:
-                message.packet = message.community.get_conversion().encode_message(message)
-            dprint(message)
 
             # Store
             if isinstance(message.distribution, SyncDistribution.Implementation):
@@ -911,7 +906,7 @@ class Dispersy(Singleton):
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
 
-        dprint("Our external address may be: ", message.payload.destination_address)
+        if __debug__: dprint("Our external address may be: ", message.payload.destination_address)
         self._my_external_address = message.payload.destination_address
 
         # self._database.execute(u"UPDATE user SET user = ? WHERE community = ? AND host = ? AND port = ?",
@@ -950,7 +945,7 @@ class Dispersy(Singleton):
         assert isinstance(message, Message.Implementation)
         if __debug__: dprint(message)
 
-        dprint("Our external address may be: ", message.payload.destination_address)
+        if __debug__: dprint("Our external address may be: ", message.payload.destination_address)
         self._my_external_address = message.payload.destination_address
 
         # self._database.execute(u"UPDATE user SET user = ? WHERE community = ? AND host = ? AND port = ?",
@@ -1276,7 +1271,7 @@ class Dispersy(Singleton):
                 continue
 
             self._send([address], [packet])
-            log("dispersy.log", "dispersy-missing-sequence - send back packet", length=len(packet), packet=packet, low=message.payload.missing_low, high=message.payload.missing_high)
+            if __debug__: log("dispersy.log", "dispersy-missing-sequence - send back packet", length=len(packet), packet=packet, low=message.payload.missing_low, high=message.payload.missing_high)
 
     def create_signature_request(self, community, message, response_func, response_args=(), timeout=10.0, store_and_forward=True):
         """
@@ -1644,7 +1639,7 @@ class Dispersy(Singleton):
                         similarity_cache[similarity_cluster] = (similarity, threshold)
 
                     if similarity.bic_occurrence(BloomFilter(str(packet_similarity), 0)) < threshold:
-                        dprint("do not send this packet: not similar")
+                        if __debug__: dprint("do not send this packet: not similar")
                         # do not send this packet: not similar
                         continue
 
@@ -1695,5 +1690,5 @@ class Dispersy(Singleton):
         """
         Periodically write bandwidth statistics to a log file.
         """
-        log("dispersy.log", "statistics", total_send=self._total_send, total_received=self._total_received)
+        if __debug__: log("dispersy.log", "statistics", total_send=self._total_send, total_received=self._total_received)
         self._rawserver.add_task(self._periodically_stats, 1.0)

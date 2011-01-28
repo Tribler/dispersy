@@ -15,18 +15,20 @@ from destination import CommunityDestination
 from dispersy import Dispersy
 from dispersydatabase import DispersyDatabase
 from distribution import FullSyncDistribution, LastSyncDistribution
+from dprint import dprint
 from member import Member, MyMember
 from message import Message
 from payload import Permit
-from dprint import dprint
 from resolution import PublicResolution
 from singleton import Singleton
 
 from debugcommunity import DebugCommunity, DebugNode
 
 class Script(Singleton):
-    def __init__(self):
+    def __init__(self, rawserver):
+        self._call_generators = []
         self._scripts = {}
+        self._rawserver = rawserver
 
     def add(self, name, script, args={}, include_with_all=True):
         assert isinstance(name, str)
@@ -34,38 +36,27 @@ class Script(Singleton):
         assert issubclass(script, ScriptBase)
         self._scripts[name] = (include_with_all, script, args)
 
-    def load(self, rawserver, name):
+    def load(self, name):
         dprint(name)
 
         if name == "all":
             for name, (include_with_all, script, args) in self._scripts.iteritems():
                 if include_with_all:
                     dprint(name)
-                    script(name, rawserver, **args)
+                    script(self, name, self._rawserver, **args)
 
         elif name in self._scripts:
-            self._scripts[name][1](name, rawserver, **self._scripts[name][2])
+            self._scripts[name][1](self, name, self._rawserver, **self._scripts[name][2])
 
         else:
             for available in sorted(self._scripts):
                 dprint("Available: ", available)
             raise ValueError("Unknown script '{0}'".format(name))
 
-class ScriptBase(object):
-    def __init__(self, name, rawserver, **kargs):
-        self._name = name
-        self._rawserver = rawserver
-        self._dispersy = Dispersy.get_instance()
-        self._dispersy_database = DispersyDatabase.get_instance()
-        self._call_generators = []
-        self.caller(self.run)
-
-    def caller(self, run):
-        run_generator = run()
-        if isinstance(run_generator, types.GeneratorType):
-            self._call_generators.append(run_generator)
-            if len(self._call_generators) == 1:
-                self._rawserver.add_task(self._process_generators, 0.0)
+    def add_generator(self, call_generator):
+        self._call_generators.append(call_generator)
+        if len(self._call_generators) == 1:
+            self._rawserver.add_task(self._process_generators, 0.0)
 
     def _process_generators(self):
         if self._call_generators:
@@ -83,6 +74,20 @@ class ScriptBase(object):
             dprint("shutdown")
             self._rawserver.doneflag.set()
             self._rawserver.shutdown()
+
+class ScriptBase(object):
+    def __init__(self, script, name, rawserver, **kargs):
+        self._script = script
+        self._name = name
+        # self._rawserver = rawserver
+        self._dispersy = Dispersy.get_instance()
+        self._dispersy_database = DispersyDatabase.get_instance()
+        self.caller(self.run)
+
+    def caller(self, run):
+        run_generator = run()
+        if isinstance(run_generator, types.GeneratorType):
+            self._script.add_generator(run_generator)
 
     def run():
         raise NotImplementedError("Must implement a generator or use self.caller(...)")

@@ -11,8 +11,7 @@ from member import MyMember
 from payload import Permit
 from resolution import PublicResolution
 
-if __debug__:
-    from dprint import dprint
+from dprint import dprint
 
 #
 # Node
