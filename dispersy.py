@@ -50,13 +50,15 @@ from member import PrivateMember, MasterMember
 from message import Message
 from message import DropPacket, DelayPacket, DelayPacketByMissingMember
 from message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
+from payload import AuthorizePayload, RevokePayload
 from payload import MissingSequencePayload
 from payload import SyncPayload
 from payload import SignatureRequestPayload, SignatureResponsePayload
 from payload import RoutingRequestPayload, RoutingResponsePayload
 from payload import IdentityPayload, IdentityRequestPayload
 from payload import SimilarityRequestPayload, SimilarityPayload
-from resolution import PublicResolution
+from payload import DestroyCommunityPayload
+from resolution import PublicResolution, LinearResolution
 from singleton import Singleton
 from trigger import TriggerCallback, TriggerPacket, TriggerMessage
 
@@ -177,15 +179,6 @@ class Dispersy(Singleton):
         """
         return self._database
 
-    # @property
-    # def rawserver(self):
-    #     """
-    #     The rawserver is an object that allows a callback to take place at a certain point in time
-    #     using the add_task method.
-    #     @rtype: Object with an add_task method.
-    #     """
-    #     return self._rawserver
-
     def initiate_meta_messages(self, community):
         """
         Create the meta messages that Dispersy uses.
@@ -216,7 +209,10 @@ class Dispersy(Singleton):
                 Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload()),
                 Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SignatureResponsePayload()),
                 Message(community, u"dispersy-similarity", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), SimilarityPayload()),
-                Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload())]
+                Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload()),
+                Message(community, u"dispersy-authorize", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"in-order"), CommunityDestination(node_count=10), AuthorizePayload()),
+                Message(community, u"dispersy-revoke", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"in-order"), CommunityDestination(node_count=10), RevokePayload()),
+                Message(community, u"dispersy-destroy-community", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order"), CommunityDestination(node_count=50), DestroyCommunityPayload())]
 
     def get_message_handlers(self, community):
         """
@@ -237,7 +233,10 @@ class Dispersy(Singleton):
                 (community.get_meta_message(u"dispersy-signature-request"), self.on_signature_request),
                 (community.get_meta_message(u"dispersy-signature-response"), self.on_ignore_message),
                 (community.get_meta_message(u"dispersy-similarity"), self.on_similarity_message),
-                (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request)]
+                (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request),
+                (community.get_meta_message(u"dispersy-authorize"), self.on_authorize),
+                (community.get_meta_message(u"dispersy-revoke"), self.on_revoke),
+                (community.get_meta_message(u"dispersy-destroy-community"), self.on_destroy_community)]
 
     def add_community(self, community):
         """
@@ -301,12 +300,27 @@ class Dispersy(Singleton):
         @raise DelayMessageBySequence: When missing one or more previous messages.
         """
         assert isinstance(message, Message.Implementation)
+        # check for duplicates based on global_time
+        try:
+            self._database.execute(
+                u"""SELECT 1
+                    FROM sync
+                    WHERE community = ? AND user = ? AND name = ? AND global_time = ?
+                    LIMIT 1""",
+                (message.community.database_id,
+                 message.authentication.member.database_id,
+                 message.database_id,
+                 message.distribution.global_time)).next()
+
+        except StopIteration:
+            pass
+
+        else:
+            # we have the previous message (drop)
+            raise DropMessage("duplicate message")
+
         if message.distribution.enable_sequence_number:
             try:
-                # TODO: we are not checking the global time!  No one
-                # may send messages with the same global time.  This
-                # is currently ignored to save one select query.
-
                 sequence_number, = self._database.execute(
                     u"""SELECT distribution_sequence
                         FROM sync
@@ -331,26 +345,6 @@ class Dispersy(Singleton):
                 #  we do not have the previous message (delay and request)
                 raise DelayMessageBySequence(message, sequence_number+1, message.distribution.sequence_number-1)
 
-        else:
-            try:
-                self._database.execute(
-                    u"""SELECT 1
-                        FROM sync
-                        WHERE community = ? AND user = ? AND name = ? AND global_time = ?
-                        LIMIT 1""",
-                    (message.community.database_id,
-                     message.authentication.member.database_id,
-                     message.database_id,
-                     message.distribution.global_time)).next()
-
-            except StopIteration:
-                # we have the previous message (process)
-                pass
-
-            else:
-                # we have the previous message (drop)
-                raise DropMessage("duplicate message")
-
     def _check_incoming_last_sync_distribution(self, message):
         """
         Ensure that we do not yet have the message and that, if sequence numbers are enabled, we are
@@ -367,12 +361,21 @@ class Dispersy(Singleton):
         @raise DelayMessageBySequence: When missing one or more previous messages.
         """
         assert isinstance(message, Message.Implementation)
+        # check for duplicates based on global_time
+        times = [x for x, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ? LIMIT ?",
+                                                    (message.community.database_id,
+                                                     message.authentication.member.database_id,
+                                                     message.database_id,
+                                                     message.distribution.history_size))]
+
+        if message.distribution.global_time in times:
+            raise DropMessage("duplicate message")
+
+        if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
+            raise DropMessage("old message")
+
         if message.distribution.enable_sequence_number:
             try:
-                # TODO: we are not checking the global time!  No one
-                # may send messages with the same global time.  This
-                # is currently ignored to save one select query.
-
                 sequence_number, = self._database.execute(
                     u"""SELECT distribution_sequence
                         FROM sync
@@ -396,19 +399,6 @@ class Dispersy(Singleton):
             else:
                 #  we do not have the previous message (delay and request)
                 raise DelayMessageBySequence(message, max(sequence_number+1, message.distribution.sequence_number-message.distribution.history_size), message.distribution.sequence_number-1)
-
-        else:
-            times = [x for x, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ? LIMIT ?",
-                                                        (message.community.database_id,
-                                                         message.authentication.member.database_id,
-                                                         message.database_id,
-                                                         message.distribution.history_size))]
-
-            if message.distribution.global_time in times:
-                raise DropMessage("duplicate message")
-
-            if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
-                raise DropMessage("old message")
 
     def _check_incoming_OTHER_distribution(self, message):
         """
@@ -522,9 +512,8 @@ class Dispersy(Singleton):
          2. The distribution policy is checked.  Failure occurs when this message is already
             processed or when the message is to old.
 
-         3. The community is allowed to process the message though the on_message,
-            on_authorize_message, or on_revoke_message methods.  Note that even though the member
-            may be tagged with 'ignore', these callbacks will take place.
+         3. The community is allowed to process the message though the on_message method.  Note that
+            even though the member may be tagged with 'ignore', these callbacks will take place.
 
          4. If the message uses the SyncDistribution policy is may be stored in the database.
 
@@ -538,7 +527,7 @@ class Dispersy(Singleton):
         @param message: The message.
         @type message: Message.Implementation
         """
-        if __debug__: dprint("incoming ", message.payload.type, "^", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
+        if __debug__: dprint("incoming ", message.name, " (", len(message.packet), " bytes) from ", address[0], ":", address[1])
         try:
             # drop if this is a blacklisted member
             if isinstance(message.authentication, (MemberAuthentication.Implementation, MultiMemberAuthentication.Implementation)) and message.authentication.member.must_drop:
@@ -550,12 +539,7 @@ class Dispersy(Singleton):
             self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(message)
 
             # allow community code to handle the message
-            if message.payload.type == u"permit":
-                message.community.on_message(address, message)
-            elif message.payload.type == u"authorize":
-                message.community.on_authorize_message(address, message)
-            elif message.payload.type == u"revoke":
-                message.community.on_revoke_message(address, message)
+            message.community.on_message(address, message)
 
         except DropMessage as exception:
             if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True, level="warning")
@@ -569,18 +553,13 @@ class Dispersy(Singleton):
             self._send([address], [delay.request_packet])
 
         else:
-            #
-            # Sync messages need to be stored (so they can be synced
-            # later)
-            #
+            # sync messages need to be stored (so they can be synced later)
             if isinstance(message.distribution, SyncDistribution.Implementation):
                 self._sync_distribution_store(message)
 
             if __debug__: log("dispersy.log", "handled", address=address, packet=message.packet, message=message.name)
 
-            #
-            # This message may 'trigger' a previously delayed message
-            #
+            # this message may 'trigger' a previously delayed message
             self._triggers = [trigger for trigger in self._triggers if trigger.on_message(address, message)]
 
     def _sync_distribution_store(self, message):
@@ -679,17 +658,14 @@ class Dispersy(Singleton):
 
             # Forward
             if isinstance(message.destination, (CommunityDestination.Implementation, SimilarityDestination.Implementation)):
-                # todo: we can remove the returning diff and age from
-                # the query since it is not used (especially in the
-                # 2nd query)
+                # todo: we can remove the returning diff and age from the query since it is not used
+                # (especially in the 2nd query)
 
                 # the theory behind the address selection is:
-                # a) we want to keep contact with those who are
-                #    online, hence we send messages to those that
-                #    have a small diff.
-                # b) we want to get connections to those that have
-                #    been away for some time, hence we send
-                #    messages to those that have a high age.
+                # a) we want to keep contact with those who are online, hence we send messages to
+                #    those that have a small diff.
+                # b) we want to get connections to those that have been away for some time, hence we
+                #    send messages to those that have a high age.
                 sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
                           FROM routing
                           WHERE community = ? AND (diff < 30 OR age > 300)
@@ -698,8 +674,8 @@ class Dispersy(Singleton):
                 addresses = [(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id, message.destination.node_count))]
 
                 if not addresses:
-                    # we need to fallback to something... just pick
-                    # some addresses within this community.
+                    # we need to fallback to something... just pick some addresses within this
+                    # community.
                     sql = u"""SELECT ABS(STRFTIME('%s', outgoing_time) - STRFTIME('%s', incoming_time)) AS diff, STRFTIME('%s', DATETIME()) - STRFTIME('%s', outgoing_time) AS age, host, port
                               FROM routing
                               WHERE community = ?
@@ -708,8 +684,7 @@ class Dispersy(Singleton):
                     addresses = [(str(host), port) for _, _, host, port in self._database.execute(sql, (message.community.database_id, message.destination.node_count))]
 
                 if not addresses:
-                    # we need to fallback to something else... just
-                    # pick some addresses.
+                    # we need to fallback to something else... just pick some addresses.
                     sql = u"""SELECT host, port
                               FROM routing
                               WHERE community = 0
@@ -717,15 +692,18 @@ class Dispersy(Singleton):
                               LIMIT ?"""
                     addresses = [(str(host), port) for host, port in self._database.execute(sql, (message.destination.node_count,))]
 
-                if __debug__:
-                    addresses = [(host, port) for host, port in addresses if not (host == "130.161.158.222" and port == self._my_external_address[1])]
+                # if __debug__:
+                #     addresses = [(host, port) for host, port in addresses if not (host == "130.161.158.222" and port == self._my_external_address[1])]
 
+                if __debug__: dprint("outgoing ", message.name, " (", len(message.packet), " bytes) to ", ", ".join("{0[0]}:{0[1]}".format(address) for address in addresses))
                 self._send(addresses, [message.packet])
 
             elif isinstance(message.destination, AddressDestination.Implementation):
+                if __debug__: dprint("outgoing ", message.name, " (", len(message.packet), " bytes) to ", ", ".join("{0[0]}:{0[1]}".format(address) for address in message.destination.addresses))
                 self._send(message.destination.addresses, [message.packet])
 
             elif isinstance(message.destination, MemberDestination.Implementation):
+                if __debug__: dprint("outgoing ", message.name, " (", len(message.packet), " bytes) to ", ", ".join("{0[0]}:{0[1]}".format(member.address) for member in message.destination.members))
                 self._send([member.address for member in message.destination.members], [message.packet])
 
             else:
@@ -977,7 +955,7 @@ class Dispersy(Singleton):
         assert isinstance(store_and_forward, bool)
         meta = community.get_meta_message(u"dispersy-identity")
         message = meta.implement(meta.authentication.implement(community.my_member),
-                                 meta.distribution.implement(community._timeline.global_time, 0),
+                                 meta.distribution.implement(community._timeline.claim_global_time(), 0),
                                  meta.destination.implement(),
                                  meta.payload.implement(self._my_external_address))
         if store_and_forward:
@@ -1650,6 +1628,250 @@ class Dispersy(Singleton):
                 if self._total_send > byte_limit:
                     if __debug__: dprint("Bandwidth throttle")
                     break
+
+    def create_authorize(self, community, permission_triplets, sign_with_master=False, update_locally=True, store_and_forward=True):
+        """
+        Grant permissions to members in a community.
+
+        This method will generate a message that grants the permissions in permission_triplets.
+        Each item in permission_triplets contains (Member, Message, permission) where permission is
+        either u'permit', u'authorize', or u'revoke'.
+
+        By default, community.my_member is doing the authorization.  This means, that
+        community.my_member must have the authorize permission for each of the permissions that she
+        is authorizing.
+
+        >>> # Authorize Bob to use Permit payload for 'some-message'
+        >>> from Payload import Permit
+        >>> bob = Member.get_instance(pem_bob)
+        >>> msg = self.get_meta_message(u"some-message")
+        >>> self.create_authorize(community, [(bob, msg, Permit)])
+
+        @param community: The community where the permissions must be applied.
+        @type sign_with_master: Community
+
+        @param permission_triplets: The permissions that are granted.  Must be a list or tuple
+         containing (Member, Message, permission) tuples.
+        @type permissions_pairs: [(Member, Message, string)]
+
+        @param sign_with_master: When True community.master_member is used to sign the authorize
+         message.  Otherwise community.my_member is used.
+        @type sign_with_master: bool
+
+        @param update_locally: When True the community.on_message is called with each created
+         message.  This parameter should (almost always) be True, its inclusion is mostly to allow
+         certain debugging scenarios.
+        @type update_locally: bool
+
+        @param store_and_forward: When True the created messages are stored (as defined by the
+         message distribution policy) in the local Dispersy database and the messages are forewarded
+         to other peers (as defined by the message destination policy).  This parameter should
+         (almost always) be True, its inclusion is mostly to allow certain debugging scenarios.
+        @type store_and_forward: bool
+        """
+        if __debug__:
+            from community import Community
+            from member import Member
+            from message import Message
+            assert isinstance(community, Community)
+            assert isinstance(permission_triplets, (tuple, list))
+            for triplet in permission_triplets:
+                assert isinstance(triplet, tuple)
+                assert len(triplet) == 3
+                assert isinstance(triplet[0], Member)
+                assert isinstance(triplet[1], Message)
+                assert isinstance(triplet[2], unicode)
+                assert triplet[2] in (u'permit', u'authorize', u'revoke')
+
+        meta = community.get_meta_message(u"dispersy-authorize")
+        message = meta.implement(meta.authentication.implement(community.master_member if sign_with_master else community.my_member),
+                                 meta.distribution.implement(community._timeline.claim_global_time()),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(permission_triplets))
+
+        if update_locally:
+            assert community._timeline.check(message)
+            community.on_message(("", -1), message)
+
+        if store_and_forward:
+            self.store_and_forward([message])
+
+        return message
+
+    def on_authorize(self, address, message):
+        """
+        Process a dispersy-authorize message.
+
+        This method is called to process a dispersy-authorize message.  This message is either
+        received from an external source or locally generated.
+
+        When the message is locally generated the address will be set to ('', -1).
+
+        @param address: The address from where we received this message.
+        @type address: (string, int)
+
+        @param message: The received message.
+        @type message: Message.Implementation
+        @raise DropMessage: When unable to verify that this message is valid.
+        @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
+         message immediately.
+        """
+        if not message.community._timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets):
+            raise DropMessage("TODO: implement delay of proof")
+
+    def create_revoke(self, community, permission_triplets, sign_with_master=False, update_locally=True, store_and_forward=True):
+        """
+        Revoke permissions from a members in a community.
+
+        This method will generate a message that revokes the permissions in permission_triplets.
+        Each item in permission_triplets contains (Member, Message, permission) where permission is
+        either u'permit', u'authorize', or u'revoke'.
+
+        By default, community.my_member is doing the revoking.  This means, that community.my_member
+        must have the revoke permission for each of the permissions that she is revoking.
+
+        >>> # Revoke the right of Bob to use Permit payload for 'some-message'
+        >>> from Payload import Permit
+        >>> bob = Member.get_instance(pem_bob)
+        >>> msg = self.get_meta_message(u"some-message")
+        >>> self.create_revoke(community, [(bob, msg, Permit)])
+
+        @param community: The community where the permissions must be applied.
+        @type sign_with_master: Community
+
+        @param permission_triplets: The permissions that are revoked.  Must be a list or tuple
+         containing (Member, Message, permission) tuples.
+        @type permissions_pairs: [(Member, Message, string)]
+
+        @param sign_with_master: When True community.master_member is used to sign the revoke
+         message.  Otherwise community.my_member is used.
+        @type sign_with_master: bool
+
+        @param update_locally: When True the community.on_message is called with each created
+         message.  This parameter should (almost always) be True, its inclusion is mostly to allow
+         certain debugging scenarios.
+        @type update_locally: bool
+
+        @param store_and_forward: When True the created messages are stored (as defined by the
+         message distribution policy) in the local Dispersy database and the messages are forewarded
+         to other peers (as defined by the message destination policy).  This parameter should
+         (almost always) be True, its inclusion is mostly to allow certain debugging scenarios.
+        @type store_and_forward: bool
+        """
+        if __debug__:
+            from community import Community
+            from member import Member
+            from message import Message
+            assert isinstance(community, Community)
+            assert isinstance(permission_triplets, (tuple, list))
+            for triplet in permission_triplets:
+                assert isinstance(triplet, tuple)
+                assert len(triplet) == 3
+                assert isinstance(triplet[0], Member)
+                assert isinstance(triplet[1], Message)
+                assert isinstance(triplet[2], unicode)
+                assert triplet[2] in (u'permit', u'authorize', u'revoke')
+
+        meta = community.get_meta_message(u"dispersy-revoke")
+        message = meta.implement(meta.authentication.implement(community.master_member if sign_with_master else community.my_member),
+                                 meta.distribution.implement(community._timeline.claim_global_time()),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(permission_triplets))
+
+        if update_locally:
+            assert community._timeline.check(message)
+            community.on_message(("", -1), message)
+
+        if store_and_forward:
+            self.store_and_forward([message])
+
+        return message
+
+    def on_revoke(self, address, message):
+        """
+        Process a dispersy-revoke message.
+
+        This method is called to process a dispersy-revoke message.  This message is either received
+        from an external source or locally generated.
+
+        When the message is locally generated the address will be set to ('', -1).
+
+        @param address: The address from where we received this message.
+        @type address: (string, int)
+
+        @param message: The received message.
+        @type message: Message.Implementation
+        @raise DropMessage: When unable to verify that this message is valid.
+        @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
+         message immediately.
+        """
+        if not message.community._timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets):
+            raise DropMessage("TODO: implement delay of proof")
+
+    def create_destroy_community(self, community, degree, update_locally=True, store_and_forward=True):
+        if __debug__:
+            from community import Community
+        assert isinstance(community, Community)
+        assert isinstance(degree, unicode)
+        assert degree in (u"soft-kill", u"hard-kill")
+
+        meta = community.get_meta_message(u"dispersy-destroy-community")
+        message = meta.implement(meta.authentication.implement(community.my_member),
+                                 meta.distribution.implement(community._timeline.claim_global_time()),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(degree))
+
+        if update_locally:
+            assert community._timeline.check(message)
+            community.on_message(("", -1), message)
+
+        if store_and_forward:
+            self.store_and_forward([message])
+
+        return message
+
+    def on_destroy_community(self, address, message):
+        if __debug__:
+            from message import Message
+        assert isinstance(message, Message.Implementation)
+        assert message.name == u"dispersy-destroy-community"
+        if __debug__: dprint(message)
+
+        community = message.community
+
+        # let the community code cleanup first.  This may also cause a DropMessage exception.
+        community.on_dispersy_destroy_community(address, message)
+
+        # community cleanup is done.  Now we will cleanup the dispersy database.
+
+        if message.payload.is_soft_kill:
+            # soft-kill: The community is frozen.  Dispersy will retain the data it has obtained.
+            # However, no messages beyond the global-time of the dispersy-destroy-community message
+            # will be accepted.  Responses to dispersy-sync messages will be send like normal.
+            raise NotImplementedError()
+
+        elif message.payload.is_hard_kill:
+            # hard-kill: The community is destroyed.  Dispersy will throw away everything except the
+            # dispersy-destroy-community message and the authorize chain that is required to verify
+            # this message.  The community should also remove all its data and cleanup as much as
+            # possible.
+
+            # delete everything except (a) all dispersy-destroy-community messages (these both
+            # authorize and revoke the usage of this message) and (b) the associated
+            # dispersy-identity messages to verify the dispersy-destroy-community messages.
+
+            # todo: this should be made more efficient.  not all dispersy-destroy-community messages
+            # need to be kept.  Just the ones in the chain to authorize the message that has just
+            # been received.
+
+            identity_message_id = community.get_meta_message(u"dispersy-identity").database_id
+
+            with self._database as execute:
+                # 1. remove all except the dispersy-destroy-community and dispersy-identity messages
+                execute(u"DELETE FROM sync WHERE community = ? AND NOT (name = ? OR name = ?)", (community.database_id, message.database_id, identity_message_id))
+
+                # 2. cleanup the identity table.  we should no longer need anything there
+                execute(u"DELETE FROM identity WHERE community = ?", (community.database_id,))
 
     def _periodically_disperse(self, community):
         """

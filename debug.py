@@ -87,10 +87,7 @@ class Node(object):
             self.send_message(message, destination_address)
 
         if identity:
-            # update database and memory
-            # Member.get_instance(self._my_member.pem)
-
-            # update routing information
+            # update identity information
             assert self._socket, "Socket needs to be set to routing"
             assert self._community, "Community needs to be set to routing"
             source_address = self._socket.getsockname()
@@ -122,7 +119,7 @@ class Node(object):
     def send_message(self, message, address):
         assert isinstance(message, Message.Implementation)
         self.encode_message(message)
-        dprint(message.payload.type, "^", message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
+        dprint(message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
         return self.send_packet(message.packet, address)
 
     def receive_packet(self, timeout=None, addresses=None, packets=None):
@@ -161,21 +158,26 @@ class Node(object):
                 message = self._community.get_conversion(packet[:22]).decode_message(packet)
             except KeyError:
                 # not for this community
+                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
                 continue
 
             if not (message_names is None or message.name in message_names):
+                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
                 continue
 
             if not (payload_types is None or message.payload.type in payload_types):
+                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
                 continue
 
             if not (distributions is None or isinstance(message.distribution, distributions)):
+                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
                 continue
 
             if not (destinations is None or isinstance(message.destination, destinations)):
+                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
                 continue
 
-            dprint(message.payload.type, "^", message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
+            dprint(message.name, " (", len(packet), " bytes) from ", address[0], ":", address[1])
             return address, message
 
     def create_dispersy_identity_message(self, address, global_time):

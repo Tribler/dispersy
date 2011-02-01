@@ -4,7 +4,6 @@ queried as to who had what actions at some point in time.
 """
 
 from member import Member, MasterMember
-from payload import Authorize, Revoke
 from resolution import PublicResolution, LinearResolution
 
 if __debug__:
@@ -56,17 +55,19 @@ class Timeline(object):
 
         # everyone is allowed PublicResolution
         if isinstance(message.resolution, PublicResolution):
+            self._global_time = max(self._global_time, message.distribution.global_time + 1)
             return True
 
         # the MasterMember can do anything
-        if isinstance(message.signed_by, MasterMember):
+        if isinstance(message.authentication.member, MasterMember):
+            self._global_time = max(self._global_time, message.distribution.global_time + 1)
             return True
 
         # allowed LinearResolution is stored in Timeline
         elif isinstance(message.resolution, LinearResolution):
-            node = self._get_node(message.signed_by, False)
+            node = self._get_node(message.authentication.member, False)
             if node:
-                pair = u"{0.payload.type}^{0.name}".format(message)
+                pair = u"permit^{0.name}".format(message)
                 _, allowed_actions = node.get_actions(message.distribution.global_time)
                 if pair in allowed_actions:
                     self._global_time = max(self._global_time, message.distribution.global_time + 1)
@@ -75,49 +76,39 @@ class Timeline(object):
         else:
             raise NotImplementedError("Unknown Resolution")
 
-        if __debug__: dprint("FAIL: Check ", message.signed_by.database_id, "; ", message.payload.type, "^", message.name, "@", message.distribution.global_time, level="warning")
+        if __debug__: dprint("FAIL: Check ", message.authentication.member.database_id, "; ", message.name, "@", message.distribution.global_time, level="warning")
         return False
 
-    def update(self, message):
-        """
-        Update the timeline according to the Authorize or Revoke
-        message.
-
-        Returns True on success, otherwise False is returned.
-        """
+    def authorize(self, author, global_time, permission_triplets):
         if __debug__:
+            from member import Member
             from message import Message
-        assert isinstance(message, Message.Implementation)
-        assert isinstance(message.payload, (Authorize, Revoke))
-        assert self.check(message)
+            for triplet in permission_triplets:
+                assert isinstance(triplet, tuple)
+                assert len(triplet) == 3
+                assert isinstance(triplet[0], Member)
+                assert isinstance(triplet[1], Message)
+                assert isinstance(triplet[2], unicode)
+                assert triplet[2] in (u'permit', u'authorize', u'revoke')
 
-        if isinstance(message.resolution, LinearResolution):
-            return self._update_linear_resolution(message)
+        for member, message, permission in permission_triplets:
+            if isinstance(message.resolution, LinearResolution):
+                node = self._get_node(member, True)
+                time, allowed_actions = node.get_actions(global_time + 1)
+                pair = u"{0}^{1.name}".format(permission, message)
 
-        else:
-            raise NotImplementedError(message.resolution)
+                if not pair in allowed_actions:
+                    if time == global_time + 1:
+                        allowed_actions.append(pair)
+                    else:
+                        node.timeline.append((global_time + 1, allowed_actions + [pair]))
 
-    def _update_linear_resolution(self, message):
-        if isinstance(message.payload, Authorize):
-            # MESSAGE.signed_by authorizes MESSAGE.payload.to to use
-            # MESSAGE.payload.payload for MESSAGE starting at
-            # MESSAGE.distribution.global_time + 1.
-            global_time = message.distribution.global_time
-            node = self._get_node(message.payload.to, True)
-            time, allowed_actions = node.get_actions(global_time + 1)
-            pair = u"{0}^{1.name}".format(message.payload.payload.get_static_type(), message)
+                if __debug__: dprint(node.timeline, lines=1)
 
-            if not pair in allowed_actions:
-                if time == global_time + 1:
-                    allowed_actions.append(pair)
-                else:
-                    node.timeline.append((global_time + 1, allowed_actions + [pair]))
+            else:
+                raise NotImplementedError(message.resolution)
 
-            if __debug__: dprint(message.payload.to.database_id, "; ", node.timeline)
-            return True
-
-        else:
-            raise NotImplementedError(action)
+        return True
 
     def _get_node(self, signed_by, create_new):
         """

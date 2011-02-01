@@ -52,7 +52,11 @@ def constructor(*types):
 
 def documentation(documented_func):
     def helper(func):
-        func.__doc__ = documented_func.__doc__ + "\n\n        @note: This documentation is copied from " + documented_func.__class__.__name__ + "." + documented_func.__name__
+        if documented_func.__doc__:
+            prefix = documented_func.__doc__ + "\n"
+        else:
+            prefix = ""
+        func.__doc__ = prefix + "\n        @note: This documentation is copied from " + documented_func.__class__.__name__ + "." + documented_func.__name__
         return func
     return helper
 

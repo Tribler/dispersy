@@ -18,7 +18,6 @@ from distribution import FullSyncDistribution, LastSyncDistribution
 from dprint import dprint
 from member import Member, MyMember
 from message import Message
-from payload import Permit
 from resolution import PublicResolution
 from singleton import Singleton
 
@@ -91,6 +90,48 @@ class ScriptBase(object):
 
     def run():
         raise NotImplementedError("Must implement a generator or use self.caller(...)")
+
+class DispersyDestroyCommunityScript(ScriptBase):
+    def run(self):
+        ec = ec_generate_key("low")
+        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+
+        self.caller(self.hard_kill)
+
+    def hard_kill(self):
+        community = DebugCommunity.create_community(self._my_member)
+        address = self._dispersy.socket.get_address()
+        message = community.get_meta_message(u"full-sync-text")
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+        yield 0.1
+
+        # should be no messages from NODE yet
+        times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        assert len(times) == 0, times
+
+        # send a message
+        global_time = 10
+        node.send_message(node.create_full_sync_text_message("should be accepted (1)", global_time), address)
+        yield 0.1
+        times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+        assert len(times) == 1
+        assert global_time in times
+
+        # destroy the community
+        community.create_dispersy_destroy_community(u"hard-kill")
+        yield 0.1
+
+        # node should receive the dispersy-destroy-community message
+        _, message = node.receive_message(addresses=[address], message_names=[u"dispersy-destroy-community"])
+        assert not message.payload.is_soft_kill
+        assert message.payload.is_hard_kill
+
+        # the database should be cleaned
 
 class DispersyMemberTagScript(ScriptBase):
     def run(self):
@@ -456,7 +497,7 @@ class DispersySyncScript(ScriptBase):
         assert len(times) == 0
 
         number_of_messages = 0
-        for global_time in [11, 10, 18, 17, 12, 13, 14, 16, 15]:
+        for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
             # send a message
             message = node.create_last_9_test_message(str(global_time), global_time)
             node.send_message(message, address)
@@ -470,7 +511,7 @@ class DispersySyncScript(ScriptBase):
             assert global_time in times
         assert number_of_messages == 9, number_of_messages
 
-        for global_time in [1, 2, 3, 9, 8, 7]:
+        for global_time in [11, 12, 13, 19, 18, 17]:
             # send a message (older: should be dropped)
             node.send_message(node.create_last_9_test_message(str(global_time), global_time), address)
             yield 0.1
@@ -478,7 +519,7 @@ class DispersySyncScript(ScriptBase):
             assert len(times) == 9, len(times)
             assert not global_time in times
 
-        for global_time in [11, 10, 18, 17, 12, 13, 14, 16, 15]:
+        for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
             # send a message (duplicate: should be dropped)
             message = node.create_last_9_test_message("wrong content!", global_time)
             node.send_message(message, address)
@@ -486,10 +527,10 @@ class DispersySyncScript(ScriptBase):
             packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
             assert not str(packet) == message.packet
             times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
-            assert sorted(times) == range(10, 19), sorted(times)
+            assert sorted(times) == range(20, 29), sorted(times)
 
         match_times = sorted(times[:])
-        for global_time in [20, 25, 27, 21, 22, 24, 23, 26, 28, 35, 34, 33, 32, 31, 30, 29]:
+        for global_time in [30, 35, 37, 31, 32, 34, 33, 36, 38, 45, 44, 43, 42, 41, 40, 39]:
             # send a message (should be added and old one removed)
             message = node.create_last_9_test_message("wrong content!", global_time)
             node.send_message(message, address)
@@ -725,10 +766,10 @@ class DispersySimilarityScript(ScriptBase):
 
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b00000000)), 0)
-        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 20), address)
         yield 0.1
 
-        msg = node.create_taste_aware_message(5, 1, 1)
+        msg = node.create_taste_aware_message(5, 10, 1)
         msg_blob = node.encode_message(msg)
         node.send_message(msg, address)
         yield 0.1
@@ -750,10 +791,10 @@ class DispersySimilarityScript(ScriptBase):
 
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11111111), chr(0b11111111)), 0)
-        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 3), address)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 30), address)
         yield 0.1
 
-        msg = node.create_taste_aware_message(5, 2, 2)
+        msg = node.create_taste_aware_message(5, 20, 2)
         msg_blob = node.encode_message(msg)
         node.send_message(msg, address)
         yield 0.1
@@ -800,18 +841,18 @@ class DispersySimilarityScript(ScriptBase):
 
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
-        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 20), address)
         yield 0.1
 
         # create similarity for node-02
         # node node-02 has 14/16 same bits with node-01
         # ABOVE threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 20), address)
         yield 0.1
 
         # node-01 creates and sends a message to 'self'
-        node.send_message(node.create_taste_aware_message(5, 1, 1), address)
+        node.send_message(node.create_taste_aware_message(5, 10, 1), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -831,7 +872,7 @@ class DispersySimilarityScript(ScriptBase):
         # node node-02 has 12/16 same bits with node-01
         # ABOVE threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110011), chr(0b11000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 3), address)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 30), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -851,7 +892,7 @@ class DispersySimilarityScript(ScriptBase):
         # node node-02 has 2/16 same bits with node-01
         # BELOW threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b00001111), chr(0b11111100)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 4), address)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 40), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -876,7 +917,7 @@ class DispersySimilarityScript(ScriptBase):
         # node node-02 has 11/16 same bits with node-01
         # BELOW threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110010), chr(0b00110011)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 5), address)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 50), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -930,18 +971,18 @@ class DispersySimilarityScript(ScriptBase):
 
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
-        node.send_message(node.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        node.send_message(node.create_dispersy_similarity_message(2, community.database_id, bf, 20), address)
         yield 0.1
 
         # create similarity for node-02
         # node node-02 has 15/16 same bits with node-01
         # ABOVE threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 2), address)
+        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 20), address)
         yield 0.1
 
         # node-01 creates and sends a message to 'self'
-        node.send_message(node.create_taste_aware_message_last(5, 3, 1), address)
+        node.send_message(node.create_taste_aware_message_last(5, 30, 1), address)
 
         # node-02 sends a sync message with an empty bloomfilter
         # to 'self'. It should collect the message
@@ -960,7 +1001,7 @@ class DispersySimilarityScript(ScriptBase):
         # node node-02 has 11/16 same bits with node-01
         # BELOW threshold
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b00100011), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 3), address)
+        node2.send_message(node2.create_dispersy_similarity_message(2, community.database_id, bf, 30), address)
         yield 0.1
 
         # node-02 sends an sync message with an empty bloomfilter
@@ -1002,7 +1043,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # create similarity for node-01
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b11110000), chr(0b00000000)), 0)
-        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        node.send_message(node.create_dispersy_similarity_message(1, community.database_id, bf, 20), address)
         yield 0.1
 
         # create second node - node-02
@@ -1013,7 +1054,7 @@ class DispersySimilarityScript(ScriptBase):
         yield 0.1
 
         # node-01 creates and sends a message to 'self'
-        node.send_message(node.create_taste_aware_message(5, 1, 1), address)
+        node.send_message(node.create_taste_aware_message(5, 10, 1), address)
         yield 0.1
 
         # node-02 sends a sync message with an empty bloomfilter
@@ -1027,7 +1068,7 @@ class DispersySimilarityScript(ScriptBase):
         _, message = node2.receive_message(addresses=[address], message_names=[u"dispersy-similarity-request"])
 
         bf = BloomFilter(struct.pack("!LLcc", 1, 16, chr(0b10111000), chr(0b00000000)), 0)
-        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 2), address)
+        node2.send_message(node2.create_dispersy_similarity_message(1, community.database_id, bf, 20), address)
         yield 0.1
 
         # receive the taste message

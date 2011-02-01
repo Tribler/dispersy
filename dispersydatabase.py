@@ -73,7 +73,8 @@ CREATE TABLE sync(
  synchronization_direction INTEGER REFERENCES tag(key),
  distribution_sequence INTEGER DEFAULT 0,       -- used for the sync-distribution policy
  destination_cluster INTEGER DEFAULT 0,         -- used for the similarity-destination policy
- packet BLOB);
+ packet BLOB,
+ UNIQUE(community, user, global_time));
 
 CREATE TABLE similarity(
  id INTEGER PRIMARY KEY AUTOINCREMENT,

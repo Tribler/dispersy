@@ -22,7 +22,6 @@ from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistr
 from encoding import encode
 from member import Private, MasterMember, MyMember, Member
 from message import Message, DropMessage
-from payload import Permit, Authorize, Revoke, SimilarityPayload
 from resolution import PublicResolution
 from timeline import Timeline
 
@@ -74,13 +73,13 @@ class Community(object):
         community = cls(cid, *args, **kargs)
 
         # authorize MY_MEMBER for each message
-        permission_pairs = []
-        for message in community.initiate_meta_messages():
+        permission_triplets = []
+        for message in community.get_meta_messages():
             if not isinstance(message.resolution, PublicResolution):
-                for allowed in (Authorize, Revoke, Permit):
-                    permission_pairs.append((message, allowed))
-        if permission_pairs:
-            community.authorize(my_member, permission_pairs, True)
+                for allowed in (u"authorize", u"revoke", u"permit"):
+                    permission_triplets.append((my_member, message, allowed))
+        if permission_triplets:
+            community.create_dispersy_authorize(permission_triplets, sign_with_master=True)
 
         # send out my initial dispersy-identity
         community.create_identity()
@@ -417,160 +416,9 @@ class Community(object):
             self._conversions[None] = conversion
         self._conversions[conversion.prefix] = conversion
 
-    def authorize(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
-        """
-        Grant one or more permissions to someone.
-
-        This method will generate one or more messages that grant a member one or more permissions.
-        Each permission pair will result in one message.
-
-        By default, self.my_member is doing the authorization.  This means, that self.my_member must
-        have the authorize permission for each of the permissions that she is authorizing.
-
-        >>> # Authorize Bob to use Permit payload for 'some-message'
-        >>> from Payload import Permit
-        >>> bob = Member.get_instance(pem_bob)
-        >>> msg = self.get_meta_message(u"some-message")
-        >>> self.authorize(bob, [(msg, Permit)])
-
-        @param member: This Member will obtain the new permissions.
-        @type member: Member
-
-        @param permissions_pairs: The permissions that are granted.  Must be a list or tuple
-         containing (Message, Payload) tuples.  Where Message is the meta message for which Member
-         may send Payload.
-        @type permissions_pairs: [(Message, Payload)]
-
-        @param sign_with_master: When True self.master_member is used to sign the authorize message.
-         Otherwise self.my_member is used.
-        @type sign_with_master: bool
-
-        @param update_locally: When True the self.on_authorize_message is called with each created
-         message.  This parameter should (almost always) be True, its inclusion is mostly to allow
-         certain debugging scenarios.
-        @type update_locally: bool
-
-        @param store_and_forward: When True the created messages are stored (as defined by the
-         message distribution policy) in the local Dispersy database and the messages are forewarded
-         to other peers (as defined by the message destination policy).  This parameter should
-         (almost always) be True, its inclusion is mostly to allow certain debugging scenarios.
-        @type store_and_forward: bool
-        """
-        assert isinstance(member, Member)
-        assert isinstance(permission_pairs, (tuple, list))
-        assert not filter(lambda x: not isinstance(x, tuple), permission_pairs)
-        assert not filter(lambda x: not len(x) == 2, permission_pairs)
-        assert not filter(lambda x: not isinstance(x[0], Message), permission_pairs)
-        assert not filter(lambda x: not issubclass(x[1], (Authorize, Revoke, Permit)), permission_pairs)
-        assert isinstance(sign_with_master, bool)
-        assert isinstance(update_locally, bool)
-        assert isinstance(store_and_forward, bool)
-
-        if sign_with_master:
-            signed_by = self._master_member
-        else:
-            signed_by = self._my_member
-
-        messages = []
-        distribution = FullSyncDistribution()
-        destination = CommunityDestination()
-        for message, allowed in permission_pairs:
-            distribution_impl = distribution.implement(self._timeline.claim_global_time())
-            destination_impl = destination.implement()
-            payload = Authorize(member, allowed)
-            messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))
-
-        if __debug__:
-            # this method may NOT be called when we do not have the appropriate permissions
-            for message_impl in messages:
-                assert self._timeline.check(message_impl)
-
-        if update_locally:
-            for message_impl in messages:
-                self.on_authorize_message(None, message_impl)
-
-        if store_and_forward:
-            self._dispersy.store_and_forward(messages)
-
-        return messages
-
-    def revoke(self, member, permission_pairs, sign_with_master=False, update_locally=True, store_and_forward=True):
-        """
-        Revoke one or more permissions from someone.
-
-        This method will generate one or more messages that will revoke one or more permissions from
-        a member.  Each permission pair will result in one message.
-
-        Note that, by default, self.my_member is doing the revocation.  This means, that
-        self.my_member must have the revoke permission for each of the permissions that she is
-        revoking.
-
-        >>> # Revoke the Permit payload for 'some-message' from Bob
-        >>> from Payload import Permit
-        >>> bob = Member.get_instance(pem_bob)
-        >>> msg = self.get_meta_message(u"some-message")
-        >>> self.revoke(bob, [(msg, Permit)])
-
-        @param member: This Member will no longer have the permissions.
-        @type member: Member
-
-        @param permissions_pairs: The permissions that are revoked.  Must be a list or tuple
-         containing (Message, Payload) tuples.  Where Message is the meta message for which Member
-         may send Payload.
-        @type permissions_pairs: [(Message, Payload)]
-
-        @param sign_with_master: When True self.master_member is used to sign the revoke message.
-         Otherwise self.my_member is used.
-        @type sign_with_master: bool
-
-        @param update_locally: When True the self.on_revoke_message is called with each created
-         message.  This parameter should (almost always) be True, its inclusion is mostly to allow
-         certain debugging scenarios.
-        @type update_locally: bool
-
-        @param store_and_forward: When True the created messages are stored (as defined by the
-         message distribution policy) in the local Dispersy database and the messages are forewarded
-         to other peers (as defined by the message destination policy).  This parameter should
-         (almost always) be True, its inclusion is mostly to allow certain debugging scenarios.
-        @type store_and_forward: bool
-        """
-        assert isinstance(member, Member)
-        assert isinstance(permission_pairs, (tuple, list))
-        assert not filter(lambda x: not isinstance(x, tuple), permission_pairs)
-        assert not filter(lambda x: not len(x) == 2, permission_pairs)
-        assert not filter(lambda x: not isinstance(x[0], Message), permission_pairs)
-        assert not filter(lambda x: not issubclass(x[1], (Authorize, Revoke, Permit)), permission_pairs)
-        assert isinstance(sign_with_master, bool)
-        assert isinstance(update_locally, bool)
-        assert isinstance(store_and_forward, bool)
-
-        if sign_with_master:
-            signed_by = self._master_member
-        else:
-            signed_by = self._my_member
-
-        messages = []
-        distribution = FullSyncDistribution()
-        destination = CommunityDestination()
-        for message, revoked in permission_pairs:
-            distribution_impl = distribution.implement(self._timeline.claim_global_time())
-            destination_impl = destination.implement()
-            payload = Revoke(member, revoked)
-            messages.append(message.implement(signed_by, distribution_impl, destination_impl, payload))
-
-        if __debug__:
-            # this method may NOT be called when we do not have the appropriate permissions
-            for message_impl in messages:
-                assert self._timeline.check(message_impl)
-
-        if update_locally:
-            for message_impl in messages:
-                self.on_revoke_message(None, message_impl)
-
-        if store_and_forward:
-            self._dispersy.store_and_forward(messages)
-
-        return messages
+    @documentation(Dispersy.create_authorize)
+    def create_dispersy_authorize(self, permission_triplets, sign_with_master=False, update_locally=True, store_and_forward=True):
+        return self._dispersy.create_authorize(self, permission_triplets, sign_with_master, update_locally, store_and_forward)
 
     @documentation(Dispersy.create_identity)
     def create_identity(self, store_and_forward=True):
@@ -584,61 +432,9 @@ class Community(object):
     def create_similarity(self, message, keywords, update_locally=True, store_and_forward=True):
         return self._dispersy.create_similarity(self, message, keywords, update_locally, store_and_forward)
 
-    def on_authorize_message(self, address, message):
-        """
-        Process an authorize message.
-
-        This method is called to process an unknown authorize message.  This message is either
-        received from an external source or locally generated.
-
-        When the message is locally generated the address will be set to ('', -1).
-
-        @param address: The address from where we received this message.
-        @type address: (string, int)
-
-        @param message: The received message.
-        @type message: Message.Implementation
-        @raise DropMessage: When unable to verify that this message is valid.
-        @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
-         message immediately.
-        """
-        assert isinstance(address, tuple)
-        assert len(address) == 2
-        assert isinstance(address[0], str)
-        assert isinstance(address[1], int)
-        assert isinstance(message, Message.Implementation)
-        if self._timeline.check(message):
-            self._timeline.update(message)
-        else:
-            raise DropMessage("TODO: implement delay by proof")
-
-    def on_revoke_message(self, address, message):
-        """
-        Process a revoke message.
-
-        This method is called to process an unknown revoke message.  This message is either received
-        from an external source or locally generated.
-
-        When the message is locally generated the address will be set to ('', -1).
-
-        @param address: The address from where we received this message.
-        @type address: (string, int)
-
-        @param message: The received message.
-        @type message: Message.Implementation
-        @raise DropMessage: When unable to verify that this message is valid.
-        @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
-         message immediately.
-        """
-        assert isinstance(address, tuple)
-        assert len(address) == 2
-        assert isinstance(address[0], str)
-        assert isinstance(address[1], int)
-        assert isinstance(message, Message.Implementation)
-        if self._timeline.check(message):
-            self._timeline.update(message)
-        else:
-            raise DropMessage("TODO: implement delay by proof")
+    @documentation(Dispersy.create_destroy_community)
+    def create_dispersy_destroy_community(self, degree):
+        return self._dispersy.create_destroy_community(self, degree)
 
     def on_message(self, address, message):
         """
@@ -665,6 +461,36 @@ class Community(object):
         assert isinstance(address, (type(None), tuple))
         assert isinstance(message, Message.Implementation)
         raise NotImplementedError()
+
+    def on_dispersy_destroy_community(self, address, message):
+        """
+        A dispersy-destroy-community message is received.
+
+        Depending on the degree of the destroy message, we will need to cleanup in different ways.
+
+         - soft-kill: The community is frozen.  Dispersy will retain the data it has obtained.
+           However, no messages beyond the global-time of the dispersy-destroy-community message
+           will be accepted.  Responses to dispersy-sync messages will be send like normal.
+
+         - hard-kill: The community is destroyed.  Dispersy will throw away everything except the
+           dispersy-destroy-community message and the authorize chain that is required to verify
+           this message.  The community should also remove all its data and cleanup as much as
+           possible.
+
+        Similar to other on_... methods, this method may raise a DropMessage exception.  In this
+        case the message will be ignored and no data is removed.  However, each dispersy-sync that
+        is sent is likely to result in the same dispersy-destroy-community message to be received.
+
+        @param address: The address from where we received this message.
+        @type address: (string, int)
+
+        @param message: The received message.
+        @type message: Message.Implementation
+
+        @raise DropMessage: When unable to verify that this message is valid.
+        """
+        # override to implement community cleanup
+        pass
 
     def get_meta_message(self, name):
         """

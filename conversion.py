@@ -10,13 +10,6 @@ from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistr
 from encoding import encode, decode
 from member import PrivateMember, MasterMember
 from message import DelayPacket, DelayPacketByMissingMember, DropPacket, Message
-from payload import IdentityPayload, IdentityRequestPayload
-from payload import MissingSequencePayload
-from payload import Permit, Authorize, Revoke
-from payload import RoutingRequestPayload, RoutingResponsePayload
-from payload import SignatureRequestPayload, SignatureResponsePayload
-from payload import SimilarityPayload, SimilarityRequestPayload
-from payload import SyncPayload
 
 if __debug__:
     from dprint import dprint
@@ -43,8 +36,8 @@ class Conversion(object):
         # the community that this conversion belongs to.
         self._community = community
 
-        # the messages that this instance can handle, and that this
-        # instance produces, is identified by _prefix.
+        # the messages that this instance can handle, and that this instance produces, is identified
+        # by _prefix.
         self._prefix = community.cid + version
 
     @property
@@ -87,9 +80,6 @@ class BinaryConversion(Conversion):
     This conversion is intended to be as space efficient as possible.
     All data is encoded in a binary form.
     """
-    _encode_payload_type_map = {u"permit":"\x00", u"authorize":"\x01", u"revoke":"\x02"}
-    _decode_payload_type_map = dict([(value, key) for key, value in _encode_payload_type_map.iteritems()])
-
     def __init__(self, community, version):
         Conversion.__init__(self, community, version)
         self._encode_distribution_map = {FullSyncDistribution.Implementation:self._encode_full_sync_distribution,
@@ -111,6 +101,9 @@ class BinaryConversion(Conversion):
         self.define_meta_message(chr(247), community.get_meta_message(u"dispersy-identity-request"), self._encode_identity_request, self._decode_identity_request)
         self.define_meta_message(chr(246), community.get_meta_message(u"dispersy-similarity"), self._encode_similarity, self._decode_similarity)
         self.define_meta_message(chr(245), community.get_meta_message(u"dispersy-similarity-request"), self._encode_similarity_request, self._decode_similarity_request)
+        self.define_meta_message(chr(244), community.get_meta_message(u"dispersy-destroy-community"), self._encode_destroy_community, self._decode_destroy_community)
+        self.define_meta_message(chr(243), community.get_meta_message(u"dispersy-authorize"), self._encode_authorize, self._decode_authorize)
+        self.define_meta_message(chr(242), community.get_meta_message(u"dispersy-revoke"), self._encode_revoke, self._decode_revoke)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -129,7 +122,6 @@ class BinaryConversion(Conversion):
     #
 
     def _encode_missing_sequence(self, message):
-        assert isinstance(message.payload, MissingSequencePayload.Implementation)
         payload = message.payload
         assert payload.message.name in self._encode_message_map, payload.message.name
         message_id, _ = self._encode_message_map[payload.message.name]
@@ -145,9 +137,8 @@ class BinaryConversion(Conversion):
         if not members:
             raise DelayPacketByMissingMember(self._community, member_id)
         elif len(members) > 1:
-            # this is unrecoverable.  a member id without a signature
-            # is simply not globally unique.  This can occur when two
-            # or more nodes have the same sha1 hash.  Very unlikely.
+            # this is unrecoverable.  a member id without a signature is simply not globally unique.
+            # This can occur when two or more nodes have the same sha1 hash.  Very unlikely.
             raise DropPacket("Unrecoverable: ambiguous member")
         member = members[0]
 
@@ -162,7 +153,6 @@ class BinaryConversion(Conversion):
         return offset, meta_message.payload.implement(member, missing_meta_message, missing_low, missing_high)
 
     def _encode_sync(self, message):
-        assert isinstance(message.payload, SyncPayload.Implementation)
         return pack("!L", message.payload.global_time), str(message.payload.bloom_filter)
 
     def _decode_sync(self, meta_message, offset, data):
@@ -181,21 +171,18 @@ class BinaryConversion(Conversion):
         return offset, meta_message.payload.implement(global_time, bloom_filter)
 
     def _encode_signature_request(self, message):
-        assert isinstance(message.payload, SignatureRequestPayload.Implementation)
         return self.encode_message(message.payload.message),
 
     def _decode_signature_request(self, meta_message, offset, data):
         return len(data), meta_message.payload.implement(self._decode_message(data[offset:], False))
 
     def _encode_signature_response(self, message):
-        assert isinstance(message.payload, SignatureResponsePayload.Implementation)
         return message.payload.identifier, message.payload.signature
 
     def _decode_signature_response(self, meta_message, offset, data):
         return len(data), meta_message.payload.implement(data[offset:offset+20], data[offset+20:])
 
     def _encode_routing_request(self, message):
-        assert isinstance(message.payload, RoutingRequestPayload.Implementation)
         return inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
     def _decode_routing_request(self, meta_message, offset, data):
@@ -208,7 +195,6 @@ class BinaryConversion(Conversion):
         return offset + 12, meta_message.payload.implement(source_address, destination_address)
 
     def _encode_routing_response(self, message):
-        assert isinstance(message.payload, RoutingResponsePayload.Implementation)
         return message.payload.request_identifier, inet_aton(message.payload.source_address[0]), pack("!H", message.payload.source_address[1]), inet_aton(message.payload.destination_address[0]), pack("!H", message.payload.destination_address[1])
 
     def _decode_routing_response(self, meta_message, offset, data):
@@ -225,7 +211,6 @@ class BinaryConversion(Conversion):
         return offset, meta_message.payload.implement(request_identifier, source_address, destination_address)
 
     def _encode_identity(self, message):
-        assert isinstance(message.payload, IdentityPayload.Implementation)
         return inet_aton(message.payload.address[0]), pack("!H", message.payload.address[1])
 
     def _decode_identity(self, meta_message, offset, data):
@@ -237,7 +222,6 @@ class BinaryConversion(Conversion):
         return offset + 6, meta_message.payload.implement(address)
 
     def _encode_identity_request(self, message):
-        assert isinstance(message.payload, IdentityRequestPayload.Implementation)
         return message.payload.mid,
 
     def _decode_identity_request(self, meta_message, offset, data):
@@ -247,7 +231,6 @@ class BinaryConversion(Conversion):
         return offset + 20, meta_message.payload.implement(data[offset:offset+20])
 
     def _encode_similarity(self, message):
-        assert isinstance(message.payload, SimilarityPayload.Implementation)
         return pack("!B", message.payload.cluster), str(message.payload.similarity)
 
     def _decode_similarity(self, meta_message, offset, data):
@@ -266,7 +249,6 @@ class BinaryConversion(Conversion):
         return offset, meta_message.payload.implement(cluster, similarity)
 
     def _encode_similarity_request(self, message):
-        assert isinstance(message.payload, SimilarityRequestPayload.Implementation)
         return (pack("!B", message.payload.cluster),) + tuple([member.mid for member in message.payload.members])
 
     def _decode_similarity_request(self, meta_message, offset, data):
@@ -282,6 +264,188 @@ class BinaryConversion(Conversion):
             offset += 20
 
         return offset, meta_message.payload.implement(cluster, members)
+
+    def _encode_destroy_community(self, message):
+        if message.payload.is_soft_kill:
+            return "s",
+        else:
+            return "h",
+
+    def _decode_destroy_community(self, meta_message, offset, data):
+        if len(data) < offset + 1:
+            raise DropPacket("Insufficient packet size")
+
+        if data[offset] == "s":
+            degree = u"soft-kill"
+        else:
+            degree = u"hard-kill"
+        offset += 1
+
+        return offset, meta_message.payload.implement(degree)
+
+    def _encode_authorize(self, message):
+        """
+        Encode the permissiong_triplets (Member, Message, permission) into an on-the-wire string.
+
+        On-the-wire format:
+        [ repeat for each Member
+           2 byte member pem length
+           n byte member pem
+           1 byte length
+           [ once for each number in previous byte
+              1 byte message id
+              1 byte permission bits
+           ]
+        ]
+        """
+        permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
+        members = {}
+        for member, message, permission in message.payload.permission_triplets:
+            member_pem = member.pem
+            assert isinstance(member_pem, str)
+            assert message.name in self._encode_message_map
+            message_id = self._encode_message_map[message.name][0]
+            assert isinstance(message_id, str)
+            assert len(message_id) == 1
+            assert permission in permission_map
+            permission_bit = permission_map[permission]
+
+            if not member_pem in members:
+                members[member_pem] = {}
+
+            if not message_id in members[member_pem]:
+                members[member_pem][message_id] = 0
+
+            members[member_pem][message_id] |= permission_bit
+
+        bytes = []
+        for member_pem, messages in members.iteritems():
+            bytes.extend((pack("!H", len(member_pem)), member_pem, pack("!B", len(messages))))
+            for message_id, permission_bits in messages.iteritems():
+                bytes.extend((message_id, pack("!B", permission_bits)))
+
+        return tuple(bytes)
+
+    def _decode_authorize(self, meta_message, offset, data):
+        permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
+        permission_triplets = []
+
+        while offset < len(data):
+            if len(data) < offset + 2:
+                raise DropPacket("Insufficient packet size")
+
+            pem_length, = unpack_from("!H", data, offset)
+            offset += 2
+
+            if len(data) < offset + pem_length + 1:
+                raise DropPacket("Insufficient packet size")
+
+            member = self._community.get_member(data[offset:offset+pem_length])
+            offset += pem_length
+
+            messages_length, = unpack_from("!B", data, offset)
+            offset += 1
+
+            if len(data) < offset + messages_length * 2:
+                raise DropPacket("Insufficient packet size")
+
+            for _ in xrange(messages_length):
+                message_id = data[offset]
+                offset += 1
+                if not message_id in self._decode_message_map:
+                    raise DropPacket("Unknown message id")
+                message = self._decode_message_map[message_id][0]
+
+                permission_bits, = unpack_from("!B", data, offset)
+                offset += 1
+
+                for permission, permission_bit in permission_map.iteritems():
+                    if permission_bit & permission_bits:
+                        permission_triplets.append((member, message, permission))
+
+        return offset, meta_message.payload.implement(permission_triplets)
+
+    def _encode_revoke(self, message):
+        """
+        Encode the permissiong_triplets (Member, Message, permission) into an on-the-wire string.
+
+        On-the-wire format:
+        [ repeat for each Member
+           2 byte member pem length
+           n byte member pem
+           1 byte length
+           [ once for each number in previous byte
+              1 byte message id
+              1 byte permission bits
+           ]
+        ]
+        """
+        permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
+        members = {}
+        for member, message, permission in message.payload.permission_triplets:
+            member_pem = member.pem
+            assert isinstance(member_pem, str)
+            assert message.name in self._encode_message_map
+            message_id = self._encode_message_map[message.name][0]
+            assert isinstance(message_id, str)
+            assert len(message_id) == 1
+            assert permission in permission_map
+            permission_bit = permission_map[permission]
+
+            if not member_pem in members:
+                members[member_pem] = {}
+
+            if not message_id in members[member_pem]:
+                members[member_pem][message_id] = 0
+
+            members[member_pem][message_id] |= permission_bit
+
+        bytes = []
+        for member_pem, messages in members.iteritems():
+            bytes.extend((pack("!H", len(member_pem)), member_pem, pack("!B", len(messages))))
+            for message_id, permission_bits in messages.iteritems():
+                bytes.extend((message_id, pack("!B", permission_bits)))
+
+        return tuple(bytes)
+
+    def _decode_revoke(self, meta_message, offset, data):
+        permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
+        permission_triplets = []
+
+        while offset < len(data):
+            if len(data) < offset + 2:
+                raise DropPacket("Insufficient packet size")
+
+            pem_length, = unpack_from("!H", data, offset)
+            offset += 2
+
+            if len(data) < offset + pem_length + 1:
+                raise DropPacket("Insufficient packet size")
+
+            member = self._community.get_member(data[offset:offset+pem_length])
+            offset += pem_length
+
+            messages_length, = unpack_from("!B", data, offset)
+            offset += 1
+
+            if len(data) < offset + messages_length * 2:
+                raise DropPacket("Insufficient packet size")
+
+            for _ in xrange(messages_length):
+                message_id = data[offset]
+                offset += 1
+                if not message_id in self._decode_message_map:
+                    raise DropPacket("Unknown message id")
+                message = self._decode_message_map[message_id][0]
+
+                permission_bits, = unpack_from("!B", data, offset)
+                offset += 1
+
+                for permission, permission_bit in permission_map.iteritems():
+                    if permission_bit & permission_bits:
+                        permission_triplets.append((member, message, permission))
+
+        return offset, meta_message.payload.implement(permission_triplets)
 
     #
     # Encoding
@@ -307,7 +471,6 @@ class BinaryConversion(Conversion):
 
     def encode_message(self, message):
         assert isinstance(message, Message.Implementation), message
-
         assert message.name in self._encode_message_map, message.name
         message_id, encode_payload_func = self._encode_message_map[message.name]
 
@@ -339,19 +502,10 @@ class BinaryConversion(Conversion):
             dprint(message.name, "          head ", sum(map(len, container)) + 1, " bytes")
 
         # Payload
-        if isinstance(message.payload, Permit.Implementation):
-            container.append(self._encode_payload_type_map[u"permit"])
-            tup = encode_payload_func(message)
-            assert isinstance(tup, tuple), (type(tup), encode_payload_func)
-            assert not filter(lambda x: not isinstance(x, str), tup)
-            container.extend(tup)
-
-        elif isinstance(message.payload, Authorize.Implementation):
-            public_key = message.payload.to.pem
-            container.extend((self._encode_payload_type_map[message.payload.payload.get_static_type()], pack("H", len(public_key)), public_key))
-
-        else:
-            raise NotImplementedError(message.payload)
+        itererator = encode_payload_func(message)
+        assert isinstance(itererator, (tuple, list)), (type(itererator), encode_payload_func)
+        assert not filter(lambda x: not isinstance(x, str), itererator)
+        container.extend(itererator)
 
         if __debug__:
             dprint(message.name, "     head+body ", sum(map(len, container)), " bytes")
@@ -554,7 +708,7 @@ class BinaryConversion(Conversion):
         # authentication
         offset, authentication_impl, first_signature_offset = self._decode_authentication(meta_message.authentication, offset, data)
         if verify_all_signatures and not authentication_impl.is_signed:
-            raise DropPacket("Signature consists of \\x00 bytes")
+            raise DropPacket("Invalid signature")
 
         # destination
         assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination))
@@ -572,38 +726,16 @@ class BinaryConversion(Conversion):
         offset, distribution_impl = self._decode_distribution_map[type(meta_message.distribution)](offset, data, meta_message)
 
         # payload
-        payload_type = self._decode_payload_type_map.get(data[offset])
-        if payload_type is None:
-            raise DropPacket("Invalid payload type")
-        offset += 1
-        if payload_type == u"permit":
-            try:
-                offset, payload = decode_payload_func(meta_message, offset, data[:first_signature_offset])
-            except:
-                dprint(decode_payload_func)
-                raise
-            assert isinstance(offset, (int, long))
-            assert isinstance(payload, Permit.Implementation), type(payload)
+        try:
+            offset, payload = decode_payload_func(meta_message, offset, data[:first_signature_offset])
+        except:
+            if __debug__: dprint(decode_payload_func)
+            raise
 
-        elif payload_type == u"authorize":
-            authorized_payload = self._decode_payload_type_map.get(data[offset])
-            if authorized_payload is None:
-                raise DropPacket("Invalid payload type (2)")
-            offset += 1
-
-            public_key_length, = unpack_from("H", data, offset)
-            offset += 2
-            try:
-                member = self._community.get_member(data[offset:offset+public_key_length])
-            except KeyError:
-                # todo: delay + retrieve user public key
-                raise DelayPacket("Unable to find member in community")
-            offset += public_key_length
-
-            payload = Authorized(member, authorized_payload)
-
-        else:
-            raise NotImplementedError()
+        if __debug__:
+            from payload import Payload
+        assert isinstance(payload, Payload.Implementation), type(payload)
+        assert isinstance(offset, (int, long))
 
         return meta_message.implement(authentication_impl, distribution_impl, destination_impl, payload, conversion=self, packet=data)
 

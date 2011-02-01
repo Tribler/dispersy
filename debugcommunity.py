@@ -8,7 +8,7 @@ from destination import MemberDestination, CommunityDestination, SimilarityDesti
 from distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
 from message import Message, DropPacket
 from member import MyMember
-from payload import Permit
+from payload import Payload
 from resolution import PublicResolution
 
 from dprint import dprint
@@ -114,8 +114,8 @@ class DebugCommunityConversion(BinaryConversion):
 # Payload
 #
 
-class TextPayload(Permit):
-    class Implementation(Permit.Implementation):
+class TextPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, text):
             assert isinstance(text, str)
             super(TextPayload.Implementation, self).__init__(meta)
@@ -125,8 +125,8 @@ class TextPayload(Permit):
         def text(self):
             return self._text
 
-class TasteAwarePayload(Permit):
-    class Implementation(Permit.Implementation):
+class TasteAwarePayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, number):
             assert isinstance(number, (int, long))
             super(TasteAwarePayload.Implementation, self).__init__(meta)

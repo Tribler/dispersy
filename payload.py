@@ -5,30 +5,8 @@ from meta import MetaObject
 class Payload(MetaObject):
     class Implementation(MetaObject.Implementation):
         @property
-        def type(self):
-            return self._meta.type
-
-        @property
         def footprint(self):
-            raise NotImplementedError()
-
-    @classmethod
-    def get_static_type(cls):
-        """
-        The subclasses Authorize, Revoke, and Permit are sometimes
-        used to indicate to what type of payload something applied; In
-        this case this method can be used to get the corresponding
-        type: u'authorize', u'revoke', and u'permit'.
-        """
-        return {Authorize:u"authorize", Revoke:u"revoke", Permit:u"permit"}[cls]
-
-    @property
-    def type(self):
-        """
-        Returns u'authorize', u'revoke', and u'permit' for Authorize,
-        Revoke, and Permit instances respectively.
-        """
-        raise NotImplementedError()
+            return self._meta.__class__.__name__
 
     def setup(self, message):
         """
@@ -39,100 +17,75 @@ class Payload(MetaObject):
         assert isinstance(message, Message)
 
     def generate_footprint(self):
-        raise NotImplementedError()
+        return self.__class__.__name__
 
     def __str__(self):
-        return "<{0.__class__.__name__} {0.type}>".format(self)
+        return "<{0.__class__.__name__}>".format(self)
 
-class Authorize(Payload):
+class AuthorizePayload(Payload):
     class Implementation(Payload.Implementation):
-        def __init__(self, meta, to, payload):
+        def __init__(self, meta, permission_triplets):
             """
-            User TO is given permission to use PAYLOAD.
+            Authorize the given permission_triplets.
 
-            TO is the member that is allowed to use PAYLOAD.
-            PAYLOAD is the kind of payload that is allowed {Authorize, Revoke, Permit}.
+            The permissions are given in the permission_triplets list.  Each element is a (Member,
+            Message, permission) pair, where permission can either be u'permit', u'authorize', or
+            u'revoke'.
             """
             if __debug__:
                 from member import Member
-                from payload import Payload
-                assert isinstance(to, Member)
-                assert issubclass(payload, Payload)
-            super(Authorize.Implementation, self).__init__(meta)
-            self._to = to
-            self._payload = payload
+                from message import Message
+                for triplet in permission_triplets:
+                    assert isinstance(triplet, tuple)
+                    assert len(triplet) == 3
+                    assert isinstance(triplet[0], Member)
+                    assert isinstance(triplet[1], Message)
+                    assert isinstance(triplet[2], unicode)
+                    assert triplet[2] in (u'permit', u'authorize', u'revoke')
+            super(AuthorizePayload.Implementation, self).__init__(meta)
+            self._permission_triplets = permission_triplets
 
         @property
-        def type(self):
-            return u"authorize"
-
-        @property
-        def footprint(self):
-            return "Authorize"
-
-        @property
-        def to(self):
-            return self._to
+        def permission_triplets(self):
+            return self._permission_triplets
 
         @property
         def payload(self):
             return self._payload
 
-    def generate_footprint(self):
-        return "Authorize"
-
-class Revoke(Payload):
+class RevokePayload(Payload):
     class Implementation(Payload.Implementation):
-        def __init__(self, meta, to, payload):
+        def __init__(self, meta, permission_triplets):
             """
-            User TO is no longer allowed to use PAYLOAD.
+            Revoke the given permission_triplets.
 
-            TO is the Member that will be revoked.
-            PAYLOAD is the payload type that is revoked {Authorize, Revoke, Permit}.
+            The permissions are given in the permission_triplets list.  Each element is a (Member,
+            Message, permission) pair, where permission can either be u'permit', u'authorize', or
+            u'revoke'.
             """
             if __debug__:
                 from member import Member
-                from payload import Payload
-                assert isinstance(to, Member)
-                assert issubclass(payload, Payload)
-            super(Revoke.Implementation, self).__init__(meta)
-            self._to = to
-            self._payload = payload
+                from message import Message
+                for triplet in permission_triplets:
+                    assert isinstance(triplet, tuple)
+                    assert len(triplet) == 3
+                    assert isinstance(triplet[0], Member)
+                    assert isinstance(triplet[1], Message)
+                    assert isinstance(triplet[2], unicode)
+                    assert triplet[2] in (u'permit', u'authorize', u'revoke')
+            super(AuthorizePayload.Implementation, self).__init__(meta)
+            self._permission_triplets = permission_triplets
 
         @property
-        def type(self):
-            return u"revoke"
-
-        @property
-        def footprint(self):
-            return "Revoke"
-
-        @property
-        def to(self):
-            return self._to
+        def permission_triplets(self):
+            return self._permission_triplets
 
         @property
         def payload(self):
             return self._payload
 
-    def generate_footprint(self):
-        return "Revoke"
-
-class Permit(Payload):
+class MissingSequencePayload(Payload):
     class Implementation(Payload.Implementation):
-        @property
-        def type(self):
-            return u"permit"
-
-        @property
-        def footprint(self):
-            return "Permit"
-
-    def generate_footprint(self):
-        return "Permit"
-
-class MissingSequencePayload(Permit):
-    class Implementation(Permit.Implementation):
         def __init__(self, meta, member, message, missing_low, missing_high):
             """
             We are missing messages of type MESSAGE signed by USER.  We
@@ -169,8 +122,8 @@ class MissingSequencePayload(Permit):
         def missing_high(self):
             return self._missing_high
 
-class RoutingPayload(Permit):
-    class Implementation(Permit.Implementation):
+class RoutingPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, source_address, destination_address):
             assert isinstance(source_address, tuple)
             assert len(source_address) == 2
@@ -217,8 +170,8 @@ class RoutingResponsePayload(RoutingPayload):
         assert len(request_identifier) == 20
         return "RoutingResponsePayload:" + request_identifier.encode("HEX")
 
-class SignatureRequestPayload(Permit):
-    class Implementation(Permit.Implementation):
+class SignatureRequestPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, message):
             super(SignatureRequestPayload.Implementation, self).__init__(meta)
             self._message = message
@@ -227,8 +180,8 @@ class SignatureRequestPayload(Permit):
         def message(self):
             return self._message
 
-class SignatureResponsePayload(Permit):
-    class Implementation(Permit.Implementation):
+class SignatureResponsePayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, identifier, signature):
             assert isinstance(identifier, str)
             assert len(identifier) == 20
@@ -253,8 +206,8 @@ class SignatureResponsePayload(Permit):
         assert len(identifier) == 20
         return "SignatureResponsePayload:" + identifier.encode("HEX")
 
-class IdentityPayload(Permit):
-    class Implementation(Permit.Implementation):
+class IdentityPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, address):
             assert isinstance(address, tuple)
             assert len(address) == 2
@@ -267,8 +220,8 @@ class IdentityPayload(Permit):
         def address(self):
             return self._address
 
-class IdentityRequestPayload(Permit):
-    class Implementation(Permit.Implementation):
+class IdentityRequestPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, mid):
             assert isinstance(mid, str)
             assert len(mid) == 20
@@ -279,8 +232,15 @@ class IdentityRequestPayload(Permit):
         def mid(self):
             return self._mid
 
-class SyncPayload(Permit):
-    class Implementation(Permit.Implementation):
+        @property
+        def footprint(self):
+            return "IdentityPayload:" + self._mid
+
+    def generate_footprint(self, mid):
+        return "IdentityPayload" + mid
+
+class SyncPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, global_time, bloom_filter):
             if __debug__:
                 from bloomfilter import BloomFilter
@@ -298,8 +258,8 @@ class SyncPayload(Permit):
         def bloom_filter(self):
             return self._bloom_filter
 
-class SimilarityPayload(Permit):
-    class Implementation(Permit.Implementation):
+class SimilarityPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, cluster, similarity):
             """
             The payload for a dispersy-similarity message.
@@ -329,8 +289,8 @@ class SimilarityPayload(Permit):
         def similarity(self):
             return self._similarity
 
-class SimilarityRequestPayload(Permit):
-    class Implementation(Permit.Implementation):
+class SimilarityRequestPayload(Payload):
+    class Implementation(Payload.Implementation):
         def __init__(self, meta, cluster, members):
             """
             The payload for a dispersy-similarity-request message.
@@ -362,3 +322,22 @@ class SimilarityRequestPayload(Permit):
         def members(self):
             return self._members
 
+class DestroyCommunityPayload(Payload):
+    class Implementation(Payload.Implementation):
+        def __init__(self, meta, degree):
+            assert isinstance(degree, unicode)
+            assert degree in (u"soft-kill", u"hard-kill")
+            super(DestroyCommunityPayload.Implementation, self).__init__(meta)
+            self._degree = degree
+
+        @property
+        def degree(self):
+            return self._degree
+
+        @property
+        def is_soft_kill(self):
+            return self._degree == u"soft-kill"
+
+        @property
+        def is_hard_kill(self):
+            return self._degree == u"hard-kill"
