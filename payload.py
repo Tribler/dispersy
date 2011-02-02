@@ -241,18 +241,30 @@ class IdentityRequestPayload(Payload):
 
 class SyncPayload(Payload):
     class Implementation(Payload.Implementation):
-        def __init__(self, meta, global_time, bloom_filter):
+        def __init__(self, meta, time_low, time_high, bloom_filter):
             if __debug__:
                 from bloomfilter import BloomFilter
-            assert isinstance(global_time, (int, long))
+            assert isinstance(time_low, (int, long))
+            assert 0 < time_low
+            assert isinstance(time_high, (int, long))
+            assert time_high == 0 or time_low <= time_high
             assert isinstance(bloom_filter, BloomFilter)
             super(SyncPayload.Implementation, self).__init__(meta)
-            self._global_time = global_time
+            self._time_low = time_low
+            self._time_high = time_high
             self._bloom_filter = bloom_filter
 
         @property
-        def global_time(self):
-            return self._global_time
+        def time_low(self):
+            return self._time_low
+
+        @property
+        def time_high(self):
+            return self._time_high
+
+        @property
+        def has_time_high(self):
+            return self._time_high > 0
 
         @property
         def bloom_filter(self):

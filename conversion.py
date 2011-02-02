@@ -153,14 +153,18 @@ class BinaryConversion(Conversion):
         return offset, meta_message.payload.implement(member, missing_meta_message, missing_low, missing_high)
 
     def _encode_sync(self, message):
-        return pack("!L", message.payload.global_time), str(message.payload.bloom_filter)
+        return pack("!QQ", message.payload.time_low, message.payload.time_high), str(message.payload.bloom_filter)
 
     def _decode_sync(self, meta_message, offset, data):
-        if len(data) < offset + 4:
+        if len(data) < offset + 16:
             raise DropPacket("Insufficient packet size")
 
-        global_time, = unpack_from("!L", data, offset)
-        offset += 4
+        time_low, time_high = unpack_from("!QQ", data, offset)
+        offset += 16
+        if not time_low > 0:
+            raise DropPacket("Invalid time_low value")
+        if not (time_high == 0 or time_high > time_low):
+            raise DropPacket("Invalid time_high value")
 
         try:
             bloom_filter = BloomFilter(data, offset)
@@ -168,7 +172,7 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid bloom filter")
         offset += len(bloom_filter)
 
-        return offset, meta_message.payload.implement(global_time, bloom_filter)
+        return offset, meta_message.payload.implement(time_low, time_high, bloom_filter)
 
     def _encode_signature_request(self, message):
         return self.encode_message(message.payload.message),

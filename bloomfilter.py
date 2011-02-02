@@ -162,9 +162,11 @@ class BloomFilter(Constructor):
         # n ~= (k * m) * ((ln(2) ** 2) / abs(ln(P)))
         # m ~= n * abs(ln(P)) / (k * (ln(2) ** 2))
         self._num_slices = int(ceil(log(1 / error_rate, 2)))
+        assert self._num_slices > 0
         # the error_rate constraint assumes a fill rate of 1/2
         # so we double the capacity to simplify the API
         self._bits_per_slice = int(((capacity * log(error_rate)) / log(1.0 / (pow(2.0, log(2.0)))) ) / self._num_slices)
+        assert self._bits_per_slice > 0
         self._make_hashes = _make_hashfuncs(self._num_slices, self._bits_per_slice)
         self._bytes = array("B", (0 for _ in xrange(int(ceil(self._num_slices * self._bits_per_slice / 8.0)))))
 
@@ -194,6 +196,11 @@ class BloomFilter(Constructor):
             raise ValueError("Insufficient bytes")
 
         self._num_slices, self._bits_per_slice = unpack_from("!LL", data, offset)
+        if self._num_slices == 0:
+            raise ValueError("Invalid _num_slices")
+        if self._bits_per_slice == 0:
+            raise ValueError("Invalid _bits_per_slice")
+
         size = int(ceil(self._num_slices * self._bits_per_slice / 8.0))
         if len(data) < offset + 8 + size:
             raise ValueError("Insufficient bytes")

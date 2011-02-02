@@ -103,7 +103,7 @@ class Timeline(object):
                     else:
                         node.timeline.append((global_time + 1, allowed_actions + [pair]))
 
-                if __debug__: dprint(node.timeline, lines=1)
+                if __debug__: dprint(["time:{0} -> {1}".format(time, ", ".join(pair)) for time, pair in node.timeline], lines=1)
 
             else:
                 raise NotImplementedError(message.resolution)

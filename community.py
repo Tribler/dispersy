@@ -196,14 +196,12 @@ class Community(object):
             assert meta_message.name not in self._meta_messages
             self._meta_messages[meta_message.name] = meta_message
 
-        # the list with bloom filters.  the list will grow as the global time increases.  The 1st
-        # bloom filter will contain all stored messages from global time 1 to stepping.  The 2nd
-        # from stepping to 2*stepping, etc.
-        self._bloom_filter_stepping = 1000
-        self._bloom_filters = [BloomFilter(10, 512)] # 10, 512 -> 640 bytes
-        # todo: if we are only using LastSyncDistribution then it is possible that only the last
-        # elements of the _bloom_filters are used.  We should make this into a dictionary and keep
-        # it clean once a bloomfilter becomes obsolete.
+        # the list with bloom filters.  the list will grow as the global time increases.  older time
+        # ranges are at higher indexes in the list, new time ranges are inserted at the start of the
+        # list.
+        self._bloom_filter_step = 1000
+        self._bloom_filter_size = (10, 512) # 10, 512 -> 640 bytes
+        self._bloom_filters = [(1, self._bloom_filter_step, BloomFilter(*self._bloom_filter_size))]
 
         # dictionary containing available conversions.  currently only contains one conversion.
         self._conversions = {}
@@ -224,6 +222,16 @@ class Community(object):
         return 20.0
 
     @property
+    def dispersy_sync_bloom_count(self):
+        """
+        The number of bloom filters that are sent every interval.
+        @note: this will be replaced by a probability distribution to ensure that older bloom
+        filters are infrequently sent and more recent are sent more frequently.
+        @rtype: int
+        """
+        return 2
+
+    @property
     def dispersy_sync_member_count(self):
         """
         The number of members that are selected each time a dispersy-sync message is send.
@@ -234,20 +242,18 @@ class Community(object):
     @property
     def dispersy_sync_response_limit(self):
         """
-        The maximum number of packets and the maximum number of bytes to send back per received
-        dispersy-sync message.
-        @rtype: (int, int)
+        The maximum number of bytes to send back per received dispersy-sync message.
+        @rtype: int
         """
-        return (50, 5 * 1025)
+        return 5 * 1025
 
     @property
     def dispersy_missing_sequence_response_limit(self):
         """
-        The maximum number of packets and the maximum number of bytes to send back per received
-        dispersy-missing-sequence message.
+        The maximum number of bytes to send back per received dispersy-missing-sequence message.
         @rtype: (int, int)
         """
-        return (100, 10 * 1025)
+        return 10 * 1025
 
     @property
     def cid(self):
@@ -302,23 +308,36 @@ class Community(object):
         @todo: this name should be more distinct... this bloom filter is specifically used by the
          SyncDistribution policy.
         """
-        index = global_time / self._bloom_filter_stepping
-        while len(self._bloom_filters) <= index:
-            self._bloom_filters.append(BloomFilter(100, 0.01))
-        return self._bloom_filters[index]
+        # iter existing bloom filters
+        for time_low, time_high, bloom_filter in self._bloom_filters:
+            if time_low <= global_time <= time_high:
+                return bloom_filter
 
-    def get_current_bloom_filter(self):
+        # create as many filter as needed to reach global_time
+        for time_low in xrange(time_low + self._bloom_filter_step, global_time, self._bloom_filter_step):
+            time_high = time_low + self._bloom_filter_step
+            bloom_filter = BloomFilter(*self._bloom_filter_size)
+            self._bloom_filters.insert(0, (time_low, time_high, bloom_filter))
+            if time_low <= global_time <= time_high:
+                return bloom_filter
+
+    def get_current_bloom_filter(self, index=0):
         """
         Returns the global time and bloom filter associated to the current time frame.
 
-        @return: The global-time and bloom filter associated to the current time frame.
-        @rtype: (int or long, BloomFilter) tuple
+        @param index: The index of the returned filter.  Where 0 is the most recent, 1 the second
+         last, etc.
+        @rtype int or long
+
+        @return: The time-low, time-high and bloom filter associated to the current time frame.
+        @rtype: (number, number, BloomFilter) tuple
+
+        @raise IndexError: When index does not exist.  Index 0 will always exist.
 
         @todo: this name should be more distinct... this bloom filter is specifically used by the
          SyncDistribution policy.
         """
-        index = len(self._bloom_filters) - 1
-        return index * self._bloom_filter_stepping + 1, self._bloom_filters[index]
+        return self._bloom_filters[index]
 
     def get_member(self, public_key):
         """

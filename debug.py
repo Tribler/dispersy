@@ -208,8 +208,9 @@ class Node(object):
                               meta.destination.implement(destination_address),
                               meta.payload.implement(source_address, destination_address))
 
-    def create_dispersy_sync_message(self, bloom_global_time, bloom_packets, global_time):
-        assert isinstance(bloom_global_time, (int, long))
+    def create_dispersy_sync_message(self, time_low, time_high, bloom_packets, global_time):
+        assert isinstance(time_low, (int, long))
+        assert isinstance(time_high, (int, long))
         assert isinstance(bloom_packets, list)
         assert not filter(lambda x: not isinstance(x, str), bloom_packets)
         assert isinstance(global_time, (int, long))
@@ -219,7 +220,7 @@ class Node(object):
         return meta.implement(meta.authentication.implement(self._my_member),
                               meta.distribution.implement(global_time),
                               meta.destination.implement(),
-                              meta.payload.implement(bloom_global_time, bloom_filter))
+                              meta.payload.implement(time_low, time_high, bloom_filter))
 
     def create_dispersy_similarity_message(self, cluster, community, similarity, global_time):
         assert isinstance(cluster, int)

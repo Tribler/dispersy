@@ -100,7 +100,8 @@ class Dispersy(Singleton):
         """
         # the raw server
         self._rawserver = rawserver
-        self._rawserver.add_task(self._periodically_stats, 1.0)
+        if __debug__:
+            self._rawserver.add_task(self._periodically_stats, 1.0)
 
         # where we store all data
         self._working_directory = abspath(working_directory)
@@ -1506,9 +1507,8 @@ class Dispersy(Singleton):
         assert isinstance(message, Message)
         assert message.name == u"dispersy-missing-sequence"
 
-        # we limit the response by packet_limit packets or byte_limit bytes
-        packet_limit, byte_limit = message.community.dispersy_missing_sequence_response_limit
-        byte_limit += self._total_send
+        # we limit the response by byte_limit bytes
+        byte_limit = self._total_send + message.community.dispersy_missing_sequence_response_limit
 
         payload = message.payload
         for packet, in self._database.execute(u"SELECT packet FROM sync_full WHERE community = ? and sequence >= ? AND sequence <= ? ORDER BY sequence LIMIT ?",
@@ -1550,9 +1550,8 @@ class Dispersy(Singleton):
         assert message.name == u"dispersy-sync"
         if __debug__: dprint(message)
 
-        # we limit the response by packet_limit packets or byte_limit bytes
-        packet_limit, byte_limit = message.community.dispersy_sync_response_limit
-        byte_limit += self._total_send
+        # we limit the response by byte_limit bytes
+        byte_limit = self._total_send + message.community.dispersy_sync_response_limit
 
         similarity_cache = {}
         bloom_filter = message.payload.bloom_filter
@@ -1575,38 +1574,36 @@ class Dispersy(Singleton):
 
             return BloomFilter(str(similarity), 0), threshold
 
-        def get_packets(community_id, global_time, packet_limit):
+        def get_packets(community_id, time_low, time_high):
             # first priority is to return the 'in-order' packets
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 1 AND sync.global_time >= ?
-                      ORDER BY sync.global_time ASC
-                      LIMIT ?"""
-            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                      WHERE sync.community = ? AND synchronization_direction = 1 AND ? <= sync.global_time <= ?
+                      ORDER BY sync.global_time ASC"""
+            for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
             # second priority is to return the 'out-order' packets
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 2 AND sync.global_time >= ?
-                      ORDER BY sync.global_time DESC
-                      LIMIT ?"""
-            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                      WHERE sync.community = ? AND synchronization_direction = 2 AND ? <= sync.global_time <= ?
+                      ORDER BY sync.global_time DESC"""
+            for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
             # third priority is to return the 'random-order' packets
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 3 AND sync.global_time >= ?
-                      ORDER BY RANDOM()
-                      LIMIT ?"""
-            for tup in self._database.execute(sql, (community_id, global_time, packet_limit)):
+                      WHERE sync.community = ? AND synchronization_direction = 3 AND ? <= sync.global_time <= ?
+                      ORDER BY RANDOM()"""
+            for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
-        for packet, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.global_time, packet_limit):
+        time_high = message.payload.time_high if message.payload.has_time_high else message.community._timeline.global_time
+        for packet, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.time_low, time_high):
             packet = str(packet)
             if not packet in bloom_filter:
                 # check if the packet uses the SimilarityDestination policy
@@ -1877,7 +1874,7 @@ class Dispersy(Singleton):
         """
         Periodically disperse the latest bloom filters for this community.
 
-        Every N seconds one or more dispersy-sync message will be send for each community.  This may
+        Every N seconds one or more dispersy-sync message will be send for community.  This may
         result in members detecting that we are missing messages and them sending them to us.
 
         Note that there are several magic numbers involved:
@@ -1885,26 +1882,30 @@ class Dispersy(Singleton):
          1. The frequency of calling _periodically_disperse.  This is determined by
             self.dispersy_sync_interval.  This defaults to 20.0 (currently).
 
-         2. Each time a dispersy-sync message is send, it is send to C different members.  This is
+         2. Each interval up to L bloom filters are selected and sent in seperate dispersy-sync
+            messages.  This is determined by the self.dispersy_sync_bloom_count.  This defaults to 2
+            (currently).
+
+         3. Each interval each dispersy-sync message is sent to up to C different members.  This is
             determined by the self.dispersy_sync_member_count.  This defaults to 10 (currently).
 
-         3. How many packets -at most- are sent back in response to a dispersy-sync message.  This
-            is determined by the self.dispersy_sync_response_limit[0].  This defaults to 50.
-
-         4. How many bytes -at most- are sent back in response to a dispersy-sync message.  This is
-            determined by the self.dispersy_sync_response_limit[1].  This defaults to 5KB.
+         4. How many bytes -at most- are sent back in response to a received dispersy-sync message.
+            This is determined by the self.dispersy_sync_response_limit.  This defaults to 5KB.
         """
-        #
-        # Advertise the packages that we sync.  This means sending a 'sync' message containing one
-        # or more bloom filters.
-        #
-        global_time, bloom_filter = community.get_current_bloom_filter()
         meta = community.get_meta_message(u"dispersy-sync")
-        message = meta.implement(meta.authentication.implement(community.my_member),
-                                 meta.distribution.implement(community._timeline.global_time),
-                                 meta.destination.implement(),
-                                 meta.payload.implement(global_time, bloom_filter))
-        self.store_and_forward([message])
+        messages = []
+        try:
+            for index in xrange(community.dispersy_sync_bloom_count):
+                time_low, time_high, bloom_filter = community.get_current_bloom_filter(index)
+                messages.append(meta.implement(meta.authentication.implement(community.my_member),
+                                               meta.distribution.implement(community._timeline.global_time),
+                                               meta.destination.implement(),
+                                               meta.payload.implement(time_low, time_high, bloom_filter)))
+
+        except IndexError:
+            pass
+
+        self.store_and_forward(messages)
 
         self._rawserver.add_task(lambda: self._periodically_disperse(community), community.dispersy_sync_interval)
 

@@ -160,7 +160,8 @@ class DispersyDatabase(Database):
 #         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
 #         self.execute(u"INSERT INTO routing(community, host, port, incoming_time) VALUES(0, ?, ?, '2010-01-01 00:00:00')", (host, port))
 
-        host = unicode(gethostbyname(u"localhost"))
+        # host = unicode(gethostbyname(u"localhost"))
+        host = unicode(gethostbyname(u"dispersy1.tribler.org"))
         port = 12345
         mid = "ca7a5eebaffe0d08c1afe5253c001569bdea4803".decode("HEX")
         pem = """-----BEGIN PUBLIC KEY-----

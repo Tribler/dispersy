@@ -49,23 +49,28 @@ class Script(Singleton):
 
         else:
             for available in sorted(self._scripts):
-                dprint("Available: ", available)
+                dprint("available: ", available)
             raise ValueError("Unknown script '{0}'".format(name))
 
-    def add_generator(self, call_generator):
-        self._call_generators.append(call_generator)
+    def add_generator(self, call, call_generator):
+        self._call_generators.append((call, call_generator))
         if len(self._call_generators) == 1:
+            dprint("start: ", call)
             self._rawserver.add_task(self._process_generators, 0.0)
 
     def _process_generators(self):
         if self._call_generators:
+            call, call_generator = self._call_generators[0]
             try:
-                delay = self._call_generators[0].next()
+                delay = call_generator.next()
 
             except StopIteration:
-                generator = self._call_generators.pop(0)
+                self._call_generators.pop(0)
                 delay = 0.1
-                dprint("finished: ", generator)
+                dprint("finished: ", call)
+                if self._call_generators:
+                    call, call_generator = self._call_generators[0]
+                    dprint("start: ", call)
 
             self._rawserver.add_task(self._process_generators, delay)
 
@@ -86,7 +91,7 @@ class ScriptBase(object):
     def caller(self, run):
         run_generator = run()
         if isinstance(run_generator, types.GeneratorType):
-            self._script.add_generator(run_generator)
+            self._script.add_generator(run, run_generator)
 
     def run():
         raise NotImplementedError("Must implement a generator or use self.caller(...)")
@@ -274,7 +279,7 @@ class DispersySyncScript(ScriptBase):
             yield 0.1
 
         # send an empty sync message to obtain all messages in-order
-        node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+        node.send_message(node.create_dispersy_sync_message(min(global_times), max(global_times), [], max(global_times)), address)
         yield 0.1
 
         for global_time in global_times:
@@ -304,7 +309,7 @@ class DispersySyncScript(ScriptBase):
             yield 0.1
 
         # send an empty sync message to obtain all messages out-order
-        node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+        node.send_message(node.create_dispersy_sync_message(min(global_times), max(global_times), [], max(global_times)), address)
         yield 0.1
 
         for global_time in reversed(global_times):
@@ -344,7 +349,7 @@ class DispersySyncScript(ScriptBase):
         lists = []
         for _ in range(5):
             # send an empty sync message to obtain all messages in random-order
-            node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+            node.send_message(node.create_dispersy_sync_message(min(global_times), max(global_times), [], max(global_times)), address)
             yield 0.1
 
             received_times = get_messages_back()
@@ -402,7 +407,7 @@ class DispersySyncScript(ScriptBase):
         lists = []
         for _ in range(5):
             # send an empty sync message to obtain all messages in random-order
-            node.send_message(node.create_dispersy_sync_message(min(global_times), [], max(global_times)), address)
+            node.send_message(node.create_dispersy_sync_message(min(global_times), max(global_times), [], max(global_times)), address)
             yield 0.1
 
             received_times = get_messages_back()
@@ -857,7 +862,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # should receive a message
@@ -877,7 +882,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # should receive a message
@@ -897,7 +902,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # should NOT receive a message
@@ -922,7 +927,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # should NOT receive a message
@@ -986,7 +991,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends a sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # receive a message
@@ -1006,7 +1011,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends an sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # receive a message
@@ -1059,7 +1064,7 @@ class DispersySimilarityScript(ScriptBase):
 
         # node-02 sends a sync message with an empty bloomfilter
         # to 'self'. It should collect the message
-        node2.send_message(node2.create_dispersy_sync_message(1, [], 3), address)
+        node2.send_message(node2.create_dispersy_sync_message(1, 100, [], 3), address)
         yield 0.1
 
         # because 'self' does not have our similarity
