@@ -1893,18 +1893,12 @@ class Dispersy(Singleton):
             This is determined by the self.dispersy_sync_response_limit.  This defaults to 5KB.
         """
         meta = community.get_meta_message(u"dispersy-sync")
-        messages = []
-        try:
-            for index in xrange(community.dispersy_sync_bloom_count):
-                time_low, time_high, bloom_filter = community.get_current_bloom_filter(index)
-                messages.append(meta.implement(meta.authentication.implement(community.my_member),
-                                               meta.distribution.implement(community._timeline.global_time),
-                                               meta.destination.implement(),
-                                               meta.payload.implement(time_low, time_high, bloom_filter)))
-
-        except IndexError:
-            pass
-
+        messages = [meta.implement(meta.authentication.implement(community.my_member),
+                                   meta.distribution.implement(community._timeline.global_time),
+                                   meta.destination.implement(),
+                                   meta.payload.implement(time_low, time_high, bloom_filter))
+                    for time_low, time_high, bloom_filter
+                    in community.dispersy_sync_bloom_filters]
         self.store_and_forward(messages)
 
         self._rawserver.add_task(lambda: self._periodically_disperse(community), community.dispersy_sync_interval)

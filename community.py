@@ -9,6 +9,8 @@ Community instance.
 """
 
 from hashlib import sha1
+from math import sqrt
+from random import gauss
 
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from bloomfilter import BloomFilter
@@ -222,14 +224,44 @@ class Community(object):
         return 20.0
 
     @property
-    def dispersy_sync_bloom_count(self):
+    def dispersy_sync_bloom_filters(self):
         """
-        The number of bloom filters that are sent every interval.
-        @note: this will be replaced by a probability distribution to ensure that older bloom
-        filters are infrequently sent and more recent are sent more frequently.
-        @rtype: int
+        The bloom filters that should be sent this interval.
+
+        The list that is returned must contain (time_low, time_high, bloom_filter) tuples.  For the
+        most recent bloom filter it is good practice to send 0 (zero) instead of time_high, this
+        will ensure that messages newer than time_high are also retrieved.
+
+        Bloom filters at index 0 indicates the most recent bloom filter range, while a higher number
+        indicates an older range.
+
+        It sounds reasonable to ensure that the more recent ranges are returned more frequently.
+        Several strategied can be used:
+
+         1. Always return index 0 and pick another index at random.
+
+         2. Always return index 0 and pick another index using a gaussian probability distribution
+            favoring the more recent ranges.
+
+         3. Use a gaussion probability distribution favoring the more recent ranges.
+
+        The default is option 3.  However, each community is free to implement this how they see
+        fit.
+
+        @note: The returned indexes need to exist.
+        @rtype [(time_low, time_high, bloom_filter)]
         """
-        return 2
+        size = len(self._bloom_filters)
+        index = int(abs(gauss(0, sqrt(size))))
+        while index >= size:
+            index = int(abs(gauss(0, sqrt(size))))
+
+        if index == 0:
+            time_low, _, bloom_filter = self._bloom_filters[index]
+            return [(time_low, 0, bloom_filter)]
+
+        else:
+            return [self._bloom_filters[index]]
 
     @property
     def dispersy_sync_member_count(self):
@@ -320,6 +352,10 @@ class Community(object):
             self._bloom_filters.insert(0, (time_low, time_high, bloom_filter))
             if time_low <= global_time <= time_high:
                 return bloom_filter
+
+    @property
+    def bloom_filter_count(self):
+        return len(self._bloom_filters)
 
     def get_current_bloom_filter(self, index=0):
         """
