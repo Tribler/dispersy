@@ -227,6 +227,14 @@ class Message(MetaObject):
             self._payload = payload
             self._footprint = "".join((meta._name.encode("UTF-8"), " Community:", meta._community.cid.encode("HEX"), " ", authentication.footprint, " ", distribution.footprint, " ", destination.footprint, " ", payload.footprint))
 
+            # allow setup parts.  used to setup callback when something changes that requires the
+            # self._packet to be generated again
+            self._authentication.setup(self)
+            # self._resolution.setup(self)
+            # self._distribution.setup(self)
+            # self._destination.setup(self)
+            # self._payload.setup(self)
+
             if conversion:
                 self._conversion = conversion
             else:
@@ -280,6 +288,12 @@ class Message(MetaObject):
         @property
         def footprint(self):
             return self._footprint
+
+        def generate_packet(self, packet=""):
+            if packet:
+                self._packet = packet
+            else:
+                self._packet = self._conversion.encode_message(self)
 
         def __str__(self):
             return "<{0.meta.__class__.__name__}.{0.__class__.__name__} {0.name} {1}>".format(self, len(self._packet))

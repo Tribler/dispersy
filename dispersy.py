@@ -580,6 +580,10 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         assert isinstance(message.distribution, SyncDistribution.Implementation)
+        assert isinstance(message.authentication, (MemberAuthentication.Implementation, MultiMemberAuthentication.Implementation)), message.authentication
+        assert message.authentication.is_signed
+        # the signature must be set
+        assert not message.packet[-10:] == "\x00" * 10, message.packet[-10:].encode("HEX")
 
         # we do not store a message when it uses SimilarityDestination and it its not similar
         if isinstance(message.destination, SimilarityDestination.Implementation) and not message.destination.is_similar:
@@ -956,7 +960,7 @@ class Dispersy(Singleton):
         assert isinstance(store_and_forward, bool)
         meta = community.get_meta_message(u"dispersy-identity")
         message = meta.implement(meta.authentication.implement(community.my_member),
-                                 meta.distribution.implement(community._timeline.claim_global_time(), 0),
+                                 meta.distribution.implement(community._timeline.claim_global_time()),
                                  meta.destination.implement(),
                                  meta.payload.implement(self._my_external_address))
         if store_and_forward:
@@ -1479,7 +1483,7 @@ class Dispersy(Singleton):
         @type message: Message.Implementation
         """
         if __debug__:
-            i = len([trigger for trigger in self._triggers if trigger._match(message.footprint)])
+            i = len([trigger for trigger in self._triggers if trigger._match and trigger._match(message.footprint)])
             j = len(self._triggers)
             dprint("Ignored ", message.name, " (matches ", i, "/", j, " triggers)")
 

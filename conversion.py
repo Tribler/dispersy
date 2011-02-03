@@ -521,7 +521,9 @@ class BinaryConversion(Conversion):
         elif isinstance(message.authentication, MemberAuthentication.Implementation):
             assert isinstance(message.authentication.member, PrivateMember)
             data = "".join(container)
-            packet = data + message.authentication.member.sign(data)
+            signature = message.authentication.member.sign(data)
+            message.authentication.set_signature(signature)
+            packet = data + signature
 
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
             data = "".join(container)

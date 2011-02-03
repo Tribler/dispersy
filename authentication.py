@@ -31,6 +31,11 @@ class Authentication(MetaObject):
             """
             raise NotImplementedError()
 
+        def setup(self, message_impl):
+            if __debug__:
+                from message import Message
+            assert isinstance(message_impl, Message.Implementation)
+
         @property
         def footprint(self):
             """
@@ -152,6 +157,9 @@ class MemberAuthentication(Authentication):
         def is_signed(self):
             return self._is_signed
 
+        def set_signature(self, signature):
+            self._is_signed = True
+
         @property
         def footprint(self):
             return "MemberAuthentication:" + self._member.mid.encode("HEX")
@@ -256,6 +264,7 @@ class MultiMemberAuthentication(Authentication):
             assert not signatures or len(signatures) == meta._count
             super(MultiMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
+            self._generate_packet_func = None
 
             # will contain the list of signatures as they are received
             # from dispersy-signature-response messages
@@ -333,6 +342,13 @@ class MultiMemberAuthentication(Authentication):
             assert member in self._members
             assert member.signature_length == len(signature)
             self._signatures[self._members.index(member)] = signature
+            self._generate_packet_func()
+
+        def setup(self, message_impl):
+            if __debug__:
+                from message import Message
+            assert isinstance(message_impl, Message.Implementation)
+            self._generate_packet_func = message_impl.generate_packet
 
         @property
         def footprint(self):
