@@ -139,7 +139,7 @@ class MemberAuthentication(Authentication):
         @property
         def encoding(self):
             """
-            How the member identifier is encoded (pem or sha1).
+            How the member identifier is encoded (public key or sha1-digest over public key).
             @rtype: string
             @note: This property is obtained from the meta object.
             """
@@ -171,27 +171,27 @@ class MemberAuthentication(Authentication):
         Depending on the encoding parameter the member is identified in a different way.  The
         options below are available:
 
-         - sha1: where the public PEM of the member is made into a 20 byte sha1 digest and added to
+         - sha1: where the public key of the member is made into a 20 byte sha1 digest and added to
            the message.
 
-         - pem: where the public PEM of the member is added to the message, prefixed with its
+         - bin: where the public key of the member is added to the message, prefixed with its
            length.
 
         Obviously sha1 results in smaller messages with the disadvantage that the same sha1 digest
         could be mapped to multiple members.  Retrieving the correct member from the sha1 digest is
         handled by dispersy when an incoming message is decoded.
 
-        @param encoding: How the member identifier is encoded (pem or sha1)
+        @param encoding: How the member identifier is encoded (bin or sha1)
         @type encoding: string
         """
         assert isinstance(encoding, str)
-        assert encoding in ("pem", "sha1")
+        assert encoding in ("bin", "sha1")
         self._encoding = encoding
 
     @property
     def encoding(self):
         """
-        How the member identifier is encoded (pem or sha1).
+        How the member identifier is encoded (bin or sha1).
         @rtype: string
         """
         return self._encoding

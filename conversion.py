@@ -293,8 +293,8 @@ class BinaryConversion(Conversion):
 
         On-the-wire format:
         [ repeat for each Member
-           2 byte member pem length
-           n byte member pem
+           2 byte member public key length
+           n byte member public key
            1 byte length
            [ once for each number in previous byte
               1 byte message id
@@ -305,8 +305,8 @@ class BinaryConversion(Conversion):
         permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
-            member_pem = member.pem
-            assert isinstance(member_pem, str)
+            public_key = member.public_key
+            assert isinstance(public_key, str)
             assert message.name in self._encode_message_map
             message_id = self._encode_message_map[message.name][0]
             assert isinstance(message_id, str)
@@ -314,17 +314,17 @@ class BinaryConversion(Conversion):
             assert permission in permission_map
             permission_bit = permission_map[permission]
 
-            if not member_pem in members:
-                members[member_pem] = {}
+            if not public_key in members:
+                members[public_key] = {}
 
-            if not message_id in members[member_pem]:
-                members[member_pem][message_id] = 0
+            if not message_id in members[public_key]:
+                members[public_key][message_id] = 0
 
-            members[member_pem][message_id] |= permission_bit
+            members[public_key][message_id] |= permission_bit
 
         bytes = []
-        for member_pem, messages in members.iteritems():
-            bytes.extend((pack("!H", len(member_pem)), member_pem, pack("!B", len(messages))))
+        for public_key, messages in members.iteritems():
+            bytes.extend((pack("!H", len(public_key)), public_key, pack("!B", len(messages))))
             for message_id, permission_bits in messages.iteritems():
                 bytes.extend((message_id, pack("!B", permission_bits)))
 
@@ -338,14 +338,14 @@ class BinaryConversion(Conversion):
             if len(data) < offset + 2:
                 raise DropPacket("Insufficient packet size")
 
-            pem_length, = unpack_from("!H", data, offset)
+            key_length, = unpack_from("!H", data, offset)
             offset += 2
 
-            if len(data) < offset + pem_length + 1:
+            if len(data) < offset + key_length + 1:
                 raise DropPacket("Insufficient packet size")
 
-            member = self._community.get_member(data[offset:offset+pem_length])
-            offset += pem_length
+            member = self._community.get_member(data[offset:offset+key_length])
+            offset += key_length
 
             messages_length, = unpack_from("!B", data, offset)
             offset += 1
@@ -375,8 +375,8 @@ class BinaryConversion(Conversion):
 
         On-the-wire format:
         [ repeat for each Member
-           2 byte member pem length
-           n byte member pem
+           2 byte member public key length
+           n byte member public key
            1 byte length
            [ once for each number in previous byte
               1 byte message id
@@ -387,8 +387,8 @@ class BinaryConversion(Conversion):
         permission_map = {u"permit":1, u"authorize":2, u"revoke":4}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
-            member_pem = member.pem
-            assert isinstance(member_pem, str)
+            public_key = member.public_key
+            assert isinstance(public_key, str)
             assert message.name in self._encode_message_map
             message_id = self._encode_message_map[message.name][0]
             assert isinstance(message_id, str)
@@ -396,17 +396,17 @@ class BinaryConversion(Conversion):
             assert permission in permission_map
             permission_bit = permission_map[permission]
 
-            if not member_pem in members:
-                members[member_pem] = {}
+            if not public_key in members:
+                members[public_key] = {}
 
-            if not message_id in members[member_pem]:
-                members[member_pem][message_id] = 0
+            if not message_id in members[public_key]:
+                members[public_key][message_id] = 0
 
-            members[member_pem][message_id] |= permission_bit
+            members[public_key][message_id] |= permission_bit
 
         bytes = []
-        for member_pem, messages in members.iteritems():
-            bytes.extend((pack("!H", len(member_pem)), member_pem, pack("!B", len(messages))))
+        for public_key, messages in members.iteritems():
+            bytes.extend((pack("!H", len(public_key)), public_key, pack("!B", len(messages))))
             for message_id, permission_bits in messages.iteritems():
                 bytes.extend((message_id, pack("!B", permission_bits)))
 
@@ -420,14 +420,14 @@ class BinaryConversion(Conversion):
             if len(data) < offset + 2:
                 raise DropPacket("Insufficient packet size")
 
-            pem_length, = unpack_from("!H", data, offset)
+            key_length, = unpack_from("!H", data, offset)
             offset += 2
 
-            if len(data) < offset + pem_length + 1:
+            if len(data) < offset + key_length + 1:
                 raise DropPacket("Insufficient packet size")
 
-            member = self._community.get_member(data[offset:offset+pem_length])
-            offset += pem_length
+            member = self._community.get_member(data[offset:offset+key_length])
+            offset += key_length
 
             messages_length, = unpack_from("!B", data, offset)
             offset += 1
@@ -487,8 +487,8 @@ class BinaryConversion(Conversion):
         elif isinstance(message.authentication, MemberAuthentication.Implementation):
             if message.authentication.encoding == "sha1":
                 container.append(message.authentication.member.mid)
-            elif message.authentication.encoding == "pem":
-                container.extend((pack("!H", len(message.authentication.member.pem)), message.authentication.member.pem))
+            elif message.authentication.encoding == "bin":
+                container.extend((pack("!H", len(message.authentication.member.public_key)), message.authentication.member.public_key))
             else:
                 raise NotImplementedError(message.authentication.encoding)
         elif isinstance(message.authentication, MultiMemberAuthentication.Implementation):
@@ -594,11 +594,11 @@ class BinaryConversion(Conversion):
 
                 raise DelayPacketByMissingMember(self._community, member_id)
 
-            elif authentication.encoding == "pem":
-                pem_length, = unpack_from("!H", data, offset)
+            elif authentication.encoding == "bin":
+                key_length, = unpack_from("!H", data, offset)
                 offset += 2
-                member = self._community.get_member(data[offset:offset+pem_length])
-                offset += pem_length
+                member = self._community.get_member(data[offset:offset+key_length])
+                offset += key_length
                 first_signature_offset = len(data) - member.signature_length
                 if member.verify(data, data[first_signature_offset:], length=first_signature_offset):
                     return offset, authentication.implement(member, is_signed=True), first_signature_offset

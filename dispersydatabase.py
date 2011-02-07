@@ -15,8 +15,8 @@ from database import Database
 schema = u"""
 CREATE TABLE user(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
- mid BLOB,                                      -- member identifier (sha1 of pem)
- pem BLOB,                                      -- member key (public part)
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB,                               -- member key (public part)
  host TEXT DEFAULT '',
  port INTEGER DEFAULT -1,
  tags INTEGER DEFAULT 0,
@@ -43,14 +43,14 @@ CREATE TABLE identity(
 CREATE TABLE community(
  id INTEGER PRIMARY KEY AUTOINCREMENT,          -- local counter for database optimization
  user INTEGER REFERENCES user(id),              -- my member that is used to sign my messages
- cid BLOB,                                      -- community identifier (sha1 of pem)
- master_pem BLOB,                               -- community master key (public part)
+ cid BLOB,                                      -- community identifier (sha1 of public_key)
+ public_key BLOB,                               -- community master key (public part)
  UNIQUE(user, cid));
 
 CREATE TABLE key(
- public_pem BLOB,                               -- public part
- private_pem BLOB,                              -- private part
- UNIQUE(public_pem, private_pem));
+ public_key BLOB,                               -- public part
+ private_key BLOB,                              -- private part
+ UNIQUE(public_key, private_key));
 
 CREATE TABLE routing(
  community INTEGER REFERENCES community(id),
@@ -133,43 +133,9 @@ class DispersyDatabase(Database):
         This method is called after the database is initially created.  It ensures that one or more
         bootstrap nodes are known.  Without these bootstrap nodes no other nodes will ever be found.
         """
-#         host = unicode(gethostbyname(u"mughal.tribler.org"))
-#         port = 6711
-#         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
-#         pem = """-----BEGIN PUBLIC KEY-----
-# MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDTMh5IsI7MALcr70QnpHLSh/jw
-# yjPRKuXScweuhE92gzSvNJ1pafQKpaKr6W8atWnHSja+TMksm1EdOU5+F392/xD1
-# sgE4Q3oy8w/ZWEEVlywFXlR+Uepl6q9fFO7QjUoxkPLBQKFxguAc8Hr9p6czt5h/
-# zPr/msrf64x2YKuoPwIBBQ==
-# -----END PUBLIC KEY-----
-# """
-#         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(community, host, port, incoming_time) VALUES(0, ?, ?, '2010-01-01 00:00:00')",
-#                      (host, port))
-
-#         host = unicode(gethostbyname(u"frayja.com"))
-#         port = 12345
-#         mid = "1204a6c35d236d13ac326570cbd62cdac432f865".decode("HEX")
-#         pem = """-----BEGIN PUBLIC KEY-----
-# MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDAu3+CFRrYYoBge+lKn1Ty5wbu
-# 89wzfAHo+rt6/OEhelWnMTMGZn0Xb6jGS0oU0grhtvurWXQyZ6uPuZO4q/su8aeT
-# F2RBGJ+zXHm9tlpiIxxUQTFKiilwsQtIFCpw+v0shnPt/LtoG1Y3mTSXyzXp2FLZ
-# Q6DMokT4fOGpdap57wIBBQ==
-# -----END PUBLIC KEY-----
-# """
-#         self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
-#         self.execute(u"INSERT INTO routing(community, host, port, incoming_time) VALUES(0, ?, ?, '2010-01-01 00:00:00')", (host, port))
-
-        # host = unicode(gethostbyname(u"localhost"))
         host = unicode(gethostbyname(u"dispersy1.tribler.org"))
         port = 12345
-        mid = "ca7a5eebaffe0d08c1afe5253c001569bdea4803".decode("HEX")
-        pem = """-----BEGIN PUBLIC KEY-----
-MIGdMA0GCSqGSIb3DQEBAQUAA4GLADCBhwKBgQDgOk7d0F6sinM+6XY2pE3SiSNv
-AipUkNY4iU0/sEbt+hUnx5oiLAlwq+YAbO095XCWyBAu8zppfS/6n6Bk3rKm6B1C
-x14Y8HXJTXyEofgBcsSl9gNBYyaYhJsCalQJpP2WkkQFQsSkhRx9H2S955915/Dz
-ddbv3NkHuZ+G0HrjRQIBBQ==
------END PUBLIC KEY-----
-"""
-        self.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(mid), buffer(pem)))
+        public_key = "3081a7301006072a8648ce3d020106052b810400270381920004015f83ac4e8fe506c4035853096187814b93dbe566dbb24f98c51252c3d3a346a1c5813c7db8ece549f92c5ca9fd1cd58018a60e92432bcc12a610760f35b5907094cb6d7cd4e67001a1ab08b3a626a3884ebb5fe69969c47aba087075c72a326ae62046867aa435d71b59a388b5ecbf100896d1ed36131a0c4f6c5c3cb4f19a341919e87976eb03cdea8d6d85704370".decode("HEX")
+        mid = "3a4abd4ebb317172c057728799a5e5ea88c6bffa".decode("HEX")
+        self.execute(u"INSERT INTO user(mid, public_key) VALUES(?, ?)", (buffer(mid), buffer(public_key)))
         self.execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) VALUES(0, ?, ?, '2010-01-01 00:00:00', '2010-01-01 00:00:00')", (host, port))

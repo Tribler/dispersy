@@ -1,5 +1,5 @@
 """
-The Community module provides the Community baseclass that should be used when a new Community is
+the community module provides the Community baseclass that should be used when a new Community is
 implemented.  It provides a simplified interface between the Dispersy instance and a running
 Community instance.
 
@@ -15,7 +15,7 @@ from random import gauss
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from bloomfilter import BloomFilter
 from conversion import DefaultConversion
-from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from decorator import documentation
 from destination import CommunityDestination, AddressDestination
 from dispersy import Dispersy
@@ -58,18 +58,18 @@ class Community(object):
         assert isinstance(my_member, MyMember), my_member
 
         # master key and community id
-        ec = ec_generate_key("high")
-        public_pem = ec_to_public_pem(ec)
-        private_pem = ec_to_private_pem(ec)
-        cid = sha1(public_pem).digest()
+        ec = ec_generate_key(u"high")
+        public_key = ec_to_public_bin(ec)
+        private_key = ec_to_private_bin(ec)
+        cid = sha1(public_key).digest()
 
         database = DispersyDatabase.get_instance()
         with database as execute:
-            execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)", (my_member.database_id, buffer(cid), buffer(public_pem)))
+            execute(u"INSERT INTO community (user, cid, public_key) VALUES(?, ?, ?)", (my_member.database_id, buffer(cid), buffer(public_key)))
             database_id = database.last_insert_rowid
-            execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(cid), buffer(public_pem)))
-            execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
-            execute(u"INSERT INTO routing(community, host, port, incoming_time, outgoing_time) SELECT ?, host, port, incoming_time, outgoing_time FROM routing WHERE community = 0", (database_id,))
+            execute(u"INSERT INTO user (mid, public_key) VALUES(?, ?)", (buffer(cid), buffer(public_key)))
+            execute(u"INSERT INTO key (public_key, private_key) VALUES(?, ?)", (buffer(public_key), buffer(private_key)))
+            execute(u"INSERT INTO routing (community, host, port, incoming_time, outgoing_time) SELECT ?, host, port, incoming_time, outgoing_time FROM routing WHERE community = 0", (database_id,))
 
         # new community instance
         community = cls(cid, *args, **kargs)
@@ -89,20 +89,20 @@ class Community(object):
         return community
 
     @classmethod
-    def join_community(cls, master_pem, my_member, *args, **kargs):
+    def join_community(cls, master_key, my_member, *args, **kargs):
         """
         Join an existing community.
 
-        Once you have discovered an existing community, i.e. you have obtained the public master pem
+        Once you have discovered an existing community, i.e. you have obtained the public master key
         from a community, you can join this community.
 
         Joining a community does not mean that you obtain permissions in that community, those will
         need to be granted by another member who is allowed to do so.  However, it will let you
         receive, send, and disseminate messages that do not require any permission to use.
 
-        @param master_pem: The public pem of the master member of the community that is to be
+        @param master_key: The public key of the master member of the community that is to be
          joined.
-        @type master_pem: string
+        @type master_key: string
 
         @param my_member: The Member that will be granted Permit, Authorize, and Revoke for all
          messages.
@@ -119,15 +119,15 @@ class Community(object):
         @return: The created community instance.
         @rtype: Community
 
-        @todo: we should probably change MASTER_PEM to require a master member instance, or the cid
+        @todo: we should probably change MASTER_KEY to require a master member instance, or the cid
          that we want to join.
         """
-        assert isinstance(master_pem, str)
+        assert isinstance(master_key, str)
         assert isinstance(my_member, MyMember)
-        cid = sha1(master_pem).digest()
+        cid = sha1(master_key).digest()
         database = DispersyDatabase.get_instance()
-        database.execute(u"INSERT INTO community(user, cid, master_pem) VALUES(?, ?, ?)",
-                         (my_member.database_id, buffer(cid), buffer(master_pem)))
+        database.execute(u"INSERT INTO community(user, cid, public_key) VALUES(?, ?, ?)",
+                         (my_member.database_id, buffer(cid), buffer(master_key)))
 
         # new community instance
         community = cls(cid, *args, **kargs)
@@ -157,7 +157,7 @@ class Community(object):
         Generally a new community is created using create_community.  Or an existing community is
         loaded using load_communities.  These two methods prepare and call this __init__ method.
 
-        @param cid: The community identifier, i.e. the sha1 digest over the public PEM of the
+        @param cid: The community identifier, i.e. the sha1 digest over the public key of the
          community master member.
         @type cid: string
         """
@@ -172,22 +172,22 @@ class Community(object):
         self._dispersy_database = DispersyDatabase.get_instance()
 
         try:
-            community_id, master_pem, user_pem = self._dispersy_database.execute(u"""
-            SELECT community.id, community.master_pem, user.pem
+            community_id, master_key, user_public_key = self._dispersy_database.execute(u"""
+            SELECT community.id, community.public_key, user.public_key
             FROM community
             LEFT JOIN user ON community.user = user.id
             WHERE cid == ?
             LIMIT 1""", (buffer(self._cid),)).next()
 
             # the database returns <buffer> types, we use the binary <str> type internally
-            master_pem = str(master_pem)
-            user_pem = str(user_pem)
+            master_key = str(master_key)
+            user_public_key = str(user_public_key)
 
         except StopIteration:
             raise ValueError(u"Community not found in database")
         self._database_id = community_id
-        self._my_member = MyMember.get_instance(user_pem)
-        self._master_member = MasterMember.get_instance(master_pem)
+        self._my_member = MyMember.get_instance(user_public_key)
+        self._master_member = MasterMember.get_instance(master_key)
 
         # define all available messages
         self._meta_messages = {}
@@ -382,8 +382,7 @@ class Community(object):
         since we have the public_key, we can create this user when it didn't already exist.  Hence,
         this method always succeeds.
 
-        @param public_key: The public key, i.e. PEM of the public key, of the member we want to
-         obtain.
+        @param public_key: The public key of the member we want to obtain.
         @type public_key: string
 
         @return: The Member instance associated with public_key.
@@ -424,7 +423,7 @@ class Community(object):
         """
         assert isinstance(mid, str)
         assert len(mid) == 20
-        return [Member.get_instance(str(pem)) for pem, in self._dispersy_database.execute(u"SELECT pem FROM user WHERE mid = ?", (buffer(mid),))]
+        return [Member.get_instance(str(public_key)) for public_key, in self._dispersy_database.execute(u"SELECT public_key FROM user WHERE mid = ?", (buffer(mid),))]
 
     def get_conversion(self, prefix=None):
         """

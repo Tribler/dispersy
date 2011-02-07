@@ -42,7 +42,7 @@ from os.path import abspath
 
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from bloomfilter import BloomFilter
-from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
 from dispersydatabase import DispersyDatabase
 from distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
@@ -118,16 +118,16 @@ class Dispersy(Singleton):
             self._my_external_address = ("", -1)
 
         try:
-            public_pem, = self._database.execute(u"SELECT value FROM option WHERE key == 'my_public_pem' LIMIT 1").next()
-            public_pem = str(public_pem)
-            private_pem = None
+            public_key, = self._database.execute(u"SELECT value FROM option WHERE key == 'my_public_key' LIMIT 1").next()
+            public_key = str(public_key)
+            private_key = None
         except StopIteration:
             # one of the keys was not found in the database, we need
             # to generate a new one
-            ec = ec_generate_key("low")
-            public_pem = ec_to_public_pem(ec)
-            private_pem = ec_to_private_pem(ec)
-            self._database.execute(u"INSERT INTO option VALUES('my_public_pem', ?)", (buffer(public_pem),))
+            ec = ec_generate_key(u"low")
+            public_key = ec_to_public_bin(ec)
+            private_key = ec_to_private_bin(ec)
+            self._database.execute(u"INSERT INTO option VALUES('my_public_key', ?)", (buffer(public_key),))
 
         # all available communities.  cid:Community pairs.
         self._communities = {}
@@ -203,7 +203,7 @@ class Dispersy(Singleton):
         assert isinstance(community, Community)
         return [Message(community, u"dispersy-routing-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingRequestPayload()),
                 Message(community, u"dispersy-routing-response", MemberAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), RoutingResponsePayload()),
-                Message(community, u"dispersy-identity", MemberAuthentication(encoding="pem"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
+                Message(community, u"dispersy-identity", MemberAuthentication(encoding="bin"), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), IdentityPayload()),
                 Message(community, u"dispersy-identity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), IdentityRequestPayload()),
                 Message(community, u"dispersy-sync", MemberAuthentication(), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=community.dispersy_sync_member_count), SyncPayload()),
                 Message(community, u"dispersy-missing-sequence", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), MissingSequencePayload()),
@@ -272,8 +272,8 @@ class Dispersy(Singleton):
         """
         Returns a community by its community id.
 
-        The community id, or cid, is the sha1 digest over the public PEM of the master member for
-        the community.
+        The community id, or cid, is the binary representation of the public key of the master
+        member for the community.
 
         @param cid: The community identifier.
         @type cid: string
@@ -1001,7 +1001,7 @@ class Dispersy(Singleton):
         the signature.  When we are missing a public key, we can request a dispersy-identity message
         which contains this public key.
 
-        The missing member is identified by the sha1 digest over the member PEM.  This mid can
+        The missing member is identified by the sha1 digest over the member key.  This mid can
         indicate multiple members, hence the dispersy-identity-response will contain one or more
         public keys.
 
@@ -1644,7 +1644,7 @@ class Dispersy(Singleton):
 
         >>> # Authorize Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member.get_instance(pem_bob)
+        >>> bob = Member.get_instance(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_authorize(community, [(bob, msg, Permit)])
 
@@ -1733,7 +1733,7 @@ class Dispersy(Singleton):
 
         >>> # Revoke the right of Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member.get_instance(pem_bob)
+        >>> bob = Member.get_instance(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_revoke(community, [(bob, msg, Permit)])
 

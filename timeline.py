@@ -112,12 +112,12 @@ class Timeline(object):
 
     def _get_node(self, signed_by, create_new):
         """
-        Get a Node from a signed_by.pem.
+        Get a Node from a signed_by.public_key.
         """
         isinstance(signed_by, Member)
         isinstance(create_new, bool)
-        pem = signed_by.pem
-        if create_new and not pem in self._nodes:
-            self._nodes[pem] = self.Node()
-        return self._nodes.get(pem, None)
+        public_key = signed_by.public_key
+        if create_new and not public_key in self._nodes:
+            self._nodes[public_key] = self.Node()
+        return self._nodes.get(public_key, None)
 

@@ -1,3 +1,11 @@
+"""
+The crypto module provides a layer between Dispersy and low level crypographic features.
+
+@author: Boudewijn Schoon
+@organization: Technical University Delft
+@contact: dispersy@frayja.com
+"""
+
 from hashlib import sha1, sha224, sha256, sha512, md5
 from math import ceil
 from random import randint
@@ -7,11 +15,12 @@ import M2Crypto
 # We want to provide a few default curves.  We will change these
 # curves as new become available and old ones to small to provide
 # sufficient security.
-_curves = {"low":M2Crypto.EC.NID_sect233k1,
-           "medium":M2Crypto.EC.NID_sect409k1,
-           "high":M2Crypto.EC.NID_sect571r1}
+_curves = {u"low":M2Crypto.EC.NID_sect233k1,
+           u"medium":M2Crypto.EC.NID_sect409k1,
+           u"high":M2Crypto.EC.NID_sect571r1}
 
 def _progress(*args):
+    "Called when no feedback needs to be given."
     pass
 
 def ec_generate_key(security):
@@ -19,52 +28,75 @@ def ec_generate_key(security):
     Generate a new Elliptic Curve object with a new public / private
     key pair.
 
-    SECURITY can be 'low', 'medium', or 'high' depending on how secure
-    you need your Elliptic Curve to be.  Currently these values
-    translate into:
-    - low:    NID_sect233k1  ~64 byte signatures
-    - medium: NID_sect409k1 ~108 byte signatures
-    - high:   NID_sect571k1 ~151 byte signatures
+    Security can be u'low', u'medium', or u'high' depending on how secure you need your Elliptic
+    Curve to be.  Currently these values translate into:
+     - low:    NID_sect233k1  ~64 byte signatures
+     - medium: NID_sect409k1 ~108 byte signatures
+     - high:   NID_sect571k1 ~151 byte signatures
 
-    Note that the NID must always be 160 bits or more, otherwise it
-    will not be able to sign a sha1 digest.
+    @param security: Level of security {u'low', u'medium', or u'high'}.
+    @type security: unicode
+
+    @note that the NID must always be 160 bits or more, otherwise it will not be able to sign a sha1
+    digest.
     """
+    assert isinstance(security, unicode)
     assert security in _curves
     ec = M2Crypto.EC.gen_params(_curves[security])
     ec.gen_key()
     return ec
 
-def ec_to_private_pem(ec, cipher="aes_128_cbc", password=None):
+def ec_public_pem_to_public_bin(pem):
+    "Convert a public key in PEM format into a public key in binary format."
+    return "".join(pem.split("\n")[1:-2]).decode("BASE64")
+
+def ec_private_pem_to_private_bin(pem):
     """
-    Get the private key in PEM format.
+    Convert a private key in PEM format into a private key in binary format.
+
+    @note: Enrcypted pem's are NOT supported and will silently fail.
     """
+    return "".join(pem.split("\n")[1:-2]).decode("BASE64")
+
+def ec_to_private_pem(ec, cipher=None, password=None):
+    "Get the private key in PEM format."
     def get_password(*args):
-        return password or "-empty-"
+        return password or ""
     bio = M2Crypto.BIO.MemoryBuffer()
     ec.save_key_bio(bio, cipher, get_password)
     return bio.read_all()
 
 def ec_to_public_pem(ec):
-    """
-    Get the public key in PEM format.
-    """
+    "Get the public key in PEM format."
     bio = M2Crypto.BIO.MemoryBuffer()
     ec.save_pub_key_bio(bio)
     return bio.read_all()
 
 def ec_from_private_pem(pem, password=None):
-    """
-    Get the EC from a private PEM.
-    """
+    "Get the EC from a private PEM."
     def get_password(*args):
-        return password or "-empty-"
+        return password or ""
     return M2Crypto.EC.load_key_bio(M2Crypto.BIO.MemoryBuffer(pem), get_password)
 
 def ec_from_public_pem(pem):
-    """
-    Get the EC from a public PEM.
-    """
+    "Get the EC from a public PEM."
     return M2Crypto.EC.load_pub_key_bio(M2Crypto.BIO.MemoryBuffer(pem))
+
+def ec_to_private_bin(ec):
+    "Get the private key in binary format."
+    return ec_private_pem_to_private_bin(ec_to_private_pem(ec))
+
+def ec_to_public_bin(ec):
+    "Get the public key in binary format."
+    return ec_public_pem_to_public_bin(ec_to_public_pem(ec))
+
+def ec_from_private_bin(string):
+    "Get the EC from a private key in binary format."
+    return ec_from_private_pem("".join(("-----BEGIN EC PRIVATE KEY-----\n", string.encode("BASE64"), "-----END EC PRIVATE KEY-----\n")))
+
+def ec_from_public_bin(string):
+    "Get the EC from a public key in binary format."
+    return ec_from_public_pem("".join(("-----BEGIN PUBLIC KEY-----\n", string.encode("BASE64"), "-----END PUBLIC KEY-----\n")))
 
 def ec_signature_length(ec):
     """
@@ -161,11 +193,34 @@ def rsa_from_public_pem(pem):
 
 if __name__ == "__main__":
     import math
-    ec = ec_generate_key("high")
-    length = int(math.ceil(len(ec) / 8.0)) * 2
-    print "Len:", len(ec), "-->", length
-    print ec_to_private_pem(ec)
-    print ec_to_public_pem(ec)
+    ec = ec_generate_key(u"high")
+    private_pem = ec_to_private_pem(ec)
+    public_pem = ec_to_public_pem(ec)
+    public_bin = ec_to_public_bin(ec)
+    private_bin = ec_to_private_bin(ec)
+    print "len:", len(ec), "-->", ec_signature_length(ec)
+    print "pub:", len(public_bin), public_bin.encode("HEX")
+    print "prv:", len(private_bin), private_bin.encode("HEX")
+    print "pub-sha1", sha1(public_bin).digest().encode("HEX")
+    print "prv-sha1", sha1(private_bin).digest().encode("HEX")
+    print public_pem
+    print private_pem
+
+    ec2 = ec_from_public_pem(public_pem)
+    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+    ec2 = ec_from_private_pem(private_pem)
+    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+    ec2 = ec_from_public_bin(public_bin)
+    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+    ec2 = ec_from_private_bin(private_bin)
+    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+
+    # s = open("pem2", "r").read()
+    # ec = ec_from_private_pem(s)
+    # # print ec_to_private_pem(ec)
+    # print len(ec_to_private_bin(ec)), ec_to_private_bin(ec).encode("HEX")
+    # print len(open("der", "r").read()), open("der", "r").read().encode("HEX")
+
 
     # for i in xrange(100000):
     #     digest = sha1(str(i)).digest()

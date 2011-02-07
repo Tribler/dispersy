@@ -1,14 +1,14 @@
 """
-For each peer that we have the public key, we have one Member
-instance.  Each member instance is used to uniquely identify a peer.
-Special Member subclasses exist to identify, for instance, youself.
+For each peer that we have the public key, we have one Member instance.  Each member instance is
+used to uniquely identify a peer.  Special Member subclasses exist to identify, for instance,
+youself.
 """
 
 from hashlib import sha1
 
 from singleton import Parameterized1Singleton
 from dispersydatabase import DispersyDatabase
-from crypto import ec_from_private_pem, ec_from_public_pem, ec_to_public_pem, ec_signature_length, ec_verify, ec_sign
+from crypto import ec_from_private_bin, ec_from_public_bin, ec_to_public_bin, ec_signature_length, ec_verify, ec_sign
 from encoding import encode, decode
 
 if __debug__:
@@ -18,16 +18,14 @@ class Public(object):
     @property
     def mid(self):
         """
-        The member id.  This is the 20 byte sha1 hash over the public
-        pem.
+        The member id.  This is the 20 byte sha1 hash over the public key.
         """
         raise NotImplementedError()
 
     @property
-    def pem(self):
+    def public_key(self):
         """
-        The public PEM.  This is a human readable representation of
-        the public key.
+        The public key.  This is binary representation of the public key.
         """
         raise NotImplementedError()
 
@@ -53,7 +51,7 @@ class Public(object):
 
 class Private(object):
     @property
-    def private_pem(self):
+    def private_key(self):
         raise NotImplementedError()
 
     def sign(self, data, offset=0, length=0):
@@ -64,39 +62,36 @@ class Private(object):
 
 class Member(Public, Parameterized1Singleton):
     """
-    The Member class represents a single member in the Dispersy
-    database.
+    The Member class represents a single member in the Dispersy database.
 
-    There should only be one or less Member instance for each member
-    in the database.  To ensure this, each Member instance must be
-    created or retrieved using has_instance or get_instance.
+    There should only be one or less Member instance for each member in the database.  To ensure
+    this, each Member instance must be created or retrieved using has_instance or get_instance.
     """
 
-    # This _singleton_instances is very important.  It ensures that
-    # all subclasses of Member use the same dictionary when looking
-    # for a public_pem.  Otherwise each subclass would get its own
+    # This _singleton_instances is very important.  It ensures that all subclasses of Member use the
+    # same dictionary when looking for a public_key.  Otherwise each subclass would get its own
     # _singleton_instances dictionary.
     _singleton_instances = {}
 
-    def __init__(self, public_pem, ec=None, sync_with_database=True):
+    def __init__(self, public_key, ec=None, sync_with_database=True):
         """
-        Create a new Member instance.  Member instances must be reated
-        or retrieved using has_instance or get_instance.
+        Create a new Member instance.  Member instances must be reated or retrieved using
+        has_instance or get_instance.
 
-        PUBLIC_PEM must be a string giving the public EC key in PEM format.
-        EC is an optional EC object (given when created from private PEM).
+        PUBLIC_KEY must be a string giving the public EC key in DER format.  EC is an optional EC
+        object (given when created from private key).
         """
-        assert isinstance(public_pem, str)
-        assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
+        assert isinstance(public_key, str)
+        assert not public_key.startswith("-----BEGIN")
         assert isinstance(sync_with_database, bool)
-        self._public_pem = public_pem
+        self._public_key = public_key
         if ec is None:
-            self._ec = ec_from_public_pem(public_pem)
+            self._ec = ec_from_public_bin(public_key)
         else:
             self._ec = ec
 
         self._signature_length = ec_signature_length(self._ec)
-        self._mid = sha1(public_pem).digest()
+        self._mid = sha1(public_key).digest()
 
         self._database_id = -1
         self._address = ("", -1)
@@ -106,7 +101,7 @@ class Member(Public, Parameterized1Singleton):
         if sync_with_database:
             if not self.update():
                 database = DispersyDatabase.get_instance()
-                database.execute(u"INSERT INTO user(mid, pem) VALUES(?, ?)", (buffer(self._mid), buffer(self._public_pem)))
+                database.execute(u"INSERT INTO user(mid, public_key) VALUES(?, ?)", (buffer(self._mid), buffer(self._public_key)))
                 self._database_id = database.last_insert_rowid
 
     def update(self):
@@ -116,7 +111,7 @@ class Member(Public, Parameterized1Singleton):
         try:
             execute = DispersyDatabase.get_instance().execute
 
-            self._database_id, host, port, tags = execute(u"SELECT id, host, port, tags FROM user WHERE pem = ? LIMIT 1", (buffer(self._public_pem),)).next()
+            self._database_id, host, port, tags = execute(u"SELECT id, host, port, tags FROM user WHERE public_key = ? LIMIT 1", (buffer(self._public_key),)).next()
             self._address = (str(host), port)
             self._tags = []
             if tags:
@@ -131,8 +126,8 @@ class Member(Public, Parameterized1Singleton):
         return self._mid
 
     @property
-    def pem(self):
-        return self._public_pem
+    def public_key(self):
+        return self._public_key
 
     @property
     def signature_length(self):
@@ -181,7 +176,7 @@ class Member(Public, Parameterized1Singleton):
             tags = list(execute(u"SELECT key, value FROM tag"))
             int_tags = [0, 0] + [key for key, value in tags if value in self._tags]
             reduced = reduce(lambda a, b: a | b, int_tags)
-            execute(u"UPDATE user SET tags = ? WHERE pem = ?", (reduced, buffer(self._public_pem),))
+            execute(u"UPDATE user SET tags = ? WHERE public_key = ?", (reduced, buffer(self._public_key),))
         return True
 
     @property
@@ -229,44 +224,44 @@ class Member(Public, Parameterized1Singleton):
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
 
 class PrivateMember(Private, Member):
-    def __init__(self, public_pem, private_pem=None, sync_with_database=True):
-        assert isinstance(public_pem, str)
-        assert public_pem[:26] == "-----BEGIN PUBLIC KEY-----"
-        assert isinstance(private_pem, (type(None), str))
-        assert private_pem is None or private_pem[:30] == "-----BEGIN EC PRIVATE KEY-----", private_pem
+    def __init__(self, public_key, private_key=None, sync_with_database=True):
+        assert isinstance(public_key, str)
+        assert not public_key.startswith("-----BEGIN")
+        assert isinstance(private_key, (type(None), str))
+        assert private_key is None or not private_key.startswith("-----BEGIN")
         assert isinstance(sync_with_database, bool)
 
         if sync_with_database:
-            if private_pem is None:
-                # get private pem
+            if private_key is None:
+                # get private key
                 database = DispersyDatabase.get_instance()
                 try:
-                    private_pem = str(database.execute(u"SELECT private_pem FROM key WHERE public_pem == ? LIMIT 1", (buffer(public_pem),)).next()[0])
+                    private_key = str(database.execute(u"SELECT private_key FROM key WHERE public_key == ? LIMIT 1", (buffer(public_key),)).next()[0])
                 except StopIteration:
                     pass
 
             else:
-                # set private pem
+                # set private key
                 database = DispersyDatabase.get_instance()
-                database.execute(u"INSERT INTO key(public_pem, private_pem) VALUES(?, ?)", (buffer(public_pem), buffer(private_pem)))
+                database.execute(u"INSERT INTO key(public_key, private_key) VALUES(?, ?)", (buffer(public_key), buffer(private_key)))
 
-        if private_pem is None:
-            ec = ec_from_public_pem(public_pem)
+        if private_key is None:
+            ec = ec_from_public_bin(public_key)
         else:
-            ec = ec_from_private_pem(private_pem)
+            ec = ec_from_private_bin(private_key)
 
-        super(PrivateMember, self).__init__(public_pem, ec, sync_with_database)
-        self._private_pem = private_pem
+        super(PrivateMember, self).__init__(public_key, ec, sync_with_database)
+        self._private_key = private_key
 
     @property
-    def private_pem(self):
-        return self._private_pem
+    def private_key(self):
+        return self._private_key
 
     def sign(self, data, offset=0, length=0):
         """
         Sign DATA using our private key.  Returns the signature.
         """
-        assert not self._private_pem is None
+        assert not self._private_key is None
         return ec_sign(self._ec, sha1(data[offset:length or len(data)]).digest())
 
 class MasterMember(PrivateMember):
@@ -277,19 +272,13 @@ class MyMember(PrivateMember):
 
 if __debug__:
     if __name__ == "__main__":
-        from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+        from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 
-        ec = ec_generate_key("low")
-        public_pem = ec_to_public_pem(ec)
-        private_pem = ec_to_private_pem(ec)
-        public_member = Member(public_pem, sync_with_database=False)
-        private_member = PrivateMember(public_pem, private_pem, sync_with_database=False)
-
-        print
-        print public_pem
-        print
-        print private_pem
-        print
+        ec = ec_generate_key(u"low")
+        public_key = ec_to_public_bin(ec)
+        private_key = ec_to_private_bin(ec)
+        public_member = Member(public_key, sync_with_database=False)
+        private_member = PrivateMember(public_key, private_key, sync_with_database=False)
 
         data = "Hello World! " * 1000
         sig = private_member.sign(data)

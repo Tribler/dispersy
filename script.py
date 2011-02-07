@@ -9,7 +9,7 @@ from struct import pack, unpack_from
 from authentication import MultiMemberAuthentication
 from community import Community
 from conversion import BinaryConversion
-from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from debug import Node
 from destination import CommunityDestination
 from dispersy import Dispersy
@@ -98,8 +98,8 @@ class ScriptBase(object):
 
 class DispersyDestroyCommunityScript(ScriptBase):
     def run(self):
-        ec = ec_generate_key("low")
-        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        self._my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
         self.caller(self.hard_kill)
 
@@ -140,8 +140,8 @@ class DispersyDestroyCommunityScript(ScriptBase):
 
 class DispersyMemberTagScript(ScriptBase):
     def run(self):
-        ec = ec_generate_key("low")
-        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        self._my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
         self.caller(self.ignore_test)
         self.caller(self.drop_test)
@@ -171,7 +171,7 @@ class DispersyMemberTagScript(ScriptBase):
         assert global_time in times
 
         # we now tag the member as ignore
-        Member.get_instance(node.my_member.pem).must_ignore = True
+        Member.get_instance(node.my_member.public_key).must_ignore = True
 
         tags, = self._dispersy_database.execute(u"SELECT tags FROM user WHERE id = ?", (node.my_member.database_id,)).next()
         assert tags & 2
@@ -185,7 +185,7 @@ class DispersyMemberTagScript(ScriptBase):
         assert global_time in times
 
         # we now tag the member not to ignore
-        Member.get_instance(node.my_member.pem).must_ignore = False
+        Member.get_instance(node.my_member.public_key).must_ignore = False
 
         # send a message
         global_time = 30
@@ -220,7 +220,7 @@ class DispersyMemberTagScript(ScriptBase):
         assert global_time in times
 
         # we now tag the member as drop
-        Member.get_instance(node.my_member.pem).must_drop = True
+        Member.get_instance(node.my_member.public_key).must_drop = True
 
         tags, = self._dispersy_database.execute(u"SELECT tags FROM user WHERE id = ?", (node.my_member.database_id,)).next()
         assert tags & 4
@@ -234,7 +234,7 @@ class DispersyMemberTagScript(ScriptBase):
         assert global_time not in times
 
         # we now tag the member not to drop
-        Member.get_instance(node.my_member.pem).must_drop = False
+        Member.get_instance(node.my_member.public_key).must_drop = False
 
         # send a message
         global_time = 30
@@ -246,8 +246,8 @@ class DispersyMemberTagScript(ScriptBase):
 
 class DispersySyncScript(ScriptBase):
     def run(self):
-        ec = ec_generate_key("low")
-        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        self._my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
         self.caller(self.in_order_test)
         self.caller(self.out_order_test)
@@ -551,8 +551,8 @@ class DispersySyncScript(ScriptBase):
 
 class DispersySignatureScript(ScriptBase):
     def run(self):
-        ec = ec_generate_key("low")
-        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        self._my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
         self.caller(self.double_signed_timeout)
         self.caller(self.double_signed_response)
@@ -576,7 +576,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
-        request = community.create_double_signed_text("Accept=<does not reach this point>", Member.get_instance(node.my_member.pem), on_response, (), 3.0)
+        request = community.create_double_signed_text("Accept=<does not reach this point>", Member.get_instance(node.my_member.public_key), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -589,8 +589,8 @@ class DispersySignatureScript(ScriptBase):
         assert container["timeout"] == 1, container["timeout"]
 
     def double_signed_response(self):
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"response":0}
@@ -608,7 +608,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == node.socket.getsockname(), address
             assert request.authentication.is_signed
             container["response"] += 1
-        request = community.create_double_signed_text("Accept=False", Member.get_instance(node.my_member.pem), on_response, (), 3.0)
+        request = community.create_double_signed_text("Accept=False", Member.get_instance(node.my_member.public_key), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -630,8 +630,8 @@ class DispersySignatureScript(ScriptBase):
         assert container["response"] == 1, container["response"]
 
     def triple_signed_timeout(self):
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
@@ -655,7 +655,7 @@ class DispersySignatureScript(ScriptBase):
             assert address == ("", -1)
             assert response is None
             container["timeout"] += 1
-        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, (), 3.0)
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.public_key), Member.get_instance(node2.my_member.public_key), on_response, (), 3.0)
         yield 0.1
 
         # receive dispersy-signature-request message
@@ -669,8 +669,8 @@ class DispersySignatureScript(ScriptBase):
         assert container["timeout"] == 1, container["timeout"]
 
     def triple_signed_response(self):
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"response":0}
@@ -693,7 +693,7 @@ class DispersySignatureScript(ScriptBase):
         def on_response(address, response):
             assert container["response"] == 0 or request.authentication.is_signed
             container["response"] += 1
-        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.pem), Member.get_instance(node2.my_member.pem), on_response, (), 3.0)
+        request = community.create_triple_signed_text("Hello World!", Member.get_instance(node1.my_member.public_key), Member.get_instance(node2.my_member.public_key), on_response, (), 3.0)
 
         # receive dispersy-signature-request message
         address, message = node1.receive_message(addresses=[address], message_names=[u"dispersy-signature-request"])
@@ -730,8 +730,8 @@ class DispersySignatureScript(ScriptBase):
 
 class DispersySimilarityScript(ScriptBase):
     def run(self):
-        ec = ec_generate_key("low")
-        self._my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        self._my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
         # self.caller(self.similarity_check_incoming_packets)
         self.caller(self.similarity_fullsync)
@@ -815,8 +815,8 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
 
@@ -944,8 +944,8 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}
@@ -1028,8 +1028,8 @@ class DispersySimilarityScript(ScriptBase):
         # create community
         # taste-aware-record  uses SimilarityDestination with the following parameters
         # 16 Bits Bloom Filter, minimum 6, maximum 10, threshold 12
-        ec = ec_generate_key("low")
-        my_member = MyMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=True)
+        ec = ec_generate_key(u"low")
+        my_member = MyMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
         container = {"timeout":0}

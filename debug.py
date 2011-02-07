@@ -2,7 +2,7 @@ import socket
 
 from authentication import NoAuthentication
 from bloomfilter import BloomFilter
-from crypto import ec_generate_key, ec_to_public_pem, ec_to_private_pem
+from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from destination import CommunityDestination, AddressDestination
 from distribution import DirectDistribution, LastSyncDistribution, FullSyncDistribution
 from dprint import dprint
@@ -17,7 +17,7 @@ class DebugOnlyMembers(object):
 
     @property
     def database_id(self):
-        return Member(self.pem).database_id
+        return Member(self.public_key).database_id
 
 class DebugPrivateMember(DebugOnlyMembers, PrivateMember):
     pass
@@ -74,8 +74,8 @@ class Node(object):
         assert bits is None, "The parameter bits is depricated and must be None"
         assert sync_with_database is None, "The parameter sync_with_database is depricated and must be None"
 
-        ec = ec_generate_key("low")
-        self._my_member = DebugPrivateMember.get_instance(ec_to_public_pem(ec), ec_to_private_pem(ec), sync_with_database=False)
+        ec = ec_generate_key(u"low")
+        self._my_member = DebugPrivateMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=False)
 
         if routing:
             # update routing information
