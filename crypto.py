@@ -193,27 +193,29 @@ def rsa_from_public_pem(pem):
 
 if __name__ == "__main__":
     import math
-    ec = ec_generate_key(u"high")
-    private_pem = ec_to_private_pem(ec)
-    public_pem = ec_to_public_pem(ec)
-    public_bin = ec_to_public_bin(ec)
-    private_bin = ec_to_private_bin(ec)
-    print "len:", len(ec), "-->", ec_signature_length(ec)
-    print "pub:", len(public_bin), public_bin.encode("HEX")
-    print "prv:", len(private_bin), private_bin.encode("HEX")
-    print "pub-sha1", sha1(public_bin).digest().encode("HEX")
-    print "prv-sha1", sha1(private_bin).digest().encode("HEX")
-    print public_pem
-    print private_pem
+    for curve in [u"low", u"medium", u"high"]:
+        ec = ec_generate_key(curve)
+        private_pem = ec_to_private_pem(ec)
+        public_pem = ec_to_public_pem(ec)
+        public_bin = ec_to_public_bin(ec)
+        private_bin = ec_to_private_bin(ec)
+        print "curve:", curve
+        print "len:", len(ec), "-->", ec_signature_length(ec)
+        print "pub:", len(public_bin), public_bin.encode("HEX")
+        print "prv:", len(private_bin), private_bin.encode("HEX")
+        print "pub-sha1", sha1(public_bin).digest().encode("HEX")
+        print "prv-sha1", sha1(private_bin).digest().encode("HEX")
+        # print public_pem
+        # print private_pem
 
-    ec2 = ec_from_public_pem(public_pem)
-    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-    ec2 = ec_from_private_pem(private_pem)
-    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-    ec2 = ec_from_public_bin(public_bin)
-    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-    ec2 = ec_from_private_bin(private_bin)
-    assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+        ec2 = ec_from_public_pem(public_pem)
+        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+        ec2 = ec_from_private_pem(private_pem)
+        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+        ec2 = ec_from_public_bin(public_bin)
+        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+        ec2 = ec_from_private_bin(private_bin)
+        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
 
     # s = open("pem2", "r").read()
     # ec = ec_from_private_pem(s)
