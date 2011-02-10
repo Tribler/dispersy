@@ -254,7 +254,8 @@ class DispersySyncScript(ScriptBase):
         self.caller(self.random_order_test)
         self.caller(self.mixed_order_test)
         self.caller(self.last_1_test)
-        self.caller(self.last_9_test)
+        self.caller(self.last_9_nosequence_test)
+        # self.caller(self.last_9_sequence_test)
 
     def in_order_test(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -395,6 +396,7 @@ class DispersySyncScript(ScriptBase):
             node.send_message(node.create_random_order_text_message("Message #{0}".format(global_time), global_time), address)
             yield 0.1
         out_order_times.sort(reverse=True)
+        dprint("Total in:", len(in_order_times), "; out:", len(out_order_times), "; rand:", len(random_order_times))
 
         def get_messages_back():
             received_times = []
@@ -407,7 +409,7 @@ class DispersySyncScript(ScriptBase):
         lists = []
         for _ in range(5):
             # send an empty sync message to obtain all messages in random-order
-            node.send_message(node.create_dispersy_sync_message(min(global_times), max(global_times), [], max(global_times)), address)
+            node.send_message(node.create_dispersy_sync_message(min(global_times), 0, [], max(global_times)), address)
             yield 0.1
 
             received_times = get_messages_back()
@@ -470,6 +472,10 @@ class DispersySyncScript(ScriptBase):
         assert len(times) == 1
         assert global_time in times
 
+        # as proof for the drop, the newest message should be sent back
+        _, message = node.receive_message(addresses=[address], message_names=[u"last-1-test"])
+        assert message.distribution.global_time == 11
+
         # send a message (duplicate: should be dropped)
         node.send_message(node.create_last_1_test_message("should be dropped (2)", global_time), address)
         yield 0.1
@@ -485,10 +491,10 @@ class DispersySyncScript(ScriptBase):
         assert len(times) == 1
         assert global_time in times
 
-    def last_9_test(self):
+    def last_9_nosequence_test(self):
         community = DebugCommunity.create_community(self._my_member)
         address = self._dispersy.socket.get_address()
-        message = community.get_meta_message(u"last-1-test")
+        message = community.get_meta_message(u"last-9-nosequence-test")
 
         # create node and ensure that SELF knows the node address
         node = DebugNode()
@@ -504,7 +510,7 @@ class DispersySyncScript(ScriptBase):
         number_of_messages = 0
         for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
             # send a message
-            message = node.create_last_9_test_message(str(global_time), global_time)
+            message = node.create_last_9_nosequence_test_message(str(global_time), global_time)
             node.send_message(message, address)
             number_of_messages += 1
             yield 0.1
@@ -518,7 +524,7 @@ class DispersySyncScript(ScriptBase):
 
         for global_time in [11, 12, 13, 19, 18, 17]:
             # send a message (older: should be dropped)
-            node.send_message(node.create_last_9_test_message(str(global_time), global_time), address)
+            node.send_message(node.create_last_9_nosequence_test_message(str(global_time), global_time), address)
             yield 0.1
             times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             assert len(times) == 9, len(times)
@@ -526,7 +532,7 @@ class DispersySyncScript(ScriptBase):
 
         for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
             # send a message (duplicate: should be dropped)
-            message = node.create_last_9_test_message("wrong content!", global_time)
+            message = node.create_last_9_nosequence_test_message("wrong content!", global_time)
             node.send_message(message, address)
             yield 0.1
             packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
@@ -537,7 +543,7 @@ class DispersySyncScript(ScriptBase):
         match_times = sorted(times[:])
         for global_time in [30, 35, 37, 31, 32, 34, 33, 36, 38, 45, 44, 43, 42, 41, 40, 39]:
             # send a message (should be added and old one removed)
-            message = node.create_last_9_test_message("wrong content!", global_time)
+            message = node.create_last_9_nosequence_test_message("wrong content!", global_time)
             node.send_message(message, address)
             match_times.pop(0)
             match_times.append(global_time)
@@ -548,6 +554,75 @@ class DispersySyncScript(ScriptBase):
             times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             dprint(sorted(times))
             assert sorted(times) == match_times, sorted(times)
+
+    # def last_9_sequence_test(self):
+    #     community = DebugCommunity.create_community(self._my_member)
+    #     address = self._dispersy.socket.get_address()
+    #     message = community.get_meta_message(u"last-9-sequence-test")
+
+    #     # create node and ensure that SELF knows the node address
+    #     node = DebugNode()
+    #     node.init_socket()
+    #     node.set_community(community)
+    #     node.init_my_member()
+    #     yield 0.1
+
+    #     # should be no messages from NODE yet
+    #     times = list(self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+    #     assert len(times) == 0
+
+    #     number_of_messages = 0
+    #     for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
+    #         # send a message
+    #         message = node.create_last_9_sequence_test_message(str(global_time), global_time)
+    #         node.send_message(message, address)
+    #         number_of_messages += 1
+    #         yield 0.1
+    #         packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
+    #         assert str(packet) == message.packet
+    #         times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+    #         dprint(sorted(times))
+    #         assert len(times) == number_of_messages, (len(times), number_of_messages)
+    #         assert global_time in times
+    #     assert number_of_messages == 9, number_of_messages
+
+    #     for global_time in [11, 12, 13, 19, 18, 17]:
+    #         # send a message (older: should be dropped)
+    #         node.send_message(node.create_last_9_sequence_test_message(str(global_time), global_time), address)
+    #         yield 0.1
+    #         times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+    #         assert len(times) == 9, len(times)
+    #         assert not global_time in times
+
+    #         # as proof for the drop, the newest message should be sent back
+    #         for global_time in [20, 21, 22, 23, 25, 25, 26, 27, 28]:
+    #             _, message = node.receive_message(addresses=[address], message_names=[u"last-9-sequence-test"])
+    #             assert message.distribution.global_time == global_time
+
+    #     for global_time in [21, 20, 28, 27, 22, 23, 24, 26, 25]:
+    #         # send a message (duplicate: should be dropped)
+    #         message = node.create_last_9_sequence_test_message("wrong content!", global_time)
+    #         node.send_message(message, address)
+    #         yield 0.1
+    #         packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
+    #         assert not str(packet) == message.packet
+    #         times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+    #         assert sorted(times) == range(20, 29), sorted(times)
+
+    #     match_times = sorted(times[:])
+    #     for global_time in [30, 35, 37, 31, 32, 34, 33, 36, 38, 45, 44, 43, 42, 41, 40, 39]:
+    #         # send a message (should be added and old one removed)
+    #         message = node.create_last_9_sequence_test_message("wrong content!", global_time)
+    #         node.send_message(message, address)
+    #         match_times.pop(0)
+    #         match_times.append(global_time)
+    #         match_times.sort()
+    #         yield 0.1
+    #         packet, = self._dispersy_database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND global_time = ? AND name = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
+    #         assert str(packet) == message.packet
+    #         times = [x for x, in self._dispersy_database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ?", (community.database_id, node.my_member.database_id, message.database_id))]
+    #         dprint(sorted(times))
+    #         assert sorted(times) == match_times, sorted(times)
 
 class DispersySignatureScript(ScriptBase):
     def run(self):

@@ -285,7 +285,7 @@ class Dispersy(Singleton):
         assert len(cid) == 20
         return self._communities[cid]
 
-    def _check_incoming_full_sync_distribution(self, message):
+    def _check_incoming_full_sync_distribution(self, address, message):
         """
         Ensure that we do not yet have the message and that, if sequence numbers are enabled, we are
         not missing any previous messages.
@@ -293,6 +293,10 @@ class Dispersy(Singleton):
         This method is called when a message with the FullSyncDistribution policy is received.
         Duplicate messages result in the DropMessage exception.  And if enable_sequence_number is
         True, missing messages result in the DelayMessageBySequence exception.
+
+        @param address: The address where we got this message from.  Will be ('', -1) when the
+         message was created locally.
+        @type address: (string, int)
 
         @param message: The message that is to be checked.
         @type message: Message.Implementation
@@ -346,7 +350,7 @@ class Dispersy(Singleton):
                 #  we do not have the previous message (delay and request)
                 raise DelayMessageBySequence(message, sequence_number+1, message.distribution.sequence_number-1)
 
-    def _check_incoming_last_sync_distribution(self, message):
+    def _check_incoming_last_sync_distribution(self, address, message):
         """
         Ensure that we do not yet have the message and that, if sequence numbers are enabled, we are
         not missing any previous messages.
@@ -354,6 +358,10 @@ class Dispersy(Singleton):
         This method is called when a message with the LastSyncDistribution policy is received.
         Duplicate messages result in the DropMessage exception.  And if enable_sequence_number is
         True, missing messages result in the DelayMessageBySequence exception.
+
+        @param address: The address where we got this message from.  Will be ('', -1) when the
+         message was created locally.
+        @type address: (string, int)
 
         @param message: The message that is to be checked.
         @type message: Message.Implementation
@@ -373,6 +381,43 @@ class Dispersy(Singleton):
             raise DropMessage("duplicate message")
 
         if len(times) >= message.distribution.history_size and min(times) > message.distribution.global_time:
+            # the sender of this message is apparently missing one or more messages
+            if message.distribution.history_size == 1:
+                # we can sent back the one message that proves that the received message is old
+                try:
+                    packet, = self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND name = ? AND global_time = ?",
+                                                     (message.community.database_id,
+                                                      message.authentication.member.database_id,
+                                                      message.database_id,
+                                                      times[0])).next()
+                    packet = str(packet)
+                except StopIteration:
+                    # should not occur, as we just selected the associated global_time in the
+                    # previous query... but you never know
+                    pass
+                else:
+                    if __debug__: dprint("Prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
+                    self._send([address], [packet])
+
+            elif message.distribution.enable_sequence_number:
+                # we limit the response by byte_limit bytes
+                byte_limit = self._total_send + message.community.dispersy_sync_response_limit
+
+                # we can sent back everything higher than message.distribution.global_time
+                for packet in self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND name = ? AND global_time > ? ORDER BY global_time ASC",
+                                                     (message.community.database_id,
+                                                      message.authentication.member.database_id,
+                                                      message.database_id,
+                                                      message.distribution.global_time)):
+                    packet = str(packet)
+
+                    if __debug__: dprint("Prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
+                    self._send([address], [packet])
+
+                    if self._total_send > byte_limit:
+                        if __debug__: dprint("Bandwidth throttle")
+                        break
+
             raise DropMessage("old message")
 
         if message.distribution.enable_sequence_number:
@@ -401,7 +446,7 @@ class Dispersy(Singleton):
                 #  we do not have the previous message (delay and request)
                 raise DelayMessageBySequence(message, max(sequence_number+1, message.distribution.sequence_number-message.distribution.history_size), message.distribution.sequence_number-1)
 
-    def _check_incoming_OTHER_distribution(self, message):
+    def _check_incoming_OTHER_distribution(self, address, message):
         """
         Does not do anything.
 
@@ -411,6 +456,10 @@ class Dispersy(Singleton):
 
         Receiving the same DirectDistribution multiple times indicates that the sending -wanted- to
         send this message multiple times.
+
+        @param address: The address where we got this message from.  Will be ('', -1) when the
+         message was created locally.
+        @type address: (string, int)
 
         @param message: Ignored.
         @type message: Message.Implementation assert isinstance(message, Message.Implementation)
@@ -537,7 +586,7 @@ class Dispersy(Singleton):
                 raise DropMessage("Packets from this member are explicitly dropped")
 
             # filter messages based on distribution (usually duplicate or old messages)
-            self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(message)
+            self._incoming_distribution_map.get(type(message.distribution), self._check_incoming_OTHER_distribution)(address, message)
 
             # allow community code to handle the message
             message.community.on_message(address, message)
@@ -1583,7 +1632,7 @@ class Dispersy(Singleton):
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 1 AND ? <= sync.global_time <= ?
+                      WHERE sync.community = ? AND synchronization_direction = 1 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY sync.global_time ASC"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
@@ -1592,7 +1641,7 @@ class Dispersy(Singleton):
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 2 AND ? <= sync.global_time <= ?
+                      WHERE sync.community = ? AND synchronization_direction = 2 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY sync.global_time DESC"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
@@ -1601,12 +1650,13 @@ class Dispersy(Singleton):
             sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
                       FROM sync
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 3 AND ? <= sync.global_time <= ?
+                      WHERE sync.community = ? AND synchronization_direction = 3 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY RANDOM()"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
         time_high = message.payload.time_high if message.payload.has_time_high else message.community._timeline.global_time
+        packets = []
         for packet, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.time_low, time_high):
             packet = str(packet)
             if not packet in bloom_filter:
@@ -1623,12 +1673,15 @@ class Dispersy(Singleton):
                         continue
 
                 if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
-                self._socket.send(address, packet)
+                packets.append(packet)
 
-                self._total_send += len(packet)
-                if self._total_send > byte_limit:
+                byte_limit -= len(packet)
+                if byte_limit <= 0:
                     if __debug__: dprint("Bandwidth throttle")
                     break
+
+        if packets:
+            self._send([address], packets)
 
     def create_authorize(self, community, permission_triplets, sign_with_master=False, update_locally=True, store_and_forward=True):
         """
