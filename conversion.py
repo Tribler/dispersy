@@ -4,7 +4,7 @@ from hashlib import sha1
 
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from bloomfilter import BloomFilter
-from destination import MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination
+from destination import MemberDestination, CommunityDestination, AddressDestination, SubjectiveDestination, SimilarityDestination
 from dispersydatabase import DispersyDatabase
 from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution, RelayDistribution
 from encoding import encode, decode
@@ -104,6 +104,8 @@ class BinaryConversion(Conversion):
         self.define_meta_message(chr(244), community.get_meta_message(u"dispersy-destroy-community"), self._encode_destroy_community, self._decode_destroy_community)
         self.define_meta_message(chr(243), community.get_meta_message(u"dispersy-authorize"), self._encode_authorize, self._decode_authorize)
         self.define_meta_message(chr(242), community.get_meta_message(u"dispersy-revoke"), self._encode_revoke, self._decode_revoke)
+        self.define_meta_message(chr(241), community.get_meta_message(u"dispersy-subjective-set"), self._encode_subjective_set, self._decode_subjective_set)
+        self.define_meta_message(chr(240), community.get_meta_message(u"dispersy-subjective-set-request"), self._encode_subjective_set_request, self._decode_subjective_set_request)
 
     def define_meta_message(self, byte, message, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -163,7 +165,7 @@ class BinaryConversion(Conversion):
         offset += 16
         if not time_low > 0:
             raise DropPacket("Invalid time_low value")
-        if not (time_high == 0 or time_high > time_low):
+        if not (time_high == 0 or time_low <= time_high):
             raise DropPacket("Invalid time_high value")
 
         try:
@@ -451,6 +453,40 @@ class BinaryConversion(Conversion):
 
         return offset, meta_message.payload.implement(permission_triplets)
 
+    def _encode_subjective_set(self, message):
+        return pack("!B", message.payload.cluster), str(message.payload.subjective_set)
+
+    def _decode_subjective_set(self, meta_message, offset, data):
+        if len(data) < offset + 1:
+            raise DropPacket("Insufficient packet size")
+
+        cluster, = unpack_from("!B", data, offset)
+        offset += 1
+
+        try:
+            subjective_set = BloomFilter(data, offset)
+        except ValueError:
+            raise DropPacket("Invalid subjective set")
+        offset += len(subjective_set)
+
+        return offset, meta_message.payload.implement(cluster, subjective_set)
+
+    def _encode_subjective_set_request(self, message):
+        return (pack("!B", message.payload.cluster),) + tuple([member.mid for member in message.payload.members])
+
+    def _decode_subjective_set_request(self, meta_message, offset, data):
+        if len(data) < offset + 21:
+            raise DropPacket("Insufficient packet size")
+
+        cluster, = unpack_from("!B", data, offset)
+        offset += 1
+
+        members = []
+        while len(data) < offset + 20:
+            members.extend(self._community.get_members_from_id(data[offset:offset+20]))
+            offset += 20
+
+        return offset, meta_message.payload.implement(cluster, members)
     #
     # Encoding
     #
@@ -658,6 +694,16 @@ class BinaryConversion(Conversion):
 
         raise NotImplementedError()
 
+    def _decode_subjective_destination(self, meta_message, authentication_impl):
+        # we want to know if the sender occurs in our subjective bloom filter
+        try:
+            subjective_set = meta_message.community.get_subjective_set(meta_message.community.my_member, meta_message.destination.cluster)
+        except KeyError:
+            # we do not yet have a subjective set of our own.  assume nothing is in the set
+            return meta_message.destination.implement(False)
+        else:
+            return meta_message.destination.implement(authentication_impl.member.public_key in subjective_set)
+
     def _decode_similarity_destination(self, meta_message, authentication_impl):
         if __debug__:
             from authentication import Authentication
@@ -717,11 +763,13 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid signature")
 
         # destination
-        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination, SimilarityDestination))
+        assert isinstance(meta_message.destination, (MemberDestination, CommunityDestination, AddressDestination, SubjectiveDestination, SimilarityDestination))
         if isinstance(meta_message.destination, AddressDestination):
             destination_impl = meta_message.destination.implement(("", 0))
         elif isinstance(meta_message.destination, MemberDestination):
             destination_impl = meta_message.destination.implement(self._community.my_member)
+        elif isinstance(meta_message.destination, SubjectiveDestination):
+            destination_impl = self._decode_subjective_destination(meta_message, authentication_impl)
         elif isinstance(meta_message.destination, SimilarityDestination):
             destination_impl = self._decode_similarity_destination(meta_message, authentication_impl)
         else:

@@ -43,19 +43,20 @@ from os.path import abspath
 from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
 from bloomfilter import BloomFilter
 from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from destination import CommunityDestination, AddressDestination, MemberDestination, SimilarityDestination
+from destination import CommunityDestination, AddressDestination, MemberDestination, SubjectiveDestination, SimilarityDestination
 from dispersydatabase import DispersyDatabase
 from distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from member import PrivateMember, MasterMember
 from message import Message
 from message import DropPacket, DelayPacket, DelayPacketByMissingMember
-from message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySimilarity
+from message import DropMessage, DelayMessage, DelayMessageBySequence, DelayMessageBySubjectiveSet, DelayMessageBySimilarity
 from payload import AuthorizePayload, RevokePayload
 from payload import MissingSequencePayload
 from payload import SyncPayload
 from payload import SignatureRequestPayload, SignatureResponsePayload
 from payload import RoutingRequestPayload, RoutingResponsePayload
 from payload import IdentityPayload, IdentityRequestPayload
+from payload import SubjectiveSetPayload, SubjectiveSetRequestPayload
 from payload import SimilarityRequestPayload, SimilarityPayload
 from payload import DestroyCommunityPayload
 from resolution import PublicResolution, LinearResolution
@@ -213,7 +214,9 @@ class Dispersy(Singleton):
                 Message(community, u"dispersy-similarity-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SimilarityRequestPayload()),
                 Message(community, u"dispersy-authorize", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"in-order"), CommunityDestination(node_count=10), AuthorizePayload()),
                 Message(community, u"dispersy-revoke", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"in-order"), CommunityDestination(node_count=10), RevokePayload()),
-                Message(community, u"dispersy-destroy-community", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order"), CommunityDestination(node_count=50), DestroyCommunityPayload())]
+                Message(community, u"dispersy-destroy-community", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order"), CommunityDestination(node_count=50), DestroyCommunityPayload()),
+                Message(community, u"dispersy-subjective-set", MemberAuthentication(), PublicResolution(), LastSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order", history_size=1), CommunityDestination(node_count=10), SubjectiveSetPayload()),
+                Message(community, u"dispersy-subjective-set-request", NoAuthentication(), PublicResolution(), DirectDistribution(), AddressDestination(), SubjectiveSetRequestPayload())]
 
     def get_message_handlers(self, community):
         """
@@ -237,7 +240,9 @@ class Dispersy(Singleton):
                 (community.get_meta_message(u"dispersy-similarity-request"), self.on_similarity_request),
                 (community.get_meta_message(u"dispersy-authorize"), self.on_authorize),
                 (community.get_meta_message(u"dispersy-revoke"), self.on_revoke),
-                (community.get_meta_message(u"dispersy-destroy-community"), self.on_destroy_community)]
+                (community.get_meta_message(u"dispersy-destroy-community"), self.on_destroy_community),
+                (community.get_meta_message(u"dispersy-subjective-set"), self.on_subjective_set),
+                (community.get_meta_message(u"dispersy-subjective-set-request"), self.on_subjective_set_request)]
 
     def add_community(self, community):
         """
@@ -524,7 +529,7 @@ class Dispersy(Singleton):
                 message = conversion.decode_message(packet)
 
             except DropPacket as exception:
-                if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", exception=True, level="warning")
+                if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(packet), " byte packet (", exception, ")", level="warning")
                 if __debug__: log("dispersy.log", "drop-packet", address=address, packet=packet, exception=str(exception))
 
             except DelayPacket as delay:
@@ -592,7 +597,7 @@ class Dispersy(Singleton):
             message.community.on_message(address, message)
 
         except DropMessage as exception:
-            if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", exception=True, level="warning")
+            if __debug__: dprint(address[0], ":", address[1], ": drop a ", len(message.packet), " byte message (", exception, ")", level="warning")
             if __debug__: log("dispersy.log", "drop-message", address=address, message=message.name, packet=message.packet, exception=str(exception))
 
         except DelayMessage as delay:
@@ -634,7 +639,14 @@ class Dispersy(Singleton):
         # the signature must be set
         assert not message.packet[-10:] == "\x00" * 10, message.packet[-10:].encode("HEX")
 
-        # we do not store a message when it uses SimilarityDestination and it its not similar
+        # we do not store a message when it uses SubjectiveDestination and it is not in our set
+        if isinstance(message.destination, SubjectiveDestination.Implementation) and not message.destination.is_valid:
+            # however, ignore the SimilarityDestination when we are forced so store this message
+            if not message.authentication.member.must_store:
+                if __debug__: dprint("Not storing message")
+                return
+
+        # we do not store a message when it uses SimilarityDestination and it is not similar
         if isinstance(message.destination, SimilarityDestination.Implementation) and not message.destination.is_similar:
             # however, ignore the SimilarityDestination when we are forced so store this message
             if not message.authentication.member.must_store:
@@ -648,15 +660,11 @@ class Dispersy(Singleton):
 
             # delete packet if there are to many stored
             if isinstance(message.distribution, LastSyncDistribution.Implementation):
-                try:
-                    id_, = execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? ORDER BY global_time DESC LIMIT 1 OFFSET ?",
-                                   (message.community.database_id,
-                                    message.authentication.member.database_id,
-                                    message.database_id,
-                                    message.distribution.history_size - 1)).next()
-                except StopIteration:
-                    pass
-                else:
+                for id_, in execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? ORDER BY global_time DESC LIMIT 100 OFFSET ?",
+                                    (message.community.database_id,
+                                     message.authentication.member.database_id,
+                                     message.database_id,
+                                     message.distribution.history_size - 1)):
                     execute(u"DELETE FROM sync WHERE id = ?", (id_,))
 
             # add packet to database
@@ -689,6 +697,9 @@ class Dispersy(Singleton):
          - CommunityDestination causes a message to be sent to one or more addresses to be picked
            from the database routing table.
 
+         - SubjectiveDestination is currently handled in the same way as CommunityDestination.
+           Obviously this needs to be modified.
+
          - SimilarityDestination is currently handled in the same way as CommunityDestination.
            Obviously this needs to be modified.
 
@@ -711,7 +722,7 @@ class Dispersy(Singleton):
                 self._sync_distribution_store(message)
 
             # Forward
-            if isinstance(message.destination, (CommunityDestination.Implementation, SimilarityDestination.Implementation)):
+            if isinstance(message.destination, (CommunityDestination.Implementation, SubjectiveDestination.Implementation, SimilarityDestination.Implementation)):
                 # todo: we can remove the returning diff and age from the query since it is not used
                 # (especially in the 2nd query)
 
@@ -1104,6 +1115,119 @@ class Dispersy(Singleton):
         # todo: we are assuming here that no more than 10 members have the same sha1 digest.
         sql = u"SELECT identity.packet FROM identity JOIN user ON user.id = identity.user WHERE identity.community = ? AND user.mid = ? LIMIT 10"
         self._send([address], [str(packet) for packet, in self._database.execute(sql, (message.community.database_id, buffer(message.payload.mid)))])
+
+    def create_subjective_set(self, community, cluster, members, reset=True, update_locally=True, store_and_forward=True):
+        if __debug__:
+            from community import Community
+            from member import Member
+        assert isinstance(community, Community)
+        assert isinstance(cluster, int)
+        assert isinstance(members, (tuple, list))
+        assert not filter(lambda member: not isinstance(member, Member), members)
+        assert isinstance(reset, bool)
+        assert isinstance(update_locally, bool)
+        assert isinstance(store_and_forward, bool)
+
+        # modify the subjective set (bloom filter)
+        try:
+            subjective_set = community.get_subjective_set(community.my_member, cluster)
+        except KeyError:
+            subjective_set = BloomFilter(len(members), 0.1)
+        if reset:
+            subjective_set.clear()
+        map(subjective_set.add, (member.public_key for member in members))
+
+        # implement the message
+        meta = community.get_meta_message(u"dispersy-subjective-set")
+        message = meta.implement(meta.authentication.implement(community.my_member),
+                                 meta.distribution.implement(community._timeline.claim_global_time()),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(cluster, subjective_set))
+
+        if update_locally:
+            assert community._timeline.check(message)
+            community.on_message(("", -1), message)
+
+        if store_and_forward:
+            self.store_and_forward([message])
+
+        return message
+
+    def on_subjective_set(self, address, message):
+        # we do not need to do anything here for now because we retrieve all information directly
+        # from the database each time we need it.  Hence no in-memory actions needs to occur.  Note
+        # that this data is immediately stored in the database when this method returns.
+        pass
+
+    def on_subjective_set_request(self, address, message):
+        """
+        We received a dispersy-subjective-set-request message.
+
+        The dispersy-subjective-set-request message contains one member (20 byte sha1 digest) for
+        which the subjective set is requested.  We will search our database for any maching
+        subjective sets (there may be more, as the 20 byte sha1 digest may match more than one
+        member) and sent them back.
+
+        @see: create_subjective_set_request
+
+        @param address: The sender address.
+        @type address: (string, int)
+
+        @param message: The dispersy-subjective-set-request message.
+        @type message: Message.Implementation
+        """
+        if __debug__:
+            from message import Message
+        assert isinstance(message, Message.Implementation), type(message)
+        assert message.name == u"dispersy-subjective-set-request"
+
+        subjective_set_message_id = message.community.get_meta_message(u"dispersy-subjective-set")
+        packets = []
+        for member in message.payload.members:
+            # retrieve the packet from the database
+            try:
+                packet, = self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND name = ? LIMIT",
+                                                 (message.community.database.id, member.database_id, subjective_set_message_id)).next()
+            except StopIteration:
+                continue
+            packet = str(packet)
+
+            # check that this is the packet we are looking for, i.e. has the right cluster
+            conversion = self.get_conversion(packet[:22])
+            subjective_set_message = conversion.decode_message(packet)
+            if subjective_set_message.destination.cluster == message.payload.clusters:
+                packets.append(packet)
+                if __debug__: log("dispersy.log", "dispersu-subjective-set-request - send back packet", length=len(packet), packet=packet)
+
+        if packets:
+            self._send([address], [packet])
+
+    # def create_subjective_set_request(community, community, cluster, members, update_locally=True, store_and_forward=True):
+    #     if __debug__:
+    #         from community import Community
+    #         from member import Member
+    #     assert isinstance(community, Community)
+    #     assert isinstance(cluster, int)
+    #     assert isinstance(members, (tuple, list))
+    #     assert not filter(lambda member: not isinstance(member, Member), members)
+    #     assert isinstance(update_locally, bool)
+    #     assert isinstance(store_and_forward, bool)
+
+    #     # implement the message
+    #     meta = community.get_meta_message(u"dispersy-subjective-set-request")
+    #     message = meta.implement(meta.authentication.implement(),
+    #                              meta.distribution.implement(community._timeline.global_time),
+    #                              meta.destination.implement(),
+    #                              meta.payload.implement(cluster, members))
+
+    #     if update_locally:
+    #         assert community._timeline.check(message)
+    #         community.on_message(("", -1), message)
+
+    #     if store_and_forward:
+    #         self.store_and_forward([message])
+
+    #     return message
 
     def create_similarity(self, community, meta_message, keywords, update_locally=True, store_and_forward=True):
         """
@@ -1601,7 +1725,6 @@ class Dispersy(Singleton):
             from message import Message
         assert isinstance(message, Message.Implementation)
         assert message.name == u"dispersy-sync"
-        if __debug__: dprint(message)
 
         # we limit the response by byte_limit bytes
         byte_limit = self._total_send + message.community.dispersy_sync_response_limit
@@ -1629,8 +1752,10 @@ class Dispersy(Singleton):
 
         def get_packets(community_id, time_low, time_high):
             # first priority is to return the 'in-order' packets
-            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
                       FROM sync
+                      LEFT OUTER JOIN name ON sync.name = name.id
+                      LEFT OUTER JOIN user ON sync.user = user.id
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
                       WHERE sync.community = ? AND synchronization_direction = 1 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY sync.global_time ASC"""
@@ -1638,8 +1763,10 @@ class Dispersy(Singleton):
                 yield tup
 
             # second priority is to return the 'out-order' packets
-            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
                       FROM sync
+                      LEFT OUTER JOIN name ON sync.name = name.id
+                      LEFT OUTER JOIN user ON sync.user = user.id
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
                       WHERE sync.community = ? AND synchronization_direction = 2 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY sync.global_time DESC"""
@@ -1647,19 +1774,40 @@ class Dispersy(Singleton):
                 yield tup
 
             # third priority is to return the 'random-order' packets
-            sql = u"""SELECT sync.packet, sync.destination_cluster, similarity.similarity
+            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
                       FROM sync
+                      LEFT OUTER JOIN name ON sync.name = name.id
+                      LEFT OUTER JOIN user ON sync.user = user.id
                       LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
                       WHERE sync.community = ? AND synchronization_direction = 3 AND ? <= sync.global_time AND sync.global_time <= ?
                       ORDER BY RANDOM()"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
+        # obtain all subjective sets for the sender of the dispersy-sync message
+        subjective_sets = message.community.get_subjective_sets(message.authentication.member)
+
         time_high = message.payload.time_high if message.payload.has_time_high else message.community._timeline.global_time
         packets = []
-        for packet, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.time_low, time_high):
+        for packet, packet_name, packet_public_key, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.time_low, time_high):
             packet = str(packet)
+            packet_public_key = str(packet_public_key)
             if not packet in bloom_filter:
+                # check if the packet uses the SubjectiveDestination policy
+                packet_meta = message.community.get_meta_message(packet_name)
+                if isinstance(packet_meta.destination, SubjectiveDestination):
+                    packet_cluster = packet_meta.destination.cluster
+
+                    # we need the subjective set for this particular cluster
+                    if not packet_cluster in subjective_sets:
+                        if __debug__: dprint("Subjective set not available")
+                        raise DelayMessageBySubjectiveSet(message, packet_cluster)
+
+                    # is packet_public_key in the subjective set
+                    if not packet_public_key in subjective_sets[packet_cluster]:
+                        # do not send this packet: not in the requester's subjective set
+                        continue
+
                 # check if the packet uses the SimilarityDestination policy
                 if similarity_cluster:
                     similarity, threshold = similarity_cache.get(similarity_cluster, (None, None))
@@ -1672,7 +1820,7 @@ class Dispersy(Singleton):
                         # do not send this packet: not similar
                         continue
 
-                if __debug__: dprint("Syncing ", len(packet), " bytes from sync_full to " , address[0], ":", address[1])
+                if __debug__: dprint("syncing ", packet_meta.name, " (", len(packet), " bytes) to " , address[0], ":", address[1])
                 packets.append(packet)
 
                 byte_limit -= len(packet)

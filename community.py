@@ -215,6 +215,10 @@ class Community(object):
         # tell dispersy that there is a new community
         self._dispersy.add_community(self)
 
+        # the subjective sets.  the dictionary contains all our, most recent, subjective sets per
+        # cluster.  These are made when a meta message uses the SubjectiveDestination policy.
+        # self._subjective_sets = self.get_subjective_sets(self._my_member)
+
     @property
     def dispersy_sync_interval(self):
         """
@@ -375,6 +379,81 @@ class Community(object):
         """
         return self._bloom_filters[index]
 
+    def get_subjective_set(self, member, cluster):
+        """
+        Returns the subjective set for a certain member and cluster.
+
+        @param member: The member for who we want the subjective set.
+        @type member: Member
+
+        @param cluster: The cluster identifier.  Where 0 < cluster < 255.
+        @type cluster: int
+
+        @return: The bloom filter associated to the member and cluster or None
+        @rtype: BloomFilter or None
+
+        @raise KeyError: When the subjective set is not known.
+        """
+        assert isinstance(member, Member)
+        assert isinstance(cluster, int)
+        assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+        # assert cluster in self._subjective_sets
+        subjective_set = self.get_subjective_sets(member)
+        return subjective_set[cluster]
+        # if not member in self._subjective_sets:
+        #     self._subjective_sets[member] = self.get_subjective_sets(member)
+        # return self._subjective_sets[cluster]
+
+    def get_subjective_sets(self, member):
+        """
+        Returns all subjective sets for a certain member.
+
+        We can return an empty dictionary when no sets are available for this member.
+
+        @param member: The member for who we want the subjective set.
+        @type member: Member
+
+        @return: A dictionary with all cluster / bloom filter pairs
+        @rtype: {cluster:bloom-filter}
+        """
+        assert isinstance(member, Member)
+
+        # retrieve all the subjective sets that were created by member
+        meta_message = self.get_meta_message(u"dispersy-subjective-set")
+        existing_sets = {}
+        sql = u"""SELECT packet
+                  FROM sync
+                  WHERE sync.community = ? AND sync.user = ? AND name = ?"""
+
+        # dprint(sql)
+        # dprint((self._database_id, member.database_id, meta_message.database_id))
+
+        for packet, in self._dispersy_database.execute(sql, (self._database_id, member.database_id, meta_message.database_id)):
+            assert isinstance(packet, buffer)
+            packet = str(packet)
+            conversion = self.get_conversion(packet[:22])
+            message = conversion.decode_message(packet)
+            assert message.name == "dispersy-subjective-set"
+            assert not message.payload.cluster in existing_sets
+            existing_sets[message.payload.cluster] = message.payload.subjective_set
+
+        # # either use an existing or create a new bloom filter for each subjective set (cluster)
+        # # that we are using
+        # subjective_sets = {}
+        # for meta_message in self._meta_messages.iter_values():
+        #     if isinstance(meta_message.destination, SubjectiveDestination):
+        #         cluster = meta_message.destination.cluster
+        #         if not cluster in subjective_sets:
+        #             if cluster in existing_sets:
+        #                 subjective_sets[cluster] = existing_sets[cluster]
+        #             elif create_new:
+        #                 subjective_sets[cluster] = BloomFilter(500, 0.1)
+
+        # # 3. return the sets.  this will be stored in self._subjective_sets for later reference.
+        # return subjective_sets
+
+        return existing_sets
+
     def get_member(self, public_key):
         """
         Returns a Member instance associated with public_key.
@@ -489,6 +568,10 @@ class Community(object):
     @documentation(Dispersy.create_destroy_community)
     def create_dispersy_destroy_community(self, degree):
         return self._dispersy.create_destroy_community(self, degree)
+
+    @documentation(Dispersy.create_subjective_set)
+    def create_dispersy_subjective_set(self, cluster, members, reset=True, update_locally=True, store_and_forward=True):
+        return self._dispersy.create_subjective_set(self, cluster, members, reset, update_locally, store_and_forward)
 
     def on_message(self, address, message):
         """

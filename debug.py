@@ -77,15 +77,6 @@ class Node(object):
         ec = ec_generate_key(u"low")
         self._my_member = DebugPrivateMember.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=False)
 
-        if routing:
-            # update routing information
-            assert self._socket, "Socket needs to be set to routing"
-            assert self._community, "Community needs to be set to routing"
-            source_address = self._socket.getsockname()
-            destination_address = self._community._dispersy.socket.get_address()
-            message = self.create_dispersy_routing_request_message(source_address, destination_address, 1)
-            self.send_message(message, destination_address)
-
         if identity:
             # update identity information
             assert self._socket, "Socket needs to be set to routing"
@@ -93,6 +84,15 @@ class Node(object):
             source_address = self._socket.getsockname()
             destination_address = self._community._dispersy.socket.get_address()
             message = self.create_dispersy_identity_message(source_address, 2)
+            self.send_message(message, destination_address)
+
+        if routing:
+            # update routing information
+            assert self._socket, "Socket needs to be set to routing"
+            assert self._community, "Community needs to be set to routing"
+            source_address = self._socket.getsockname()
+            destination_address = self._community._dispersy.socket.get_address()
+            message = self.create_dispersy_routing_request_message(source_address, destination_address, 1)
             self.send_message(message, destination_address)
 
     @property
@@ -272,3 +272,15 @@ class Node(object):
                               meta.distribution.implement(global_time),
                               meta.destination.implement(destination_address),
                               meta.payload.implement(request_id, signature))
+
+    def create_dispersy_subjective_set_message(self, cluster, subjective_set, global_time):
+        assert isinstance(cluster, int)
+        assert 0 < cluster < 2^8
+        assert isinstance(subjective_set, BloomFilter)
+        assert isinstance(global_time, (int, long))
+        assert global_time > 0
+        meta = self._community.get_meta_message(u"dispersy-subjective-set")
+        return meta.implement(meta.authentication.implement(self._my_member),
+                              meta.distribution.implement(global_time),
+                              meta.destination.implement(),
+                              meta.payload.implement(cluster, subjective_set))

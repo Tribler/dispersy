@@ -353,3 +353,61 @@ class DestroyCommunityPayload(Payload):
         @property
         def is_hard_kill(self):
             return self._degree == u"hard-kill"
+
+class SubjectiveSetPayload(Payload):
+    class Implementation(Payload.Implementation):
+        def __init__(self, meta, cluster, subjective_set):
+            if __debug__:
+                from bloomfilter import BloomFilter
+            assert isinstance(cluster, int)
+            assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+            assert isinstance(subjective_set, BloomFilter)
+            super(SubjectiveSetPayload.Implementation, self).__init__(meta)
+            self._cluster = cluster
+            self._subjective_set = subjective_set
+
+        @property
+        def cluster(self):
+            return self._cluster
+
+        @property
+        def subjective_set(self):
+            return self._subjective_set
+
+class SubjectiveSetRequestPayload(Payload):
+    class Implementation(Payload.Implementation):
+        def __init__(self, meta, cluster, members):
+            """
+            The payload for a dispersy-subjective-set-request message.
+
+            This message is sent whenever we are missing the dispersy-subjective-set message for a
+            specific cluster and member.
+
+            The sender side is likely to add only one member, however, on the receiver side this may
+            result in multiple member instance, because the member is represented as a 20 byte sha1
+            digest on the wire.  Hence the payload must be able to contain multiple members.
+
+            @param cluster: the cluster that we want the subjective set for (note that one member
+             can have multiple subjective sets, they are identified by their cluster).
+            @type cluster: int
+
+            @param members: the list of members for wich we want the subjective set.
+            @type member: [Member]
+            """
+            if __debug__:
+                from member import Member
+            assert isinstance(cluster, int)
+            assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
+            assert isinstance(members, (tuple, list))
+            assert not filter(lambda x: not isinstance(x, Member), members)
+            super(SubjectiveSetRequestPayload.Implementation, self).__init__(meta)
+            self._cluster = cluster
+            self._members = members
+
+        @property
+        def cluster(self):
+            return self._cluster
+
+        @property
+        def members(self):
+            return self._members

@@ -268,6 +268,12 @@ class BloomFilter(Constructor):
             bytes[(offset + i) / 8] |=  1<<(offset + i) % 8
             offset += bits_per_slice
 
+    def clear(self):
+        """
+        Sets all bits in the filter to zero.
+        """
+        self._bytes = array("B", (0 for _ in xrange(int(ceil(self._num_slices * self._bits_per_slice / 8.0)))))
+
     def and_occurrence(self, other):
         """
         Counts the number of bits that are set at the same indexes in this and the other

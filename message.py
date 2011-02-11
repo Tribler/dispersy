@@ -152,6 +152,32 @@ class DelayMessageBySequence(DelayMessage):
 
         super(DelayMessageBySequence, self).__init__("Missing sequence numbers", footprint, message.packet)
 
+class DelayMessageBySubjectiveSet(DelayMessage):
+    """
+    Raised when a message is received and a dispersy-subjective-set message is required to process
+    it.
+
+    Delaying until a dispersy-subjective-set message is received that contains the missing data or
+    until a timeout occurs.
+    """
+    def __init__(self, message, cluster):
+        if __debug__:
+            from message import Message
+        assert isinstance(message, Message.Implementation)
+        assert isinstance(cluster, int)
+        # the footprint that will trigger the delayed packet
+        meta = message.community.get_meta_message(u"dispersy-subjective-set")
+        footprint = meta.generate_footprint(authentication=([message.authentication.member.mid],))
+
+        # the request message that asks for the message that will trigger the delayed packet
+        meta = message.community.get_meta_message(u"dispersy-subjective-set-request")
+        message = meta.implement(meta.authentication.implement(),
+                                 meta.distribution.implement(message.community._timeline.global_time),
+                                 meta.destination.implement(),
+                                 meta.payload.implement(cluster, [message.authentication.member]))
+
+        super(DelayMessageBySubjectiveSet, self).__init__("Missing subjective set", footprint, message.packet)
+
 class DelayMessageBySimilarity(DelayMessage):
     """
     Raised during Community.on_message when no similarity is known for
@@ -393,7 +419,7 @@ class Message(MetaObject):
         from authentication import Authentication, NoAuthentication, MemberAuthentication, MultiMemberAuthentication
         from resolution import Resolution, PublicResolution, LinearResolution
         from distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
-        from destination import Destination, AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination
+        from destination import Destination, AddressDestination, MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination
 
         assert isinstance(authentication, Authentication)
         assert isinstance(resolution, Resolution)
@@ -411,22 +437,22 @@ class Message(MetaObject):
         elif isinstance(authentication, MemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
+            require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination))
         elif isinstance(authentication, MultiMemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
+            require(authentication, destination, (AddressDestination, MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__class__.__name__} is not supported".format(authentication))
 
         if isinstance(resolution, PublicResolution):
             require(resolution, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
+            require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination))
         elif isinstance(resolution, LinearResolution):
             require(resolution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SimilarityDestination))
+            require(resolution, destination, (AddressDestination, MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination))
         else:
             raise ValueError("{0.__class__.__name__} is not supported".format(resolution))
 
@@ -441,13 +467,13 @@ class Message(MetaObject):
         elif isinstance(distribution, FullSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
-            require(distribution, destination, (CommunityDestination, SimilarityDestination))
+            require(distribution, destination, (CommunityDestination, SubjectiveDestination, SimilarityDestination))
             if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
                 raise ValueError("{0.__class__.__name__} may not be used with {1.__class__.__name__} when sequence numbers are enabled".format(distribution, authentication))
         elif isinstance(distribution, LastSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution))
-            require(distribution, destination, (CommunityDestination, SimilarityDestination))
+            require(distribution, destination, (CommunityDestination, SubjectiveDestination, SimilarityDestination))
             if isinstance(authentication, MultiMemberAuthentication) and distribution.enable_sequence_number:
                 raise ValueError("{0.__class__.__name__} may not be used with {1.__class__.__name__} when sequence numbers are enabled".format(distribution, authentication))
         else:
@@ -465,6 +491,10 @@ class Message(MetaObject):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))
             require(destination, distribution, (DirectDistribution, FullSyncDistribution, LastSyncDistribution))
+        elif isinstance(destination, SubjectiveDestination):
+            require(destination, authentication, (MemberAuthentication, MultiMemberAuthentication))
+            require(destination, resolution, (PublicResolution, LinearResolution))
+            require(destination, distribution, (FullSyncDistribution, LastSyncDistribution))
         elif isinstance(destination, SimilarityDestination):
             require(destination, authentication, (MemberAuthentication, MultiMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution))

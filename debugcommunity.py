@@ -4,7 +4,7 @@ from authentication import MultiMemberAuthentication, MemberAuthentication
 from community import Community
 from conversion import BinaryConversion
 from debug import Node
-from destination import MemberDestination, CommunityDestination, SimilarityDestination
+from destination import MemberDestination, CommunityDestination, SubjectiveDestination, SimilarityDestination
 from distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
 from message import Message, DropPacket
 from member import MyMember
@@ -76,6 +76,9 @@ class DebugNode(Node):
                               meta.destination.implement(),
                               meta.payload.implement(number))
 
+    def create_subjective_set_text_message(self, text, global_time):
+        return self._create_text_message(u"subjective-set-text", text, global_time)
+
 #
 # Conversion
 #
@@ -94,6 +97,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(9), community.get_meta_message(u"in-order-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(10), community.get_meta_message(u"out-order-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(11), community.get_meta_message(u"random-order-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(12), community.get_meta_message(u"subjective-set-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         return pack("!B", len(message.payload.text)), message.payload.text
@@ -171,6 +175,7 @@ class DebugCommunity(Community):
                 Message(self, u"in-order-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order"), CommunityDestination(node_count=10), TextPayload()),
                 Message(self, u"out-order-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"out-order"), CommunityDestination(node_count=10), TextPayload()),
                 Message(self, u"random-order-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"random-order"), CommunityDestination(node_count=10), TextPayload()),
+                Message(self, u"subjective-set-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"in-order"), SubjectiveDestination(cluster=1, node_count=10), TextPayload()),
                 ]
 
     def __init__(self, cid):
@@ -187,7 +192,8 @@ class DebugCommunity(Community):
                                       u"full-sync-text":self.on_text,
                                       u"in-order-text":self.on_text,
                                       u"out-order-text":self.on_text,
-                                      u"random-order-text":self.on_text}
+                                      u"random-order-text":self.on_text,
+                                      u"subjective-set-text":self.on_text}
 
         # add the Dispersy message handlers to the _incoming_message_map
         for message, handler in self._dispersy.get_message_handlers(self):
