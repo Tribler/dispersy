@@ -315,7 +315,8 @@ class Dispersy(Singleton):
             self._database.execute(
                 u"""SELECT 1
                     FROM sync
-                    WHERE community = ? AND user = ? AND name = ? AND global_time = ?
+                    JOIN reference_user_sync ON reference_user_sync.sync = sync.id
+                    WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ? AND sync.global_time = ?
                     LIMIT 1""",
                 (message.community.database_id,
                  message.authentication.member.database_id,
@@ -332,10 +333,11 @@ class Dispersy(Singleton):
         if message.distribution.enable_sequence_number:
             try:
                 sequence_number, = self._database.execute(
-                    u"""SELECT distribution_sequence
+                    u"""SELECT sync.distribution_sequence
                         FROM sync
-                        WHERE community = ? AND user = ? AND name = ?
-                        ORDER BY distribution_sequence DESC
+                        JOIN reference_user_sync ON reference_user_sync.sync = sync.id
+                        WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ?
+                        ORDER BY sync.distribution_sequence DESC
                         LIMIT 1""",
                     (message.community.database_id,
                      message.authentication.member.database_id,
@@ -376,7 +378,11 @@ class Dispersy(Singleton):
         """
         assert isinstance(message, Message.Implementation)
         # check for duplicates based on global_time
-        times = [x for x, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND user = ? AND name = ? LIMIT ?",
+        times = [x for x, in self._database.execute(u"""SELECT sync.global_time
+                                                        FROM sync
+                                                        JOIN reference_user_sync ON (reference_user_sync.sync = sync.id)
+                                                        WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ?
+                                                        LIMIT ?""",
                                                     (message.community.database_id,
                                                      message.authentication.member.database_id,
                                                      message.database_id,
@@ -390,7 +396,10 @@ class Dispersy(Singleton):
             if message.distribution.history_size == 1:
                 # we can sent back the one message that proves that the received message is old
                 try:
-                    packet, = self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND name = ? AND global_time = ?",
+                    packet, = self._database.execute(u"""SELECT sync.packet
+                                                         FROM sync
+                                                         JOIN reference_user_sync ON (reference_user_sync.sync = sync.id)
+                                                         WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ? AND sync.global_time = ?""",
                                                      (message.community.database_id,
                                                       message.authentication.member.database_id,
                                                       message.database_id,
@@ -401,7 +410,7 @@ class Dispersy(Singleton):
                     # previous query... but you never know
                     pass
                 else:
-                    if __debug__: dprint("Prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
+                    if __debug__: dprint("prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
                     self._send([address], [packet])
 
             elif message.distribution.enable_sequence_number:
@@ -409,18 +418,22 @@ class Dispersy(Singleton):
                 byte_limit = self._total_send + message.community.dispersy_sync_response_limit
 
                 # we can sent back everything higher than message.distribution.global_time
-                for packet in self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND user = ? AND name = ? AND global_time > ? ORDER BY global_time ASC",
+                for packet in self._database.execute(u"""SELECT sync.packet
+                                                         FROM sync
+                                                         JOIN reference_user_sync ON (reference_user_sync.sync = sync.id)
+                                                         WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ? AND sync.global_time > ?
+                                                         ORDER BY sync.global_time ASC""",
                                                      (message.community.database_id,
                                                       message.authentication.member.database_id,
                                                       message.database_id,
                                                       message.distribution.global_time)):
                     packet = str(packet)
 
-                    if __debug__: dprint("Prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
+                    if __debug__: dprint("prooving ", len(packet), " bytes from _check_incoming_last_sync_distribution to ", address[0], ":", address[1])
                     self._send([address], [packet])
 
                     if self._total_send > byte_limit:
-                        if __debug__: dprint("Bandwidth throttle")
+                        if __debug__: dprint("bandwidth throttle")
                         break
 
             raise DropMessage("old message")
@@ -428,10 +441,11 @@ class Dispersy(Singleton):
         if message.distribution.enable_sequence_number:
             try:
                 sequence_number, = self._database.execute(
-                    u"""SELECT distribution_sequence
+                    u"""SELECT sync.distribution_sequence
                         FROM sync
-                        WHERE community = ? AND user = ? AND name = ?
-                        ORDER BY distribution_sequence DESC
+                        JOIN reference_user_sync ON (reference_user_sync.sync = sync.id)
+                        WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ?
+                        ORDER BY sync.distribution_sequence DESC
                         LIMIT 1""",
                     (message.community.database_id,
                      message.authentication.member.database_id,
@@ -660,17 +674,22 @@ class Dispersy(Singleton):
 
             # delete packet if there are to many stored
             if isinstance(message.distribution, LastSyncDistribution.Implementation):
-                for id_, in execute(u"SELECT id FROM sync WHERE community = ? AND user = ? AND name = ? ORDER BY global_time DESC LIMIT 100 OFFSET ?",
+                for id_, in execute(u"""SELECT sync.id
+                                        FROM sync
+                                        JOIN reference_user_sync ON (reference_user_sync.sync = sync.id)
+                                        WHERE sync.community = ? AND reference_user_sync.user = ? AND sync.name = ?
+                                        ORDER BY sync.global_time DESC
+                                        LIMIT 100 OFFSET ?""",
                                     (message.community.database_id,
                                      message.authentication.member.database_id,
                                      message.database_id,
                                      message.distribution.history_size - 1)):
+                    execute(u"DELETE FROM reference_user_sync WHERE user = ? AND sync = ?", (message.authentication.member.database_id, id_))
                     execute(u"DELETE FROM sync WHERE id = ?", (id_,))
 
             # add packet to database
-            execute(u"INSERT INTO sync (community, user, name, global_time, synchronization_direction, distribution_sequence, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            execute(u"INSERT INTO sync (community, name, global_time, synchronization_direction, distribution_sequence, destination_cluster, packet) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (message.community.database_id,
-                     message.authentication.member.database_id,
                      message.database_id,
                      message.distribution.global_time,
                      message.distribution.synchronization_direction_id,
@@ -678,6 +697,10 @@ class Dispersy(Singleton):
                      # isinstance(message.distribution, LastSyncDistribution.Implementation) and message.distribution.cluster or 0,
                      isinstance(message.destination, SimilarityDestination.Implementation) and message.destination.cluster or 0,
                      buffer(message.packet)))
+
+            execute(u"INSERT INTO reference_user_sync (user, sync) VALUES (?, ?)",
+                    (message.authentication.member.database_id,
+                     self._database.last_insert_rowid))
 
     def store_and_forward(self, messages):
         """
@@ -1726,75 +1749,81 @@ class Dispersy(Singleton):
         assert isinstance(message, Message.Implementation)
         assert message.name == u"dispersy-sync"
 
-        # we limit the response by byte_limit bytes
-        byte_limit = self._total_send + message.community.dispersy_sync_response_limit
+        # def get_similarity(cluster):
+        #     try:
+        #         similarity, = self._database.execute(u"SELECT similarity FROM similarity WHERE community = ? AND user = ? AND cluster = ?",
+        #                                              (message.community.database_id, message.authentication.member.database_id, cluster)).next()
+        #     except StopIteration:
+        #         # this message should never have been stored in the database without a similarity.
+        #         # Thus the Database is corrupted.
+        #         raise DelayMessageBySimilarity(message, cluster)
 
-        similarity_cache = {}
-        bloom_filter = message.payload.bloom_filter
+        #     for msg in message.community.get_meta_messages():
+        #         if isinstance(msg.destination, SimilarityDestination) and msg.destination.cluster == cluster:
+        #             threshold = msg.destination.threshold
+        #             break
+        #     else:
+        #         raise NotImplementedError("No messages are defined that use this cluster")
 
-        def get_similarity(cluster):
-            try:
-                similarity, = self._database.execute(u"SELECT similarity FROM similarity WHERE community = ? AND user = ? AND cluster = ?",
-                                                     (message.community.database_id, message.authentication.member.database_id, cluster)).next()
-            except StopIteration:
-                # this message should never have been stored in the database without a similarity.
-                # Thus the Database is corrupted.
-                raise DelayMessageBySimilarity(message, cluster)
-
-            for msg in message.community.get_meta_messages():
-                if isinstance(msg.destination, SimilarityDestination) and msg.destination.cluster == cluster:
-                    threshold = msg.destination.threshold
-                    break
-            else:
-                raise NotImplementedError("No messages are defined that use this cluster")
-
-            return BloomFilter(str(similarity), 0), threshold
+        #     return BloomFilter(str(similarity), 0), threshold
 
         def get_packets(community_id, time_low, time_high):
             # first priority is to return the 'in-order' packets
-            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
+# sync.destination_cluster, similarity.similarity
+# JOIN similarity ON sync.community = similarity.community AND user.id = similarity.user AND sync.destination_cluster = similarity.cluster
+            sql = u"""SELECT sync.packet, sync.name, user.public_key
                       FROM sync
-                      LEFT OUTER JOIN name ON sync.name = name.id
-                      LEFT OUTER JOIN user ON sync.user = user.id
-                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 1 AND ? <= sync.global_time AND sync.global_time <= ?
+                      JOIN reference_user_sync ON reference_user_sync.sync = sync.id
+                      JOIN user ON user.id = reference_user_sync.user
+                      WHERE sync.community = ? AND synchronization_direction = 1 AND sync.global_time BETWEEN ? AND ?
                       ORDER BY sync.global_time ASC"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
             # second priority is to return the 'out-order' packets
-            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
+# sync.destination_cluster, similarity.similarity
+# JOIN similarity ON sync.community = similarity.community AND user.id = similarity.user AND sync.destination_cluster = similarity.cluster
+            sql = u"""SELECT sync.packet, sync.name, user.public_key
                       FROM sync
-                      LEFT OUTER JOIN name ON sync.name = name.id
-                      LEFT OUTER JOIN user ON sync.user = user.id
-                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 2 AND ? <= sync.global_time AND sync.global_time <= ?
+                      JOIN reference_user_sync ON reference_user_sync.sync = sync.id
+                      JOIN user ON user.id = reference_user_sync.user
+                      WHERE sync.community = ? AND synchronization_direction = 2 AND sync.global_time BETWEEN ? AND ?
                       ORDER BY sync.global_time DESC"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
             # third priority is to return the 'random-order' packets
-            sql = u"""SELECT sync.packet, name.value, user.public_key, sync.destination_cluster, similarity.similarity
+# sync.destination_cluster, similarity.similarity
+# JOIN similarity ON sync.community = similarity.community AND user.id = similarity.user AND sync.destination_cluster = similarity.cluster
+            sql = u"""SELECT sync.packet, sync.name, user.public_key
                       FROM sync
-                      LEFT OUTER JOIN name ON sync.name = name.id
-                      LEFT OUTER JOIN user ON sync.user = user.id
-                      LEFT OUTER JOIN similarity ON sync.community = similarity.community AND sync.user = similarity.user AND sync.destination_cluster = similarity.cluster
-                      WHERE sync.community = ? AND synchronization_direction = 3 AND ? <= sync.global_time AND sync.global_time <= ?
+                      JOIN reference_user_sync ON reference_user_sync.sync = sync.id
+                      JOIN user ON user.id = reference_user_sync.user
+                      WHERE sync.community = ? AND synchronization_direction = 3 AND sync.global_time BETWEEN ? AND ?
                       ORDER BY RANDOM()"""
             for tup in self._database.execute(sql, (community_id, time_low, time_high)):
                 yield tup
 
+        # we limit the response by byte_limit bytes
+        byte_limit = self._total_send + message.community.dispersy_sync_response_limit
+
+        # similarity_cache = {}
+
         # obtain all subjective sets for the sender of the dispersy-sync message
         subjective_sets = message.community.get_subjective_sets(message.authentication.member)
 
+        # obtain all available messages
+        meta_messages = dict((meta_message.database_id, meta_message) for meta_message in message.community.get_meta_messages())
+
+        bloom_filter = message.payload.bloom_filter
         time_high = message.payload.time_high if message.payload.has_time_high else message.community._timeline.global_time
         packets = []
-        for packet, packet_name, packet_public_key, similarity_cluster, packet_similarity in get_packets(message.community.database_id, message.payload.time_low, time_high):
+        for packet, meta_message_id, packet_public_key in get_packets(message.community.database_id, message.payload.time_low, time_high):
             packet = str(packet)
             packet_public_key = str(packet_public_key)
             if not packet in bloom_filter:
                 # check if the packet uses the SubjectiveDestination policy
-                packet_meta = message.community.get_meta_message(packet_name)
+                packet_meta = meta_messages[meta_message_id]
                 if isinstance(packet_meta.destination, SubjectiveDestination):
                     packet_cluster = packet_meta.destination.cluster
 
@@ -1808,24 +1837,24 @@ class Dispersy(Singleton):
                         # do not send this packet: not in the requester's subjective set
                         continue
 
-                # check if the packet uses the SimilarityDestination policy
-                if similarity_cluster:
-                    similarity, threshold = similarity_cache.get(similarity_cluster, (None, None))
-                    if similarity is None:
-                        similarity, threshold = get_similarity(similarity_cluster)
-                        similarity_cache[similarity_cluster] = (similarity, threshold)
+                # # check if the packet uses the SimilarityDestination policy
+                # if similarity_cluster:
+                #     similarity, threshold = similarity_cache.get(similarity_cluster, (None, None))
+                #     if similarity is None:
+                #         similarity, threshold = get_similarity(similarity_cluster)
+                #         similarity_cache[similarity_cluster] = (similarity, threshold)
 
-                    if similarity.bic_occurrence(BloomFilter(str(packet_similarity), 0)) < threshold:
-                        if __debug__: dprint("do not send this packet: not similar")
-                        # do not send this packet: not similar
-                        continue
+                #     if similarity.bic_occurrence(BloomFilter(str(packet_similarity), 0)) < threshold:
+                #         if __debug__: dprint("do not send this packet: not similar")
+                #         # do not send this packet: not similar
+                #         continue
 
                 if __debug__: dprint("syncing ", packet_meta.name, " (", len(packet), " bytes) to " , address[0], ":", address[1])
                 packets.append(packet)
 
                 byte_limit -= len(packet)
                 if byte_limit <= 0:
-                    if __debug__: dprint("Bandwidth throttle")
+                    if __debug__: dprint("bandwidth throttle")
                     break
 
         if packets:

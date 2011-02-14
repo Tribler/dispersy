@@ -158,6 +158,7 @@ class Member(Public, Parameterized1Singleton):
         assert isinstance(tag, unicode)
         assert tag in [u"store", u"ignore", u"drop"]
         assert isinstance(value, bool)
+        if __debug__: dprint(tag, " -> ", value)
         if value:
             if tag in self._tags:
                 # the tag is already set

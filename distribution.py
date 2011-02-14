@@ -142,7 +142,7 @@ class SyncDistribution(Distribution):
         assert isinstance(message, Message)
         if self._enable_sequence_number:
             # obtain the most recent sequence number that we have used
-            self._current_sequence_number, = message.community.dispersy.database.execute(u"SELECT MAX(distribution_sequence) FROM sync WHERE community = ? AND user = ? AND name = ?", (message.community.database_id, message.community.my_member.database_id, message.database_id)).next()
+            self._current_sequence_number, = message.community.dispersy.database.execute(u"SELECT MAX(sync.distribution_sequence) FROM sync JOIN reference_user_sync ON (reference_user_sync.sync = sync.id) WHERE sync.community = ? AND reference_user_sync.user = ? AND name = ?", (message.community.database_id, message.community.my_member.database_id, message.database_id)).next()
             if self._current_sequence_number is None:
                 # no entries in the database yet
                 self._current_sequence_number = 0

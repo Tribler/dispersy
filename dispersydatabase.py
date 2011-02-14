@@ -64,17 +64,20 @@ CREATE TABLE name(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  value TEXT);
 
+CREATE TABLE reference_user_sync(
+ user INTEGER REFERENCES user(id),
+ sync INTEGER REFERENCES sync(id),
+ UNIQUE(user, sync));
+
 CREATE TABLE sync(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
- user INTEGER REFERENCES user(id),
  name INTEGER REFERENCES name(id),
  global_time INTEGER,
  synchronization_direction INTEGER REFERENCES tag(key),
  distribution_sequence INTEGER DEFAULT 0,       -- used for the sync-distribution policy
  destination_cluster INTEGER DEFAULT 0,         -- used for the similarity-destination policy
- packet BLOB,
- UNIQUE(community, user, global_time));
+ packet BLOB);
 
 CREATE TABLE similarity(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
