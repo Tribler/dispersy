@@ -73,7 +73,7 @@ class Script(Singleton):
             except StopIteration:
                 self._call_generators.pop(0)
                 delay = 0.01
-                dprint("finished: ", call)
+                dprint("finished: ", call.__self__.__class__.__name__, ".", call.__name__)
                 if self._call_generators:
                     call, call_generator = self._call_generators[0]
                     self._start(call)

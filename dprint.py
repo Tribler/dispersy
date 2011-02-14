@@ -764,7 +764,7 @@ def dprint(*args, **kargs):
         RemoteConnection.send(args, kargs)
 
 def dprint_format_variable(v):
-    return "{:<22} {!s}".format(type(v), v)
+    return "{0:<22} {1}".format(type(v), str(v))
 
     # t = type(v)
     # if t is BooleanType:                return "(BooleanType)          {!s}".format(v)
