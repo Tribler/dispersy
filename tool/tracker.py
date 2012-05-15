@@ -227,10 +227,12 @@ def main():
     # start Dispersy
     dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), opt.port)
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
+    dispersy.endpoint.start()
     dispersy.define_auto_load(TrackerCommunity)
 
     # wait forever
     dispersy.callback.loop()
+    dispersy.endpoint.stop()
 
 if __name__ == "__main__":
     main()

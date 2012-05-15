@@ -35,7 +35,12 @@ def main():
             swift_process.add_download(dispersy.endpoint)
 
         else:
+            def exception(exception, fatal):
+                if fatal:
+                    dispersy.endpoint.stop()
             dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
+            dispersy.endpoint.start()
+            dispersy.callback.attach_exception_handler(exception)
 
         # load the script parser
         if opt.script:
