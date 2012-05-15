@@ -467,101 +467,102 @@ class Callback(object):
                 self._state = "STATE_RUNNING"
                 if __debug__: dprint("STATE_RUNNING")
 
-        while 1:
-            actual_time = get_timestamp()
+        try:
+            while 1:
+                actual_time = get_timestamp()
 
-            with lock:
-                # check if we should continue to run
-                if self._state != "STATE_RUNNING":
-                    break
+                with lock:
+                    # check if we should continue to run
+                    if self._state != "STATE_RUNNING":
+                        break
 
-                # move expired requests from REQUESTS to EXPIRED
-                while requests and requests[0][0] <= actual_time:
-                    # notice that the deadline and priority entries are switched, hence, the entries in
-                    # the EXPIRED list are ordered by priority instead of deadline
-                    _, priority, root_id, call, callback = heappop(requests)
-                    heappush(expired, (priority, root_id, None, call, callback))
+                    # move expired requests from REQUESTS to EXPIRED
+                    while requests and requests[0][0] <= actual_time:
+                        # notice that the deadline and priority entries are switched, hence, the entries in
+                        # the EXPIRED list are ordered by priority instead of deadline
+                        _, priority, root_id, call, callback = heappop(requests)
+                        heappush(expired, (priority, root_id, None, call, callback))
 
-                if expired:
-                    # we need to handle the next call in line
-                    priority, root_id, _, call, callback = heappop(expired)
-                    wait = 0.0
+                    if expired:
+                        # we need to handle the next call in line
+                        priority, root_id, _, call, callback = heappop(expired)
+                        wait = 0.0
 
-                    # ignore removed tasks
-                    if call is None:
-                        continue
+                        # ignore removed tasks
+                        if call is None:
+                            continue
+
+                    else:
+                        # there is nothing to handle
+                        wait = requests[0][0] - actual_time if requests else 300.0
+                        if __debug__: dprint("nothing to handle, wait ", wait, " seconds")
+
+                    if event_is_set():
+                        event_clear()
+
+                if wait:
+                    if __debug__: dprint("%d wait at most %.3fs before next call, still have %d calls in queue" % (time(), wait, len(requests)))
+                    event_wait(wait)
 
                 else:
-                    # there is nothing to handle
-                    wait = requests[0][0] - actual_time if requests else 300.0
-                    if __debug__: dprint("nothing to handle, wait ", wait, " seconds")
+                    if __debug__:
+                        debug_call_start = time()
 
-                if event_is_set():
-                    event_clear()
+                    # call can be either:
+                    # 1. a generator
+                    # 2. a (callable, args, kargs) tuple
 
-            if wait:
-                if __debug__: dprint("%d wait at most %.3fs before next call, still have %d calls in queue" % (time(), wait, len(requests)))
-                event_wait(wait)
+                    try:
+                        if isinstance(call, TupleType):
+                            # callback
+                            result = call[0](*call[1], **call[2])
+                            if isinstance(result, GeneratorType):
+                                # we only received the generator, no actual call has been made to the
+                                # function yet, therefore we call it again immediately
+                                call = result
 
-            else:
-                if __debug__:
-                    debug_call_start = time()
+                            elif callback:
+                                with lock:
+                                    heappush(expired, (priority, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
-                # call can be either:
-                # 1. a generator
-                # 2. a (callable, args, kargs) tuple
+                        if isinstance(call, GeneratorType):
+                            # start next generator iteration
+                            result = call.next()
+                            assert isinstance(result, float), type(result)
+                            assert result >= 0.0
+                            with lock:
+                                heappush(requests, (get_timestamp() + result, priority, root_id, call, callback))
 
-                try:
-                    if isinstance(call, TupleType):
-                        # callback
-                        result = call[0](*call[1], **call[2])
-                        if isinstance(result, GeneratorType):
-                            # we only received the generator, no actual call has been made to the
-                            # function yet, therefore we call it again immediately
-                            call = result
-
-                        elif callback:
+                    except StopIteration:
+                        if callback:
                             with lock:
                                 heappush(expired, (priority, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
-                    if isinstance(call, GeneratorType):
-                        # start next generator iteration
-                        result = call.next()
-                        assert isinstance(result, float), type(result)
-                        assert result >= 0.0
-                        with lock:
-                            heappush(requests, (get_timestamp() + result, priority, root_id, call, callback))
+                    except Exception, exception:
+                        dprint(exception=True, level="error")
+                        if callback:
+                            with lock:
+                                heappush(expired, (priority, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
+                        self._call_exception_handlers(exception, False)
 
-                except StopIteration:
-                    if callback:
-                        with lock:
-                            heappush(expired, (priority, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+                    if __debug__:
+                        debug_call_duration = time() - debug_call_start
+                        if debug_call_duration > 1.0:
+                            # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
+                            if isinstance(call, TupleType):
+                                debug_call_name = call[0].__name__
+                            elif isinstance(call, GeneratorType):
+                                debug_call_name = call.__name__
+                            else:
+                                debug_call_name = str(call)
+                            dprint(round(debug_call_duration, 2), "s call to ", debug_call_name, level="warning")
 
-                except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
-                    dprint(exception=True, level="error")
-                    with lock:
-                        self._state = "STATE_EXCEPTION"
-                        self._exception = exception
-                    self._call_exception_handlers(exception, True)
-
-                except Exception, exception:
-                    dprint(exception=True, level="error")
-                    if callback:
-                        with lock:
-                            heappush(expired, (priority, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    self._call_exception_handlers(exception, False)
-
-                if __debug__:
-                    debug_call_duration = time() - debug_call_start
-                    if debug_call_duration > 1.0:
-                        # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
-                        if isinstance(call, TupleType):
-                            debug_call_name = call[0].__name__
-                        elif isinstance(call, GeneratorType):
-                            debug_call_name = call.__name__
-                        else:
-                            debug_call_name = str(call)
-                        dprint(round(debug_call_duration, 2), "s call to ", debug_call_name, level="warning")
+        except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
+            dprint("attempting to properly shutdown", exception=True, level="error")
+            with lock:
+                self._state = "STATE_EXCEPTION"
+                self._exception = exception
+            self._call_exception_handlers(exception, True)
 
         with lock:
             requests = requests[:]
