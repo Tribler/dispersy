@@ -1,0 +1,49 @@
+#!/bin/bash
+
+echo "================================================================================"
+echo "Testcases in __debug__ mode"
+echo "================================================================================"
+
+rm -f sqlite/dispersy.db
+rm -f sqlite/dispersy.db-journal
+rm -f dispersy.log
+
+python tool/main.py --enable-dispersy-script --script dispersy-batch || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-classification || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-crypto || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-destroy-community || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-dynamic-settings || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-identical-payload || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-member-tag || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-missing-message || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-signature || exit 1
+# python tool/main.py --enable-dispersy-script --script dispersy-subjective-set || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-sync || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-timeline || exit 1
+python tool/main.py --enable-dispersy-script --script dispersy-undo || exit 1
+
+echo "================================================================================"
+echo "Testcases in optimized mode"
+echo "================================================================================"
+
+rm -f sqlite/dispersy.db
+rm -f sqlite/dispersy.db-journal
+rm -f dispersy.log
+
+python -O tool/main.py --enable-dispersy-script --script dispersy-batch || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-classification || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-crypto || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-destroy-community || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-dynamic-settings || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-identical-payload || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-member-tag || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-missing-message || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-signature || exit 1
+# python -O tool/main.py --enable-dispersy-script --script dispersy-subjective-set || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-sync || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-timeline || exit 1
+python -O tool/main.py --enable-dispersy-script --script dispersy-undo || exit 1
+
+echo "================================================================================"
+echo "Finished testcases successfully"
+echo "================================================================================"

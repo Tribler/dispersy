@@ -73,7 +73,7 @@ from requestcache import Cache, RequestCache
 from resolution import PublicResolution, LinearResolution
 from singleton import Singleton
 
-from Tribler.Core.NATFirewall.guessip import get_my_wan_ip
+from guessip import get_my_wan_ip
 
 if __debug__:
     from candidate import Candidate

@@ -621,7 +621,7 @@ def dprint(*args, **kargs):
     everything is transfered).
 
     Usage:
-    from Tribler.Debug.Dprint import dprint
+    from dispersy.dprint import dprint
 
     (Display a message "foo bar")
     | if __debug__: dprint("foo", "bar")

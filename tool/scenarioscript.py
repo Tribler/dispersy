@@ -9,10 +9,10 @@ from re import compile as re_compile
 from time import time
 from sys import maxsize
 
-from Tribler.Core.dispersy.crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from Tribler.Core.dispersy.dprint import dprint
-from Tribler.Core.dispersy.member import Member
-from Tribler.Core.dispersy.script import ScriptBase
+from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ..dprint import dprint
+from ..member import Member
+from ..script import ScriptBase
 
 class ScenarioScript(ScriptBase):
     def __init__(self, *args, **kargs):

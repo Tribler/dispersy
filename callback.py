@@ -435,6 +435,17 @@ class Callback(object):
 
         return self.is_finished
 
+    def loop(self):
+        """
+        Use the calling thread for this Callback instance.
+        """
+        if __debug__: dprint()
+        with self._lock:
+            self._state = "STATE_PLEASE_RUN"
+            if __debug__: dprint("STATE_PLEASE_RUN")
+
+        self._loop()
+
     @attach_profiler
     def _loop(self):
         if __debug__: dprint()

@@ -1,4 +1,4 @@
-from Tribler.Core.dispersy.script import ScriptBase
+from script import ScriptBase
 
 class DispersyCallbackScript(ScriptBase):
     def run(self):

@@ -10,7 +10,7 @@ Run some python code, usually to test one or more features.
 """
 
 from hashlib import sha1
-from lencoder import log, make_valid_key
+from tool.lencoder import log, make_valid_key
 from random import shuffle
 from time import time
 import gc
