@@ -205,14 +205,14 @@ class TrackerDispersy(Dispersy):
         for message in messages:
             host, port = message.candidate.sock_addr
             print "REQ_IN", hex_cid, host, port
-        return super(TrackerDispersy, self).__init__(messages)
+        return super(TrackerDispersy, self).on_introduction_request(messages)
 
     def on_introduction_response(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")
         for message in messages:
             host, port = message.candidate.sock_addr
             print "RES_IN", hex_cid, host, port
-        return super(TrackerDispersy, self).__init__(messages)
+        return super(TrackerDispersy, self).on_introduction_response(messages)
 
 def main():
     command_line_parser = optparse.OptionParser()
