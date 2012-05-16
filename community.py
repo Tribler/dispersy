@@ -375,45 +375,46 @@ class Community(object):
         assert isinstance(self._subjective_set_clusters, list)
         assert len(self._subjective_set_clusters) == 0
 
-        try:
-            meta = self.get_meta_message(u"dispersy-subjective-set")
+        if self._subjective_sets_enabled:
+            try:
+                meta = self.get_meta_message(u"dispersy-subjective-set")
 
-        except KeyError:
-            # subjective sets are disabled for this community
-            pass
+            except KeyError:
+                # subjective sets are disabled for this community
+                pass
 
-        else:
-            # ensure we have all unique cluster numbers
-            self._subjective_set_clusters = list(set(meta.destination.cluster for meta in self.get_meta_messages() if isinstance(meta.destination, SubjectiveDestination)))
+            else:
+                # ensure we have all unique cluster numbers
+                self._subjective_set_clusters = list(set(meta.destination.cluster for meta in self.get_meta_messages() if isinstance(meta.destination, SubjectiveDestination)))
 
-            # the messages must come from somewhere
-            candidate = LoopbackCandidate()
+                # the messages must come from somewhere
+                candidate = LoopbackCandidate()
 
-            # load all subjective sets by self.my_member
-            for packet, in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
-                                                           (self._database_id, self._my_member.database_id, meta.database_id)):
-                packet = str(packet)
+                # load all subjective sets by self.my_member
+                for packet, in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
+                                                               (self._database_id, self._my_member.database_id, meta.database_id)):
+                    packet = str(packet)
 
-                # check that this is the packet we are looking for, i.e. has the right cluster
-                conversion = self.get_conversion(packet[:22])
-                message = conversion.decode_message(candidate, packet)
-                key = (self._my_member, message.payload.cluster)
-                assert not key in self._subjective_sets
-                self._subjective_sets[key] = SubjectiveSetCache(message.packet, message.payload.subjective_set)
+                    # check that this is the packet we are looking for, i.e. has the right cluster
+                    conversion = self.get_conversion(packet[:22])
+                    message = conversion.decode_message(candidate, packet)
+                    key = (self._my_member, message.payload.cluster)
+                    assert not key in self._subjective_sets
+                    self._subjective_sets[key] = SubjectiveSetCache(message.packet, message.payload.subjective_set)
 
-            # 12/10/11 Boudewijn: we must create missing subjective sets on demand because at this point
-            # newly created communities will not yet have the dispersy-identity for my member
-            # # ensure that there are no missing subjective sets
-            # for cluster in self._subjective_set_clusters:
-            #     key = (self._my_member, cluster)
-            #     if not key in self._subjective_sets:
-            #         # create this missing subjective set
-            #         message = self.create_dispersy_subjective_set(cluster, [self._my_member])
-            #         self._subjective_sets[key] = SubjectiveSetCache(message.packet, message.payload.subjective_set)
+                # 12/10/11 Boudewijn: we must create missing subjective sets on demand because at this point
+                # newly created communities will not yet have the dispersy-identity for my member
+                # # ensure that there are no missing subjective sets
+                # for cluster in self._subjective_set_clusters:
+                #     key = (self._my_member, cluster)
+                #     if not key in self._subjective_sets:
+                #         # create this missing subjective set
+                #         message = self.create_dispersy_subjective_set(cluster, [self._my_member])
+                #         self._subjective_sets[key] = SubjectiveSetCache(message.packet, message.payload.subjective_set)
 
-            # if self._subjective_sets:
-            #     # apparently we have one or more subjective sets
-            self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_subjective_sets))
+                # if self._subjective_sets:
+                #     # apparently we have one or more subjective sets
+                self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_subjective_sets))
 
     def _periodically_cleanup_subjective_sets(self):
         while True:
