@@ -1454,6 +1454,10 @@ class Community(object):
     @documentation(Dispersy.create_dynamic_settings)
     def create_dispersy_dynamic_settings(self, policies, sign_with_master=False, store=True, update=True, forward=True):
         return self._dispersy.create_dynamic_settings(self, policies, sign_with_master, store, update, forward)
+    
+    @documentation(Dispersy.create_introduction_request)
+    def create_introduction_request(self, candidate):
+        return self._dispersy.create_introduction_request(self, candidate)
 
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
