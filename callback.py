@@ -555,6 +555,11 @@ class Callback(object):
                                 debug_call_name = call.__name__
                             else:
                                 debug_call_name = str(call)
+                            
+                            if debug_call_name == "<lambda>":
+                                import inspect
+                                debug_call_name = inspect.getsource(call[0])    
+                            
                             dprint(round(debug_call_duration, 2), "s call to ", debug_call_name, level="warning")
 
         except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
