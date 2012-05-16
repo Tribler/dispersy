@@ -119,7 +119,7 @@ class Database(Singleton):
             if __debug__: dprint("enabling Database.commit()")
             if pending_commits > 1:
                 if __debug__: dprint("performing ", pending_commits - 1, " pending commits")
-                self._connection.commit()
+                self.commit()
             return True
         else:
             if __debug__: dprint("ROLLBACK", level="error")
