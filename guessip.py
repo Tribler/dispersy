@@ -95,7 +95,7 @@ def get_my_wan_ip_win32():
                 if DEBUG:
                     print "ipconfig ignoring IPv6 default gateway",words[-1]
                 pass
-            if gwip == gwip2:
+            if gwip is None or gwip == gwip2:
                 mywanip = myip
                 break
     return mywanip
