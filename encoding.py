@@ -2,9 +2,17 @@ def _a_encode_int(value, mapping):
     """
     42 --> ('2', 'i', '42')
     """
-    assert isinstance(value, (int, long)), "VALUE has invalid type: %s" % type(value)
+    assert isinstance(value, int), "VALUE has invalid type: %s" % type(value)
     value = str(value).encode("UTF-8")
     return (str(len(value)).encode("UTF-8"), "i", value)
+
+def _a_encode_long(value, mapping):
+    """
+    42 --> ('2', 'J', '42')
+    """
+    assert isinstance(value, long), "VALUE has invalid type: %s" % type(value)
+    value = str(value).encode("UTF-8")
+    return (str(len(value)).encode("UTF-8"), "J", value)
 
 def _a_encode_float(value, mapping):
     """
@@ -90,7 +98,7 @@ def _a_encode_bool(value, mapping):
     return ['0T' if value else '0F']
 
 _a_encode_mapping = {int:_a_encode_int,
-                     long:_a_encode_int,
+                     long:_a_encode_long,
                      float:_a_encode_float,
                      unicode:_a_encode_unicode,
                      str:_a_encode_bytes,
@@ -255,6 +263,12 @@ def _a_decode_int(stream, offset, count, _):
     """
     return offset+count, int(stream[offset:offset+count])
 
+def _a_decode_long(stream, offset, count, _):
+    """
+    'a2J42',3,2 --> 5,42
+    """
+    return offset+count, long(stream[offset:offset+count])
+
 def _a_decode_float(stream, offset, count, _):
     """
     'a3f4.2',3,3 --> 6,4.2
@@ -372,6 +386,7 @@ def _a_decode_false(stream, offset, count, mapping):
     return offset, False
 
 _a_decode_mapping = {"i":_a_decode_int,
+                     "J":_a_decode_long,
                      "f":_a_decode_float,
                      "s":_a_decode_unicode,
                      "b":_a_decode_bytes,
