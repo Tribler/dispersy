@@ -16,10 +16,11 @@ http://www.python.org/dev/peps/pep-0328/
    regardless of where the module is actually located on the file system.
 """
 
-from time import time
 from random import random
+from time import time
 import errno
 import optparse
+import signal
 import sys
 
 from callback import Callback
@@ -229,6 +230,11 @@ def main():
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
     dispersy.endpoint.start()
     dispersy.define_auto_load(TrackerCommunity)
+
+    def signal_handler(sig, frame):
+        print "Received", sig, "signal in", frame
+        dispersy.callback.stop(wait=False)
+    signal.signal(signal.SIGINT, signal_handler)
 
     # wait forever
     dispersy.callback.loop()
