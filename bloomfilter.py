@@ -96,19 +96,17 @@ class BloomFilter(Constructor):
         # self._k = int(ceil(log(2) * (m / self._n)))
         if __debug__: dprint("constructing bloom filter based on m_size ", m_size, " bits and f_error_rate ", f_error_rate)
         self._init_(m_size, self._get_k_functions(m_size, self._get_n_capacity(m_size, f_error_rate)), prefix, 0L)
-        
+
     @constructor(float, int)
-    def _init_n_f(self, f_error_rate, n, prefix=""):
-        assert isinstance(n, int)
-        assert 0 < n
+    def _init_n_f(self, f_error_rate, n_capacity, prefix=""):
         assert isinstance(f_error_rate, float)
         assert 0 < f_error_rate < 1
-
-        m_size = abs((n * log(f_error_rate)) / (log(2) ** 2))
+        assert isinstance(n_capacity, int)
+        assert 0 < n_capacity
+        m_size = abs((n_capacity * log(f_error_rate)) / (log(2) ** 2))
         m_size = int(ceil(m_size / 8.0) * 8)
-
-        if __debug__: dprint("constructing bloom filter based on m_size ", m_size, " bits and f_error_rate ", f_error_rate)
-        self._init_(m_size, self._get_k_functions(m_size, n), prefix, 0L)
+        if __debug__: dprint("constructing bloom filter based on f_error_rate ", f_error_rate, " and ", n_capacity, " capacity")
+        self._init_(m_size, self._get_k_functions(m_size, n_capacity), prefix, 0L)
 
     def _hashes(self, key):
         h = self._salt.copy()
@@ -694,10 +692,10 @@ if __debug__:
     def _test_performance():
         data = [str(i) for i in xrange(200000)]
         testdata = [str(i) for i in xrange(len(data) * 2)]
-        
+
         b = BloomFilter(1024 * 8, 0.01)
         b.add_keys(data)
-        
+
         for i in testdata:
             test = i in b
 
