@@ -16,8 +16,9 @@ from decorator import attach_profiler
 from dprint import dprint
 
 if __debug__:
-    from itertools import islice
     from atexit import register as atexit_register
+    from inspect import getsource
+    from types import LambdaType
     # dprint warning when registered call, or generator call, takes more than N seconds
     CALL_DELAY_FOR_WARNING = 0.5
     # dprint warning when registered call, or generator call, should have run N seconds ago
@@ -550,16 +551,15 @@ class Callback(object):
                         if debug_call_duration > 1.0:
                             # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
                             if isinstance(call, TupleType):
-                                debug_call_name = call[0].__name__
+                                if isinstance(call[0], LambdaType):
+                                    debug_call_name = getsource(call[0])
+                                else:
+                                    debug_call_name = call[0].__name__
                             elif isinstance(call, GeneratorType):
                                 debug_call_name = call.__name__
                             else:
                                 debug_call_name = str(call)
-                            
-                            if debug_call_name == "<lambda>":
-                                import inspect
-                                debug_call_name = inspect.getsource(call[0])    
-                            
+
                             dprint(round(debug_call_duration, 2), "s call to ", debug_call_name, level="warning")
 
         except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
