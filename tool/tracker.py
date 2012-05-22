@@ -204,7 +204,7 @@ class TrackerDispersy(Dispersy):
     def create_introduction_request(self, destination, forward=True):
         # prevent steps towards other trackers
         if not isinstance(destination, BootstrapCandidate):
-            return super(TrackerDispersy, self).create_introduction_request(self, destination, forward)
+            return super(TrackerDispersy, self).create_introduction_request(destination, forward)
 
     def on_introduction_request(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")
