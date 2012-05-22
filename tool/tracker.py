@@ -24,7 +24,7 @@ import signal
 import sys
 
 from callback import Callback
-from candidate import WalkCandidate
+from candidate import WalkCandidate, BootstrapCandidate
 from community import Community
 from conversion import BinaryConversion
 from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
@@ -131,7 +131,7 @@ class TrackerDispersy(Dispersy):
         ec = ec_generate_key(u"very-low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        callback.register(self._unload_communities, priority=-128)
+        callback.register(self._unload_communities)
 
     def get_community(self, cid, load=False, auto_load=True):
         try:
@@ -200,6 +200,11 @@ class TrackerDispersy(Dispersy):
             if __debug__: dprint("cleaning ", len(inactive), "/", len(self._communities), " communities")
             for community in inactive:
                 community.unload_community()
+
+    def create_introduction_request(self, destination, forward=True):
+        # prevent steps towards other trackers
+        if not isinstance(destination, BootstrapCandidate):
+            return super(TrackerDispersy, self).create_introduction_request(self, destination, forward)
 
     def on_introduction_request(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")

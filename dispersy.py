@@ -2381,7 +2381,7 @@ class Dispersy(Singleton):
                     for response_func, response_args in cache.callbacks:
                         response_func(message, *response_args)
 
-    def create_introduction_request(self, community, destination):
+    def create_introduction_request(self, community, destination, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         self._statistics.increment_walk_attempt()
@@ -2451,7 +2451,8 @@ class Dispersy(Singleton):
                 dprint(community.cid.encode("HEX"), " sending introduction request to ", destination, " [", sync[0], ":", sync[1], "] %", sync[2], "+", sync[3])
             else:
                 dprint(community.cid.encode("HEX"), " sending introduction request to ", destination)
-        self.store_update_forward([request], False, False, True)
+        if forward:
+            self._forward([request])
         return request
 
     def check_introduction_request(self, messages):
@@ -3371,7 +3372,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             global_time = community.claim_global_time()
 
         message = meta.impl(authentication=(community.my_member,), distribution=(global_time,))
-        assert message.distribution.global_time == 2, [global_time, message.distribution.global_time, community.global_time, community.database_id]
         self.store_update_forward([message], store, update, False)
         return message
 

@@ -8,7 +8,18 @@ _trackers = [(u"dispersy1.tribler.org", 6421),
              (u"dispersy3.tribler.org", 6423),
              (u"dispersy4.tribler.org", 6424),
              (u"dispersy5.tribler.org", 6425),
-             (u"dispersy6.tribler.org", 6426)]
+             (u"dispersy6.tribler.org", 6426),
+             (u"dispersy7.tribler.org", 6427),
+             (u"dispersy8.tribler.org", 6428),
+
+             (u"dispersy1b.tribler.org", 6421),
+             (u"dispersy2b.tribler.org", 6422),
+             (u"dispersy3b.tribler.org", 6423),
+             (u"dispersy4b.tribler.org", 6424),
+             (u"dispersy5b.tribler.org", 6425),
+             (u"dispersy6b.tribler.org", 6426),
+             (u"dispersy7b.tribler.org", 6427),
+             (u"dispersy8b.tribler.org", 6428)]
 
 def get_bootstrap_hosts(working_directory):
     """

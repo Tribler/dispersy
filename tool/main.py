@@ -54,7 +54,7 @@ def main():
                     script_kargs[key] = value
 
             if opt.enable_dispersy_script:
-                from script import DispersyClassificationScript, DispersyTimelineScript, DispersyDestroyCommunityScript, DispersyBatchScript, DispersySyncScript, DispersyIdenticalPayloadScript, DispersySubjectiveSetScript, DispersySignatureScript, DispersyMemberTagScript, DispersyMissingMessageScript, DispersyUndoScript, DispersyCryptoScript, DispersyDynamicSettings, DispersyBootstrapServers
+                from script import DispersyClassificationScript, DispersyTimelineScript, DispersyDestroyCommunityScript, DispersyBatchScript, DispersySyncScript, DispersyIdenticalPayloadScript, DispersySubjectiveSetScript, DispersySignatureScript, DispersyMemberTagScript, DispersyMissingMessageScript, DispersyUndoScript, DispersyCryptoScript, DispersyDynamicSettings, DispersyBootstrapServers, DispersyBootstrapServersStresstest
                 script.add("dispersy-batch", DispersyBatchScript)
                 script.add("dispersy-classification", DispersyClassificationScript)
                 script.add("dispersy-crypto", DispersyCryptoScript)
@@ -69,6 +69,7 @@ def main():
                 script.add("dispersy-timeline", DispersyTimelineScript)
                 script.add("dispersy-undo", DispersyUndoScript)
                 script.add("dispersy-bootstrap-servers", DispersyBootstrapServers)
+                script.add("dispersy-bootstrap-servers-stresstest", DispersyBootstrapServersStresstest)
 
                 from callbackscript import DispersyCallbackScript
                 script.add("dispersy-callback", DispersyCallbackScript)
