@@ -6,7 +6,6 @@ A callback thread running Dispersy.
 """
 
 from heapq import heappush, heappop
-from itertools import chain
 from thread import get_ident
 from threading import Thread, Lock, Event
 from time import sleep, time
@@ -570,11 +569,43 @@ class Callback(object):
             self._call_exception_handlers(exception, True)
 
         with lock:
+            # shallow copy, allowing us to refuse any new tasks
             requests = requests[:]
             expired = expired[:]
 
-        # send GeneratorExit exceptions to remaining generators
-        for _, _, _, call, _ in chain(expired, requests):
+        # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
+        # new tasks will not be accepted
+        if __debug__: dprint("there are ", len(expired), " expired tasks")
+        while expired:
+            _, _, _, call, callback = heappop(expired)
+            if isinstance(call, TupleType):
+                try:
+                    result = call[0](*call[1], **call[2])
+                except:
+                    dprint(exception=True, level="error")
+                else:
+                    if isinstance(result, GeneratorType):
+                        # we only received the generator, no actual call has been made to the
+                        # function yet, therefore we call it again immediately
+                        call = result
+
+                    elif callback:
+                        try:
+                            callback[0](result, *callback[1], **callback[2])
+                        except:
+                            dprint(exception=True, level="error")
+
+            if isinstance(call, GeneratorType):
+                if __debug__: dprint("raise Shutdown in ", call)
+                try:
+                    call.close()
+                except:
+                    dprint(exception=True, level="error")
+
+        # send GeneratorExit exceptions to scheduled generators
+        if __debug__: dprint("there are ", len(requests), " scheduled tasks")
+        while requests:
+            _, _, _, call, _ = heappop(requests)
             if isinstance(call, GeneratorType):
                 if __debug__: dprint("raise Shutdown in ", call)
                 try:
