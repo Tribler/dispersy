@@ -132,6 +132,7 @@ class TrackerDispersy(Dispersy):
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         callback.register(self._unload_communities)
+        callback.register(self._bandwidth_statistics)
 
     def get_community(self, cid, load=False, auto_load=True):
         try:
@@ -201,6 +202,11 @@ class TrackerDispersy(Dispersy):
             for community in inactive:
                 community.unload_community()
 
+    def _bandwidth_statistics(self):
+        while True:
+            yield 300.0
+            print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
+
     def create_introduction_request(self, destination, forward=True):
         # prevent steps towards other trackers
         if not isinstance(destination, BootstrapCandidate):
@@ -210,14 +216,14 @@ class TrackerDispersy(Dispersy):
         hex_cid = messages[0].community.cid.encode("HEX")
         for message in messages:
             host, port = message.candidate.sock_addr
-            print "REQ_IN", hex_cid, host, port
+            print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_request(messages)
 
     def on_introduction_response(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")
         for message in messages:
             host, port = message.candidate.sock_addr
-            print "RES_IN", hex_cid, host, port
+            print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
 def main():
