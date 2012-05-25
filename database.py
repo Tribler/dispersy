@@ -15,6 +15,20 @@ from singleton import Singleton
 if __debug__:
     from dprint import dprint
 
+class IgnoreCommits(Exception):
+    """
+    Ignore all commits made within the body of a 'with database:' clause.
+
+    with database:
+       # all commit statements are delayed until the database.__exit__
+       database.commit()
+       database.commit()
+       # raising IgnoreCommits causes all commits to be ignored
+       raise IgnoreCommits()
+    """
+    def __init__(self):
+        super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
+
 class Database(Singleton):
     def __init__(self, file_path):
         """
@@ -120,6 +134,9 @@ class Database(Singleton):
             if pending_commits > 1:
                 if __debug__: dprint("performing ", pending_commits - 1, " pending commits")
                 self.commit()
+            return True
+        elif isinstance(exc_value, IgnoreCommits):
+            if __debug__: dprint("enabling Database.commit() without committing now")
             return True
         else:
             if __debug__: dprint("ROLLBACK", level="error")
