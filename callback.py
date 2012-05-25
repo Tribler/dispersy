@@ -459,6 +459,7 @@ class Callback(object):
         get_timestamp = time
         lock = self._lock
         requests = self._requests
+        time_since_expired = 0
 
         self._thread_ident = get_ident()
 
@@ -484,6 +485,10 @@ class Callback(object):
                         heappush(expired, (priority, root_id, None, call, callback))
 
                     if expired:
+                        if __debug__ and len(expired) > 10:
+                            if not time_since_expired:
+                                time_since_expired = actual_time
+                        
                         # we need to handle the next call in line
                         priority, root_id, _, call, callback = heappop(expired)
                         wait = 0.0
@@ -495,7 +500,13 @@ class Callback(object):
                     else:
                         # there is nothing to handle
                         wait = requests[0][0] - actual_time if requests else 300.0
-                        if __debug__: dprint("nothing to handle, wait ", wait, " seconds")
+                        if __debug__: 
+                            dprint("nothing to handle, wait ", wait, " seconds")
+                            if time_since_expired:
+                                diff = actual_time - time_since_expired
+                                if diff > 1.0:
+                                    dprint("took ",round(diff, 2)," to process expired queue", level="warning")
+                                time_since_expired = 0
 
                     if event_is_set():
                         event_clear()
