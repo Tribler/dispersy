@@ -2165,6 +2165,15 @@ class Dispersy(Singleton):
     def candidates(self):
         return self._candidates.itervalues()
 
+    def yield_candidates(self, community):
+        """
+        Yields all active candidates that are part of COMMUNITY.
+        """
+        if __debug__:
+            from community import Community
+        assert isinstance(community, Community)
+        return (candidate for candidate in self._candidates.itervalues() if candidate.in_community(community))
+
     def yield_subjective_candidates(self, community, cluster):
         """
         Yields unique active random candidates that are part of COMMUNITY and who have us in their
