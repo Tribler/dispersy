@@ -77,7 +77,7 @@ class Script(Singleton):
         else:
             for available in sorted(self._scripts):
                 dprint("available: ", available, force=True)
-            raise ValueError("Unknown script '%s'" % name)
+            raise SystemExit("Unknown script '%s'" % name)
 
     def add_testcase(self, call, args):
         if len(self._testcases) == 0:
