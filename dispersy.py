@@ -2172,7 +2172,8 @@ class Dispersy(Singleton):
         if __debug__:
             from community import Community
         assert isinstance(community, Community)
-        return (candidate for candidate in self._candidates.itervalues() if candidate.in_community(community))
+        now = time()
+        return (candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now))
 
     def yield_subjective_candidates(self, community, cluster):
         """
