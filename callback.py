@@ -506,7 +506,7 @@ class Callback(object):
                             if time_since_expired:
                                 diff = actual_time - time_since_expired
                                 if diff > 1.0:
-                                    dprint("took", round(diff, 2), "to process expired queue", level="warning")
+                                    dprint("took ", round(diff, 2), " to process expired queue", level="warning")
                                 time_since_expired = 0
 
                     if event_is_set():
