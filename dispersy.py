@@ -2503,7 +2503,7 @@ class Dispersy(Singleton):
             # to each other is relatively small.
             if self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
                 if __debug__: dprint("dropping dispersy-introduction-request, this identifier is already in use.")
-                yield DropMessage(message, "Duplicate identifier (most likely received from ourself)")
+                yield DropMessage(message, "Duplicate identifier from %s (most likely received from ourself)" % str(message.candidate))
                 continue
 
             if __debug__: dprint("accepting dispersy-introduction-request from ", message.candidate)
