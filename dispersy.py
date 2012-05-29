@@ -100,19 +100,13 @@ class IntroductionRequestCache(Cache):
     timeout_delay = 10.5
     # the cache remains available at most 4.5 after receiving the response.  this gives some time to
     # receive the puncture message
-    if __debug__:
-        cleanup_delay = 304.5
-    else:
-        cleanup_delay = 4.5
+    cleanup_delay = 4.5
 
     def __init__(self, community, helper_candidate):
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None
         self.puncture_candidate = None
-        if __debug__:
-            self.request_time = time()
-            self.timeout_occurred = False
 
     def on_timeout(self):
         # helper_candidate did not respond to a request message in this community.  after some time
@@ -121,7 +115,6 @@ class IntroductionRequestCache(Cache):
         if __debug__:
             dprint("walker timeout for ", self.helper_candidate)
             self.community.dispersy._statistics.walk_fail(self.helper_candidate.sock_addr)
-            self.timeout_occurred = True
 
         # we choose to set the entire helper to inactive instead of just the community where the
         # timeout occurred.  this will allow us to quickly respond to nodes going offline, while the
@@ -2732,18 +2725,9 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
     def check_introduction_response(self, messages):
         for message in messages:
-            if __debug__:
-                cache = self._request_cache.get(message.payload.identifier, IntroductionRequestCache)
-                if cache and cache.timeout_occurred:
-                    yield DropMessage(message, "invalid response identifier from %s, timeout occurred.  requested %.2fs ago" % (str(message.candidate), time() - cache.request_time))
-                    continue
-                if not cache:
-                    yield DropMessage(message, "invalid response identifier")
-                    continue
-            else:
-                if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
-                    yield DropMessage(message, "invalid response identifier")
-                    continue
+            if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+                yield DropMessage(message, "invalid response identifier")
+                continue
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
