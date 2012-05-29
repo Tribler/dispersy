@@ -195,7 +195,7 @@ class RawserverEndpoint(Endpoint):
                         except:
                             name = "???"
                         print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
-            self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()), priority=1024)
+            self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
 
     def dispersythread_data_came_in(self, packets, timestamp):
         # iterator = ((self._dispersy.get_candidate(sock_addr), data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
@@ -328,7 +328,7 @@ class TunnelEndpoint(Endpoint):
                     name = "???"
                 print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
         self._total_down += len(data)
-        self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()), priority=1024)
+        self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
 
     def dispersythread_data_came_in(self, sock_addr, data, timestamp):
         # candidate = self._dispersy.get_candidate(sock_addr) or self._dispersy.create_candidate(WalkCandidate, sock_addr, True)
