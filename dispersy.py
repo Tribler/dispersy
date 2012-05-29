@@ -2759,10 +2759,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     yield DropMessage(message, "invalid LAN introduction address [introducing myself]")
                     continue
 
-                if message.payload.lan_introduction_address in self._bootstrap_candidates:
-                    yield DropMessage(message, "invalid LAN introduction address [introducing bootstrap node]")
-                    continue
-
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
                 if not self._is_valid_wan_address(message.payload.wan_introduction_address):
@@ -2775,10 +2771,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
                 if message.payload.wan_introduction_address == self._wan_address:
                     yield DropMessage(message, "invalid WAN introduction address [introducing myself]")
-                    continue
-
-                if message.payload.wan_introduction_address in self._bootstrap_candidates:
-                    yield DropMessage(message, "invalid WAN introduction address [introducing bootstrap node]")
                     continue
 
             yield message
@@ -2821,7 +2813,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             # handle the introduction
             lan_introduction_address = payload.lan_introduction_address
             wan_introduction_address = payload.wan_introduction_address
-            if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0)):
+            if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0) or
+                    lan_introduction_address in self._bootstrap_candidates or wan_introduction_address in self._bootstrap_candidates):
                 assert self._is_valid_lan_address(lan_introduction_address), lan_introduction_address
                 assert self._is_valid_wan_address(wan_introduction_address), wan_introduction_address
 
