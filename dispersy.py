@@ -1822,7 +1822,7 @@ class Dispersy(Singleton):
         # # todo: make _convert_batch_into_messages accept iterator instead of list to avoid conversion
         # batch = list(unique(batch))
 
-        BEGIN = time()
+        # BEGIN = time()
 
         # convert binary packets into Message.Implementation instances
         messages = list(self._convert_batch_into_messages(batch))
@@ -1834,8 +1834,8 @@ class Dispersy(Singleton):
         if messages:
             self.on_message_batch(messages)
 
-        END = time()
-        dprint("%4.2f" % (END-BEGIN), " seconds for %2d" % len(batch), " ", meta.name, " messages", force=True)
+        # END = time()
+        # dprint("%4.2f" % (END-BEGIN), " seconds for %2d" % len(batch), " ", meta.name, " messages", force=True)
 
     def on_messages(self, messages):
         batches = dict()
