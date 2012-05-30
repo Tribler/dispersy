@@ -1424,7 +1424,7 @@ class BinaryConversion(Conversion):
         assert isinstance(candidate, Candidate), candidate
         assert isinstance(data, str), data
         assert isinstance(verify, bool)
-        return self._decode_message(candidate, data, verify, False)
+        return self._decode_message(candidate, data, False, False)
 
 class DefaultConversion(BinaryConversion):
     """
