@@ -833,8 +833,9 @@ class Community(object):
             else:
                 offset = 0
                 modulo = 1
-
-            bloom.add_keys(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND sync.global_time > 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
+            
+            packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND sync.global_time > 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
+            bloom.add_keys(packets)
 
             if __debug__:
                 dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d"%(modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets))
