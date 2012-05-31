@@ -9,6 +9,7 @@ import threading
 from time import time
 
 from candidate import Candidate
+from traceback import print_exc
 
 if __debug__:
     from dprint import dprint
@@ -267,6 +268,8 @@ class RawserverEndpoint(Endpoint):
                         self._sendqueue.insert(0, (data, sock_addr))
                         self._rawserver.add_task(self._process_sendqueue, 0.1)
                         break
+                    else:
+                        print_exc()
 
 class TunnelEndpoint(Endpoint):
     def __init__(self, swift_process, dispersy):
