@@ -33,6 +33,9 @@ from singleton import Singleton
 
 from debugcommunity import DebugCommunity, DebugNode
 
+if __debug__:
+    from callback import Callback
+
 def assert_(value, *args):
     if not value:
         raise AssertionError(*args)
@@ -51,32 +54,26 @@ def assert_message_stored(community, member, global_time, undone="done"):
     assert_((undone == "done" and actual_undone == 0) or undone == "undone" and 0 < actual_undone, [undone, actual_undone])
 
 class Script(Singleton):
-    def __init__(self, callback):
-        self._scripts = {}
+    def __init__(self, callback, kargs=None):
+        assert isinstance(callback, Callback), callback
+        assert kargs is None or isinstance(kargs, dict), kargs
         self._callback = callback
+        self._kargs = {} if kargs is None else kargs
+        self._scripts = {}
         self._testcases = []
 
-    def add(self, name, script, kargs={}, include_with_all=True):
+    def add(self, name, script):
         assert_(isinstance(name, str))
         assert_(not name in self._scripts)
         assert_(issubclass(script, ScriptBase))
-        self._scripts[name] = (include_with_all, script, kargs)
+        self._scripts[name] = script
 
     def load(self, name):
         dprint(name)
-
-        if name == "all":
-            for name, (include_with_all, script, kargs) in self._scripts.iteritems():
-                if include_with_all:
-                    dprint(name)
-                    script(self, name, **kargs)
-
-        elif name in self._scripts:
-            self._scripts[name][1](self, name, **self._scripts[name][2])
-
+        if name in self._scripts:
+            self._scripts[name](self, name, **self._kargs)
         else:
-            for available in sorted(self._scripts):
-                dprint("available: ", available, force=True)
+            dprint(["--script %s" % n for n in sorted(self._scripts)], lines=True, box=True, force=True)
             raise SystemExit("Unknown script '%s'" % name)
 
     def add_testcase(self, call, args):
