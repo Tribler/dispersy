@@ -20,7 +20,7 @@ def start_script(opt):
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
     except:
-        raise SystemExit("Invalid --script")
+        raise SystemExit("Invalid --script", opt.script)
 
     try:
         kargs = {}
@@ -30,7 +30,7 @@ def start_script(opt):
                     key, value = karg.split("=", 1)
                     kargs[key.strip()] = value.strip()
     except:
-        raise SystemExit("Invalid --kargs")
+        raise SystemExit("Invalid --kargs", opt.kargs)
 
     script = cls(**kargs)
     script.next_testcase()
