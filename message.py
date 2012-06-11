@@ -291,7 +291,7 @@ class Packet(MetaObject.Implementation):
 #
 class Message(MetaObject):
     class Implementation(Packet):
-        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0):
+        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
             if __debug__:
                 from payload import Payload
                 from conversion import Conversion
@@ -330,7 +330,7 @@ class Message(MetaObject):
                 self._conversion = meta._community.get_conversion()
 
             if not packet:
-                self._packet = self._conversion.encode_message(self)
+                self._packet = self._conversion.encode_message(self, sign=sign)
 
         @property
         def conversion(self):

@@ -1182,6 +1182,7 @@ class Community(object):
         @rtype: int or long
         """
         self._global_time += 1
+        if __debug__: dprint(self._global_time)
         return self._global_time
 
     def update_global_time(self, global_time):
@@ -1442,8 +1443,8 @@ class Community(object):
         return self._dispersy.create_identity(self, store, update)
 
     @documentation(Dispersy.create_signature_request)
-    def create_dispersy_signature_request(self, message, response_func, response_args=(), timeout=10.0, store=True, forward=True):
-        return self._dispersy.create_signature_request(self, message, response_func, response_args, timeout, store, forward)
+    def create_dispersy_signature_request(self, message, response_func, response_args=(), timeout=10.0, forward=True):
+        return self._dispersy.create_signature_request(self, message, response_func, response_args, timeout, forward)
 
     @documentation(Dispersy.create_destroy_community)
     def create_dispersy_destroy_community(self, degree, sign_with_master=False, store=True, update=True, forward=True):
@@ -1456,7 +1457,7 @@ class Community(object):
     @documentation(Dispersy.create_dynamic_settings)
     def create_dispersy_dynamic_settings(self, policies, sign_with_master=False, store=True, update=True, forward=True):
         return self._dispersy.create_dynamic_settings(self, policies, sign_with_master, store, update, forward)
-    
+
     @documentation(Dispersy.create_introduction_request)
     def create_introduction_request(self, candidate):
         return self._dispersy.create_introduction_request(self, candidate)

@@ -29,12 +29,8 @@ from dprint import dprint
 from member import Member
 from message import BatchConfiguration, Message, DelayMessageByProof, DropMessage
 from resolution import PublicResolution, LinearResolution
-from singleton import Singleton
 
 from debugcommunity import DebugCommunity, DebugNode
-
-if __debug__:
-    from callback import Callback
 
 def assert_(value, *args):
     if not value:
@@ -53,67 +49,44 @@ def assert_message_stored(community, member, global_time, undone="done"):
     assert_(0 <= actual_undone, actual_undone)
     assert_((undone == "done" and actual_undone == 0) or undone == "undone" and 0 < actual_undone, [undone, actual_undone])
 
-class Script(Singleton):
-    def __init__(self, callback, kargs=None):
-        assert isinstance(callback, Callback), callback
-        assert kargs is None or isinstance(kargs, dict), kargs
-        self._callback = callback
-        self._kargs = {} if kargs is None else kargs
-        self._scripts = {}
+class ScriptBase(object):
+    def __init__(self, **kargs):
+        self._kargs = kargs
         self._testcases = []
+        self._dispersy = Dispersy.get_instance()
+        self._dispersy_database = DispersyDatabase.get_instance()
+        self._dispersy.callback.register(self.run)
+        self.add_testcase(self.wait_for_wan_address)
 
-    def add(self, name, script):
-        assert_(isinstance(name, str))
-        assert_(not name in self._scripts)
-        assert_(issubclass(script, ScriptBase))
-        self._scripts[name] = script
+    def add_testcase(self, func, args=()):
+        assert callable(func)
+        assert isinstance(args, tuple)
+        self._testcases.append((func, args))
 
-    def load(self, name):
-        dprint(name)
-        if name in self._scripts:
-            self._scripts[name](self, name, **self._kargs)
-        else:
-            dprint(["--script %s" % n for n in sorted(self._scripts)], lines=True, box=True, force=True)
-            raise SystemExit("Unknown script '%s'" % name)
-
-    def add_testcase(self, call, args):
-        if len(self._testcases) == 0:
-            self._callback.register(self._next_testcase, priority=-1024)
-        self._testcases.append((call, args))
-
-    def _next_testcase(self, result=None):
+    def next_testcase(self, result=None):
         if isinstance(result, Exception):
             dprint("exception! shutdown", box=True, level="error")
-            self._callback.stop(wait=False, exception=result)
+            self._dispersy.callback.stop(wait=False, exception=result)
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
             dprint("start ", call, line=True, force=True)
             if call.__doc__:
                 dprint(call.__doc__, box=True)
-            self._callback.register(call, args, callback=self._next_testcase)
+            self._dispersy.callback.register(call, args, callback=self.next_testcase)
 
         else:
             dprint("shutdown", box=True)
-            self._callback.stop(wait=False)
-
-class ScriptBase(object):
-    def __init__(self, script, name, **kargs):
-        self._script = script
-        self._name = name
-        self._kargs = kargs
-        self._dispersy = Dispersy.get_instance()
-        self._dispersy_database = DispersyDatabase.get_instance()
-        self._dispersy.callback.register(self.run)
-        self.caller(self.wait_for_wan_address)
+            self._dispersy.callback.stop(wait=False)
 
     def caller(self, run, args=()):
         assert callable(run)
         assert isinstance(args, tuple)
-        self._script.add_testcase(run, args)
+        dprint("depricated: use add_testcase instead", level="warning")
+        return self.add_testcase(run, args)
 
     def run(self):
-        raise NotImplementedError("Must implement a generator or use self.caller(...)")
+        raise NotImplementedError("Must implement a generator or use self.add_testcase(...)")
 
     def wait_for_wan_address(self):
         ec = ec_generate_key(u"low")
@@ -349,16 +322,16 @@ class DispersyClassificationScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.load_no_communities)
-        self.caller(self.load_one_communities)
-        self.caller(self.load_two_communities)
-        self.caller(self.unloading_community)
+        self.add_testcase(self.load_no_communities)
+        self.add_testcase(self.load_one_communities)
+        self.add_testcase(self.load_two_communities)
+        self.add_testcase(self.unloading_community)
 
-        self.caller(self.enable_autoload)
-        self.caller(self.enable_disable_autoload)
+        self.add_testcase(self.enable_autoload)
+        self.add_testcase(self.enable_disable_autoload)
 
-        self.caller(self.reclassify_unloaded_community)
-        self.caller(self.reclassify_loaded_community)
+        self.add_testcase(self.reclassify_unloaded_community)
+        self.add_testcase(self.reclassify_loaded_community)
 
     def reclassify_unloaded_community(self):
         """
@@ -728,12 +701,12 @@ class DispersyTimelineScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.succeed_check)
-        self.caller(self.fail_check)
-        self.caller(self.loading_community)
-        self.caller(self.delay_by_proof)
-        self.caller(self.missing_proof)
-        self.caller(self.missing_authorize_proof)
+        self.add_testcase(self.succeed_check)
+        self.add_testcase(self.fail_check)
+        self.add_testcase(self.loading_community)
+        self.add_testcase(self.delay_by_proof)
+        self.add_testcase(self.missing_proof)
+        self.add_testcase(self.missing_authorize_proof)
 
     def succeed_check(self):
         """
@@ -1004,7 +977,7 @@ class DispersyDestroyCommunityScript(ScriptBase):
         # todo: test that after a hard-kill, all new incoming messages are dropped.
         # todo: test that after a hard-kill, nothing is added to the candidate table anymore
 
-        self.caller(self.hard_kill)
+        self.add_testcase(self.hard_kill)
 
     def hard_kill(self):
         community = DebugCommunity.create_community(self._my_member)
@@ -1048,8 +1021,8 @@ class DispersyMemberTagScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.ignore_test)
-        self.caller(self.blacklist_test)
+        self.add_testcase(self.ignore_test)
+        self.add_testcase(self.blacklist_test)
 
     def ignore_test(self):
         """
@@ -1171,20 +1144,20 @@ class DispersyBatchScript(ScriptBase):
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         # duplicate messages are removed
-        self.caller(self.one_batch_binary_duplicate)
-        self.caller(self.two_batches_binary_duplicate)
-        self.caller(self.one_batch_member_global_time_duplicate)
-        self.caller(self.two_batches_member_global_time_duplicate)
+        self.add_testcase(self.one_batch_binary_duplicate)
+        self.add_testcase(self.two_batches_binary_duplicate)
+        self.add_testcase(self.one_batch_member_global_time_duplicate)
+        self.add_testcase(self.two_batches_member_global_time_duplicate)
 
         # batches
         length = 1000
         max_size = 25
         self._results = []
-        self.caller(self.max_batch_size, (length - 1, max_size))
-        self.caller(self.max_batch_size, (length, max_size))
-        self.caller(self.max_batch_size, (length + 1, max_size))
-        self.caller(self.one_big_batch, (length,))
-        self.caller(self.many_small_batches, (length,))
+        self.add_testcase(self.max_batch_size, (length - 1, max_size))
+        self.add_testcase(self.max_batch_size, (length, max_size))
+        self.add_testcase(self.max_batch_size, (length + 1, max_size))
+        self.add_testcase(self.one_big_batch, (length,))
+        self.add_testcase(self.many_small_batches, (length,))
 
     def one_batch_binary_duplicate(self):
         """
@@ -1428,20 +1401,20 @@ class DispersySyncScript(ScriptBase):
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         # modulo sync handling
-        self.caller(self.modulo_test)
+        self.add_testcase(self.modulo_test)
 
         # different sync policies
-        self.caller(self.in_order_test)
-        self.caller(self.out_order_test)
-        self.caller(self.mixed_order_test)
-        self.caller(self.last_1_test)
-        self.caller(self.last_9_test)
+        self.add_testcase(self.in_order_test)
+        self.add_testcase(self.out_order_test)
+        self.add_testcase(self.mixed_order_test)
+        self.add_testcase(self.last_1_test)
+        self.add_testcase(self.last_9_test)
 
         # multimember authentication and last sync policies
-        self.caller(self.last_1_multimember)
-        self.caller(self.last_1_multimember_unique_member_global_time)
+        self.add_testcase(self.last_1_multimember)
+        self.add_testcase(self.last_1_multimember_unique_member_global_time)
         # # TODO add more checks for the multimemberauthentication case
-        # self.caller(self.last_9_multimember)
+        # self.add_testcase(self.last_9_multimember)
 
     def modulo_test(self):
         """
@@ -1930,8 +1903,8 @@ class DispersyIdenticalPayloadScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.incoming__drop_first)
-        self.caller(self.incoming__drop_second)
+        self.add_testcase(self.incoming__drop_first)
+        self.add_testcase(self.incoming__drop_second)
 
     def incoming__drop_first(self):
         """
@@ -2048,10 +2021,10 @@ class DispersySignatureScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.double_signed_timeout)
-        self.caller(self.double_signed_response)
-        # self.caller(self.triple_signed_timeout)
-        # self.caller(self.triple_signed_response)
+        self.add_testcase(self.double_signed_timeout)
+        self.add_testcase(self.double_signed_response)
+        # self.add_testcase(self.triple_signed_timeout)
+        # self.add_testcase(self.triple_signed_response)
 
     def double_signed_timeout(self):
         """
@@ -2250,9 +2223,9 @@ class DispersySubjectiveSetScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.storage)
-        self.caller(self.full_sync)
-        self.caller(self.subjective_set_request)
+        self.add_testcase(self.storage)
+        self.add_testcase(self.full_sync)
+        self.add_testcase(self.subjective_set_request)
 
     def storage(self):
         """
@@ -2380,10 +2353,10 @@ class DispersySubjectiveSetScript(ScriptBase):
 #         ec = ec_generate_key(u"low")
 #         self._my_member = Member.get_instance(ec_to_public_bin(ec), ec_to_private_bin(ec), sync_with_database=True)
 
-#         # self.caller(self.similarity_check_incoming_packets)
-#         self.caller(self.similarity_fullsync)
-#         self.caller(self.similarity_lastsync)
-#         self.caller(self.similarity_missing_sim)
+#         # self.add_testcase(self.similarity_check_incoming_packets)
+#         self.add_testcase(self.similarity_fullsync)
+#         self.add_testcase(self.similarity_lastsync)
+#         self.add_testcase(self.similarity_missing_sim)
 
 #     def similarity_check_incoming_packets(self):
 #         """
@@ -2720,9 +2693,9 @@ class DispersyMissingMessageScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.single_request)
-        self.caller(self.single_request_out_of_order)
-        self.caller(self.triple_request)
+        self.add_testcase(self.single_request)
+        self.add_testcase(self.single_request_out_of_order)
+        self.add_testcase(self.triple_request)
 
     def single_request(self):
         """
@@ -2839,16 +2812,16 @@ class DispersyUndoScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        # self.caller(self.self_undo_own)
-        # self.caller(self.self_undo_other)
-        # self.caller(self.node_undo_own)
-        # self.caller(self.node_undo_other)
-        # self.caller(self.self_malicious_undo)
-        # self.caller(self.node_malicious_undo)
-        self.caller(self.node_non_malicious_undo)
-        self.caller(self.missing_message)
-        self.caller(self.revoke_simple)
-        self.caller(self.revoke_causing_undo)
+        # self.add_testcase(self.self_undo_own)
+        # self.add_testcase(self.self_undo_other)
+        # self.add_testcase(self.node_undo_own)
+        # self.add_testcase(self.node_undo_other)
+        # self.add_testcase(self.self_malicious_undo)
+        # self.add_testcase(self.node_malicious_undo)
+        self.add_testcase(self.node_non_malicious_undo)
+        self.add_testcase(self.missing_message)
+        self.add_testcase(self.revoke_simple)
+        self.add_testcase(self.revoke_causing_undo)
 
     def self_undo_own(self):
         """
@@ -3289,7 +3262,7 @@ class DispersyCryptoScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.invalid_public_key)
+        self.add_testcase(self.invalid_public_key)
 
     def invalid_public_key(self):
         """
@@ -3329,10 +3302,10 @@ class DispersyDynamicSettings(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.default_resolution)
-        self.caller(self.change_resolution)
-        self.caller(self.change_resolution_undo)
-        self.caller(self.wrong_resolution)
+        self.add_testcase(self.default_resolution)
+        self.add_testcase(self.change_resolution)
+        self.add_testcase(self.change_resolution_undo)
+        self.add_testcase(self.wrong_resolution)
 
     def default_resolution(self):
         """
@@ -3616,7 +3589,7 @@ class DispersyBootstrapServers(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.ping)
+        self.add_testcase(self.ping)
 
     def ping(self):
         """
@@ -3703,7 +3676,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.caller(self.stress)
+        self.add_testcase(self.stress)
 
     def stress(self):
         """

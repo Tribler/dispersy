@@ -8,19 +8,22 @@ rm -f sqlite/dispersy.db
 rm -f sqlite/dispersy.db-journal
 rm -f dispersy.log
 
-python testcases.py --script dispersy-batch || exit 1
-python testcases.py --script dispersy-classification || exit 1
-python testcases.py --script dispersy-crypto || exit 1
-python testcases.py --script dispersy-destroy-community || exit 1
-python testcases.py --script dispersy-dynamic-settings || exit 1
-python testcases.py --script dispersy-identical-payload || exit 1
-python testcases.py --script dispersy-member-tag || exit 1
-python testcases.py --script dispersy-missing-message || exit 1
-python testcases.py --script dispersy-signature || exit 1
-# python testcases.py --script dispersy-subjective-set || exit 1
-python testcases.py --script dispersy-sync || exit 1
-python testcases.py --script dispersy-timeline || exit 1
-python testcases.py --script dispersy-undo || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBatchScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBootstrapServers || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBootstrapServersStresstest || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyClassificationScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyCryptoScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyDestroyCommunityScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyDynamicSettings || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyIdenticalPayloadScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyMemberTagScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyMissingMessageScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySignatureScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySubjectiveSetScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySyncScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyTimelineScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyUndoScript || exit 1
+python -c "from dispersy.tool.main import main; main()" --script dispersy.tool.callbackscript.DispersyCallbackScript || exit 1
 
 echo "================================================================================"
 echo "Testcases in optimized mode"
@@ -30,19 +33,22 @@ rm -f sqlite/dispersy.db
 rm -f sqlite/dispersy.db-journal
 rm -f dispersy.log
 
-python -O testcases.py --script dispersy-batch || exit 1
-python -O testcases.py --script dispersy-classification || exit 1
-python -O testcases.py --script dispersy-crypto || exit 1
-python -O testcases.py --script dispersy-destroy-community || exit 1
-python -O testcases.py --script dispersy-dynamic-settings || exit 1
-python -O testcases.py --script dispersy-identical-payload || exit 1
-python -O testcases.py --script dispersy-member-tag || exit 1
-python -O testcases.py --script dispersy-missing-message || exit 1
-python -O testcases.py --script dispersy-signature || exit 1
-# python -O testcases.py --script dispersy-subjective-set || exit 1
-python -O testcases.py --script dispersy-sync || exit 1
-python -O testcases.py --script dispersy-timeline || exit 1
-python -O testcases.py --script dispersy-undo || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBatchScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBootstrapServers || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyBootstrapServersStresstest || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyClassificationScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyCryptoScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyDestroyCommunityScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyDynamicSettings || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyIdenticalPayloadScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyMemberTagScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyMissingMessageScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySignatureScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySubjectiveSetScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersySyncScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyTimelineScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.script.DispersyUndoScript || exit 1
+python -O -c "from dispersy.tool.main import main; main()" --script dispersy.tool.callbackscript.DispersyCallbackScript || exit 1
 
 echo "================================================================================"
 echo "Finished testcases successfully"

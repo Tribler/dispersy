@@ -21,7 +21,7 @@ class ScenarioScript(ScriptBase):
         self._community = None
 
     def run(self):
-        self.caller(self._run_scenario)
+        self.add_testcase(self._run_scenario)
 
     def _run_scenario(self):
         for deadline, _, call, args in self.parse_scenario():

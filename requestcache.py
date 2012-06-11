@@ -30,6 +30,7 @@ class RequestCache(object):
 
     def set(self, identifier, cache):
         assert isinstance(identifier, (int, long, str)), type(identifier)
+        assert not identifier in self._identifiers, identifier
         assert isinstance(cache, Cache)
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
@@ -73,7 +74,7 @@ class RequestCache(object):
             return cache
 
     def _on_timeout(self, identifier):
-        assert identifier in self._identifiers
+        assert identifier in self._identifiers, identifier
         cache = self._identifiers.get(identifier)
         if __debug__: dprint("timeout on ", identifier, " for ", cache)
         cache.on_timeout()

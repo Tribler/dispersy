@@ -4,7 +4,6 @@ Run Dispersy in standalone mode.
 
 import optparse
 
-from ..script import Script
 from ..callback import Callback
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
@@ -16,27 +15,49 @@ def watchdog(dispersy):
     except GeneratorExit:
         dispersy.endpoint.stop()
 
-def main(setup=None, ready=None):
+def start_script(opt):
+    try:
+        module, class_ = opt.script.strip().rsplit(".", 1)
+        cls = getattr(__import__(module, fromlist=[class_]), class_)
+    except:
+        raise SystemExit("Invalid --script")
+
+    try:
+        kargs = {}
+        if opt.kargs:
+            for karg in opt.kargs.split(","):
+                if "=" in karg:
+                    key, value = karg.split("=", 1)
+                    kargs[key.strip()] = value.strip()
+    except:
+        raise SystemExit("Invalid --kargs")
+
+    script = cls(**kargs)
+    script.next_testcase()
+
+def main(setup=None):
     assert setup is None or callable(setup)
-    assert ready is None or callable(ready)
 
     # define options
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=u".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=12345)
-    command_line_parser.add_option("--script", action="store", type="string", help="Runs the Script python file with <SCRIPT> as an argument", default="")
-    command_line_parser.add_option("--script-kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
+    command_line_parser.add_option("--script", action="store", type="string", help="Script to execute, i.e. module.module.class", default="")
+    command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     # # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
     # command_line_parser.add_option("--swiftcmdlistenport", action="store", type="int", default=7760+481)
     # command_line_parser.add_option("--swiftdlsperproc", action="store", type="int", default=1000)
-    if callable(setup):
+    if setup:
         setup(command_line_parser)
 
     # parse command-line arguments
-    opt, _ = command_line_parser.parse_args()
+    opt, args = command_line_parser.parse_args()
+    if not opt.script:
+        command_line_parser.print_help()
+        exit(1)
     print "Press Ctrl-C to stop Dispersy"
 
     # setup
@@ -53,23 +74,14 @@ def main(setup=None, ready=None):
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
     dispersy.endpoint.start()
 
-    # scripts
-    script_kargs = {}
-    if opt.script_kargs:
-        for arg in opt.script_args.split(","):
-            key, value = arg.split("=")
-            script_kargs[key] = value
-    script = Script.get_instance(callback, script_kargs)
-
     # register tasks
     callback.register(watchdog, (dispersy,))
-    if callable(ready):
-        callback.register(ready, (dispersy, script))
-    callback.register(script.load, (opt.script,))
+    callback.register(start_script, (opt,))
 
     # start
     callback.loop()
-    return callback.exception
+    if callback.exception:
+        raise callback.exception
 
 #             if opt.enable_allchannel_script:
 #                 # from Tribler.Community.allchannel.script import AllChannelScript

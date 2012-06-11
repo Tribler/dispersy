@@ -1089,23 +1089,27 @@ class BinaryConversion(Conversion):
         container.append(chr(index))
         # both the public and the linear resolution do not require any storage
 
-    def _encode_no_authentication_signature(self, container, message):
+    def _encode_no_authentication_signature(self, container, message, sign):
         return "".join(container)
 
-    def _encode_member_authentication_signature(self, container, message):
+    def _encode_member_authentication_signature(self, container, message, sign):
         assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
-        data = "".join(container)
-        signature = message.authentication.member.sign(data)
-        message.authentication.set_signature(signature)
-        return data + signature
+        if sign:
+            data = "".join(container)
+            signature = message.authentication.member.sign(data)
+            message.authentication.set_signature(signature)
+            return data + signature
 
-    def _encode_multi_member_authentication_signature(self, container, message):
+        else:
+            return data + "\x00" * message.authentication.member.signature_length
+
+    def _encode_multi_member_authentication_signature(self, container, message, sign):
         data = "".join(container)
         signatures = []
         for signature, member in message.authentication.signed_members:
             if signature:
                 signatures.append(signature)
-            elif member.private_key:
+            elif sign and member.private_key:
                 signature = member.sign(data)
                 message.authentication.set_signature(member, signature)
                 signatures.append(signature)
@@ -1113,7 +1117,7 @@ class BinaryConversion(Conversion):
                 signatures.append("\x00" * member.signature_length)
         return data + "".join(signatures)
 
-    def encode_message(self, message):
+    def encode_message(self, message, sign=True):
         assert isinstance(message, Message.Implementation), message
         assert message.name in self._encode_message_map, message.name
         encode_functions = self._encode_message_map[message.name]
@@ -1137,7 +1141,7 @@ class BinaryConversion(Conversion):
         container.extend(payload)
 
         # sign
-        packet = encode_functions.signature(container, message)
+        packet = encode_functions.signature(container, message, sign)
 
         if __debug__:
             if len(packet) > 1500 - 60 - 8:
@@ -1305,7 +1309,7 @@ class BinaryConversion(Conversion):
                 # dprint("INDEX: ", index, force=1)
                 # dprint(signature.encode('HEX'), force=1)
                 if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
-                    signatures[index] = signature
+                    signatures[index] = ""
 
                 elif (not placeholder.verify and len(members) == 1) or member.verify(data, data[signature_offset:signature_offset+member.signature_length], length=first_signature_offset):
                     signatures[index] = signature

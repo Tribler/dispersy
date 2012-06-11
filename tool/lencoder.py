@@ -1,10 +1,9 @@
 #!/usr/bin/python
 
+from atexit import register
 from bz2 import BZ2File
 from string import digits, letters, punctuation
-from sys import stderr
 from time import strftime
-from traceback import print_stack
 import re
 
 def _encode_str(l, value):
@@ -111,17 +110,14 @@ def bz2log(filename, _message, **kargs):
 
     global _cache
     handle = _cache.get(filename)
-    if handle == "LOCKED":
-        print >> stderr, "Trying to log to closed", filename
-        print_stack(file=stderr)
-        return None
-    elif handle:
+    if handle:
         l = [strftime("%Y%m%d%H%M%S"), _seperator]
     else:
         l = ["################################################################################", "\n",
              strftime("%Y%m%d%H%M%S"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
              strftime("%Y%m%d%H%M%S"), _seperator]
         handle = BZ2File(filename, "w", 8*1024, 9)
+        register(handle.close)
         _cache[filename] = handle
 
     _encode_str(l, _message)
@@ -136,12 +132,6 @@ def bz2log(filename, _message, **kargs):
     handle.write(s)
 
     return handle
-
-def close(filename):
-    bz2log(filename, "logger", event="stop")
-    global _cache
-    _cache[filename].close()
-    _cache[filename] = "LOCKED"
 
 def to_string(datetime, _message, **kargs):
     assert isinstance(_message, str)

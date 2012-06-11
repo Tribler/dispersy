@@ -932,7 +932,7 @@ class Dispersy(Singleton):
                             assert master.mid in self._communities
 
                         else:
-                            if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="error")
+                            if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="warning")
 
                     else:
                         if __debug__: dprint("not allowed to load '", classification, "'")
@@ -1439,6 +1439,7 @@ class Dispersy(Singleton):
 
                     else:
                         # we accept this message
+                        if __debug__: dprint("accept ", message.name, " ", message.authentication.member.database_id, "@", message.distribution.global_time)
                         tim.append(message.distribution.global_time)
                         return message
 
@@ -2077,6 +2078,8 @@ class Dispersy(Singleton):
                 if not message.authentication.member.must_store:
                     if __debug__: dprint("not storing message")
                     continue
+
+            if __debug__: dprint(message.name, " ", message.authentication.member.database_id, "@", message.distribution.global_time)
 
             # add packet to database
             self._database.execute(u"INSERT INTO sync (community, member, global_time, meta_message, packet) VALUES (?, ?, ?, ?, ?)",
@@ -3522,7 +3525,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
         self.handle_missing_messages(messages, MissingSubjectiveSetCache)
 
-    def create_signature_request(self, community, message, response_func, response_args=(), timeout=10.0, store=True, forward=True):
+    def create_signature_request(self, community, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
         Create a dispersy-signature-request message.
 
@@ -3562,11 +3565,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         @param timeout: How long before a timeout is generated.
         @type timeout: float
 
-        @param store: When True the messages are stored (as defined by their message distribution
-         policy) in the local dispersy database.  This parameter should (almost always) be True, its
-         inclusion is mostly to allow certain debugging scenarios.
-        @type store: bool
-
         @param forward: When True the messages are forwarded (as defined by their message
          destination policy) to other nodes in the community.  This parameter should (almost always)
          be True, its inclusion is mostly to allow certain debugging scenarios.
@@ -3581,7 +3579,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         assert hasattr(response_func, "__call__")
         assert isinstance(response_args, tuple)
         assert isinstance(timeout, float)
-        assert isinstance(store, bool)
         assert isinstance(forward, bool)
 
         # the members that need to sign
@@ -3599,7 +3596,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                                   payload=(identifier, message))
 
         if __debug__: dprint("asking ", ", ".join(member.mid.encode("HEX") for member in members))
-        self.store_update_forward([cache.request], store, False, forward)
+        self._forward([cache.request])
         return cache.request
 
     def check_signature_request(self, messages):
@@ -3679,14 +3676,38 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                                            destination=(message.candidate,),
                                            payload=(message.payload.identifier, submsg)))
 
-        self.store_update_forward(responses, False, False, True)
+        if responses:
+            self._forward(responses)
 
     def check_signature_response(self, messages):
+        unique = set()
+
         for message in messages:
-            if not self._request_cache.has(message.payload.identifier, SignatureRequestCache):
+            if message.payload.identifier in unique:
+                yield DropMessage(message, "duplicate identifier in batch")
+                continue
+
+            cache = self._request_cache.get(message.payload.identifier, SignatureRequestCache)
+            if not cache:
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
+            old_submsg = cache.request.payload.message
+            new_submsg = message.payload.message
+
+            if not old_submsg.meta is new_submsg.meta:
+                yield DropMessage(message, "meta message may not change")
+                continue
+
+            if not old_submsg.authentication.member is new_submsg.authentication.member:
+                yield DropMessage(message, "first member may not change")
+                continue
+
+            if not old_submsg.distribution.global_time is new_submsg.distribution.global_time:
+                yield DropMessage(message, "global time may not change")
+                continue
+
+            unique.add(message.payload.identifier)
             yield message
 
     def on_signature_response(self, messages):
@@ -3712,13 +3733,20 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-            store, update, forward = cache.response_func(old_submsg, new_submsg, old_body != new_body, *cache.response_args)
-            if store or update or forward:
+            if cache.response_func(old_submsg, new_submsg, old_body != new_body, *cache.response_args):
+                # see if we are missing more external signatures
                 for signature, member in new_submsg.authentication.signed_members:
-                    if not signature and member.private_key:
-                        new_submsg.authentication.set_signature(member, member.sign(new_body))
+                    if not (signature or member.private_key):
+                        break
 
-                self.store_update_forward([new_submsg], store, update, forward)
+                else:
+                    # did not break, hence we have all external signatures.  add our own signatures
+                    # and we can handle the message
+                    for signature, member in new_submsg.authentication.signed_members:
+                        if not signature and member.private_key:
+                            new_submsg.authentication.set_signature(member, member.sign(new_body))
+
+                    self.store_update_forward([new_submsg], True, True, True)
 
     def create_missing_sequence(self, community, candidate, member, message, missing_low, missing_high, response_func=None, response_args=(), timeout=10.0):
         # ensure that the identifier is 'triggered' somewhere, i.e. using

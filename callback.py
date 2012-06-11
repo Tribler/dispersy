@@ -302,10 +302,12 @@ class Callback(object):
             for index, tup in enumerate(self._requests):
                 if tup[2] == id_:
                     self._requests[index] = (tup[0], tup[1], tup[2], None, None)
+                    if __debug__: dprint("in _requests: ", id_)
 
             for index, tup in enumerate(self._expired):
                 if tup[1] == id_:
                     self._expired[index] = (tup[0], tup[1], tup[2], None, None)
+                    if __debug__: dprint("in _expired: ", id_)
 
             # register
             if delay <= 0.0:
@@ -341,10 +343,12 @@ class Callback(object):
             for index, tup in enumerate(self._requests):
                 if tup[2] == id_:
                     self._requests[index] = (tup[0], tup[1], tup[2], None, None)
+                    if __debug__: dprint("in _requests: ", id_)
 
             for index, tup in enumerate(self._expired):
                 if tup[1] == id_:
                     self._expired[index] = (tup[0], tup[1], tup[2], None, None)
+                    if __debug__: dprint("in _expired: ", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", timeout=0.0, default=None):
         """
@@ -690,27 +694,27 @@ if __debug__:
         def call5_bussy():
             for _ in xrange(10):
                 desync = yield 0.0
-                dprint("on bussy (", desync, ")", force=1)
+                dprint("on bussy (", desync, ")")
                 sleep(0.4)
         def call5_idle():
             for _ in xrange(10):
                 desync = yield Idle()
-                dprint("on idle (", desync, ")", force=1)
+                dprint("on idle (", desync, ")")
         c.register(call5_bussy)
         c.register(call5_idle)
         dprint(line=1)
 
         def call6():
-            dprint("before", force=1)
+            dprint("before")
             yield Idle(5.0)
-            dprint("after", force=1)
+            dprint("after")
         c.register(call6)
 
         def call7():
-            dprint("init", force=1)
+            dprint("init")
             while True:
                 yield 1.0
-                dprint("-", force=1)
+                dprint("-")
                 c.unregister(task_id)
         task_id = c.register(call7)
         c.unregister(task_id)
