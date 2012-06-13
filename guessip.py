@@ -18,7 +18,8 @@ import sys
 import socket
 from traceback import print_exc
 
-DEBUG = False
+DEBUG = True
+LINEDEBUG = True
 
 def is_valid_ipv4_host(address):
     try:
@@ -46,6 +47,8 @@ def get_my_wan_ip_win32():
 
     gwip = None
     for line in os.popen(routecmd).readlines():
+        if LINEDEBUG:
+            print line
         words = line.split()
         if len(words) >= 3:
             if words[0] == 'Default' and words[1] == 'Gateway:':
@@ -58,6 +61,9 @@ def get_my_wan_ip_win32():
     mywanip = None
     ingw = 0
     for line in os.popen(ifcmd).readlines():
+        if LINEDEBUG:
+            print line
+            
         words = line.split()
         if len(words) >= 3:
             if (words[0] == 'IPv4' and words[1] == 'Address.') or (words[0] == 'IP' and words[1] == 'Address.') or (words[1] == 'IP' and words[2] == 'Address.'): # Autoconfiguration entry
