@@ -18,8 +18,8 @@ import sys
 import socket
 from traceback import print_exc
 
-DEBUG = True
-LINEDEBUG = True
+DEBUG = False
+LINEDEBUG = False
 
 def is_valid_ipv4_host(address):
     try:
