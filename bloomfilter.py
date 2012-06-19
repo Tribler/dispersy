@@ -18,6 +18,7 @@ Ippolito <bob@redivi.com>.  Simplified, and optimized to use just python code.
 from hashlib import sha1, sha256, sha384, sha512, md5
 from math import ceil, log
 from struct import Struct
+from binascii import hexlify, unhexlify
 
 from decorator import Constructor, constructor
 
@@ -82,7 +83,9 @@ class BloomFilter(Constructor):
         assert isinstance(bytes_, str)
         assert 0 < len(bytes_)
         if __debug__: dprint("constructing bloom filter based on ", len(bytes_), " bytes and k_functions ", k_functions)
-        self._init_(len(bytes_) * 8, k_functions, prefix, long(sum(ord(c) << (i*8) for i, c in enumerate(bytes_))))
+        
+        filter = long(hexlify(bytes_[::-1]), 16)
+        self._init_(len(bytes_) * 8, k_functions, prefix, filter)
 
     @constructor(int, float)
     def _init_m_f(self, m_size, f_error_rate, prefix=""):
@@ -230,8 +233,10 @@ class BloomFilter(Constructor):
 
     @property
     def bytes(self):
-        filter_ = self._filter
-        return "".join(chr((filter_ & (0xff << c)) >> c) for c in xrange(0, self._m_size, 8))
+        #hex should be m_size/4, hex is 16 instead of 8 -> hence half the number of "hexes" in m_size
+        hex = '%x' % self._filter
+        padding = '0'*(self._m_size/4 - len(hex))
+        return unhexlify(padding + hex)[::-1]
 
 if __debug__:
     def _test_behavior():
@@ -690,14 +695,26 @@ if __debug__:
 
     @attach_profiler
     def _test_performance():
-        data = [str(i) for i in xrange(200000)]
-        testdata = [str(i) for i in xrange(len(data) * 2)]
-
         b = BloomFilter(1024 * 8, 0.01)
+        
+        data = [str(i) for i in xrange(b.get_capacity(0.01))]
+        testdata = [str(i) for i in xrange(len(data) * 2)]
         b.add_keys(data)
 
-        for i in testdata:
-            test = i in b
+        #for i in testdata:
+        #    test = i in b
+        import sys
+        
+        t1 = time()
+        for i in range(1000):
+            b.bytes
+        
+        t2 = time()
+        bytes = b.bytes
+        for i in range(1000):
+            b2 = BloomFilter(bytes, b.functions)
+            
+        print >> sys.stderr, time() - t2, t2 - t1
 
     def p(b, postfix=""):
         # print "capacity:", b.capacity, "error-rate:", b.error_rate, "num-slices:", b.num_slices, "bits-per-slice:", b.bits_per_slice, "bits:", b.size, "bytes:", b.size / 8, "packet-bytes:", b.size / 8 + 51 + 60 + 16 + 8, postfix

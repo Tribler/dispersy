@@ -15,8 +15,9 @@ from decorator import attach_profiler
 from dprint import dprint
 
 if __debug__:
+    from threading import current_thread
     from atexit import register as atexit_register
-    from inspect import getsource
+    from inspect import getsourcefile, getsourcelines
     from types import LambdaType
     # dprint warning when registered call, or generator call, takes more than N seconds
     CALL_DELAY_FOR_WARNING = 0.5
@@ -75,6 +76,12 @@ class Callback(object):
             def must_close(callback):
                 assert callback.is_finished
             atexit_register(must_close, self)
+            self._debug_thread_name = ""
+            self._debug_call_name = None
+
+    @property
+    def ident(self):
+        return self._thread_ident
 
     @property
     def is_running(self):
@@ -357,6 +364,7 @@ class Callback(object):
 
         TIMEOUT gives the maximum amount of time to wait before un-registering CALL.  No timeout
         will occur when TIMEOUT is 0.0.  When a timeout occurs the DEFAULT value is returned.
+        TIMEOUT is unused when called from the same thread.
 
         DEFAULT can be anything.  The DEFAULT value is returned when a TIMEOUT occurs.  When DEFAULT
         is an Exception instance it will be raised instead of returned.
@@ -365,24 +373,32 @@ class Callback(object):
         """
         assert isinstance(timeout, float)
         assert 0.0 <= timeout
+        assert self._thread_ident
         def callback(result):
             container[0] = result
             event.set()
 
-        # result container
-        container = [default]
-        event = Event()
+        if self._thread_ident == get_ident():
+            if kargs:
+                return call(*args, **kargs)
+            else:
+                return call(*args)
 
-        # register the call
-        self.register(call, args, kargs, delay, priority, id_, callback)
-
-        # wait for call to finish
-        event.wait(None if timeout == 0.0 else timeout)
-
-        if isinstance(container[0], Exception):
-            raise container[0]
         else:
-            return container[0]
+            # result container
+            container = [default]
+            event = Event()
+
+            # register the call
+            self.register(call, args, kargs, delay, priority, id_, callback)
+
+            # wait for call to finish
+            event.wait(None if timeout == 0.0 else timeout)
+
+            if isinstance(container[0], Exception):
+                raise container[0]
+            else:
+                return container[0]
 
     def start(self, name="Generic-Callback", wait=True):
         """
@@ -396,7 +412,9 @@ class Callback(object):
         if __debug__: dprint()
         with self._lock:
             self._state = "STATE_PLEASE_RUN"
-            if __debug__: dprint("STATE_PLEASE_RUN")
+            if __debug__:
+                dprint("STATE_PLEASE_RUN")
+                self._debug_thread_name = name
 
         thread = Thread(target=self._loop, name=name)
         thread.daemon = True
@@ -498,6 +516,18 @@ class Callback(object):
                         priority, root_id, _, call, callback = heappop(expired)
                         wait = 0.0
 
+                        if __debug__:
+                            # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
+                            if isinstance(call, TupleType):
+                                if isinstance(call[0], LambdaType):
+                                    self._debug_call_name = "lambda@%s:%d" % (getsourcefile(call[0])[-25:], getsourcelines(call[0])[1])
+                                else:
+                                    self._debug_call_name = call[0].__name__
+                            elif isinstance(call, GeneratorType):
+                                self._debug_call_name = call.__name__
+                            else:
+                                self._debug_call_name = str(call)
+
                         # ignore removed tasks
                         if call is None:
                             continue
@@ -522,6 +552,7 @@ class Callback(object):
 
                 else:
                     if __debug__:
+                        dprint(self._debug_thread_name, " calling ", self._debug_call_name, force=1)
                         debug_call_start = time()
 
                     # call can be either:
@@ -564,18 +595,7 @@ class Callback(object):
                     if __debug__:
                         debug_call_duration = time() - debug_call_start
                         if debug_call_duration > 1.0:
-                            # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
-                            if isinstance(call, TupleType):
-                                if isinstance(call[0], LambdaType):
-                                    debug_call_name = getsource(call[0])
-                                else:
-                                    debug_call_name = call[0].__name__
-                            elif isinstance(call, GeneratorType):
-                                debug_call_name = call.__name__
-                            else:
-                                debug_call_name = str(call)
-
-                            dprint(round(debug_call_duration, 2), "s call to ", debug_call_name, level="warning")
+                            dprint(round(debug_call_duration, 2), "s call to ", self._debug_call_name, level="warning")
 
         except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
             dprint("attempting to properly shutdown", exception=True, level="error")

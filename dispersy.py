@@ -39,6 +39,7 @@ of, the name it uses as an internal identifier, and the class that will contain 
 
 import os
 import sys
+import netifaces
 
 from hashlib import sha1
 from itertools import groupby, islice, count
@@ -73,10 +74,6 @@ from requestcache import Cache, RequestCache
 from resolution import PublicResolution, LinearResolution
 from singleton import Singleton
 
-from guessip import get_my_wan_ip
-
-if __debug__:
-    from candidate import Candidate
 
 # the callback identifier for the task that periodically takes a step
 CANDIDATE_WALKER_CALLBACK_ID = "dispersy-candidate-walker"
@@ -93,7 +90,7 @@ class SignatureRequestCache(Cache):
 
     def on_timeout(self):
         if __debug__: dprint("signature timeout")
-        self.response_func(self.request.payload.message, None, True, *self.response_args)
+        self.response_func(self, None, True, *self.response_args)
 
 class IntroductionRequestCache(Cache):
     # we will accept the response at most 10.5 seconds after our request
@@ -395,7 +392,7 @@ class Dispersy(Singleton):
         self._connection_type = u"unknown"
 
         # our LAN and WAN addresses
-        self._lan_address = (get_my_wan_ip() or "0.0.0.0", 0)
+        self._lan_address = (self._guess_lan_address() or "0.0.0.0", 0)
         self._wan_address = ("0.0.0.0", 0)
         self._wan_address_votes = {}
         if __debug__:
@@ -436,6 +433,19 @@ class Dispersy(Singleton):
             self._callback.register(self._stats_detailed_candidates)
             self._callback.register(self._stats_info)
             self._callback.register(self._stats_bandwidth)
+
+    @staticmethod
+    def _guess_lan_address():
+        """
+        Returns the address of the first AF_INET interface it can find.
+        """
+        for interface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(interface)
+            for option in addresses.get(netifaces.AF_INET, []):
+                if "broadcast" in option and "addr" in option and not option["addr"] == "127.0.0.1":
+                    if __debug__: dprint("interface ", interface, " address ", option["addr"])
+                    return option["addr"]
+        return None
 
     def _retry_bootstrap_candidates(self):
         """
@@ -1064,6 +1074,8 @@ class Dispersy(Singleton):
             # our address may not be a candidate
             if self._wan_address in self._candidates:
                 del self._candidates[self._wan_address]
+            for sock_addr in [sock_addr for sock_addr, candidate in self._candidates.iteritems() if self._wan_address == candidate.wan_address]:
+                del self._candidates[sock_addr]
 
         if self._connection_type == u"unknown" and self._lan_address == self._wan_address:
             self._connection_type = u"public"
@@ -2513,8 +2525,8 @@ class Dispersy(Singleton):
     def on_introduction_request(self, messages):
         def is_valid_candidate(message, introduced):
             assert isinstance(introduced, WalkCandidate)
-            assert self._is_valid_lan_address(introduced.lan_address), introduced.lan_address
-            assert self._is_valid_wan_address(introduced.wan_address), introduced.wan_address
+            assert self._is_valid_lan_address(introduced.lan_address), [introduced.lan_address, self.lan_address]
+            assert self._is_valid_wan_address(introduced.wan_address), [introduced.wan_address, self.wan_address]
 
             # # we can only use WalkCandidates
             # if not isinstance(candidate, WalkCandidate):
@@ -2550,6 +2562,10 @@ class Dispersy(Singleton):
             # modify either the senders LAN or WAN address based on how we perceive that node
             source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
 
+            if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
+                if __debug__: dprint("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
+                continue
+
             # get or create WalkCandidate from Candidate
             assert isinstance(message.candidate, Candidate)
             assert not isinstance(message.candidate, WalkCandidate)
@@ -2569,11 +2585,7 @@ class Dispersy(Singleton):
             self._filter_duplicate_candidate(candidate)
             if __debug__: dprint("received introduction request from ", candidate)
 
-            if source_wan_address == ("0.0.0.0", 0):
-                if __debug__: dprint("problems determining source WAN address, unable to introduce")
-                introduced = None
-
-            elif payload.advice:
+            if payload.advice:
                 for introduced in random_candidate_iterator:
                     if is_valid_candidate(message, introduced):
                         # found candidate, break
@@ -3261,8 +3273,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         # if binary[0] == "\x0a":
         #     pass
         # # range 172.16.0.0 - 172.31.255.255
-        # # TODO fill in range
-        # elif binary[0] == "\x7f":
+        # elif binary[0] == "\xac" and "\x10" < binary[1] < "\x1f":
         #     pass
         # # range 192.168.0.0 - 192.168.255.255
         # elif binary[0] == "\xc0" and binary[1] == "\xa8":
@@ -3312,8 +3323,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             return False
 
         # range 172.16.0.0 - 172.31.255.255
-        # TODO fill in range
-        if binary[0] == "\x7f":
+        if binary[0] == "\xac" and "\x10" < binary[1] < "\x1f":
             return False
 
         # range 192.168.0.0 - 192.168.255.255
@@ -3539,15 +3549,16 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         RESPONSE_FUNC.
 
         Each dispersy-signed-response message will result in one call to RESPONSE_FUNC.  The first
-        parameter for this call is MESSAGE, the second parameter is the proposed message that was
-        send back, the third parameter is a boolean indicating that MESSAGE was modified.
+        parameter for this call is the SignatureRequestCache instance returned by
+        create_signature_request, the second parameter is the proposed message that was send back,
+        the third parameter is a boolean indicating that MESSAGE was modified.
 
-        RESPONSE_FUNC must return three boolean values, each indicates weather the proposed message
-        (the second parameter) must be stored, updated, or forwarded, respectively.  If any of these
-        boolean values is True we will sign the proposed message with our own signature.
+        RESPONSE_FUNC must return a boolean value indicating weather the proposed message (the
+        second parameter) is accepted.  Once we accept all signature responses we will add our own
+        signature and the last proposed message is stored, updated, and forwarded.
 
         If not all members sent a reply withing timeout seconds, one final call to response_func is
-        made with the first parameter set to None.
+        made with the second parameter set to None.
 
         @param community: The community for wich the dispersy-signature-request message will be
          created.
@@ -3597,7 +3608,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
         if __debug__: dprint("asking ", ", ".join(member.mid.encode("HEX") for member in members))
         self._forward([cache.request])
-        return cache.request
+        return cache
 
     def check_signature_request(self, messages):
         assert isinstance(messages[0].meta.authentication, NoAuthentication)
@@ -3733,7 +3744,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-            if cache.response_func(old_submsg, new_submsg, old_body != new_body, *cache.response_args):
+            if cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args):
                 # see if we are missing more external signatures
                 for signature, member in new_submsg.authentication.signed_members:
                     if not (signature or member.private_key):

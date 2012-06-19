@@ -38,6 +38,7 @@ class RequestCache(object):
         if __debug__: dprint("set ", identifier, " for ", cache, " (", cache.timeout_delay, "s timeout)")
         self._callback.register(self._on_timeout, (identifier,), id_="requestcache-%s" % identifier, delay=cache.timeout_delay)
         self._identifiers[identifier] = cache
+        cache.identifier = identifier
 
     def has(self, identifier, cls):
         assert isinstance(identifier, (int, long, str)), type(identifier)
