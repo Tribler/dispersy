@@ -2348,8 +2348,8 @@ class Dispersy(Singleton):
             if __debug__:
                 if lan_address != sock_addr:
                     dprint("estimate a different LAN address ", lan_address[0], ":", lan_address[1], " -> ", sock_addr[0], ":", sock_addr[1])
-            assert self._is_valid_lan_address(sock_addr), sock_addr
-            assert self._is_valid_wan_address(wan_address), wan_address
+            assert self._is_valid_lan_address(sock_addr), [self.lan_address, sock_addr]
+            assert self._is_valid_wan_address(wan_address), [self.wan_address, wan_address]
             return sock_addr, wan_address
 
         elif self._is_valid_wan_address(sock_addr):
@@ -2357,19 +2357,19 @@ class Dispersy(Singleton):
             if __debug__:
                 if wan_address != sock_addr:
                     dprint("estimate a different WAN address ", wan_address[0], ":", wan_address[1], " -> ", sock_addr[0], ":", sock_addr[1])
-            assert self._is_valid_lan_address(lan_address), lan_address
-            assert self._is_valid_wan_address(sock_addr), sock_addr
+            assert self._is_valid_lan_address(lan_address), [self.lan_address, lan_address]
+            assert self._is_valid_wan_address(sock_addr), [self.wan_address, sock_addr]
             return lan_address, sock_addr
 
         elif self._is_valid_wan_address(wan_address):
             # we have a different WAN address and the sock address is not WAN, we are probably on the same computer
-            assert self._is_valid_lan_address(lan_address), lan_address
-            assert self._is_valid_wan_address(wan_address), wan_address
+            assert self._is_valid_lan_address(lan_address), [self.lan_address, lan_address]
+            assert self._is_valid_wan_address(wan_address), [self.wan_address, wan_address]
             return lan_address, wan_address
 
         else:
             # we are unable to determine the WAN address, we are probably behind the same NAT
-            assert self._is_valid_lan_address(lan_address), lan_address
+            assert self._is_valid_lan_address(lan_address), [self.lan_address, lan_address]
             return lan_address, ("0.0.0.0", 0)
 
     def take_step(self, community):
