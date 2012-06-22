@@ -8,7 +8,7 @@ The crypto module provides a layer between Dispersy and low level crypographic f
 
 # update version information directly from SVN
 from . import update_revision_information
-update_revision_information("$HeadURL", "$Revision")
+update_revision_information("$HeadURL$", "$Revision$")
 
 if False:
     #

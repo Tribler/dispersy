@@ -14,7 +14,7 @@ if __debug__:
 
 # update version information directly from SVN
 from . import update_revision_information
-update_revision_information("$HeadURL", "$Revision")
+update_revision_information("$HeadURL$", "$Revision$")
 
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
 # seconds.  However, taking into account round trip time and processing delay we to use smaller

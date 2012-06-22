@@ -17,7 +17,7 @@ if __debug__:
 
 # update version information directly from SVN
 from . import update_revision_information
-update_revision_information("$HeadURL", "$Revision")
+update_revision_information("$HeadURL$", "$Revision$")
 
 class IgnoreCommits(Exception):
     """

@@ -32,7 +32,7 @@ if __debug__:
 
 # update version information directly from SVN
 from . import update_revision_information
-update_revision_information("$HeadURL", "$Revision")
+update_revision_information("$HeadURL$", "$Revision$")
 
 class SubjectiveSetCache(object):
     def __init__(self, packet, subjective_set):
