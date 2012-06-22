@@ -552,7 +552,7 @@ class Callback(object):
 
                 else:
                     if __debug__:
-                        dprint(self._debug_thread_name, " calling ", self._debug_call_name, force=1)
+                        dprint(self._debug_thread_name, " calling ", self._debug_call_name)
                         debug_call_start = time()
 
                     # call can be either:
