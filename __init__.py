@@ -3,7 +3,7 @@ import sys
 _revision_information = {}
 
 def update_revision_information(url, revision):
-    print >> sys.stderr, revision, url
+    print >> sys.stderr, int(revision[11:-2]), url[10:-2]
     _revision_information[url] = revision
 
 def get_revision_information():
