@@ -21,6 +21,10 @@ if __debug__:
     from dprint import dprint
     from resolution import Resolution
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class Conversion(object):
     """
     A Conversion object is used to convert incoming packets to a different, possibly more recent,

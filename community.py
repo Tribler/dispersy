@@ -30,6 +30,10 @@ from timeline import Timeline
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class SubjectiveSetCache(object):
     def __init__(self, packet, subjective_set):
         assert isinstance(packet, str)

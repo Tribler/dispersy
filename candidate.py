@@ -12,6 +12,10 @@ if __debug__:
         assert address[1] >= 0, address[1]
         return True
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
 # seconds.  However, taking into account round trip time and processing delay we to use smaller
 # values without conflicting with the next 5.0 walk cycle.  Hence, we pick 2.5 seconds below the

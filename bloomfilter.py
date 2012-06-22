@@ -27,6 +27,10 @@ if __debug__:
     from time import time
     from decorator import attach_profiler
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class BloomFilter(Constructor):
     def _init_(self, m_size, k_functions, prefix, filter_):
         assert isinstance(m_size, int)

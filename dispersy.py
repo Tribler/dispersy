@@ -74,6 +74,9 @@ from requestcache import Cache, RequestCache
 from resolution import PublicResolution, LinearResolution
 from singleton import Singleton
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
 
 # the callback identifier for the task that periodically takes a step
 CANDIDATE_WALKER_CALLBACK_ID = "dispersy-candidate-walker"

@@ -12,6 +12,10 @@ creator of this message.
 
 from meta import MetaObject
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class Authentication(MetaObject):
     """
     The Authentication baseclass.

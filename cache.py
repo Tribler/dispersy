@@ -1,3 +1,7 @@
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class CacheDict(object):
     """
     A poke based cache dictionary.

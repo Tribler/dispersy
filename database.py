@@ -15,6 +15,10 @@ from singleton import Singleton
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class IgnoreCommits(Exception):
     """
     Ignore all commits made within the body of a 'with database:' clause.

@@ -24,6 +24,10 @@ if __debug__:
     # dprint warning when registered call, or generator call, should have run N seconds ago
     QUEUE_DELAY_FOR_WARNING = 1.0
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL", "$Revision")
+
 class Callback(object):
     def __init__(self):
         # _event is used to wakeup the thread when new actions arrive
