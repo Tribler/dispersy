@@ -233,14 +233,11 @@ class RawserverEndpoint(Endpoint):
                      in product(candidates, packets)]
 
             if self._sendqueue:
-                if len(self._sendqueue) < 1000:
-                    self._sendqueue.extend(batch)
-                else:
-                    print >> sys.stderr, "endpoint: throwing away", len(batch), "outgoing packets"
+                self._sendqueue.extend(batch)
 
             elif len(batch) > 50:
                 self._sendqueue.extend(batch)
-                print >> sys.stderr, "endpoint: throttling", len(self._sendqueue), "(first schedule)"
+                # print >> sys.stderr, "endpoint: throttling", len(self._sendqueue), "(first schedule)"
                 self._rawserver.add_task(self._process_sendqueue)
 
             else:
@@ -257,7 +254,7 @@ class RawserverEndpoint(Endpoint):
                     except socket.error, e:
                         if e[0] == SOCKET_BLOCK_ERRORCODE:
                             self._sendqueue.extend(batch[index:])
-                            print >> sys.stderr, "endpoint: overflowing", len(self._sendqueue), "(first schedule)"
+                            # print >> sys.stderr, "endpoint: overflowing", len(self._sendqueue), "(first schedule)"
                             self._rawserver.add_task(self._process_sendqueue, 0.1)
                             break
 
@@ -266,11 +263,11 @@ class RawserverEndpoint(Endpoint):
 
     def _process_sendqueue(self):
         with self._sendqueue_lock:
-            index = 0
-            for index, (sock_addr, data) in enumerate(self._sendqueue):
-                if index >= 50:
-                    break
+            assert self._sendqueue
+            index = -1
+            NUM_PACKETS = max(50, len(self._sendqueue) / 10)
 
+            for index, (sock_addr, data) in enumerate(self._sendqueue[:NUM_PACKETS]):
                 try:
                     self._socket.sendto(data, sock_addr)
                     if DEBUG:
@@ -282,7 +279,6 @@ class RawserverEndpoint(Endpoint):
 
                 except socket.error, e:
                     if e[0] == SOCKET_BLOCK_ERRORCODE:
-                        index += 1
                         break
                     else:
                         print_exc()
@@ -290,7 +286,7 @@ class RawserverEndpoint(Endpoint):
             self._sendqueue = self._sendqueue[index+1:]
             if self._sendqueue:
                 self._rawserver.add_task(self._process_sendqueue, 0.1)
-                print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue"
+                # print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue"
 
 class TunnelEndpoint(Endpoint):
     def __init__(self, swift_process, dispersy):
