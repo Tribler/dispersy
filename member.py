@@ -324,7 +324,7 @@ class Member(MemberBase):
         assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
         assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
 
-        # retrieve Member from cache
+        # retrieve Member from cache (based on public_key)
         for index, member in enumerate(cls._cache):
             if member._public_key == public_key:
                 if cls._cache_length / 2 < index:
@@ -332,20 +332,25 @@ class Member(MemberBase):
                     cls._cache.insert(0, member)
                 return member
 
-        # create new Member and store in cache
-        member = object.__new__(cls)
-        if len(cls._cache) >= cls._cache_length:
-            del cls._cache[-1]
-        cls._cache.insert(cls._cache_length / 3, member)
+        return object.__new__(cls)
 
-        return member
+    def __init__(self, public_key, private_key=""):
+        super(Member, self).__init__(public_key, private_key)
+
+        assert hasattr(self, "_public_key"), self
+        assert hasattr(self, "_mid"), self
+
+        # store Member in cache
+        if len(self._cache) >= self._cache_length:
+            del self._cache[-1]
+        self._cache.insert(self._cache_length / 3, self)
 
 class MemberFromId(Member):
     def __new__(cls, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
 
-        # retrieve Member from cache
+        # retrieve Member from cache (based on mid)
         for index, member in enumerate(cls._cache):
             if member._mid == mid:
                 if cls._cache_length / 2 < index:
@@ -353,6 +358,7 @@ class MemberFromId(Member):
                     cls._cache.insert(0, member)
                 return member
 
+        # prevent __init__ and hence caching this instance
         raise LookupError(mid)
 
 class MemberWithoutCheck(Member):
@@ -361,10 +367,5 @@ class MemberWithoutCheck(Member):
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
         assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
+        return object.__new__(cls)
 
-        # create new Member and store in cache
-        member = object.__new__(cls)
-        if len(cls._cache) >= cls._cache_length:
-            del cls._cache[-1]
-        cls._cache.insert(cls._cache_length / 3, member)
-        return member
