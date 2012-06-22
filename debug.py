@@ -8,6 +8,10 @@ from member import Member
 from message import Message
 from time import time, sleep
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class DebugOnlyMember(Member):
     _cache = []
 

@@ -5,6 +5,10 @@ if __debug__:
     import re
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 #
 # Exceptions
 #

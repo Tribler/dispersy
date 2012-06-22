@@ -4,6 +4,10 @@ if __debug__:
     from time import time, sleep
     from dprint import dprint
 
+    # update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class Constructor(object):
     """
     Allow a class to have multiple constructors.  The right one will

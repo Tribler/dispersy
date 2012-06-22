@@ -3,6 +3,10 @@ from random import random
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class Cache(object):
     timeout_delay = 10.0
     cleanup_delay = 10.0

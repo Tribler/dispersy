@@ -14,6 +14,10 @@ if __debug__:
         assert address[1] >= 0, address[1]
         return True
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class Payload(MetaObject):
     class Implementation(MetaObject.Implementation):
         pass

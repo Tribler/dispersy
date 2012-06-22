@@ -32,6 +32,10 @@ from resolution import PublicResolution, LinearResolution
 
 from debugcommunity import DebugCommunity, DebugNode
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 def assert_(value, *args):
     if not value:
         raise AssertionError(*args)

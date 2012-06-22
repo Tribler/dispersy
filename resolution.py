@@ -1,5 +1,9 @@
 from meta import MetaObject
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class Resolution(MetaObject):
     class Implementation(MetaObject.Implementation):
         pass

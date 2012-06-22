@@ -13,6 +13,10 @@ from database import Database
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 LATEST_VERSION = 12
 
 schema = u"""

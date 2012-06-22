@@ -1,6 +1,10 @@
 import inspect
 from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class MetaObject(object):
     class Implementation(object):
         def __init__(self, meta):

@@ -11,6 +11,10 @@ from resolution import PublicResolution, LinearResolution, DynamicResolution
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class Timeline(object):
     def __init__(self, community):
         if __debug__:

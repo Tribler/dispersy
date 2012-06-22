@@ -7,6 +7,10 @@ if __debug__:
     from dprint import dprint
     from crypto import ec_check_public_bin, ec_check_private_bin
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 class DummyMember(object):
     def __init__(self, mid):
         assert isinstance(mid, str)

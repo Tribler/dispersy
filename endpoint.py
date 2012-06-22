@@ -14,6 +14,10 @@ from traceback import print_exc
 if __debug__:
     from dprint import dprint
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
 else:

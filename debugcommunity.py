@@ -13,6 +13,10 @@ from message import Message, DropPacket, DelayMessageByProof
 from payload import Payload
 from resolution import PublicResolution, LinearResolution, DynamicResolution
 
+# update version information directly from SVN
+from . import update_revision_information
+update_revision_information("$HeadURL$", "$Revision$")
+
 #
 # Node
 #
