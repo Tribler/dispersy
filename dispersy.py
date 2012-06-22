@@ -75,7 +75,7 @@ from resolution import PublicResolution, LinearResolution
 from singleton import Singleton
 
 # update version information directly from SVN
-from . import update_revision_information
+from . import update_revision_information, get_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 # the callback identifier for the task that periodically takes a step
@@ -4858,6 +4858,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         # 3.3: added info["walk_fail"] in __debug__ mode
         # 3.4: added info["walk_reset"]
         # 3.4: added info["attachment"] in __debug__ mode
+        # 3.5: added info["revision"]
 
         now = time()
         info = {"version":3.4,
@@ -4868,7 +4869,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 "database_version":self._database.database_version,
                 "connection_type":self._connection_type,
                 "total_up":self._endpoint.total_up,
-                "total_down":self._endpoint.total_down}
+                "total_down":self._endpoint.total_down,
+                "revision":get_revision_information()}
 
         if statistics:
             info.update(self._statistics.info())
