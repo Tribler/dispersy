@@ -72,10 +72,10 @@ from payload import SignatureRequestPayload, SignatureResponsePayload
 from payload import SubjectiveSetPayload, MissingSubjectiveSetPayload
 from requestcache import Cache, RequestCache
 from resolution import PublicResolution, LinearResolution
+from revision import update_revision_information, get_revision_information
 from singleton import Singleton
 
 # update version information directly from SVN
-from . import update_revision_information, get_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 # the callback identifier for the task that periodically takes a step

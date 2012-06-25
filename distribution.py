@@ -1,4 +1,8 @@
 from meta import MetaObject
+from revision import update_revision_information
+
+# update version information directly from SVN
+update_revision_information("$HeadURL$", "$Revision$")
 
 """
 Each Privilege can be distributed, usualy through the transfer of a message, in different ways.

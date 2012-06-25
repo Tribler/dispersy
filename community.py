@@ -25,13 +25,13 @@ from distribution import SyncDistribution
 from math import ceil
 from member import DummyMember, Member
 from resolution import PublicResolution, LinearResolution, DynamicResolution
+from revision import update_revision_information
 from timeline import Timeline
 
 if __debug__:
     from dprint import dprint
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class SubjectiveSetCache(object):

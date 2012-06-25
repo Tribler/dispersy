@@ -9,12 +9,12 @@ This module provides an interface to the Dispersy database.
 from os import path
 
 from database import Database
+from revision import update_revision_information
 
 if __debug__:
     from dprint import dprint
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 LATEST_VERSION = 12

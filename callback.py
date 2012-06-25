@@ -13,6 +13,7 @@ from types import GeneratorType, TupleType
 
 from decorator import attach_profiler
 from dprint import dprint
+from revision import update_revision_information
 
 if __debug__:
     from threading import current_thread
@@ -25,7 +26,6 @@ if __debug__:
     QUEUE_DELAY_FOR_WARNING = 1.0
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Callback(object):

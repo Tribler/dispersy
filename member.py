@@ -2,13 +2,13 @@ from hashlib import sha1
 
 from dispersydatabase import DispersyDatabase
 from crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
+from revision import update_revision_information
 
 if __debug__:
     from dprint import dprint
     from crypto import ec_check_public_bin, ec_check_private_bin
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class DummyMember(object):

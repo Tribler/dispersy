@@ -1,6 +1,7 @@
 from hashlib import sha1
 
 from meta import MetaObject
+from revision import update_revision_information
 
 if __debug__:
     from bloomfilter import BloomFilter
@@ -15,7 +16,6 @@ if __debug__:
         return True
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Payload(MetaObject):

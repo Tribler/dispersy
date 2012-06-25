@@ -11,9 +11,9 @@ creator of this message.
 """
 
 from meta import MetaObject
+from revision import update_revision_information
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Authentication(MetaObject):

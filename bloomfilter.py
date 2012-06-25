@@ -21,6 +21,7 @@ from struct import Struct
 from binascii import hexlify, unhexlify
 
 from decorator import Constructor, constructor
+from revision import update_revision_information
 
 if __debug__:
     from dprint import dprint
@@ -28,7 +29,6 @@ if __debug__:
     from decorator import attach_profiler
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class BloomFilter(Constructor):

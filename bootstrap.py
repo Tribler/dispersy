@@ -2,9 +2,9 @@ import os
 from socket import gethostbyname
 
 from candidate import BootstrapCandidate
+from revision import update_revision_information
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 _trackers = [(u"dispersy1.tribler.org", 6421),

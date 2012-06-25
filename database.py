@@ -6,17 +6,17 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
-import thread
 import hashlib
 import sqlite3
 
+from revision import update_revision_information
 from singleton import Singleton
 
 if __debug__:
     from dprint import dprint
+    import thread
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class IgnoreCommits(Exception):

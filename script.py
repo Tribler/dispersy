@@ -10,9 +10,9 @@ Run some python code, usually to test one or more features.
 """
 
 from hashlib import sha1
-from tool.lencoder import log, make_valid_key
 from random import shuffle
 from time import time
+from tool.lencoder import log, make_valid_key
 import gc
 import hashlib
 import inspect
@@ -23,17 +23,16 @@ from bloomfilter import BloomFilter
 from candidate import BootstrapCandidate
 from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from debug import Node
+from debugcommunity import DebugCommunity, DebugNode
 from dispersy import Dispersy
 from dispersydatabase import DispersyDatabase
 from dprint import dprint
 from member import Member
 from message import BatchConfiguration, Message, DelayMessageByProof, DropMessage
 from resolution import PublicResolution, LinearResolution
-
-from debugcommunity import DebugCommunity, DebugNode
+from revision import update_revision_information
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 def assert_(value, *args):

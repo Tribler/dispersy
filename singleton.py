@@ -10,7 +10,7 @@ from random import sample
 from threading import RLock
 
 # update version information directly from SVN
-from . import update_revision_information
+from revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Singleton(object):

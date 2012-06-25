@@ -1,3 +1,4 @@
+from time import time, sleep
 import socket
 
 from bloomfilter import BloomFilter
@@ -6,10 +7,9 @@ from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin, ec_from
 from dprint import dprint
 from member import Member
 from message import Message
-from time import time, sleep
+from revision import update_revision_information
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class DebugOnlyMember(Member):

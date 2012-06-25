@@ -10,13 +10,13 @@ from time import time
 from itertools import product
 
 from candidate import Candidate
+from revision import update_revision_information
 from traceback import print_exc
 
 if __debug__:
     from dprint import dprint
 
 # update version information directly from SVN
-from . import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 if sys.platform == 'win32':
