@@ -2274,7 +2274,7 @@ class Dispersy(Singleton):
         shuffle(bootstrap_candidates)
         assert all(isinstance(candidate, WalkCandidate) for candidate in bootstrap_candidates)
 
-        categories = {u"walk":[], u"stumble":[], u"intro":[], u"sandi":[], u"none":[]}
+        categories = {u"walk":[], u"stumble":[], u"intro":[], u"none":[]}
         for candidate in self._candidates.itervalues():
             if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now) and candidate.is_eligible_for_walk(community, now):
                 categories[candidate.get_category(community, now)].append(candidate)
@@ -2282,46 +2282,37 @@ class Dispersy(Singleton):
         walks = sorted(categories[u"walk"], key=lambda candidate: candidate.last_walk(community))
         stumbles = sorted(categories[u"stumble"], key=lambda candidate: candidate.last_stumble(community))
         intros = sorted(categories[u"intro"], key=lambda candidate: candidate.last_intro(community))
-        sandis = sorted(categories[u"sandi"], key=lambda candidate: min(candidate.last_stumble(community), candidate.last_intro(community)))
 
-        while walks or stumbles or intros or sandis:
+        while walks or stumbles or intros:
             r = random()
 
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
             if r <= .4975: # ~50%
                 if walks:
-                    if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), walks[0])
+                    if __debug__: dprint("yield [%2d:%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros), len(bootstrap_candidates)), walks[0])
                     yield walks.pop(0)
 
             elif r <= .995: # ~50%
-                if stumbles or intros or sandis:
+                if stumbles or intros:
                     while True:
-                        r = random()
-
-                        if r <= .3333:
+                        if random() <= .5:
                             if stumbles:
-                                if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), stumbles[0])
+                                if __debug__: dprint("yield [%2d:%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros), len(bootstrap_candidates)), stumbles[0])
                                 yield stumbles.pop(0)
                                 break
 
-                        elif r <= .6666:
+                        else:
                             if intros:
-                                if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), intros[0])
+                                if __debug__: dprint("yield [%2d:%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros), len(bootstrap_candidates)), intros[0])
                                 yield intros.pop(0)
                                 break
 
-                        elif r <= .9999:
-                            if sandis:
-                                if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d sandi  ] " % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), sandis[0])
-                                yield sandis.pop(0)
-                                break
-
             elif bootstrap_candidates: # ~.5%
-                if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), bootstrap_candidates[0])
+                if __debug__: dprint("yield [%2d:%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros), len(bootstrap_candidates)), bootstrap_candidates[0])
                 yield bootstrap_candidates.pop(0)
 
         while bootstrap_candidates:
-            if __debug__: dprint("yield [%2d:%2d:%2d:%2d:%2d bootstr] (no regular candidates available)" % (len(walks), len(stumbles), len(intros), len(sandis), len(bootstrap_candidates)), bootstrap_candidates[0])
+            if __debug__: dprint("yield [%2d:%2d:%2d:%2d bootstr] (no regular candidates available)" % (len(walks), len(stumbles), len(intros), len(bootstrap_candidates)), bootstrap_candidates[0])
             yield bootstrap_candidates.pop(0)
 
         if __debug__: dprint("no candidates or bootstrap candidates available")
@@ -4766,13 +4757,13 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     if community.get_classification() == u"PreviewChannelCommunity":
                         continue
 
-                    categories = {u"walk":[], u"stumble":[], u"intro":[], u"sandi":[], u"none":[]}
+                    categories = {u"walk":[], u"stumble":[], u"intro":[], u"none":[]}
                     for candidate in self._candidates.itervalues():
                         if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
                             categories[candidate.get_category(community, now)].append(candidate)
 
                     dprint("--- ", community.cid.encode("HEX"), " ", community.get_classification(), " ---")
-                    dprint("--- [%2d:%2d:%2d:%2d:%2d]" % (len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(categories[u"sandi"]), len(self._bootstrap_candidates)))
+                    dprint("--- [%2d:%2d:%2d:%2d]" % (len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates)))
 
                     for category, candidates in categories.iteritems():
                         for candidate in candidates:
