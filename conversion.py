@@ -980,7 +980,7 @@ class BinaryConversion(Conversion):
         flags, identifier, = self._struct_BH.unpack_from(data, offset)
         offset += 3
 
-        connection_type = self._decode_connection_type_map.get(flags & int("1110", 2))
+        connection_type = self._decode_connection_type_map.get(flags & int("11000000", 2))
         if connection_type is None:
             raise DropPacket("Invalid connection type flag")
 
