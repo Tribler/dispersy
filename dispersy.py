@@ -2517,7 +2517,7 @@ class Dispersy(Singleton):
             yield message
 
     def on_introduction_request(self, messages):
-        def is_valid_candidate(message, introduced):
+        def is_valid_candidate(message, candidate, introduced):
             assert isinstance(introduced, WalkCandidate)
             assert self._is_valid_lan_address(introduced.lan_address), [introduced.lan_address, self.lan_address]
             assert self._is_valid_wan_address(introduced.wan_address), [introduced.wan_address, self.wan_address]
@@ -2526,13 +2526,18 @@ class Dispersy(Singleton):
             # if not isinstance(candidate, WalkCandidate):
             #     return False
 
-            if message.candidate.sock_addr == introduced.wan_address:
+            if candidate.wan_address[0] == introduced.wan_address[0]:
+                if candidate.sock_addr == introduced.lan_address:
+                    # must not introduce someone to herself (inside same LAN)
+                    return False
+
+            elif candidate.sock_addr == introduced.wan_address:
                 # must not introduce someone to herself
                 return False
 
             if (message.payload.connection_type == u"symmetric-NAT" and
                 introduced.connection_type == u"symmetric-NAT" and
-                not message.payload.source_lan_address[0] == introduced.lan_address[0]):
+                not candidate.wan_address[0] == introduced.wan_address[0]):
                 # must not introduce two nodes that are behind the same symmetric NAT
                 return False
 
@@ -2583,7 +2588,7 @@ class Dispersy(Singleton):
 
             if payload.advice:
                 for introduced in random_candidate_iterator:
-                    if is_valid_candidate(message, introduced):
+                    if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break
 
@@ -2593,7 +2598,7 @@ class Dispersy(Singleton):
                 else:
                     # did not break, no candidate found in iterator.  try the stack
                     for index, introduced in enumerate(random_candidate_stack):
-                        if is_valid_candidate(message, introduced):
+                        if is_valid_candidate(message, candidate, introduced):
                             # found candidate, break
                             del random_candidate_stack[index]
                             break
