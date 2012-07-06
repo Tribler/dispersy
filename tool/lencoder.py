@@ -2,8 +2,7 @@
 
 from atexit import register
 from bz2 import BZ2File
-from string import digits, letters, punctuation
-from time import strftime
+from datetime import datetime
 import re
 
 def _encode_str(l, value):
@@ -86,12 +85,12 @@ def log(filename, _message, **kargs):
 
     global _encode_initiated
     if _encode_initiated:
-        l = [strftime("%Y%m%d%H%M%S"), _seperator]
+        l = [datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
     else:
         _encode_initiated = True
         l = ["################################################################################", "\n",
-             strftime("%Y%m%d%H%M%S"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
-             strftime("%Y%m%d%H%M%S"), _seperator]
+             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
+             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
 
     _encode_str(l, _message)
     for key in sorted(kargs.keys()):
@@ -111,11 +110,11 @@ def bz2log(filename, _message, **kargs):
     global _cache
     handle = _cache.get(filename)
     if handle:
-        l = [strftime("%Y%m%d%H%M%S"), _seperator]
+        l = [datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
     else:
         l = ["################################################################################", "\n",
-             strftime("%Y%m%d%H%M%S"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
-             strftime("%Y%m%d%H%M%S"), _seperator]
+             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
+             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
         handle = BZ2File(filename, "w", 8*1024, 9)
         register(handle.close)
         _cache[filename] = handle
@@ -147,7 +146,7 @@ def to_string(datetime, _message, **kargs):
 def make_valid_key(key):
     return re.sub('[^a-zA-Z0-9_]', '_', key)
 
-_printable = "".join((digits, letters, punctuation, " "))
+_printable = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ "
 _seperator = "   "
 _valid_key_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
 _cache = {}

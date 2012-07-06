@@ -17,7 +17,7 @@ if __debug__:
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
 
-LATEST_VERSION = 12
+LATEST_VERSION = 13
 
 schema = u"""
 CREATE TABLE member(
@@ -50,10 +50,16 @@ CREATE TABLE meta_message(
  direction INTEGER DEFAULT 1,                           -- direction used when synching (1 for ASC, -1 for DESC)
  UNIQUE(community, name));
 
-CREATE TABLE reference_member_sync(
- member INTEGER REFERENCES member(id),
+--CREATE TABLE reference_member_sync(
+-- member INTEGER REFERENCES member(id),
+-- sync INTEGER REFERENCES sync(id),
+-- UNIQUE(member, sync));
+
+CREATE TABLE double_signed_sync(
  sync INTEGER REFERENCES sync(id),
- UNIQUE(member, sync));
+ member1 INTEGER REFERENCES member(id),
+ member2 INTEGER REFERENCES member(id));
+CREATE INDEX double_signed_sync_index_0 ON double_signed_sync(member1, member2);
 
 CREATE TABLE sync(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,11 +332,31 @@ UPDATE option SET value = '12' WHERE key = 'database_version';
 
             # upgrade from version 12 to version 13
             if database_version < 13:
-                # there is no version 13 yet...
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 13)
-                # self.executescript(u"""UPDATE option SET value = '13' WHERE key = 'database_version';""")
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 13)
+                # reference_member_sync is a very generic but also expensive way to store
+                # multi-sighned messages.  by simplifying the milti-sign into purely double-sign we
+                # can use a less expensive (in terms of query time) table.  note: we simply drop the
+                # table, we assume that there is no data in there since no release has been made
+                # that uses the multi-sign feature
+                self.executescript(u"""
+DROP TABLE reference_member_sync;
+CREATE TABLE double_signed_sync(
+ sync INTEGER REFERENCES sync(id),
+ member1 INTEGER REFERENCES member(id),
+ member2 INTEGER REFERENCES member(id));
+CREATE INDEX double_signed_sync_index_0 ON double_signed_sync(member1, member2);
+UPDATE option SET value = '13' WHERE key = 'database_version';
+""")
+                self.commit()
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 13, " (done)")
+
+            # upgrade from version 13 to version 14
+            if database_version < 14:
+                # there is no version 14 yet...
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 14)
+                # self.executescript(u"""UPDATE option SET value = '14' WHERE key = 'database_version';""")
                 # self.commit()
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 13, " (done)")
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 14, " (done)")
                 pass
 
         return LATEST_VERSION

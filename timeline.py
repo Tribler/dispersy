@@ -5,7 +5,7 @@ queried as to who had what actions at some point in time.
 
 from itertools import count, groupby
 
-from authentication import MemberAuthentication, MultiMemberAuthentication
+from authentication import MemberAuthentication, DoubleMemberAuthentication
 from resolution import PublicResolution, LinearResolution, DynamicResolution
 from revision import update_revision_information
 
@@ -62,7 +62,7 @@ class Timeline(object):
         if __debug__:
             from message import Message
         assert isinstance(message, Message.Implementation), message
-        assert isinstance(message.authentication, (MemberAuthentication.Implementation, MultiMemberAuthentication.Implementation)), message.authentication
+        assert isinstance(message.authentication, (MemberAuthentication.Implementation, DoubleMemberAuthentication.Implementation)), message.authentication
         assert isinstance(permission, unicode)
         assert permission in (u"permit", u"authorize", u"revoke", u"undo")
         if isinstance(message.authentication, MemberAuthentication.Implementation):
@@ -109,7 +109,7 @@ class Timeline(object):
             else:
                 return self._check(message.authentication.member, message.distribution.global_time, message.resolution, [(message.meta, permission)])
         else:
-            # MultiMemberAuthentication
+            # DoubleMemberAuthentication
             all_proofs = set()
             for member in message.authentication.members:
                 allowed, proofs = self._check(member, message.distribution.global_time, message.resolution, [(message.meta, permission)])
@@ -253,7 +253,7 @@ class Timeline(object):
                 assert isinstance(triplet[0], Member)
                 assert isinstance(triplet[1], Message)
                 assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution))
-                assert isinstance(triplet[1].authentication, (MemberAuthentication, MultiMemberAuthentication))
+                assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication))
                 assert isinstance(triplet[2], unicode)
                 assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo")
             assert isinstance(proof, Message.Implementation)
@@ -335,7 +335,7 @@ class Timeline(object):
                 assert isinstance(triplet[0], Member)
                 assert isinstance(triplet[1], Message)
                 assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution))
-                assert isinstance(triplet[1].authentication, (MemberAuthentication, MultiMemberAuthentication))
+                assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication))
                 assert isinstance(triplet[2], unicode)
                 assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo")
             assert isinstance(proof, Message.Implementation)

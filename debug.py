@@ -311,17 +311,6 @@ class Node(object):
                          destination=(destination_candidate,),
                          payload=(identifier, message))
 
-    def create_dispersy_subjective_set_message(self, cluster, subjective_set, global_time):
-        assert isinstance(cluster, int)
-        assert 0 < cluster < 2^8
-        assert isinstance(subjective_set, BloomFilter)
-        assert isinstance(global_time, (int, long))
-        assert global_time > 0
-        meta = self._community.get_meta_message(u"dispersy-subjective-set")
-        return meta.impl(authentication=(self._my_member,),
-                         distribution=(global_time,),
-                         payload=(cluster, subjective_set))
-
     def create_dispersy_missing_message_message(self, missing_member, missing_global_times, global_time, destination_candidate):
         assert isinstance(missing_member, Member)
         assert isinstance(missing_global_times, list)

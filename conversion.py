@@ -4,10 +4,10 @@ from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
 from random import choice
 
-from authentication import NoAuthentication, MemberAuthentication, MultiMemberAuthentication
+from authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from bloomfilter import BloomFilter
 from crypto import ec_check_public_bin
-from destination import MemberDestination, CommunityDestination, CandidateDestination, SubjectiveDestination
+from destination import MemberDestination, CommunityDestination, CandidateDestination
 from dispersydatabase import DispersyDatabase
 from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from message import DelayPacketByMissingMember, DelayPacketByMissingMessage, DropPacket, Packet, Message
@@ -220,8 +220,8 @@ class BinaryConversion(Conversion):
         define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
         define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
         define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
-        define(241, u"dispersy-subjective-set", self._encode_subjective_set, self._decode_subjective_set)
-        define(240, u"dispersy-missing-subjective-set", self._encode_missing_subjective_set, self._decode_missing_subjective_set)
+        # 241 for obsolete dispersy-subjective-set
+        # 240 for obsolete dispersy-missing-subjective-set
         define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
         define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
         define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
@@ -243,7 +243,7 @@ class BinaryConversion(Conversion):
         assert callable(decode_payload_func)
 
         mapping = {MemberAuthentication:(self._encode_member_authentication, self._encode_member_authentication_signature),
-                   MultiMemberAuthentication:(self._encode_multi_member_authentication, self._encode_multi_member_authentication_signature),
+                   DoubleMemberAuthentication:(self._encode_double_member_authentication, self._encode_double_member_authentication_signature),
                    NoAuthentication:(self._encode_no_authentication, self._encode_no_authentication_signature),
 
                    PublicResolution:self._encode_public_resolution,
@@ -257,7 +257,7 @@ class BinaryConversion(Conversion):
         self._encode_message_map[meta.name] = self.EncodeFunctions(byte, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], encode_payload_func)
 
         mapping = {MemberAuthentication:self._decode_member_authentication,
-                   MultiMemberAuthentication:self._decode_multi_member_authentication,
+                   DoubleMemberAuthentication:self._decode_double_member_authentication,
                    NoAuthentication:self._decode_no_authentication,
 
                    DynamicResolution:self._decode_dynamic_resolution,
@@ -270,8 +270,7 @@ class BinaryConversion(Conversion):
 
                    CandidateDestination:self._decode_empty_destination,
                    CommunityDestination:self._decode_empty_destination,
-                   MemberDestination:self._decode_empty_destination,
-                   SubjectiveDestination:self._decode_subjective_destination}
+                   MemberDestination:self._decode_empty_destination}
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 
@@ -562,9 +561,9 @@ class BinaryConversion(Conversion):
                 if not isinstance(message.resolution, (PublicResolution, LinearResolution, DynamicResolution)):
                     raise DropPacket("Invalid resolution policy")
 
-                if not isinstance(message.authentication, (MemberAuthentication, MultiMemberAuthentication)):
+                if not isinstance(message.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
                     # it makes no sence to authorize a message that does not use the
-                    # MemberAuthentication or MultiMemberAuthentication policy because without this
+                    # MemberAuthentication or DoubleMemberAuthentication policy because without this
                     # policy it is impossible to verify WHO created the message.
                     raise DropPacket("Invalid authentication policy")
 
@@ -677,60 +676,6 @@ class BinaryConversion(Conversion):
                         permission_triplets.append((member, message, permission))
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, permission_triplets)
-
-    def _encode_subjective_set(self, message):
-        payload = message.payload
-        assert payload.subjective_set.size % 8 == 0
-        assert 0 < payload.subjective_set.functions < 256, "assuming that we choose BITS to ensure the bloom filter will fit in one MTU, it is unlikely that there will be more than 255 functions.  hence we can encode this in one byte"
-        assert len(payload.subjective_set.prefix) == 0, "Should not have a prefix"
-        assert len(payload.subjective_set.bytes) == int(ceil(payload.subjective_set.size / 8))
-        return (self._struct_BBH.pack(payload.cluster, payload.subjective_set.functions, payload.subjective_set.size), payload.subjective_set.bytes)
-
-    def _decode_subjective_set(self, placeholder, offset, data):
-        if len(data) < offset + 4:
-            raise DropPacket("Insufficient packet size")
-
-        cluster, functions, size = self._struct_BBH.unpack_from(data, offset)
-        offset += 4
-        if not 0 < functions:
-            raise DropPacket("Invalid functions value")
-        if not 0 < size:
-            raise DropPacket("Invalid size value")
-        if not size % 8 == 0:
-            raise DropPacket("Invalid size value, must be a multiple of eight")
-        length = int(ceil(size / 8))
-        if not length == len(data) - offset:
-            raise DropPacket("Invalid number of bytes available")
-
-        subjective_set = BloomFilter(data[offset:offset + length], functions)
-        offset += length
-
-        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, cluster, subjective_set)
-
-    def _encode_missing_subjective_set(self, message):
-        return (self._struct_B.pack(message.payload.cluster),) + tuple([member.mid for member in message.payload.members])
-
-    def _decode_missing_subjective_set(self, placeholder, offset, data):
-        if len(data) < offset + 21:
-            raise DropPacket("Insufficient packet size")
-
-        cluster, = self._struct_B.unpack_from(data, offset)
-        offset += 1
-
-        # check that the cluster is valid, i.e. that there is a message with a SubjectiveDestination
-        # policy and this cluster value
-        if not cluster in placeholder.meta.community.subjective_set_clusters:
-            raise DropPacket("Invalid subjective-set cluster value")
-
-        members = []
-        while len(data) >= offset + 20:
-            members.extend(member for member in self._community.dispersy.get_members_from_id(data[offset:offset+20]) if member.has_identity(self._community))
-            offset += 20
-
-        if not members:
-            raise DropPacket("Invalid subjective-set-request: no members given")
-
-        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, cluster, members)
 
     def _encode_undo_own(self, message):
         return (self._struct_Q.pack(message.payload.global_time),)
@@ -1049,7 +994,7 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError(message.authentication.encoding)
 
-    def _encode_multi_member_authentication(self, container, message):
+    def _encode_double_member_authentication(self, container, message):
         container.extend([member.mid for member in message.authentication.members])
 
     def _encode_full_sync_distribution(self, container, message):
@@ -1107,7 +1052,7 @@ class BinaryConversion(Conversion):
         else:
             return data + "\x00" * message.authentication.member.signature_length
 
-    def _encode_multi_member_authentication_signature(self, container, message, sign):
+    def _encode_double_member_authentication_signature(self, container, message, sign):
         data = "".join(container)
         signatures = []
         for signature, member in message.authentication.signed_members:
@@ -1273,7 +1218,7 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError(authentication.encoding)
 
-    def _decode_multi_member_authentication(self, placeholder):
+    def _decode_double_member_authentication(self, placeholder):
         def iter_options(members_ids):
             """
             members_ids = [[m1_a, m1_b], [m2_a], [m3_a, m3_b]]
@@ -1294,7 +1239,7 @@ class BinaryConversion(Conversion):
         data = placeholder.data
         members_ids = []
 
-        for _ in range(authentication.count):
+        for _ in range(2):
             member_id = data[offset:offset+20]
             members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
             if not members:
@@ -1306,9 +1251,9 @@ class BinaryConversion(Conversion):
             # try this member combination
             first_signature_offset = len(data) - sum([member.signature_length for member in members])
             signature_offset = first_signature_offset
-            signatures = [""] * authentication.count
+            signatures = ["", ""]
             found_valid_combination = True
-            for index, member in zip(range(authentication.count), members):
+            for index, member in zip(range(2), members):
                 signature = data[signature_offset:signature_offset+member.signature_length]
                 # dprint("INDEX: ", index, force=1)
                 # dprint(signature.encode('HEX'), force=1)
@@ -1327,7 +1272,7 @@ class BinaryConversion(Conversion):
             if found_valid_combination:
                 placeholder.offset = offset
                 placeholder.first_signature_offset = first_signature_offset
-                placeholder.authentication = MultiMemberAuthentication.Implementation(placeholder.meta.authentication, members, signatures=signatures)
+                placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members, signatures=signatures)
                 return
 
         # we have no idea which member we are missing, hence we request a random one.  in the future
@@ -1336,13 +1281,6 @@ class BinaryConversion(Conversion):
 
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
-
-    def _decode_subjective_destination(self, placeholder):
-        meta = placeholder.meta
-        # we want to know if the sender occurs in our subjective bloom filter
-        subjective_set = self._community.get_subjective_set(self._community.my_member, meta.destination.cluster)
-        assert subjective_set, "We must always have subjective sets for ourself"
-        placeholder.destination = meta.destination.Implementation(meta.destination, placeholder.authentication.member.public_key in subjective_set)
 
     def _decode_message(self, candidate, data, verify, allow_empty_signature):
         """
@@ -1379,7 +1317,7 @@ class BinaryConversion(Conversion):
         # however, decoding the payload can cause DelayPacketByMissingMessage to be raised for
         # dispersy-undo messages, and the last thing that we want is to request messages from a
         # blacklisted member
-        if isinstance(placeholder.meta.authentication, (MemberAuthentication, MultiMemberAuthentication)) and placeholder.authentication.member.must_blacklist:
+        if isinstance(placeholder.meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)) and placeholder.authentication.member.must_blacklist:
             self._community.dispersy.send_malicious_proof(self._community, placeholder.authentication.member, candidate)
             raise DropPacket("Creator is blacklisted")
 

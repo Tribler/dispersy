@@ -19,8 +19,8 @@ def start_script(opt):
     try:
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
-    except:
-        raise SystemExit("Invalid --script", opt.script)
+    except Exception as exception:
+        raise SystemExit(str(exception), "Invalid --script", opt.script)
 
     try:
         kargs = {}
@@ -40,6 +40,7 @@ def main(setup=None):
 
     # define options
     command_line_parser = optparse.OptionParser()
+    command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
     command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=u".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=12345)

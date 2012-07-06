@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
+from bz2 import BZ2File
 from datetime import datetime
-from string import printable
 
 class NotInterested(Exception):
     pass
@@ -79,7 +79,7 @@ def _decode_float(offset, stream):
     assert isinstance(offset, (int, long))
     assert isinstance(stream, str)
     for split in _counter(offset):
-        if not stream[split] in "1234567890-.e":
+        if not stream[split] in "1234567890+-.e":
             return split, float(stream[offset:split])
 
 def _decode_boolean(offset, stream):
@@ -200,38 +200,49 @@ def _decode(offset, stream):
     else:
         raise ValueError("Can not decode {0}".format(stream[offset]))
 
-def parse_line(stream, lineno=-1, interests=[]):
-    assert isinstance(stream, str)
-    assert isinstance(lineno, (int, long))
-    assert isinstance(interests, (tuple, list, set))
-    offset = _ignore_seperator(14, stream)
-    if not stream[offset] == "s":
-        raise ValueError("Expected a string encoded message")
-    offset, message = _decode_str(offset+1, stream)
-    
-    try:
-        if not interests or message in interests:
-            stamp = datetime.strptime(stream[:14], "%Y%m%d%H%M%S")
-            kargs = {}
-            while offset < len(stream) - 1:
-                offset = _ignore_seperator(offset, stream)
-                for split in _counter(offset):
-                    if stream[split] == ":":
-                        key = stream[offset:split].strip()
-                        offset, value = _decode(split + 1, stream)
-                        kargs[key] = value
-                        break
-    
-                    elif not stream[split] in _valid_key_chars:
-                        raise ValueError("Can not decode character", stream[split], "on line", lineno, "offset", offset)
-    
-            return lineno, stamp, message, kargs
-    except Exception, e:
-        raise ValueError("Cannot read line", str(e), "on line", lineno)
-    
-    raise NotInterested(message)
+def _parse(handle, interests):
+    assert isinstance(interests, set)
+    for lineno, stream in zip(_counter(1), handle):
+        if stream.startswith("#"):
+            continue
 
-def parse(filename, interests=[]):
+        offset = _ignore_seperator(21, stream)
+        if not stream[offset] == "s":
+            raise ValueError("Expected a string encoded message")
+        offset, message = _decode_str(offset+1, stream)
+
+        try:
+            if not interests or message in interests:
+                stamp = datetime.strptime(stream[:21], "%Y%m%d%H%M%S.f")
+                kargs = {}
+                while offset < len(stream) - 1:
+                    offset = _ignore_seperator(offset, stream)
+                    for split in _counter(offset):
+                        if stream[split] == ":":
+                            key = stream[offset:split].strip()
+                            offset, value = _decode(split + 1, stream)
+                            kargs[key] = value
+                            break
+
+                        elif not stream[split] in _valid_key_chars:
+                            raise ValueError("Can not decode character", stream[split], "on line", lineno, "offset", offset)
+
+                yield lineno, stamp, message, kargs
+        except Exception, e:
+            raise ValueError("Cannot read line", str(e), "on line", lineno)
+
+def bz2parse(filename, interests=()):
+    """
+    Parse the content of bz2 encoded FILENAME.
+
+    Yields a (LINENO, DATETIME, MESSAGE, KARGS) tuple for each line in the file.
+    """
+    assert isinstance(filename, (str, unicode))
+    assert isinstance(interests, (tuple, list, set))
+    assert all(isinstance(interest, str) for interest in interests)
+    return _parse(BZ2File(filename, "r"), set(interests))
+
+def parse(filename, interests=()):
     """
     Parse the content of FILENAME.
 
@@ -240,141 +251,8 @@ def parse(filename, interests=[]):
     """
     assert isinstance(filename, (str, unicode))
     assert isinstance(interests, (tuple, list, set))
-    assert not filter(lambda x: not isinstance(x, str), interests)
-    if isinstance(interests, (tuple, list)):
-        interests = set(interests)
-    for lineno, stream in zip(_counter(1), open(filename, "r")):
-        if stream[0] == "#":
-            continue
-        try:
-            yield parse_line(stream, lineno, interests)
-        except NotInterested:
-            pass
-        except Exception, exception:
-            print "#", exception
-
-def parse_frequencies(filename, select=None):
-    """
-    Parse the content of FILENAME and calculate the frequenties of
-    logged values.
-
-    SELECT is an optional dictionary that tells the parser to only
-    count specific keys from specific messages.  When SELECT is None,
-    the frequenties of everything is calculated.  SELECT has the
-    following structure:
-    {msg.A : [key.A.1, key.A.2],
-     msg.B : [key.B.1, key.B.2]}
-
-    Yields a (LINENO, DATETIME, MESSAGE, KARGS, FREQUENTIES) tuple for
-    each line in the file.
-
-    Where FREQUENTIES has the following structure:
-    { msg.A : [count.A, {key.A.1 : [count.A.1, {value.A.1.a : count.A.1.a}]}]}
-
-    Note that print_frequencies(FREQUENTIES) can be used to display
-    FREQUENTIES in a human readable way.
-    """
-    isinstance(select, dict)
-
-    def parse_with_select():
-        msg_freq = {}
-        for message, keys in select.iteritems():
-            key_freq = {}
-            for key in keys:
-                key_freq[key] = [0, {}]
-            msg_freq[message] = [0, key_freq]
-
-        for lineno, stamp, message, kargs in parse(filename):
-            if message in msg_freq:
-                msg_container = msg_freq[message]
-                msg_container[0] += 1
-                key_freq = msg_container[1]
-
-                for key, value in kargs.iteritems():
-                    if key in key_freq:
-                        key_container = key_freq[key]
-                        key_container[0] += 1
-                        value_freq = key_container[1]
-                        if isinstance(value, list):
-                            for value in value:
-                                value_freq[value] = value_freq.get(value, 0) + 1
-                        else:
-                            value_freq[value] = value_freq.get(value, 0) + 1
-
-            yield lineno, stamp, message, kargs, msg_freq
-
-    def parse_without_select():
-        msg_freq = {}
-        for lineno, stamp, message, kargs in parse(filename):
-            if not message in msg_freq:
-                msg_freq[message] = [0, {}]
-
-            msg_container = msg_freq[message]
-            msg_container[0] += 1
-            key_freq = msg_container[1]
-
-            for key, value in kargs.iteritems():
-                if not key in key_freq:
-                    key_freq[key] = [0, {}]
-
-                key_container = key_freq[key]
-                key_container[0] += 1
-                value_freq = key_container[1]
-                if isinstance(value, list):
-                    for value in value:
-                        value_freq[value] = value_freq.get(value, 0) + 1
-                else:
-                    value_freq[value] = value_freq.get(value, 0) + 1
-
-            yield lineno, stamp, message, kargs, msg_freq
-
-    if select:
-        return parse_with_select()
-    else:
-        return parse_without_select()
-
-def print_frequencies(frequencies, merge=None, limit=8):
-    def print_helper(freq, total):
-        for count, value in sorted([(count, value) for value, count in freq.iteritems()], reverse=True)[:limit]:
-            if isinstance(value, str):
-                for char in value:
-                    if not char in printable:
-                        print "{0:5} {1:4.0%}:  {2}".format(count, 1.0*count/total, value.encode("HEX"))
-                        break
-                else:
-                    print "{0:5} {1:4.0%}:  {2}".format(count, 1.0*count/total, value)
-            else:
-                print "{0:5} {1:4.0%}:  {2}".format(count, 1.0*count/total, value)
-
-    def print_with_merge():
-        freq = {}
-        for title, selection in merge.iteritems():
-            count = 0
-            for message, key in selection:
-                if message in frequencies:
-                    key_freq = frequencies[message][1]
-                    if key in key_freq:
-                        key_container = key_freq[key]
-                        count += key_container[0]
-                        for value, count in key_container[1].iteritems():
-                            freq[value] = freq.get(value, 0) + count
-
-            print "+++ {0} . {1} +++".format(title, count)
-            print_helper(freq, count)
-            print
-
-    def print_without_merge():
-        for message, (msg_count, key_freq) in frequencies.iteritems():
-            print ">>>>> {0:20}   {1:5}      <<<<<".format(message, msg_count)
-            for key, (key_count, value_freq) in key_freq.iteritems():
-                print ">     {0:20}   {1:5} {2:4.0%}     <".format(key, key_count, 1.0*key_count/msg_count)
-                print_helper(value_freq, key_count)
-            print
-
-    if merge:
-        print_with_merge()
-    else:
-        print_without_merge()
+    assert all(isinstance(interest, str) for interest in interests)
+    return _parse(open(filename, "r"), set(interests))
 
 _valid_key_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
 _decode_mapping = {"s":_decode_str,

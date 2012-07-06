@@ -68,13 +68,21 @@ class Callback(object):
         # identifier.  it is protected by _lock
         self._id = 0
 
-        # requests are ordered by deadline and moved to -expired- when they need to be handled
+        # _requests are ordered by deadline and moved to -expired- when they need to be handled
         # (deadline, priority, root_id, (call, args, kargs), callback)
         self._requests = []
 
         # expired requests are ordered and handled by priority
         # (priority, root_id, None, (call, args, kargs), callback)
         self._expired = []
+
+        # _requests_mirror and _expired_mirror contains the same list as _requests and _expired,
+        # respectively.  when the callback closes _requests is set to a new empty list while
+        # _requests_mirror continues to point to the existing one.  because all task 'deletes' are
+        # done on the _requests_mirror list, these actions will still be allowed while no new tasks
+        # will be accepted.
+        self._requests_mirror = self._requests
+        self._expired_mirror = self._expired
 
         if __debug__:
             def must_close(callback):
@@ -310,14 +318,14 @@ class Callback(object):
         if __debug__: dprint("replace register ", call, " after ", delay, " seconds")
         with self._lock:
             # un-register
-            for index, tup in enumerate(self._requests):
+            for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
-                    self._requests[index] = (tup[0], tup[1], tup[2], None, None)
+                    self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
                     if __debug__: dprint("in _requests: ", id_)
 
-            for index, tup in enumerate(self._expired):
+            for index, tup in enumerate(self._expired_mirror):
                 if tup[1] == id_:
-                    self._expired[index] = (tup[0], tup[1], tup[2], None, None)
+                    self._expired_mirror[index] = (tup[0], id_, tup[2], None, None)
                     if __debug__: dprint("in _expired: ", id_)
 
             # register
@@ -351,14 +359,14 @@ class Callback(object):
         if __debug__: dprint(id_)
         with self._lock:
             # un-register
-            for index, tup in enumerate(self._requests):
+            for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
-                    self._requests[index] = (tup[0], tup[1], tup[2], None, None)
+                    self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
                     if __debug__: dprint("in _requests: ", id_)
 
-            for index, tup in enumerate(self._expired):
+            for index, tup in enumerate(self._expired_mirror):
                 if tup[1] == id_:
-                    self._expired[index] = (tup[0], tup[1], tup[2], None, None)
+                    self._expired_mirror[index] = (tup[0], id_, tup[2], None, None)
                     if __debug__: dprint("in _expired: ", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", timeout=0.0, default=None):
@@ -602,16 +610,17 @@ class Callback(object):
                             dprint(round(debug_call_duration, 2), "s call to ", self._debug_call_name, level="warning")
 
         except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
-            dprint("attempting to properly shutdown", exception=True, level="error")
+            dprint("attempting proper shutdown", exception=True, level="error")
             with lock:
                 self._state = "STATE_EXCEPTION"
                 self._exception = exception
             self._call_exception_handlers(exception, True)
 
         with lock:
-            # shallow copy, allowing us to refuse any new tasks
-            requests = requests[:]
-            expired = expired[:]
+            # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still
+            # allow tasks to be removed
+            self._requests = []
+            self._expired = []
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
@@ -745,6 +754,47 @@ if __debug__:
 
         sleep(21.0)
         dprint(line=1)
+
+        def call8(index):
+            container1[index] += 1
+        def call9(index):
+            container2[index] += 1
+        def call10():
+            indexes = range(len(container1))
+            random.shuffle(indexes)
+            for index in indexes:
+                c.register(call8, (index,))
+
+            for index in indexes:
+                c.register(call8, (index,), id_="debug-test-%s" % index)
+            for index in xrange(len(container1)):
+                c.unregister("debug-test-%s" % index)
+
+            for index in indexes:
+                c.register(call8, (index,), delay=60.0, id_="debug-test-2-%s" % index)
+            for index in xrange(len(container1)):
+                c.unregister("debug-test-2-%s" % index)
+
+            for index in indexes:
+                c.register(call8, (index,), id_="debug-test-3-%s" % index)
+            for index in xrange(len(container1)):
+                c.replace_register("debug-test-3-%s" % index, call9, (index,))
+
+            for index in indexes:
+                c.register(call8, (index,), delay=60.0, id_="debug-test-4-%s" % index)
+            for index in xrange(len(container1)):
+                c.replace_register("debug-test-4-%s" % index, call9, (index,))
+
+            for index in indexes:
+                c.register(call8, (index,), delay=1.0)
+
+        import random
+        container1 = [0] * 1000
+        container2 = [0] * len(container1)
+        c.register(call10)
+        sleep(10.0)
+        assert all(value == 2 for value in container1), container1
+        assert all(value == 2 for value in container2), container2
 
         d.stop()
         c.stop()

@@ -4,10 +4,12 @@ except ImportError:
     poisson = expon = None
     print "Unable to import scipy.  ScenarioPoisson and ScenarioExpon are disabled"
 
+from os import getpid, uname
+from psutil import Process, cpu_percent
 from random import random, uniform
 from re import compile as re_compile
-from time import time
 from sys import maxsize
+from time import time
 
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dprint import dprint
@@ -19,6 +21,32 @@ class ScenarioScript(ScriptBase):
         super(ScenarioScript, self).__init__(*args, **kargs)
         self._master_member = None
         self._community = None
+        self._process = Process(getpid()) if self.enable_cpu_statistics or self.enable_memory_statistics else None
+
+        if self.enable_cpu_statistics:
+            self._dispersy.callback.register(self._periodically_log_cpu_statistics)
+
+        if self.enable_memory_statistics:
+            self._dispersy.callback.register(self._periodically_log_memory_statistics)
+
+        if self.enable_bandwidth_statistics:
+            self._dispersy.callback.register(self._periodically_log_bandwidth_statistics)
+
+    @property
+    def enable_wait_for_wan_address(self):
+        return False
+
+    @property
+    def enable_cpu_statistics(self):
+        return 5.0
+
+    @property
+    def enable_memory_statistics(self):
+        return 5.0
+
+    @property
+    def enable_bandwidth_statistics(self):
+        return 5.0
 
     def run(self):
         self.add_testcase(self._run_scenario)
@@ -64,26 +92,91 @@ class ScenarioScript(ScriptBase):
     def log(self, _message, **kargs):
         pass
 
+    def _periodically_log_cpu_statistics(self):
+        hostname = uname()[1]
+        while True:
+            self.log("scenario-cpu", hostname=hostname, percentage=cpu_percent(interval=0, percpu=True))
+            yield self.enable_cpu_statistics
+
+    def _periodically_log_memory_statistics(self):
+        while True:
+            rss, vms = self._process.get_memory_info()
+            self.log("scenario-memory", rss=rss, vms=vms)
+            yield self.enable_memory_statistics
+
+    def _periodically_log_bandwidth_statistics(self):
+        while True:
+            up, down = self._dispersy.endpoint.total_up, self._dispersy.endpoint.total_down
+            self.log("scenario-bandwidth", up=up, down=down)
+            yield self.enable_bandwidth_statistics
+
+    def _periodically_log_io_statistics(self):
+        while True:
+            read_count, write_count, read_bytes, write_bytes = self._process.get_io_counters()
+            self.log("scenario-io", read_count=read_count, write_count=write_count, read_bytes=read_bytes, write_bytes=write_bytes)
+            yield self.enable_io_statistics
+
     def parse_scenario(self):
         """
-        Yields (TIMESTAMP, FUNC, ARGS) tuples, where TIMESTAMP is the time when FUNC must be called.
+        Returns a list with (TIMESTAMP, FUNC, ARGS) tuples, where TIMESTAMP is the time when FUNC
+        must be called.
+
+        [@+][H:]M:S[-[H:]M:S] METHOD [ARG1 [ARG2 ..]] [{PEERNR1 [, PEERNR2, ...] [, PEERNR3-PEERNR6, ...]}]
+        ^^^^
+        use @ to schedule events based on experiment startstamp
+        use + to schedule events based on peer startstamp
+            ^^^^^^^^^^^^^^^^^
+            schedule event hours:minutes:seconds after @ or +
+            or add another hours:minutes:seconds pair to schedule uniformly chosen between the two
+                              ^^^^^^^^^^^^^^^^^^^^^^^
+                              calls script.schedule_METHOD(ARG1, ARG2)
+                              the arguments are passed as strings
+                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                      apply event only to peer 1 and 2, and peers in
+                                                      range 3-6 (including both 3 and 6)
         """
         scenario = []
-        re_line = re_compile("^([@+])\s*(?:(\d+):)?(\d+)(?:[.](\d+))?(?:\s*-\s*(?:(\d+):)?(\d+)(?:[.](\d+))?)?\s+(\w+)(?:\s+(.+?))?\s*$")
+        re_line = re_compile("".join(("^",
+                                      "(?P<origin>[@+])",
+                                      "\s*",
+                                      "(?:(?P<beginH>\d+):)?(?P<beginM>\d+):(?P<beginS>\d+)",
+                                      "(?:\s*-\s*",
+                                      "(?:(?P<endH>\d+):)?(?P<endM>\d+):(?P<endS>\d+)",
+                                      ")?",
+                                      "\s+",
+                                      "(?P<method>\w+)(?P<args>\s+(.+?))??",
+                                      "(?:\s*{(?P<peers>\s*\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*\s*)})?",
+                                      "\s*(?:\n)?$")))
+        peernumber = int(self._kargs["peernumber"])
         filename = self._kargs["scenario"]
-        origin = {"@":int(self._kargs["startstamp"]) if "startstamp" in self._kargs else time(),
+        origin = {"@":float(self._kargs["startstamp"]) if "startstamp" in self._kargs else time(),
                   "+":time()}
+
         for lineno, line in enumerate(open(filename, "r")):
             match = re_line.match(line)
             if match:
-                type_, bhour, bminute, bsecond, ehour, eminute, esecond, func, args = match.groups()
-                begin = (int(bhour) * 3600.0 if bhour else 0.0) + (int(bminute) * 60.0) + (int(bsecond) if bsecond else 0.0)
-                end = ((int(ehour) * 3600.0 if ehour else 0.0) + (int(eminute) * 60.0) + (int(esecond) if esecond else 0.0)) if eminute else 0.0
-                assert end == 0.0 or begin <= end, "when end time is given it must be at or after the start time"
-                scenario.append((origin[type_] + begin + (random() * (end - begin) if end else 0.0),
-                                 lineno,
-                                 getattr(self, "scenario_" + func),
-                                 tuple(args.split()) if args else ()))
+                # remove all entries that are None (allows us to get default per key)
+                dic = dict((key, value) for key, value in match.groupdict().iteritems() if not value is None)
+
+                # get the peers, if any, for which this line applies
+                peers = set()
+                for peer in dic.get("peers", "").split(","):
+                    peer = peer.strip()
+                    if peer:
+                        if "-" in peer:
+                            low, high = peer.split("-")
+                            peers.update(xrange(int(low), int(high)+1))
+                        else:
+                            peers.add(int(peer))
+
+                if not peers or peernumber in peers:
+                    begin = int(dic.get("beginH", 0)) * 3600.0 + int(dic.get("beginM", 0)) * 60.0 + int(dic.get("beginS", 0))
+                    end = int(dic.get("endH", 0)) * 3600.0 + int(dic.get("endM", 0)) * 60.0 + int(dic.get("endS", 0))
+                    assert end == 0.0 or begin <= end, "when end time is given it must be at or after the start time"
+                    scenario.append((origin[dic.get("origin", "@")] + begin + (random() * (end - begin) if end else 0.0),
+                                     lineno,
+                                     getattr(self, "scenario_" + dic.get("method", "print")),
+                                     tuple(dic.get("args", "").split())))
 
         assert scenario, "scenario is empty"
         assert any(func.__name__ == "scenario_end" for _, _, func, _ in scenario), "scenario end is not defined"

@@ -2,10 +2,10 @@ from ..script import ScriptBase
 
 class DispersyCallbackScript(ScriptBase):
     def run(self):
-        self.caller(self.previous_performance_profile)
-        self.caller(self.register)
-        self.caller(self.register_delay)
-        self.caller(self.generator)
+        self.add_testcase(self.previous_performance_profile)
+        self.add_testcase(self.register)
+        self.add_testcase(self.register_delay)
+        self.add_testcase(self.generator)
 
     def previous_performance_profile(self):
         """

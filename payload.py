@@ -332,7 +332,7 @@ class AuthorizePayload(Payload):
             u"revoke".
             """
             if __debug__:
-                from authentication import MemberAuthentication, MultiMemberAuthentication
+                from authentication import MemberAuthentication, DoubleMemberAuthentication
                 from resolution import PublicResolution, LinearResolution, DynamicResolution
                 from member import Member
                 from message import Message
@@ -342,7 +342,7 @@ class AuthorizePayload(Payload):
                     assert isinstance(triplet[0], Member), triplet[0]
                     assert isinstance(triplet[1], Message), triplet[1]
                     assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet[1]
-                    assert isinstance(triplet[1].authentication, (MemberAuthentication, MultiMemberAuthentication)), triplet[1]
+                    assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet[1]
                     assert isinstance(triplet[2], unicode), triplet[2]
                     assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet[2]
             super(AuthorizePayload.Implementation, self).__init__(meta)
@@ -363,7 +363,7 @@ class RevokePayload(Payload):
             u"revoke".
             """
             if __debug__:
-                from authentication import MemberAuthentication, MultiMemberAuthentication
+                from authentication import MemberAuthentication, DoubleMemberAuthentication
                 from resolution import PublicResolution, LinearResolution, DynamicResolution
                 from member import Member
                 from message import Message
@@ -373,7 +373,7 @@ class RevokePayload(Payload):
                     assert isinstance(triplet[0], Member), triplet
                     assert isinstance(triplet[1], Message), triplet
                     assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet
-                    assert isinstance(triplet[1].authentication, (MemberAuthentication, MultiMemberAuthentication)), triplet
+                    assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet
                     assert isinstance(triplet[2], unicode), triplet
                     assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet
             super(RevokePayload.Implementation, self).__init__(meta)
@@ -509,64 +509,6 @@ class DestroyCommunityPayload(Payload):
         @property
         def is_hard_kill(self):
             return self._degree == u"hard-kill"
-
-class SubjectiveSetPayload(Payload):
-    class Implementation(Payload.Implementation):
-        def __init__(self, meta, cluster, subjective_set):
-            if __debug__:
-                from bloomfilter import BloomFilter
-            assert isinstance(cluster, int)
-            assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
-            assert isinstance(subjective_set, BloomFilter)
-            super(SubjectiveSetPayload.Implementation, self).__init__(meta)
-            self._cluster = cluster
-            self._subjective_set = subjective_set
-
-        @property
-        def cluster(self):
-            return self._cluster
-
-        @property
-        def subjective_set(self):
-            return self._subjective_set
-
-class MissingSubjectiveSetPayload(Payload):
-    class Implementation(Payload.Implementation):
-        def __init__(self, meta, cluster, members):
-            """
-            The payload for a dispersy-missing-subjective-set message.
-
-            This message is sent whenever we are missing the dispersy-subjective-set message for a
-            specific cluster and member.
-
-            The sender side is likely to add only one member, however, on the receiver side this may
-            result in multiple member instance, because the member is represented as a 20 byte sha1
-            digest on the wire.  Hence the payload must be able to contain multiple members.
-
-            @param cluster: the cluster that we want the subjective set for (note that one member
-             can have multiple subjective sets, they are identified by their cluster).
-            @type cluster: int
-
-            @param members: the list of members for wich we want the subjective set.
-            @type member: [Member]
-            """
-            if __debug__:
-                from member import Member
-            assert isinstance(cluster, int)
-            assert 0 < cluster < 2^8, "CLUSTER must fit in one byte"
-            assert isinstance(members, (tuple, list))
-            assert all(isinstance(member, Member) for member in members)
-            super(MissingSubjectiveSetPayload.Implementation, self).__init__(meta)
-            self._cluster = cluster
-            self._members = members
-
-        @property
-        def cluster(self):
-            return self._cluster
-
-        @property
-        def members(self):
-            return self._members
 
 class MissingMessagePayload(Payload):
     class Implementation(Payload.Implementation):

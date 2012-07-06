@@ -172,48 +172,37 @@ class MemberAuthentication(Authentication):
         """
         return self._encoding
 
-class MultiMemberAuthentication(Authentication):
+class DoubleMemberAuthentication(Authentication):
     """
-    The MultiMemberAuthentication policy can be used when a message needs to be signed by more than
-    one members.
+    The DoubleMemberAuthentication policy can be used when a message needs to be signed by two
+    members.
 
-    A message that uses the multi-member-authentication policy is signed by two or more member.
-    Similar to the member-authentication policy the message contains two or more identifiers where
-    the first indicates the creator and the following indicate the members that added their
-    signature.
+    A message that uses the double-member-authentication policy is signed by two member.  Similar to
+    the member-authentication policy the message contains two identifiers where the first indicates
+    the creator and the second indicates the members that added her signature.
 
     Dispersy is responsible for obtaining the signatures of the different members and handles this
     using the messages dispersy-signature-request and dispersy-signature-response, defined below.
     Creating a double signed message is performed using the following steps: first Alice creates a
-    message (M), note that this message must use the multi-member-authentication policy, and signs
-    it herself.  At this point the message consists of the community identifier, the conversion
-    identifier, the message identifier, the member identifier for both Alice and Bob, optional
-    resolution information, optional distribution information, optional destination information, the
-    message payload, and finally the signature for Alice and enough bytes --all set to zero-- to fit
-    the signature for Bob.
+    message (M) where M uses the double-member-authentication policy.  At this point M consists of
+    the community identifier, the conversion identifier, the message identifier, the member
+    identifier for both Alice and Bob, optional resolution information, optional distribution
+    information, optional destination information, the message payload, and \0 bytes for the two
+    signatures.
 
-    This message is consequently wrapped inside a dispersy-signature-request message (R) and send to
-    Bob.  When Bob receives this request he is given the choice to add his signature, assuming that
-    he does, both a signature and a request identifier will be generated.  The signature signs the
-    entire message (M) excluding the two signatures, while the request identifier is a sha1 digest
-    over the request message (R).
-
-    Finally Bob sends a dispersy-signature-response message (E), containing the request identifier
-    and his signature, back to Alice.  Alice is able to match this specific response to the original
-    request and adds Bob's signature to message (M).  This message, which is now double signed, can
-    now be disseminated according to its own distribution policy.
-
-    The multi-member-authentication policy can be used to not only double sign, but also sign
-    messages with even more members.  The double sign mechanism is, for instance, used by the barter
-    community to ensure that two members agree on the amount of bandwidth uploaded by both parties
-    before disseminating this information to the rest of the community.
+    Message M is then wrapped inside a dispersy-signature-request message (R) and send to Bob.  When
+    Bob receives this request he can optionally apply changes to M2 and add his signature.  Assuming
+    that he does the new message M2, which now includes Bob's signature while Alice's is still \0,
+    is wrapped in a dispersy-signature-response message (E) and sent back to Alice.  If Alice agrees
+    with the (possible) changes in M2 she can add her own signature and M2 is stored, updated, and
+    forwarded to other nodes in the community.
     """
     class Implementation(Authentication.Implementation):
         def __init__(self, meta, members, signatures=[]):
             """
-            Initialize a new MultiMemberAuthentication.Implementation instance.
+            Initialize a new DoubleMemberAuthentication.Implementation instance.
 
-            This methos should only be called through the MemberAuthentication.implement(members,
+            This method should only be called through the MemberAuthentication.implement(members,
             signatures) method.
 
             @param members: The members that will need to sign this message, in this order.  The
@@ -227,12 +216,12 @@ class MultiMemberAuthentication(Authentication):
             if __debug__:
                 from member import Member
             assert isinstance(members, list), type(members)
-            assert not filter(lambda x: not isinstance(x, Member), members)
-            assert len(members) == meta._count
+            assert len(members) == 2
+            assert all(isinstance(member, Member) for member in members)
             assert isinstance(signatures, list)
-            assert not filter(lambda x: not isinstance(x, str), signatures)
-            assert not signatures or len(signatures) == meta._count
-            super(MultiMemberAuthentication.Implementation, self).__init__(meta)
+            assert all(isinstance(signature, str) for signature in signatures)
+            assert len(signatures) == 0 or len(signatures) == 2
+            super(DoubleMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
             self._regenerate_packet_func = None
 
@@ -241,16 +230,7 @@ class MultiMemberAuthentication(Authentication):
             if signatures:
                 self._signatures = signatures
             else:
-                self._signatures = [""] * meta._count
-
-        @property
-        def count(self):
-            """
-            By how many members this message is, or should be, signed.
-            @rtype: int or long
-            @note: This property is obtained from the meta object.
-            """
-            return self._meta._count
+                self._signatures = ["", ""]
 
         @property
         def allow_signature_func(self):
@@ -320,14 +300,11 @@ class MultiMemberAuthentication(Authentication):
             assert isinstance(message_impl, Message.Implementation)
             self._regenerate_packet_func = message_impl.regenerate_packet
 
-    def __init__(self, count, allow_signature_func):
+    def __init__(self, allow_signature_func):
         """
-        Initialize a new MultiMemberAuthentication instance.
+        Initialize a new DoubleMemberAuthentication instance.
 
-        A message that uses MultiMemberAuthentication is always signed by a fixed number of members,
-        this is given by the count parameter.
-
-        When someone wants to create a multi signed message, the Community.create_signature_request
+        When someone wants to create a double signed message, the Community.create_signature_request
         method can be used.  This will send dispersy-signature-request messages to all Members that
         have not yet signed and will wait until replies are received, or a timeout occurs.
 
@@ -335,25 +312,12 @@ class MultiMemberAuthentication(Authentication):
         function is called.  When this function returns True a signature is generated and send back
         to the requester.
 
-        @param count: The number of Members required to sign this message.
-        @type count: int
-
         @param allow_signature_func: The function that is called when a signature request is
          received.  Must return True to add a signature, False not to.
         @type allow_signature_func: callable function
         """
-        assert isinstance(count, int)
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
-        self._count = count
         self._allow_signature_func = allow_signature_func
-
-    @property
-    def count(self):
-        """
-        By how many members this message is, or should be, signed.
-        @rtype: int or long
-        """
-        return self._count
 
     @property
     def allow_signature_func(self):

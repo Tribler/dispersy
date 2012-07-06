@@ -87,7 +87,7 @@ class BloomFilter(Constructor):
         assert isinstance(bytes_, str)
         assert 0 < len(bytes_)
         if __debug__: dprint("constructing bloom filter based on ", len(bytes_), " bytes and k_functions ", k_functions)
-        
+
         filter = long(hexlify(bytes_[::-1]), 16)
         self._init_(len(bytes_) * 8, k_functions, prefix, filter)
 
@@ -115,22 +115,16 @@ class BloomFilter(Constructor):
         if __debug__: dprint("constructing bloom filter based on f_error_rate ", f_error_rate, " and ", n_capacity, " capacity")
         self._init_(m_size, self._get_k_functions(m_size, n_capacity), prefix, 0L)
 
-    def _hashes(self, key):
-        h = self._salt.copy()
-        h.update(key)
-
-        # 04/05/12 Boudewijn: using a list instead of a generator is significantly faster.
-        # while generators are more memory efficient, this list will be relatively short.
-        return [index % self._m_size for index in self._fmt_unpack(h.digest())]
-
     def add(self, key):
         """
         Add KEY to the BloomFilter.
         """
-        bits = 0L
-        for pos in self._hashes(key):
-            bits |= 1 << pos
-        self._filter |= bits
+        filter_ = self._filter
+        h = self._salt.copy()
+        h.update(key)
+        for pos in self._fmt_unpack(h.digest()):
+            filter_ |= 1 << (pos % self._m_size)
+        self._filter = filter_
 
     def add_keys(self, keys):
         """
@@ -700,7 +694,7 @@ if __debug__:
     @attach_profiler
     def _test_performance():
         b = BloomFilter(1024 * 8, 0.01)
-        
+
         data = [str(i) for i in xrange(b.get_capacity(0.01))]
         testdata = [str(i) for i in xrange(len(data) * 2)]
         b.add_keys(data)
@@ -708,16 +702,16 @@ if __debug__:
         #for i in testdata:
         #    test = i in b
         import sys
-        
+
         t1 = time()
         for i in range(1000):
             b.bytes
-        
+
         t2 = time()
         bytes = b.bytes
         for i in range(1000):
             b2 = BloomFilter(bytes, b.functions)
-            
+
         print >> sys.stderr, time() - t2, t2 - t1
 
     def p(b, postfix=""):

@@ -2,7 +2,7 @@
 
 DISPERSY=$1
 if [ ! -f "$DISPERSY/tool/main.py" ]; then
-    echo "usage: $0 trunk"
+    echo "usage: $0 dispersy_trunk"
     exit 1
 fi
 
@@ -25,7 +25,6 @@ python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.scri
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyMemberTagScript || exit 1
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyMissingMessageScript || exit 1
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySignatureScript || exit 1
-python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySubjectiveSetScript || exit 1
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySyncScript || exit 1
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyTimelineScript || exit 1
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyUndoScript || exit 1
@@ -50,7 +49,6 @@ python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.s
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyMemberTagScript || exit 1
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyMissingMessageScript || exit 1
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySignatureScript || exit 1
-python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySubjectiveSetScript || exit 1
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersySyncScript || exit 1
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyTimelineScript || exit 1
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyUndoScript || exit 1
