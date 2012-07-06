@@ -213,7 +213,7 @@ def _parse(handle, interests):
 
         try:
             if not interests or message in interests:
-                stamp = datetime.strptime(stream[:21], "%Y%m%d%H%M%S.f")
+                stamp = datetime.strptime(stream[:21], "%Y%m%d%H%M%S.%f")
                 kargs = {}
                 while offset < len(stream) - 1:
                     offset = _ignore_seperator(offset, stream)
