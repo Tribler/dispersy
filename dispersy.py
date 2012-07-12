@@ -4414,7 +4414,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         """
         while True:
             try:
-                yield 5 * 60.0
+                # Arno, 2012-07-12: apswtrace detects 7 s commits with yield 5 min, so reduce
+                yield 60.0
 
                 # flush changes to disk every 1 minutes
                 self._database.commit()
