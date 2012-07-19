@@ -2314,7 +2314,7 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
             assert self._is_valid_lan_address(lan_address), [self.lan_address, lan_address]
             return lan_address, ("0.0.0.0", 0)
 
-    def take_step(self, community):
+    def take_step(self, community, allow_sync):
         if community.cid in self._communities:
             try:
                 candidate = self.yield_walk_candidates(community).next()
@@ -2332,7 +2332,7 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
             else:
                 assert community.my_member.private_key
                 if __debug__: dprint(community.cid.encode("HEX"), " ", community.get_classification(), " taking step towards ", candidate)
-                community.create_introduction_request(candidate)
+                community.create_introduction_request(candidate, allow_sync)
                 return True
 
     def handle_missing_messages(self, messages, *classes):
@@ -2346,7 +2346,7 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
                     for response_func, response_args in cache.callbacks:
                         response_func(message, *response_args)
 
-    def create_introduction_request(self, community, destination, forward=True):
+    def create_introduction_request(self, community, destination, allow_sync, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         self._statistics.increment_walk_attempt()
@@ -2360,7 +2360,7 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
         advice = True
 
         # obtain sync range
-        if isinstance(destination, BootstrapCandidate):
+        if not allow_sync or isinstance(destination, BootstrapCandidate):
             # do not request a sync when we connecting to a bootstrap candidate
             sync = None
 
@@ -4440,6 +4440,9 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         optimaldelay = max(0.1, 5.0 / len(walker_communities))
         if __debug__: dprint("there are ", len(walker_communities), " walker enabled communities.  pausing ", optimaldelay, "s (on average) between each step")
 
+        for community in walker_communities:
+            community.__most_recent_sync = 0.0
+
         if __debug__:
             RESETS = 0
             STEPS = 0
@@ -4452,6 +4455,12 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             community = walker_communities.pop(0)
             walker_communities.append(community)
 
+            actualtime = time()
+            allow_sync = actualtime - community.__most_recent_sync > 4.5
+            # dprint("previous sync was ", round(actualtime - community.__most_recent_sync, 1), " seconds ago", "" if allow_sync else " (no sync this cycle)", force=1)
+            if allow_sync:
+                community.__most_recent_sync = actualtime
+
             if __debug__:
                 NOW = time()
                 OPTIMALSTEPS = (NOW - START) / optimaldelay
@@ -4463,7 +4472,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             # walk
             assert community.dispersy_enable_candidate_walker
             assert community.dispersy_enable_candidate_walker_responses
-            community.dispersy_take_step()
+            community.dispersy_take_step(allow_sync)
             steps += 1
 
             optimaltime = start + steps * optimaldelay

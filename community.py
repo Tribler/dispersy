@@ -1161,8 +1161,8 @@ class Community(object):
         self._conversions[conversion.prefix] = conversion
 
     @documentation(Dispersy.take_step)
-    def dispersy_take_step(self):
-        return self._dispersy.take_step(self)
+    def dispersy_take_step(self, allow_sync):
+        return self._dispersy.take_step(self, allow_sync)
 
     @documentation(Dispersy.get_message)
     def get_dispersy_message(self, member, global_time):
@@ -1197,8 +1197,8 @@ class Community(object):
         return self._dispersy.create_dynamic_settings(self, policies, sign_with_master, store, update, forward)
 
     @documentation(Dispersy.create_introduction_request)
-    def create_introduction_request(self, candidate):
-        return self._dispersy.create_introduction_request(self, candidate)
+    def create_introduction_request(self, candidate, allow_sync):
+        return self._dispersy.create_introduction_request(self, candidate, allow_sync)
 
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
