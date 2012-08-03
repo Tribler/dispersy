@@ -59,7 +59,7 @@ from dprint import dprint
 from endpoint import DummyEndpoint
 from member import DummyMember, Member, MemberFromId, MemberWithoutCheck
 from message import BatchConfiguration, Packet, Message
-from message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence
+from message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
 from message import DropPacket, DelayPacket
 from payload import AuthorizePayload, RevokePayload, UndoPayload
 from payload import DestroyCommunityPayload
@@ -1034,7 +1034,7 @@ class Dispersy(Singleton):
             votes[address] = set()
         votes[address].add(voter.sock_addr)
 
-        if __debug__: dprint(["%5d %15s:%-d [%s]" % (len(voters), vote[0], vote[1], ", ".join("%s:%d" % key for key in voters)) for vote, voters in votes.iteritems()], lines=True, force=1)
+        if __debug__: dprint(["%5d %15s:%-d [%s]" % (len(voters), vote[0], vote[1], ", ".join("%s:%d" % key for key in voters)) for vote, voters in votes.iteritems()], lines=True)
 
         # change when new vote count equal or higher than old address vote count
         if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
@@ -3267,6 +3267,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             cache = MissingMemberCache(timeout)
             self._request_cache.set(identifier, cache)
 
+            if __debug__: dprint("sending missing-identity ", dummy_member.mid.encode("HEX"), " to ", candidate)
             meta = community.get_meta_message(u"dispersy-missing-identity")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
             self._forward([request])
@@ -3938,8 +3939,28 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
     def check_undo(self, messages):
         assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
+        community = messages[0].community
 
         for message in messages:
+            assert message.payload.packet is None
+            if message.resume:
+                if __debug__: dprint("using resume cache!", force=1)
+                assert message.resume.community.database_id == community.database_id
+                assert message.resume.authentication.member.database_id == message.payload.member.database_id
+                assert message.resume.distribution.global_time == message.payload.global_time
+                message.payload.packet = message.resume
+            else:
+                # obtain the packet that we are attempting to undo
+                try:
+                    packet_id, message_name, packet_data = self._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
+                                                                                  (community.database_id, message.payload.member.database_id, message.payload.global_time)).next()
+                except StopIteration:
+                    yield DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
+                    continue
+
+                if __debug__: dprint("using packet from database!", force=1)
+                message.payload.packet = Packet(community.get_meta_message(message_name), str(packet_data), packet_id)
+
             # ensure that the message in the payload allows undo
             if not message.payload.packet.meta.undo_callback:
                 yield DropMessage(message, "message does not allow undo")
@@ -3970,7 +3991,6 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 # creates.  And that can be limited by revoking her right to create messages.
 
                 # search for the second offending dispersy-undo message
-                community = message.community
                 member = message.authentication.member
                 undo_own_meta = community.get_meta_message(u"dispersy-undo-own")
                 for packet_id, packet in self._database.execute(u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",

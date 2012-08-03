@@ -693,15 +693,7 @@ class BinaryConversion(Conversion):
         if not global_time < placeholder.distribution.global_time:
             raise DropPacket("Invalid global time (trying to apply undo to the future)")
 
-        try:
-            packet_id, message_name, packet_data = self._dispersy_database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
-                                                                                   (self._community.database_id, member.database_id, global_time)).next()
-        except StopIteration:
-            raise DelayPacketByMissingMessage(self._community, member, global_time)
-
-        packet = Packet(self._community.get_meta_message(message_name), str(packet_data), packet_id)
-
-        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time, packet)
+        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time)
 
     def _encode_undo_other(self, message):
         public_key = message.payload.member.public_key
@@ -735,15 +727,7 @@ class BinaryConversion(Conversion):
         if not global_time < placeholder.distribution.global_time:
             raise DropPacket("Invalid global time (trying to apply undo to the future)")
 
-        try:
-            packet_id, message_name, packet_data = self._dispersy_database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
-                                                                                   (self._community.database_id, member.database_id, global_time)).next()
-        except StopIteration:
-            raise DelayPacketByMissingMessage(self._community, member, global_time)
-
-        packet = Packet(self._community.get_meta_message(message_name), str(packet_data), packet_id)
-
-        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time, packet)
+        return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time)
 
     def _encode_missing_proof(self, message):
         payload = message.payload

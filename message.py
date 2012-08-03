@@ -91,8 +91,8 @@ class DelayMessage(Exception):
     def __init__(self, delayed):
         if __debug__:
             from message import Message
-        assert isinstance(delayed, Message.Implementation)
-        super(DelayMessage, self).__init__("delay")
+        assert isinstance(delayed, Message.Implementation), delayed
+        super(DelayMessage, self).__init__(self.__class__.__name__)
         self._delayed = delayed
 
     @property
@@ -106,12 +106,17 @@ class DelayMessage(Exception):
 
     def _process_delayed_message(self, response):
         if response:
+            if __debug__: dprint("resume ", self._delayed, " (received ", response, ")")
+
+            # inform the delayed message of the reason why it is resumed
+            self._delayed.resume = response
+
             # process the response and the delayed message
             self._delayed.community.dispersy.on_messages([self._delayed])
 
         else:
             # timeout, do nothing
-            pass
+            if __debug__: dprint("ignore ", self._delayed, " (no response was received)")
 
 class DelayMessageByProof(DelayMessage):
     def create_request(self):
@@ -130,6 +135,20 @@ class DelayMessageBySequence(DelayMessage):
     def create_request(self):
         community = self._delayed.community
         community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
+
+class DelayMessageByMissingMessage(DelayMessage):
+    def __init__(self, delayed, member, global_time):
+        if __debug__:
+            from member import Member
+        assert isinstance(member, Member)
+        assert isinstance(global_time, (int, long))
+        super(DelayMessageByMissingMessage, self).__init__(delayed)
+        self._member = member
+        self._global_time = global_time
+
+    def create_request(self):
+        community = self._delayed.community
+        community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
 
 class DropMessage(Exception):
     """
@@ -307,6 +326,9 @@ class Message(MetaObject):
             self._payload = payload
             self._candidate = candidate
 
+            # _RESUME contains the message that caused SELF to be processed after it was delayed
+            self._resume = None
+
             # allow setup parts.  used to setup callback when something changes that requires the
             # self._packet to be generated again
             self._authentication.setup(self)
@@ -352,6 +374,16 @@ class Message(MetaObject):
         @property
         def candidate(self):
             return self._candidate
+
+        # @property
+        def __get_resume(self):
+            return self._resume
+        # @resume.setter
+        def __set_resume(self, message):
+            assert isinstance(message, Message.Implementation), type(message)
+            self._resume = message
+        # .setter was introduced in Python 2.6
+        resume = property(__get_resume, __set_resume)
 
         def load_message(self):
             return self
