@@ -208,8 +208,8 @@ class MissingSequenceCache(MissingSomethingCache):
 
     @staticmethod
     def message_to_identifier(message):
-        return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.global_time)
-
+        return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
+    
 class Statistics(object):
     def __init__(self):
         self._start = time()
@@ -3550,6 +3550,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             missing_low = max(overview.missing_high, missing_low)
             overview.missing_high = missing_high
 
+            if __debug__: dprint(candidate, " sending missing-sequence ", member.mid.encode("HEX"), " ", message.name, " [", missing_low, ":", missing_high, "]")
             meta = community.get_meta_message(u"dispersy-missing-sequence")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, message, missing_low, missing_high))
             self._forward([request])
@@ -3632,7 +3633,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     msg = self.convert_packet_to_message(packet, community)
                     assert msg
                     key = (msg.authentication.member.database_id, msg.database_id, msg.distribution.sequence_number)
-                    assert key in requests[candidate.sock_addr][1], [key, requests[candidate.sock_addr][1], lowest, highest]
+                    assert key in requests[candidate.sock_addr][1], [key, sorted(numbers), lowest, highest]
                     dprint("Syncing ", len(packet), " member:", key[0], " message:", key[1], " sequence:", key[2], " to " , candidate)
 
                 self._statistics.outgoing(u"-sequence-", sum(len(packet) for packet in packets), len(packets))
@@ -3943,12 +3944,15 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
         for message in messages:
             assert message.payload.packet is None
-            if message.resume:
+            # message.resume can be many things.  for example: another undo message (when delayed by
+            # missing sequence) or a message (when delayed by missing message).
+            if (message.resume and
+                message.resume.community.database_id == community.database_id and
+                message.resume.authentication.member.database_id == message.payload.member.database_id and
+                message.resume.distribution.global_time == message.payload.global_time):                
                 if __debug__: dprint("using resume cache")
-                assert message.resume.community.database_id == community.database_id
-                assert message.resume.authentication.member.database_id == message.payload.member.database_id
-                assert message.resume.distribution.global_time == message.payload.global_time
                 message.payload.packet = message.resume
+
             else:
                 # obtain the packet that we are attempting to undo
                 try:
@@ -4026,6 +4030,9 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         Undo a single message.
         """
         assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
+        if __debug__:
+            for message in messages:
+                dprint(message.candidate, " ", message.authentication.member.mid.encode("HEX"), " #", message.distribution.sequence_number, " @", message.distribution.global_time)
 
         self._database.executemany(u"UPDATE sync SET undone = ? WHERE community = ? AND member = ? AND global_time = ?",
                                    ((message.packet_id, message.community.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
