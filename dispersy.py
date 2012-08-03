@@ -389,8 +389,8 @@ class Dispersy(Singleton):
         self._wan_address = ("0.0.0.0", 0)
         self._wan_address_votes = {}
         if __debug__:
-            dprint("my LAN address is ", self._lan_address[0], ":", self._lan_address[1], force=True)
-            dprint("my WAN address is ", self._wan_address[0], ":", self._wan_address[1], force=True)
+            dprint("my LAN address is ", self._lan_address[0], ":", self._lan_address[1])
+            dprint("my WAN address is ", self._wan_address[0], ":", self._wan_address[1])
 
         # bootstrap peers
         bootstrap_candidates = get_bootstrap_candidates(self)
@@ -1885,14 +1885,14 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         def _filter_fail(message):
             if isinstance(message, DelayMessage):
                 if __debug__:
-                    dprint("delay ", message.delayed, " (", message, ") from ", message.delayed.candidate)
+                    dprint(message.delayed.candidate, " delay ", message.delayed, " (", message, ")")
                     self._statistics.delay("om_message_batch:%s" % message.delayed, len(message.delayed.packet))
                 message.create_request()
                 return False
 
             elif isinstance(message, DropMessage):
                 if __debug__:
-                    dprint("drop: ", message.dropped.name, " (", message, ")", level="warning")
+                    dprint(message.dropped.candidate, " drop: ", message.dropped.name, " (", message, ")", level="warning")
                     self._statistics.drop("on_message_batch:%s" % message, len(message.dropped.packet))
                 return False
 
@@ -3267,7 +3267,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             cache = MissingMemberCache(timeout)
             self._request_cache.set(identifier, cache)
 
-            if __debug__: dprint("sending missing-identity ", dummy_member.mid.encode("HEX"), " to ", candidate)
+            if __debug__: dprint(candidate, " sending missing-identity ", dummy_member.mid.encode("HEX"))
             meta = community.get_meta_message(u"dispersy-missing-identity")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
             self._forward([request])
@@ -3632,7 +3632,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     msg = self.convert_packet_to_message(packet, community)
                     assert msg
                     key = (msg.authentication.member.database_id, msg.database_id, msg.distribution.sequence_number)
-                    assert key in requests[candidate.sock_addr][1], [key, requests[candidate.sock_addr][1]]
+                    assert key in requests[candidate.sock_addr][1], [key, requests[candidate.sock_addr][1], lowest, highest]
                     dprint("Syncing ", len(packet), " member:", key[0], " message:", key[1], " sequence:", key[2], " to " , candidate)
 
                 self._statistics.outgoing(u"-sequence-", sum(len(packet) for packet in packets), len(packets))
