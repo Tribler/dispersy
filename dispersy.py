@@ -3944,7 +3944,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         for message in messages:
             assert message.payload.packet is None
             if message.resume:
-                if __debug__: dprint("using resume cache!", force=1)
+                if __debug__: dprint("using resume cache")
                 assert message.resume.community.database_id == community.database_id
                 assert message.resume.authentication.member.database_id == message.payload.member.database_id
                 assert message.resume.distribution.global_time == message.payload.global_time
@@ -3958,7 +3958,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     yield DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
                     continue
 
-                if __debug__: dprint("using packet from database!", force=1)
+                if __debug__: dprint("using packet from database")
                 message.payload.packet = Packet(community.get_meta_message(message_name), str(packet_data), packet_id)
 
             # ensure that the message in the payload allows undo
