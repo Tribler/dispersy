@@ -385,16 +385,18 @@ class RevokePayload(Payload):
 
 class UndoPayload(Payload):
     class Implementation(Payload.Implementation):
-        def __init__(self, meta, member, global_time):
+        def __init__(self, meta, member, global_time, packet=None):
             if __debug__:
                 from member import Member
+                from message import Packet
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
+            assert packet is None or isinstance(packet, Packet)
             assert global_time > 0
             super(UndoPayload.Implementation, self).__init__(meta)
             self._member = member
             self._global_time = global_time
-            self._packet = None
+            self._packet = packet
 
         @property
         def member(self):
