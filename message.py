@@ -174,7 +174,7 @@ class DropMessage(Exception):
 #
 
 class BatchConfiguration(object):
-    def __init__(self, max_window=0.0, priority=128, max_size=1024, max_age=300.0):
+    def __init__(self, max_window=0.0, priority=0, max_size=1024, max_age=300.0):
         """
         Per meta message configuration on batch handling.
 
