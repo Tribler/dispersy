@@ -36,7 +36,6 @@ A community can tweak the policies and how they behave by changing the parameter
 supply.  Aside from the four policies, each meta-message also defines the community that it is part
 of, the name it uses as an internal identifier, and the class that will contain the payload.
 """
-
 import os
 import sys
 import netifaces
@@ -209,7 +208,7 @@ class MissingSequenceCache(MissingSomethingCache):
     @staticmethod
     def message_to_identifier(message):
         return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
-    
+
 class Statistics(object):
     def __init__(self):
         self._start = time()
@@ -786,7 +785,7 @@ class Dispersy(Singleton):
             # when this is a create or join this message is created only after the attach_community
             if "--sanity-check" in sys.argv:
                 try:
-                    self.sanity_check_generator(community)
+                    self.sanity_check(community)
                 except ValueError:
                     dprint(exception=True, level="error")
                     assert False
@@ -2084,8 +2083,15 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                      message.distribution.global_time,
                      message.database_id,
                      buffer(message.packet)))
-            assert self._database.changes == 1
             # update_sync_range.add(message.distribution.global_time)
+            if __debug__:
+                # must have stored one entry
+                assert self._database.changes == 1
+                # when sequence numbers are enabled, we must have exactly
+                # message.distribution.sequence_number messages in the database
+                if isinstance(message.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
+                    count_ = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
+                    assert count_ == message.distribution.sequence_number, [count_, message.distribution.sequence_number]
 
             # ensure that we can reference this packet
             message.packet_id = self._database.last_insert_rowid
@@ -3939,8 +3945,15 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 return msg
 
     def check_undo(self, messages):
+        # Note: previously all MESSAGES have been checked to ensure that the sequence numbers are
+        # correct.  this check takes into account the messages in the batch.  hence, if one of these
+        # messages is dropped or delayed it can invalidate the sequence numbers of the other
+        # messages in this batch!
+
         assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
         community = messages[0].community
+
+        dependencies = {}
 
         for message in messages:
             assert message.payload.packet is None
@@ -3949,7 +3962,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             if (message.resume and
                 message.resume.community.database_id == community.database_id and
                 message.resume.authentication.member.database_id == message.payload.member.database_id and
-                message.resume.distribution.global_time == message.payload.global_time):                
+                message.resume.distribution.global_time == message.payload.global_time):
                 if __debug__: dprint("using resume cache")
                 message.payload.packet = message.resume
 
@@ -3959,7 +3972,9 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     packet_id, message_name, packet_data = self._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
                                                                                   (community.database_id, message.payload.member.database_id, message.payload.global_time)).next()
                 except StopIteration:
-                    yield DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
+                    delay = DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
+                    dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
+                    yield delay
                     continue
 
                 if __debug__: dprint("using packet from database")
@@ -3967,13 +3982,27 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
 
             # ensure that the message in the payload allows undo
             if not message.payload.packet.meta.undo_callback:
-                yield DropMessage(message, "message does not allow undo")
+                drop = DropMessage(message, "message does not allow undo")
+                dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, drop)
+                yield drop
                 continue
 
             # check the timeline
             allowed, _ = message.community.timeline.check(message)
             if not allowed:
-                yield DelayMessageByProof(message)
+                delay = DelayMessageByProof(message)
+                dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
+                yield delay
+                continue
+
+            # check batch dependencies
+            dependency = dependencies.get(message.authentication.member.public_key)
+            if dependency:
+                sequence_number, consequence = dependency
+                assert sequence_number < message.distribution.sequence_number, [sequence_number, message.distribution.sequence_number]
+                # MESSAGE gets the same consequence as the previous message
+                if __debug__: dprint("apply same consequence on later message (", consequence, " on #", sequence_number, " applies to #", message.distribution.sequence_number, ")")
+                yield consequence.duplicate(message)
                 continue
 
             try:
@@ -4201,7 +4230,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
         self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
-    def sanity_check_generator(self, community):
+    def sanity_check(self, community):
         """
         Check everything we can about a community.
 
@@ -4343,6 +4372,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             if isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number:
                 counter = 0
                 counter_member_id = 0
+                exception = None
                 for packet_id, member_id, packet in select(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time LIMIT ? OFFSET ?", (meta.database_id,)):
                     message = self.convert_packet_to_message(str(packet), community)
                     assert message
@@ -4350,13 +4380,19 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                     if member_id != counter_member_id:
                         counter_member_id = member_id
                         counter = 1
+                        if exception:
+                            break
 
                     if not counter == message.distribution.sequence_number:
-                        raise ValueError("inconsistent sequence numbers in packet ", packet_id)
+                        dprint(meta.name, " has sequence number ", message.distribution.sequence_number, " expected ", counter, level="error")
+                        exception = ValueError("inconsistent sequence numbers in packet ", packet_id)
 
                     counter += 1
 
-                    if __debug__: dprint("FullSyncDistribution for '", meta.name, "' is OK")
+                    if __debug__: dprint("FullSyncDistribution for '", meta.name, "' is OK (#", message.distribution.sequence_number, " ", message.authentication.member.database_id, "@", message.distribution.global_time, ")")
+
+                if exception:
+                    raise exception
 
             #
             # ensure that we have only history-size messages per member

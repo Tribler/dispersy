@@ -99,6 +99,12 @@ class DelayMessage(Exception):
     def delayed(self):
         return self._delayed
 
+    def duplicate(self, delayed):
+        """
+        Create another instance of the same class with another DELAYED.
+        """
+        return self.__class__(delayed)
+
     def create_request(self):
         # create and send a request.  once the response is received the _process_delayed_message can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
@@ -132,6 +138,9 @@ class DelayMessageBySequence(DelayMessage):
         self._missing_low = missing_low
         self._missing_high = missing_high
 
+    def duplicate(self, delayed):
+        return self.__class__(delayed, self._missing_low, self._missing_high)
+
     def create_request(self):
         community = self._delayed.community
         community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
@@ -145,6 +154,9 @@ class DelayMessageByMissingMessage(DelayMessage):
         super(DelayMessageByMissingMessage, self).__init__(delayed)
         self._member = member
         self._global_time = global_time
+
+    def duplicate(self, delayed):
+        return self.__class__(delayed, self._member, self._global_time)
 
     def create_request(self):
         community = self._delayed.community
@@ -168,6 +180,12 @@ class DropMessage(Exception):
     @property
     def dropped(self):
         return self._dropped
+
+    def duplicate(self, dropped):
+        """
+        Create another instance of the same class with another DELAYED.
+        """
+        return self.__class__(dropped, self.message)
 
 #
 # batch
