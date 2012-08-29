@@ -59,9 +59,9 @@ class Database(Singleton):
         self._pending_commits = 0
 
         # collect current database configuration
-        page_size = self._cursor.execute(u"PRAGMA page_size").next()[0].upper()
-        journal_mode = self._cursor.execute(u"PRAGMA journal_mode").next()[0].upper()
-        synchronous = self._cursor.execute(u"PRAGMA synchronous").next()[0].upper()
+        page_size = int(self._cursor.execute(u"PRAGMA page_size").next()[0])
+        journal_mode = str(self._cursor.execute(u"PRAGMA journal_mode").next()[0]).upper()
+        synchronous = str(self._cursor.execute(u"PRAGMA synchronous").next()[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -81,11 +81,11 @@ class Database(Singleton):
             page_size = 8192
 
         #
-        # PRAGMA page_size = bytes;
+        # PRAGMA journal_mode = DELETE | TRUNCATE | PERSIST | MEMORY | WAL | OFF
         # http://www.sqlite.org/pragma.html#pragma_page_size
         #
         if __debug__: dprint("PRAGMA journal_mode = WAL (previously: ", journal_mode, ")")
-        if not journal_mode == u"DELETE":
+        if not journal_mode == u"WAL":
             self._cursor.execute(u"PRAGMA journal_mode = WAL")
 
         #
@@ -93,7 +93,7 @@ class Database(Singleton):
         # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
         if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
-        if not synchronous == u"NORMAL":
+        if not synchronous in (u"NORMAL", u"1"):
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
 
         # check is the database contains an 'option' table
