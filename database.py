@@ -58,33 +58,47 @@ class Database(Singleton):
         # when _pending_commits > 0.  A commit is required when _pending_commits > 1.
         self._pending_commits = 0
 
+        # collect current database configuration
+        page_size = self._cursor.execute(u"PRAGMA page_size").next()[0].upper()
+        journal_mode = self._cursor.execute(u"PRAGMA journal_mode").next()[0].upper()
+        synchronous = self._cursor.execute(u"PRAGMA synchronous").next()[0].upper()
+
+        #
+        # PRAGMA page_size = bytes;
+        # http://www.sqlite.org/pragma.html#pragma_page_size
+        # Note that changing page_size has no effect unless performed on a new database or followed
+        # directly by VACUUM.  Since we do not want the cost of VACUUM every time we load a
+        # database, existing databases must be upgraded.
+        #
+        if __debug__: dprint("PRAGMA page_size = 8192 (previously: ", page_size, ")")
+        if page_size < 8192:
+            # it is not possible to change page_size when WAL is enabled
+            if journal_mode == u"WAL":
+                self._cursor.executescript(u"PRAGMA journal_mode = DELETE")
+                journal_mode = u"DELETE"
+            self._cursor.execute(u"PRAGMA page_size = 8192")
+            self._cursor.execute(u"VACUUM")
+            page_size = 8192
+
+        #
+        # PRAGMA page_size = bytes;
+        # http://www.sqlite.org/pragma.html#pragma_page_size
+        #
+        if __debug__: dprint("PRAGMA journal_mode = WAL (previously: ", journal_mode, ")")
+        if not journal_mode == u"DELETE":
+            self._cursor.execute(u"PRAGMA journal_mode = WAL")
+
         #
         # PRAGMA synchronous = 0 | OFF | 1 | NORMAL | 2 | FULL;
+        # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
-        # Query or change the setting of the "synchronous" flag.  The first (query) form will return
-        # the synchronous setting as an integer.  When synchronous is FULL (2), the SQLite database
-        # engine will use the xSync method of the VFS to ensure that all content is safely written
-        # to the disk surface prior to continuing.  This ensures that an operating system crash or
-        # power failure will not corrupt the database.  FULL synchronous is very safe, but it is
-        # also slower.  When synchronous is NORMAL (1), the SQLite database engine will still sync
-        # at the most critical moments, but less often than in FULL mode.  There is a very small
-        # (though non-zero) chance that a power failure at just the wrong time could corrupt the
-        # database in NORMAL mode.  But in practice, you are more likely to suffer a catastrophic
-        # disk failure or some other unrecoverable hardware fault.  With synchronous OFF (0), SQLite
-        # continues without syncing as soon as it has handed data off to the operating system.  If
-        # the application running SQLite crashes, the data will be safe, but the database might
-        # become corrupted if the operating system crashes or the computer loses power before that
-        # data has been written to the disk surface.  On the other hand, some operations are as much
-        # as 50 or more times faster with synchronous OFF.
-        #
-        # The default setting is synchronous = FULL.
-        #
-        if __debug__: dprint("PRAGMA synchronous = NORMAL")
-        self._cursor.execute(u"PRAGMA synchronous = NORMAL")
+        if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
+        if not synchronous == u"NORMAL":
+            self._cursor.execute(u"PRAGMA synchronous = NORMAL")
 
         # check is the database contains an 'option' table
         try:
-            count, = self.execute(u"SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'option'").next()
+            count, = self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'").next()
         except StopIteration:
             raise RuntimeError()
 

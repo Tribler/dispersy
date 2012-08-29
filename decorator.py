@@ -95,18 +95,18 @@ def attach_profiler(func):
         if filename in profiled_threads:
             raise RuntimeError("Can not attach profiler on the same thread twice")
 
-        dprint("running with profiler [", filename, "]", level="warning")
+        dprint("running with profiler [", filename, "]")
         profiled_threads.add(filename)
         profiler = Profile()
 
         try:
             return profiler.runcall(func, *args, **kargs)
         finally:
-            dprint("profiler results [", filename, "]", level="warning")
+            dprint("profiler results [", filename, "]")
             profiler.dump_stats(filename)
-    
+
     #Niels 21-06-2012: argv seems to be missing if python is not started as a script
-    if getattr(sys, 'argv', False) and "--profiler" in sys.argv:
+    if "--profiler" in getattr(sys, "argv", []):
         from dprint import dprint
         from cProfile import Profile
         from thread import get_ident

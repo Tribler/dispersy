@@ -2,7 +2,7 @@
 
 from atexit import register
 from bz2 import BZ2File
-from datetime import datetime
+from time import time
 import re
 
 def _encode_str(l, value):
@@ -85,12 +85,12 @@ def log(filename, _message, **kargs):
 
     global _encode_initiated
     if _encode_initiated:
-        l = [datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
+        l = ["{0:.6f}".format(time()), _seperator]
     else:
         _encode_initiated = True
         l = ["################################################################################", "\n",
-             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
-             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
+             "{0:.6f}".format(time()), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
+             "{0:.6f}".format(time()), _seperator]
 
     _encode_str(l, _message)
     for key in sorted(kargs.keys()):
@@ -107,14 +107,15 @@ def bz2log(filename, _message, **kargs):
     assert isinstance(_message, str)
     assert ";" not in _message
 
-    global _cache
+    global _cache, _encode_initiated
     handle = _cache.get(filename)
-    if handle:
-        l = [datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
+    if _encode_initiated:
+        l = ["{0:.6f}".format(time()), _seperator]
     else:
+        _encode_initiated = True
         l = ["################################################################################", "\n",
-             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
-             datetime.now().strftime("%Y%m%d%H%M%S.%f"), _seperator]
+             "{0:.6f}".format(time()), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
+             "{0:.6f}".format(time()), _seperator]
         handle = BZ2File(filename, "w", 8*1024, 9)
         register(handle.close)
         _cache[filename] = handle
@@ -131,17 +132,6 @@ def bz2log(filename, _message, **kargs):
     handle.write(s)
 
     return handle
-
-def to_string(datetime, _message, **kargs):
-    assert isinstance(_message, str)
-    assert ";" not in _message
-    l = [datetime.strftime("%Y%m%d%H%M%S"), _seperator]
-    _encode_str(l, _message)
-    for key in sorted(kargs.keys()):
-        l.append(_seperator)
-        l.extend((key, ":"))
-        _encode(l, kargs[key])
-    return "".join(l)
 
 def make_valid_key(key):
     return re.sub('[^a-zA-Z0-9_]', '_', key)

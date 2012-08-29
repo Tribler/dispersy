@@ -1,12 +1,18 @@
 from hashlib import sha1
 
-from dispersydatabase import DispersyDatabase
-from crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
-from revision import update_revision_information
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
+
+from .dispersydatabase import DispersyDatabase
+from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
+from .revision import update_revision_information
 
 if __debug__:
-    from dprint import dprint
-    from crypto import ec_check_public_bin, ec_check_private_bin
+    from .dprint import dprint
+    from .crypto import ec_check_public_bin, ec_check_private_bin
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -319,8 +325,8 @@ class MemberBase(DummyMember):
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
 
 class Member(MemberBase):
-    _cache_length = 512
-    _cache = []
+    _cache_length = 1024
+    _cache = OrderedDict()
 
     def __new__(cls, public_key, private_key=""):
         assert isinstance(public_key, str)
@@ -329,14 +335,7 @@ class Member(MemberBase):
         assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
 
         # retrieve Member from cache (based on public_key)
-        for index, member in enumerate(cls._cache):
-            if member._public_key == public_key:
-                if cls._cache_length / 2 < index:
-                    del cls._cache[index]
-                    cls._cache.insert(0, member)
-                return member
-
-        return object.__new__(cls)
+        return cls._cache.get(public_key) or object.__new__(cls)
 
     def __init__(self, public_key, private_key=""):
         super(Member, self).__init__(public_key, private_key)
@@ -345,9 +344,9 @@ class Member(MemberBase):
         assert hasattr(self, "_mid"), self
 
         # store Member in cache
-        if len(self._cache) >= self._cache_length:
-            del self._cache[-1]
-        self._cache.insert(self._cache_length / 3, self)
+        self._cache[public_key] = self
+        if len(self._cache) > self._cache_length:
+            self._cache.popitem(False)
 
 class MemberFromId(Member):
     def __new__(cls, mid):
@@ -355,11 +354,8 @@ class MemberFromId(Member):
         assert len(mid) == 20
 
         # retrieve Member from cache (based on mid)
-        for index, member in enumerate(cls._cache):
+        for member in cls._cache.itervalues():
             if member._mid == mid:
-                if cls._cache_length / 2 < index:
-                    del cls._cache[index]
-                    cls._cache.insert(0, member)
                 return member
 
         # prevent __init__ and hence caching this instance

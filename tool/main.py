@@ -59,7 +59,6 @@ def main(setup=None):
     if not opt.script:
         command_line_parser.print_help()
         exit(1)
-    print "Press Ctrl-C to stop Dispersy"
 
     # setup
     callback = Callback()
@@ -83,26 +82,3 @@ def main(setup=None):
     callback.loop()
     if callback.exception:
         raise callback.exception
-
-#             if opt.enable_allchannel_script:
-#                 # from Tribler.Community.allchannel.script import AllChannelScript
-#                 # script.add("allchannel", AllChannelScript, include_with_all=False)
-
-#                 from Tribler.community.allchannel.script import AllChannelScenarioScript
-#                 script.add("allchannel-scenario", AllChannelScenarioScript, script_kargs, include_with_all=False)
-
-#             if opt.enable_walktest_script:
-#                 from Tribler.community.walktest.script import ScenarioScript
-#                 script.add("walktest-scenario", ScenarioScript, script_kargs, include_with_all=False)
-
-#             if opt.enable_ycsb_script:
-#                 from Tribler.community.ycsb.script import YCSBScript
-#                 script.add("ycsb-scenario", YCSBScript, script_kargs, include_with_all=False)
-
-#             if opt.enable_demers_script:
-#                 from Tribler.community.demerstest.script import DemersScript
-#                 script.add("demers-scenario", DemersScript, script_kargs, include_with_all=False)
-
-#             if opt.enable_udp_script:
-#                 from script import DispersyUDPScript
-#                 script.add("udp-scenario", DispersyUDPScript, script_kargs, include_with_all=False)

@@ -3096,7 +3096,7 @@ class DispersyBootstrapServers(ScriptBase):
             def ping(self, now):
                 dprint("PING", line=1)
                 for candidate in self._candidates:
-                    request = self._dispersy.create_introduction_request(self, candidate)
+                    request = self._dispersy.create_introduction_request(self, candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
 
             def summary(self):
@@ -3193,7 +3193,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
                 self._my_member = member
                 try:
                     for candidate in self._candidates:
-                        request = self._dispersy.create_introduction_request(self, candidate, forward=False)
+                        request = self._dispersy.create_introduction_request(self, candidate, False, forward=False)
                         self._queue.append((request.payload.identifier, request.packet, candidate))
                 finally:
                     self._my_member = self._original_my_member
@@ -3209,7 +3209,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
                 self._my_member = member
                 try:
                     for candidate in self._candidates:
-                        request = self._dispersy.create_introduction_request(self, candidate)
+                        request = self._dispersy.create_introduction_request(self, candidate, False)
                         self._request[candidate.sock_addr][request.payload.identifier] = time()
                 finally:
                     self._my_member = self._original_my_member

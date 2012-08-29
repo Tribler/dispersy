@@ -207,10 +207,10 @@ class TrackerDispersy(Dispersy):
             yield 300.0
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
 
-    def create_introduction_request(self, destination, forward=True):
+    def create_introduction_request(self, destination, allow_sync, forward=True):
         # prevent steps towards other trackers
         if not isinstance(destination, BootstrapCandidate):
-            return super(TrackerDispersy, self).create_introduction_request(destination, forward)
+            return super(TrackerDispersy, self).create_introduction_request(destination, allow_sync, forward)
 
     def on_introduction_request(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")

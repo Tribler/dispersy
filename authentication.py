@@ -242,6 +242,15 @@ class DoubleMemberAuthentication(Authentication):
             return self._meta._allow_signature_func
 
         @property
+        def encoding(self):
+            """
+            How the member identifier is encoded (public key or sha1-digest over public key).
+            @rtype: string
+            @note: This property is obtained from the meta object.
+            """
+            return self._meta._encoding
+
+        @property
         def member(self):
             """
             The message owner, i.e. the first member in self.members.
@@ -300,7 +309,7 @@ class DoubleMemberAuthentication(Authentication):
             assert isinstance(message_impl, Message.Implementation)
             self._regenerate_packet_func = message_impl.regenerate_packet
 
-    def __init__(self, allow_signature_func):
+    def __init__(self, allow_signature_func, encoding="sha1"):
         """
         Initialize a new DoubleMemberAuthentication instance.
 
@@ -317,7 +326,10 @@ class DoubleMemberAuthentication(Authentication):
         @type allow_signature_func: callable function
         """
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
+        assert isinstance(encoding, str)
+        assert encoding in ("bin", "sha1")
         self._allow_signature_func = allow_signature_func
+        self._encoding = encoding
 
     @property
     def allow_signature_func(self):
@@ -326,3 +338,11 @@ class DoubleMemberAuthentication(Authentication):
         @rtype: callable function
         """
         return self._allow_signature_func
+
+    @property
+    def encoding(self):
+        """
+        How the member identifier is encoded (bin or sha1).
+        @rtype: string
+        """
+        return self._encoding

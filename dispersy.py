@@ -84,6 +84,9 @@ class SignatureRequestCache(Cache):
 
     def __init__(self, members, response_func, response_args, timeout):
         self.request = None
+        # MEMBERS is a list containing all the members that should add their signature.  currently
+        # we only support double signed messages, hence MEMBERS contains only a single Member
+        # instance.
         self.members = members
         self.response_func = response_func
         self.response_args = response_args
@@ -216,6 +219,8 @@ class Statistics(object):
         self._walk_attempt = 0
         self._walk_success = 0
         self._walk_reset = 0
+        self.drop_count = 0
+        self.success_count = 0
         if __debug__:
             self._drop = {}
             self._delay = {}
@@ -240,6 +245,8 @@ class Statistics(object):
                     "walk_success":self._walk_success,
                     "walk_reset":self._walk_reset,
                     "walk_fail":self._walk_fail,
+                    "drop_count":self.drop_count,
+                    "success_count":self.success_count,
                     "attachment":self._attachment}
 
         else:
@@ -248,7 +255,9 @@ class Statistics(object):
                     "runtime":time() - self._start,
                     "walk_attempt":self._walk_attempt,
                     "walk_success":self._walk_success,
-                    "walk_reset":self._walk_reset}
+                    "walk_reset":self._walk_reset,
+                    "drop_count":self.drop_count,
+                    "success_count":self.success_count}
 
     def reset(self):
         """
@@ -262,6 +271,8 @@ class Statistics(object):
             self._walk_attempt = 0
             self._walk_success = 0
             self._walk_reset = 0
+            self.drop_count = 0
+            self.success_count = 0
             if __debug__:
                 self._drop = {}
                 self._delay = {}
@@ -1893,6 +1904,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__:
                     dprint(message.dropped.candidate, " drop: ", message.dropped.name, " (", message, ")", level="warning")
                     self._statistics.drop("on_message_batch:%s" % message, len(message.dropped.packet))
+                self._statistics.drop_count += 1
                 return False
 
             else:
@@ -1939,6 +1951,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             dprint("in... ", len(messages), " ", meta.name, " messages from ", ", ".join(str(candidate) for candidate in set(message.candidate for message in messages)))
             self._statistics.success(meta.name, sum(len(message.packet) for message in messages), len(messages))
         self.store_update_forward(messages, True, True, False)
+        self._statistics.success_count += len(messages)
 
         # tell what happened
         if __debug__:
@@ -1985,6 +1998,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__:
                     dprint("drop a ", len(packet), " byte packet (received packet for unknown community) from ", candidate, level="warning")
                     self._statistics.drop("_convert_packets_into_batch:unknown community", len(packet))
+                self._statistics.drop_count += 1
                 continue
 
             # find associated conversion
@@ -1994,6 +2008,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__:
                     dprint("drop a ", len(packet), " byte packet (received packet for unknown conversion) from ", candidate, level="warning")
                     self._statistics.drop("_convert_packets_into_batch:unknown conversion", len(packet))
+                self._statistics.drop_count += 1
                 continue
 
             try:
@@ -2004,6 +2019,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__:
                     dprint("drop a ", len(packet), " byte packet (", exception,") from ", candidate, level="warning")
                     self._statistics.drop("_convert_packets_into_batch:decode_meta_message:%s" % exception, len(packet))
+                self._statistics.drop_count += 1
 
     def _convert_batch_into_messages(self, batch):
         if __debug__:
@@ -2027,6 +2043,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__:
                     dprint("drop a ", len(packet), " byte packet (", exception, ") from ", candidate, level="warning")
                     self._statistics.drop("_convert_batch_into_messages:%s" % exception, len(packet))
+                self._statistics.drop_count += 1
 
             except DelayPacket, delay:
                 if __debug__:
@@ -2072,7 +2089,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             assert message.authentication.is_signed
             assert not message.packet[-10:] == "\x00" * 10, message.packet[-10:].encode("HEX")
             # we must have the identity message as well
-            assert message.name == u"dispersy-identity" or message.authentication.member.has_identity(message.community), [message, message.community, message.authentication.member.database_id]
+            assert message.authentication.encoding == "bin" or message.authentication.member.has_identity(message.community), [message, message.community, message.authentication.member.database_id]
 
             if __debug__: dprint(message.name, " ", message.authentication.member.database_id, "@", message.distribution.global_time)
 
@@ -3476,11 +3493,11 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
 
-            if not old_submsg.meta is new_submsg.meta:
+            if not old_submsg.meta == new_submsg.meta:
                 yield DropMessage(message, "meta message may not change")
                 continue
 
-            if not old_submsg.authentication.member is new_submsg.authentication.member:
+            if not old_submsg.authentication.member == new_submsg.authentication.member:
                 yield DropMessage(message, "first member may not change")
                 continue
 
@@ -3507,27 +3524,23 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             # get cache object linked to this request and stop timeout from occurring
             cache = self._request_cache.pop(message.payload.identifier, SignatureRequestCache)
 
-            if __debug__: dprint("response")
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
+            if __debug__: dprint("response ", new_submsg)
 
             old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-            if cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args):
-                # see if we are missing more external signatures
+            result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
+            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject"
+            if result:
+                # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
-                    if not (signature or member.private_key):
-                        break
+                    if not signature and member.private_key:
+                        new_submsg.authentication.set_signature(member, member.sign(new_body))
 
-                else:
-                    # did not break, hence we have all external signatures.  add our own signatures
-                    # and we can handle the message
-                    for signature, member in new_submsg.authentication.signed_members:
-                        if not signature and member.private_key:
-                            new_submsg.authentication.set_signature(member, member.sign(new_body))
-
-                    self.store_update_forward([new_submsg], True, True, True)
+                assert new_submsg.authentication.is_signed
+                self.store_update_forward([new_submsg], True, True, True)
 
     def create_missing_sequence(self, community, candidate, member, message, missing_low, missing_high, response_func=None, response_args=(), timeout=10.0):
         # ensure that the identifier is 'triggered' somewhere, i.e. using
@@ -4512,7 +4525,10 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             START = start
             DELAY = 0.0
             for community in walker_communities:
-                community.__MOST_RESENT_WALK = 0.0
+                community.__MOST_RECENT_WALK = 0.0
+
+        for community in walker_communities:
+            community.__most_recent_sync = 0.0
 
         while True:
             community = walker_communities.pop(0)
@@ -4527,8 +4543,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             if __debug__:
                 NOW = time()
                 OPTIMALSTEPS = (NOW - START) / optimaldelay
-                STEPDIFF = NOW - community.__MOST_RESENT_WALK
-                community.__MOST_RESENT_WALK = NOW
+                STEPDIFF = NOW - community.__MOST_RECENT_WALK
+                community.__MOST_RECENT_WALK = NOW
                 dprint(community.cid.encode("HEX"), " taking step every ", "%.2f" % DELAY, " sec in ", len(walker_communities), " communities.  steps: ", STEPS, "/", int(OPTIMALSTEPS), " ~ %.2f." % (-1.0 if OPTIMALSTEPS == 0.0 else (STEPS / OPTIMALSTEPS)), "  diff: %.1f" % STEPDIFF, ".  resets: ", RESETS)
                 STEPS += 1
 
@@ -4684,9 +4700,10 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         # 3.4: added info["walk_reset"]
         # 3.4: added info["attachment"] in __debug__ mode
         # 3.5: added info["revision"]
+        # 3.6: added info["success_count"] and info["drop_count"]
 
         now = time()
-        info = {"version":3.4,
+        info = {"version":3.6,
                 "class":"Dispersy",
                 "lan_address":self._lan_address,
                 "wan_address":self._wan_address,

@@ -77,7 +77,7 @@ class StandaloneEndpoint(Endpoint):
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
                 self._socket.bind((ip, port))
                 self._socket.setblocking(0)
-                if __debug__: dprint("Listening at ", port, force=True)
+                if __debug__: dprint("Listening at ", port)
             except socket.error:
                 port += 1
                 continue
@@ -170,7 +170,7 @@ class RawserverEndpoint(Endpoint):
         while True:
             try:
                 self._socket = rawserver.create_udpsocket(port, ip)
-                if __debug__: dprint("Dispersy listening at ", port, force=True)
+                if __debug__: dprint("Listening at ", port)
             except socket.error:
                 port += 1
                 continue
