@@ -4701,6 +4701,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         # 3.4: added info["attachment"] in __debug__ mode
         # 3.5: added info["revision"]
         # 3.6: added info["success_count"] and info["drop_count"]
+        # 3.7: added info["communities"][index]["hex_mid"]
 
         now = time()
         info = {"version":3.6,
@@ -4722,6 +4723,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             community_info = {"classification":community.get_classification(),
                               "database_id":community.database_id,
                               "hex_cid":community.cid.encode("HEX"),
+                              "hex_mid":community.my_member.mid.encode("HEX"),
                               "global_time":community.global_time,
                               "acceptable_global_time":community.acceptable_global_time,
                               "dispersy_acceptable_global_time_range":community.dispersy_acceptable_global_time_range,
