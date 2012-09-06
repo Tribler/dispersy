@@ -4499,6 +4499,13 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 if __debug__:
                     dprint("shutdown")
                     dprint(self.info(), pprint=True)
+                # unload all communities
+                try:
+                    while True:
+                        next(self._communities.itervalues()).unload_community()
+                except StopIteration:
+                    pass
+                # commit database
                 self._database.commit()
                 break
 
