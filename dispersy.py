@@ -3969,29 +3969,29 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         dependencies = {}
 
         for message in messages:
-            assert message.payload.packet is None
-            # message.resume can be many things.  for example: another undo message (when delayed by
-            # missing sequence) or a message (when delayed by missing message).
-            if (message.resume and
-                message.resume.community.database_id == community.database_id and
-                message.resume.authentication.member.database_id == message.payload.member.database_id and
-                message.resume.distribution.global_time == message.payload.global_time):
-                if __debug__: dprint("using resume cache")
-                message.payload.packet = message.resume
+            if message.payload.packet is None:
+                # message.resume can be many things.  for example: another undo message (when delayed by
+                # missing sequence) or a message (when delayed by missing message).
+                if (message.resume and
+                    message.resume.community.database_id == community.database_id and
+                    message.resume.authentication.member.database_id == message.payload.member.database_id and
+                    message.resume.distribution.global_time == message.payload.global_time):
+                    if __debug__: dprint("using resume cache")
+                    message.payload.packet = message.resume
 
-            else:
-                # obtain the packet that we are attempting to undo
-                try:
-                    packet_id, message_name, packet_data = self._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
-                                                                                  (community.database_id, message.payload.member.database_id, message.payload.global_time)).next()
-                except StopIteration:
-                    delay = DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
-                    dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
-                    yield delay
-                    continue
+                else:
+                    # obtain the packet that we are attempting to undo
+                    try:
+                        packet_id, message_name, packet_data = self._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
+                                                                                      (community.database_id, message.payload.member.database_id, message.payload.global_time)).next()
+                    except StopIteration:
+                        delay = DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
+                        dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
+                        yield delay
+                        continue
 
-                if __debug__: dprint("using packet from database")
-                message.payload.packet = Packet(community.get_meta_message(message_name), str(packet_data), packet_id)
+                    if __debug__: dprint("using packet from database")
+                    message.payload.packet = Packet(community.get_meta_message(message_name), str(packet_data), packet_id)
 
             # ensure that the message in the payload allows undo
             if not message.payload.packet.meta.undo_callback:
