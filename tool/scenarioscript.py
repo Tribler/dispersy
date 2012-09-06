@@ -4,6 +4,7 @@ except ImportError:
     poisson = expon = None
     print "Unable to import scipy.  ScenarioPoisson and ScenarioExpon are disabled"
 
+from hashlib import sha1
 from os import getpid, uname
 from psutil import Process, cpu_percent
 from random import random, uniform
@@ -22,7 +23,7 @@ class ScenarioScript(ScriptBase):
         super(ScenarioScript, self).__init__(*args, **kargs)
         self._my_member = None
         self._master_member = None
-        self._community = None
+        self._cid = sha1(self.master_member_public_key).digest()
         self._is_joined = False
         self._process = Process(getpid()) if self.enable_statistics or self.enable_statistics else None
 
@@ -123,7 +124,7 @@ class ScenarioScript(ScriptBase):
                                       ")?",
                                       "\s+",
                                       "(?P<method>\w+)(?P<args>\s+(.+?))??",
-                                      "(?:\s*{(?P<peers>\s*\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*\s*)})?",
+                                      "(?:\s*{(?P<peers>\s*!?\d+(?:-\d+)?(?:\s*,\s*!?\d+(?:-\d+)?)*\s*)})?",
                                       "\s*(?:\n)?$")))
         peernumber = int(self._kargs["peernumber"])
         filename = self._kargs["scenario"]
@@ -137,17 +138,25 @@ class ScenarioScript(ScriptBase):
                 dic = dict((key, value) for key, value in match.groupdict().iteritems() if not value is None)
 
                 # get the peers, if any, for which this line applies
-                peers = set()
+                yes_peers = set()
+                no_peers = set()
                 for peer in dic.get("peers", "").split(","):
                     peer = peer.strip()
                     if peer:
+                        # if the peer number (or peer number pair) is preceded by '!' it negates the result
+                        if peer.startswith("!"):
+                            peer = peer[1:]
+                            peers = no_peers
+                        else:
+                            peers = yes_peers
+                        # parse the peer number (or peer number pair)
                         if "-" in peer:
                             low, high = peer.split("-")
                             peers.update(xrange(int(low), int(high)+1))
                         else:
                             peers.add(int(peer))
 
-                if not peers or peernumber in peers:
+                if not (yes_peers or no_peers) or (yes_peers and peernumber in yes_peers) or (no_peers and not peernumber in no_peers):
                     begin = int(dic.get("beginH", 0)) * 3600.0 + int(dic.get("beginM", 0)) * 60.0 + int(dic.get("beginS", 0))
                     end = int(dic.get("endH", 0)) * 3600.0 + int(dic.get("endM", 0)) * 60.0 + int(dic.get("endS", 0))
                     assert end == 0.0 or begin <= end, "when end time is given it must be at or after the start time"
@@ -167,8 +176,14 @@ class ScenarioScript(ScriptBase):
 
         return scenario
 
+    def has_community(self, load=False, auto_load=False):
+        try:
+            return self._dispersy.get_community(self._cid, load=load, auto_load=auto_load)
+        except KeyError:
+            return None
+
     def scenario_start(self):
-        assert self._community is None
+        assert self.has_community() == None
         ec = ec_generate_key(self.my_member_security)
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
         self._master_member = Member(self.master_member_public_key)
@@ -187,34 +202,36 @@ class ScenarioScript(ScriptBase):
         assert state in ("online", "offline"), state
         assert duration is None or isinstance(duration, (str, float)), type(duration)
 
+        duration = None if duration == None else float(duration)
+        community = self.has_community()
+
         if state == "online":
-            if self._community is None:
-                if __debug__: dprint("online for the next ", float(duration), " seconds")
-                self.log("scenario-churn", state="online", duration=float(duration))
+            if community is None:
+                if __debug__: dprint("online for the next ", duration, " seconds")
+                self.log("scenario-churn", state="online", duration=duration)
 
                 if self._is_joined:
-                    self._community = self.community_class.load_community(self._master_member, *self.community_args, **self.community_kargs)
+                    self.community_class.load_community(self._master_member, *self.community_args, **self.community_kargs)
 
                 else:
                     if __debug__: dprint("join community ", self._master_member.mid.encode("HEX"), " as ", self._my_member.mid.encode("HEX"))
-                    self._community = self.community_class.join_community(self._master_member, self._my_member, *self.community_args, **self.community_kargs)
-                    self._community.auto_load = False
+                    community = self.community_class.join_community(self._master_member, self._my_member, *self.community_args, **self.community_kargs)
+                    community.auto_load = False
                     self._is_joined = True
 
             else:
-                if __debug__: dprint("online for the next ", float(duration), " seconds (we are already online)")
-                self.log("scenario-churn", state="stay-online", duration=float(duration))
+                if __debug__: dprint("online for the next ", duration, " seconds (we are already online)")
+                self.log("scenario-churn", state="stay-online", duration=duration)
 
         elif state == "offline":
-            if self._community is None:
+            if community is None:
                 if __debug__: dprint("offline (we are already offline)")
                 self.log("scenario-churn", state="stay-offline")
 
             else:
                 if __debug__: dprint("offline")
                 self.log("scenario-churn", state="offline")
-                self._community.unload_community()
-                self._community = None
+                community.unload_community()
 
         else:
             raise ValueError("state must be either 'online' or 'offline'")

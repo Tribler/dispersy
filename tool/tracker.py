@@ -1,37 +1,54 @@
-#!/usr/bin/python
-
 # Python 2.5 features
 from __future__ import with_statement
 
 """
 Run Dispersy in standalone tracker mode.
 
+Outputs statistics every 300 seconds:
+- BANDWIDTH BYTES-UP BYTES-DOWN
+- CANDIDATE COUNT(CANDIDATES)
+- COMMUNITY COUNT(OVERLAYS) COUNT(KILLED-OVERLAYS)
 
-Concerning the relative imports, from PEP 328:
-http://www.python.org/dev/peps/pep-0328/
+Outputs active peers whenever encountered:
+- REQ_IN2 HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
+- RES_IN2 HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
 
-   Relative imports use a module's __name__ attribute to determine that module's position in the
-   package hierarchy. If the module's name does not contain any package information (e.g. it is set
-   to '__main__') then relative imports are resolved as if the module were a top level module,
-   regardless of where the module is actually located on the file system.
+Outputs destroyed communities whenever encountered:
+- DESTROY_IN HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
+- DESTROY_OUT HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
+
+Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
+whenever a introduction request is received for a destroyed overlay.
 """
+
+if __name__ == "__main__":
+    # Concerning the relative imports, from PEP 328:
+    # http://www.python.org/dev/peps/pep-0328/
+    #
+    #    Relative imports use a module's __name__ attribute to determine that module's position in
+    #    the package hierarchy. If the module's name does not contain any package information
+    #    (e.g. it is set to '__main__') then relative imports are resolved as if the module were a
+    #    top level module, regardless of where the module is actually located on the file system.
+    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
+    exit(1)
 
 from random import random
 from time import time
+import os
 import errno
 import optparse
 import signal
 import sys
 
-from callback import Callback
-from candidate import WalkCandidate, BootstrapCandidate
-from community import Community
-from conversion import BinaryConversion
-from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from dispersy import Dispersy
-from dprint import dprint
-from endpoint import StandaloneEndpoint
-from member import DummyMember, Member
+from ..callback import Callback
+from ..candidate import BootstrapCandidate, LoopbackCandidate
+from ..community import Community, HardKilledCommunity
+from ..conversion import BinaryConversion
+from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ..dispersy import Dispersy
+from ..dprint import dprint
+from ..endpoint import StandaloneEndpoint
+from ..member import DummyMember, Member
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -40,6 +57,26 @@ else:
 
 class BinaryTrackerConversion(BinaryConversion):
     pass
+
+class TrackerHardKilledCommunity(HardKilledCommunity):
+    def __init__(self, *args, **kargs):
+        super(TrackerHardKilledCommunity, self).__init__(*args, **kargs)
+        # communities are cleaned based on a 'strike' rule.  periodically, we will check is there
+        # are active candidates, when there are 'strike' is set to zero, otherwise it is incremented
+        # by one.  once 'strike' reaches a predefined value the community is cleaned
+        self._strikes = 0
+
+    def update_strikes(self, now):
+        # does the community have any active candidates
+        self._strikes += 1
+        return self._strikes
+
+    def dispersy_on_introduction_request(self, messages):
+        hex_cid = messages[0].community.cid.encode("HEX")
+        for message in messages:
+            host, port = message.candidate.sock_addr
+            print "DESTROY_OUT", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+        return super(TrackerHardKilledCommunity, self).dispersy_on_introduction_request(messages)
 
 class TrackerCommunity(Community):
     """
@@ -63,7 +100,12 @@ class TrackerCommunity(Community):
                      u"dispersy-puncture-request",
                      u"dispersy-puncture",
                      u"dispersy-identity",
-                     u"dispersy-missing-identity"]:
+                     u"dispersy-missing-identity",
+
+                     u"dispersy-authorize",
+                     u"dispersy-revoke",
+                     u"dispersy-missing-proof",
+                     u"dispersy-destroy-community"]:
             self._meta_messages[name] = meta_messages[name]
 
     @property
@@ -110,16 +152,49 @@ class TrackerCommunity(Community):
 
         return self._conversions[prefix]
 
+    def dispersy_cleanup_community(self, message):
+        # since the trackers use in-memory databases, we need to store the destroy-community
+        # message, and all associated proof, separately.
+        host, port = message.candidate.sock_addr
+        print "DESTROY_IN", self._cid.encode("HEX"), message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+
+        write = open(self._dispersy.persistent_storage_filename, "a+").write
+        write("# received dispersy-destroy-community from %s\n" % (str(message.candidate),))
+
+        identity_id = self._meta_messages[u"dispersy-identity"].database_id
+        execute = self._dispersy.database.execute
+        messages = [message]
+        stored = set()
+        while messages:
+            message = messages.pop()
+
+            if not message.packet in stored:
+                stored.add(message.packet)
+                write(" ".join((message.name, message.packet.encode("HEX"), "\n")))
+
+                if not message.authentication.member.public_key in stored:
+                    try:
+                        packet, = execute(u"SELECT packet FROM sync WHERE meta_message = ? AND member = ?", (identity_id, message.authentication.member.database_id)).next()
+                    except StopIteration:
+                        pass
+                    else:
+                        write(" ".join(("dispersy-identity", str(packet).encode("HEX"), "\n")))
+
+                _, proofs = self._timeline.check(message)
+                messages.extend(proofs)
+
+        return TrackerHardKilledCommunity
+
 class TrackerDispersy(Dispersy):
     @classmethod
     def get_instance(cls, *args, **kargs):
         kargs["singleton_placeholder"] = Dispersy
         return super(TrackerDispersy, cls).get_instance(*args, **kargs)
 
-    def __init__(self, callback, statedir, port):
+    def __init__(self, callback, working_directory, port):
         assert isinstance(port, int)
         assert 0 <= port
-        super(TrackerDispersy, self).__init__(callback, statedir)
+        super(TrackerDispersy, self).__init__(callback, working_directory)
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -131,8 +206,16 @@ class TrackerDispersy(Dispersy):
         ec = ec_generate_key(u"very-low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
+        # location of persistent storage
+        self._persistent_storage_filenam = os.path.join(working_directory, "persistent-storage.data")
+
+        callback.register(self._load_persistent_storage)
         callback.register(self._unload_communities)
-        callback.register(self._bandwidth_statistics)
+        callback.register(self._report_statistics)
+
+    @property
+    def persistent_storage_filename(self):
+        return self._persistent_storage_filenam
 
     def get_community(self, cid, load=False, auto_load=True):
         try:
@@ -140,6 +223,20 @@ class TrackerDispersy(Dispersy):
         except KeyError:
             self._communities[cid] = TrackerCommunity.join_community(DummyMember(cid), self._my_member)
             return self._communities[cid]
+
+    def _load_persistent_storage(self):
+        # load all destroyed communities
+        try:
+            packets = [packet.decode("HEX") for _, packet in (line.split() for line in open(self._persistent_storage_filenam, "r") if not line.startswith("#"))]
+        except IOError:
+            pass
+        else:
+            candidate = LoopbackCandidate()
+            for packet in reversed(packets):
+                try:
+                    self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
+                except:
+                    dprint("Error while loading from persistent-destroy-community.data", exception=True, level="error")
 
     def _convert_packets_into_batch(self, packets):
         """
@@ -202,10 +299,16 @@ class TrackerDispersy(Dispersy):
             for community in inactive:
                 community.unload_community()
 
-    def _bandwidth_statistics(self):
+    def _report_statistics(self):
         while True:
             yield 300.0
+            mapping = {TrackerCommunity:0, TrackerHardKilledCommunity:0}
+            for community in self._communities.itervalues():
+                mapping[type(community)] += 1
+
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
+            print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
+            print "CANDIDATE", len(self._candidates)
 
     def create_introduction_request(self, destination, allow_sync, forward=True):
         # prevent steps towards other trackers
@@ -234,22 +337,19 @@ def main():
 
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
-    print "Press Ctrl-C to stop Dispersy"
 
     # start Dispersy
     dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), opt.port)
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
     dispersy.endpoint.start()
     dispersy.define_auto_load(TrackerCommunity)
+    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
-        print "Received", sig, "signal in", frame
+        print "Received signal '", sig, "' in", frame, "(shutting down)"
         dispersy.callback.stop(wait=False)
     signal.signal(signal.SIGINT, signal_handler)
 
     # wait forever
     dispersy.callback.loop()
     dispersy.endpoint.stop()
-
-if __name__ == "__main__":
-    main()

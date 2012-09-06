@@ -81,9 +81,7 @@ class Community(object):
             assert community._global_time == 0
 
             # create the dispersy-identity for the master member
-            meta = community.get_meta_message(u"dispersy-identity")
-            message = meta.impl(authentication=(master,), distribution=(community.claim_global_time(),))
-            community.dispersy.store_update_forward([message], True, True, False)
+            message = community.create_dispersy_identity(sign_with_master=True)
             assert message.distribution.global_time == 1
 
             # create my dispersy-identity
@@ -354,20 +352,18 @@ class Community(object):
                     dprint("when sync is enabled the interval should be greater than the walking frequency.  otherwise you are likely to receive duplicate packets [", meta_message.name, "]", level="warning")
 
     def _initialize_timeline(self):
-        # load existing permissions from the database
-        try:
-            authorize = self.get_meta_message(u"dispersy-authorize")
-            revoke = self.get_meta_message(u"dispersy-revoke")
-            dynamic_settings = self.get_meta_message(u"dispersy-dynamic-settings")
+        mapping = {}
+        for name in [u"dispersy-authorize", u"dispersy-revoke", u"dispersy-dynamic-settings"]:
+            try:
+                meta = self.get_meta_message(name)
+            except KeyError:
+                if __debug__: dprint("unable to load permissions from database [could not obtain '", name, "']", level="warning")
+            else:
+                mapping[meta.database_id] = meta.handle_callback
 
-        except KeyError:
-            if __debug__: dprint("unable to load permissions from database [could not obtain 'dispersy-authorize' or 'dispersy-revoke' or 'dispersy-dynamic-settings']", level="warning")
-
-        else:
-            mapping = {authorize.database_id:authorize.handle_callback, revoke.database_id:revoke.handle_callback, dynamic_settings.database_id:dynamic_settings.handle_callback}
-
-            for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (?, ?, ?) ORDER BY global_time, packet",
-                                                                (authorize.database_id, revoke.database_id, dynamic_settings.database_id))):
+        if mapping:
+            for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" for _ in mapping) + ") ORDER BY global_time, packet",
+                                                                mapping.keys())):
                 message = self._dispersy.convert_packet_to_message(str(packet), self, verify=False)
                 if message:
                     if __debug__: dprint("processing ", message.name)
@@ -1181,8 +1177,8 @@ class Community(object):
         return self._dispersy.create_undo(self, message, sign_with_master, store, update, forward)
 
     @documentation(Dispersy.create_identity)
-    def create_dispersy_identity(self, store=True, update=True):
-        return self._dispersy.create_identity(self, store, update)
+    def create_dispersy_identity(self, sign_with_master=False, store=True, update=True):
+        return self._dispersy.create_identity(self, sign_with_master, store, update)
 
     @documentation(Dispersy.create_signature_request)
     def create_dispersy_signature_request(self, message, response_func, response_args=(), timeout=10.0, forward=True):
@@ -1312,17 +1308,36 @@ class Community(object):
         raise NotImplementedError()
 
 class HardKilledCommunity(Community):
+    def __init__(self, *args, **kargs):
+        super(HardKilledCommunity, self).__init__(*args, **kargs)
+
+        destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
+        try:
+            packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? LIMIT 1", (destroy_message_id,)).next()
+        except StopIteration:
+            if __debug__: dprint("unable to locate the dispersy-destroy-community message", level="error")
+            self._destroy_community_packet = ""
+        else:
+            self._destroy_community_packet = str(packet)
+
     def _initialize_meta_messages(self):
         super(HardKilledCommunity, self)._initialize_meta_messages()
 
         # remove all messages that we no longer need
         meta_messages = self._meta_messages
         self._meta_messages = {}
-        for name in [u"dispersy-introduction-request",
-                     u"dispersy-introduction-response",
+        for name in [u"dispersy-authorize",
+                     u"dispersy-destroy-community",
+                     u"dispersy-dynamic-settings",
                      u"dispersy-identity",
-                     u"dispersy-missing-identity"]:
+                     u"dispersy-introduction-request",
+                     u"dispersy-missing-identity",
+                     u"dispersy-missing-proof",
+                     u"dispersy-revoke"]:
             self._meta_messages[name] = meta_messages[name]
+
+        # replace introduction_request behavior
+        self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
 
     @property
     def dispersy_enable_candidate_walker(self):
@@ -1363,9 +1378,5 @@ class HardKilledCommunity(Community):
 
         return self._conversions[prefix]
 
-    if __debug__:
-        def get_meta_message(self, name):
-            # we do not want to dprint when name is not found (since many messages are disabled in
-            # this Community
-            assert isinstance(name, unicode)
-            return self._meta_messages[name]
+    def dispersy_on_introduction_request(self, messages):
+        self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])

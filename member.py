@@ -123,7 +123,15 @@ class MemberBase(DummyMember):
         assert ec_check_public_bin(public_key), public_key.encode("HEX")
         assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
 
-        if not hasattr(self, "_public_key"):
+        if hasattr(self, "_public_key"):
+            # already have an instance.  however, it is possible that we did not yet have PRIVATE_KEY
+            if private_key and not self._private_key:
+                self._private_key = private_key
+                self._ec = ec_from_private_bin(private_key)
+                DispersyDatabase.get_instance().execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+
+        else:
+            # create a new instance
             assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
             database = DispersyDatabase.get_instance()
 

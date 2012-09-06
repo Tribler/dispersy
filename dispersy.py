@@ -822,6 +822,7 @@ class Dispersy(Singleton):
         assert not community.dispersy_enable_candidate_walker or community in self._walker_commmunities, [community.dispersy_enable_candidate_walker, community in self._walker_commmunities]
         del self._communities[community.cid]
 
+        # stop walker
         if community.dispersy_enable_candidate_walker:
             self._walker_commmunities.remove(community)
             if self._walker_commmunities:
@@ -830,6 +831,12 @@ class Dispersy(Singleton):
             else:
                 # stop walker scheduler
                 self._callback.unregister(CANDIDATE_WALKER_CALLBACK_ID)
+
+        # remove any items that are left in the cache
+        for meta in community.get_meta_messages():
+            if meta.batch.enabled and meta in self._batch_cache:
+                task_identifier, _, _ = self._batch_cache[meta]
+                self._callback.unregister(task_identifier)
 
     def reclassify_community(self, source, destination):
         """
@@ -918,32 +925,33 @@ class Dispersy(Singleton):
         assert isinstance(load, bool)
         assert isinstance(auto_load, bool)
 
-        if len(cid) == 20:
-            if not cid in self._communities:
-                try:
-                    # have we joined this community
-                    classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
-                                                                                               (buffer(cid),)).next()
+        try:
+            return self._communities[cid]
 
-                except StopIteration:
-                    pass
+        except KeyError:
+            try:
+                # have we joined this community
+                classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
+                                                                                           (buffer(cid),)).next()
 
-                else:
-                    if load or (auto_load and auto_load_flag):
+            except StopIteration:
+                pass
 
-                        if classification in self._auto_load_communities:
-                            master = Member(str(master_public_key)) if master_public_key else DummyMember(cid)
-                            cls, args, kargs = self._auto_load_communities[classification]
-                            cls.load_community(master, *args, **kargs)
-                            assert master.mid in self._communities
+            else:
+                if load or (auto_load and auto_load_flag):
 
-                        else:
-                            if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="warning")
+                    if classification in self._auto_load_communities:
+                        master = Member(str(master_public_key)) if master_public_key else DummyMember(cid)
+                        cls, args, kargs = self._auto_load_communities[classification]
+                        community = cls.load_community(master, *args, **kargs)
+                        assert master.mid in self._communities
+                        return community
 
                     else:
-                        if __debug__: dprint("not allowed to load '", classification, "'")
+                        if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="warning")
 
-            return self._communities[cid]
+                else:
+                    if __debug__: dprint("not allowed to load '", classification, "'")
 
         raise KeyError(cid)
 
@@ -1210,7 +1218,7 @@ class Dispersy(Singleton):
             highest = {}
             for message in messages:
                 if not message.authentication.member in highest:
-                    seq, = execute(u"SELECT COUNT(1) FROM sync WHERE member = ? AND sync.meta_message = ?",
+                    seq, = execute(u"SELECT COUNT(*) FROM sync WHERE member = ? AND sync.meta_message = ?",
                                    (message.authentication.member.database_id, message.database_id)).next()
                     highest[message.authentication.member] = seq
 
@@ -2165,7 +2173,7 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
             if __debug__:
                 if not is_double_member_authentication:
                     for message in messages:
-                        history_size, = self._database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
+                        history_size, = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
                         assert history_size <= message.distribution.history_size, [count, message.distribution.history_size, message.authentication.member.database_id]
 
         # update the global time
@@ -3213,7 +3221,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
     def is_valid_remote_address(self, address):
         return self._is_valid_lan_address(address) or self._is_valid_wan_address(address)
 
-    def create_identity(self, community, store=True, update=True):
+    def create_identity(self, community, sign_with_master=False, store=True, update=True):
         """
         Create a dispersy-identity message for self.my_member.
 
@@ -3248,7 +3256,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         while global_time < 2:
             global_time = community.claim_global_time()
 
-        message = meta.impl(authentication=(community.my_member,), distribution=(global_time,))
+        message = meta.impl(authentication=(community.master_member if sign_with_master else community.my_member,),
+                            distribution=(global_time,))
         self.store_update_forward([message], store, update, False)
         return message
 
@@ -4116,14 +4125,20 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             # pylint: disable-msg=W0404
             from community import Community
 
+        # epidemic spread of the destroy message
+        self._forward(messages)
+
         for message in messages:
             assert message.name == u"dispersy-destroy-community"
             if __debug__: dprint(message)
 
             community = message.community
 
-            # let the community code cleanup first.
-            new_classification = community.dispersy_cleanup_community(message)
+            try:
+                # let the community code cleanup first.
+                new_classification = community.dispersy_cleanup_community(message)
+            except Exception:
+                continue
             assert issubclass(new_classification, Community)
 
             # community cleanup is done.  Now we will cleanup the dispersy database.
@@ -4140,28 +4155,53 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 # this message.  The community should also remove all its data and cleanup as much as
                 # possible.
 
-                # delete everything except (a) all dispersy-destroy-community messages (these both
-                # authorize and revoke the usage of this message) and (b) the associated
-                # dispersy-identity messages to verify the dispersy-destroy-community messages.
-
                 # todo: this should be made more efficient.  not all dispersy-destroy-community messages
                 # need to be kept.  Just the ones in the chain to authorize the message that has just
                 # been received.
 
-                authorize_message_id = community.get_meta_message(u"dispersy-authorize").database_id
-                destroy_message_id = community.get_meta_message(u"dispersy-destroy-community").database_id
                 identity_message_id = community.get_meta_message(u"dispersy-identity").database_id
+                packet_ids = set()
+                identities = set()
 
-                # TODO we should only remove the 'path' of authorize and identity messages
-                # leading to the destroy message
+                # we should not remove our own dispersy-identity message
+                try:
+                    packet_id, = self._database.execute(u"SELECT id FROM sync WHERE meta_message = ? AND member = ?", (identity_message_id, community.my_member.database_id)).next()
+                except StopIteration:
+                    pass
+                else:
+                    identities.add(community.my_member.public_key)
+                    packet_ids.add(packet_id)
 
-                # 1. remove all except the dispersy-authorize, dispersy-destroy-community, and
-                # dispersy-identity messages
-                self._database.execute(u"DELETE FROM sync WHERE community = ? AND NOT (meta_message = ? OR meta_message = ? OR meta_message = ?)", (community.database_id, authorize_message_id, destroy_message_id, identity_message_id))
+                # obtain the permission chain
+                todo = [message]
+                while todo:
+                    item = todo.pop()
 
-                # 2. cleanup the double_signed_sync table.  however, we should keep the ones that
-                # are still referenced
-                self._database.execute(u"DELETE FROM double_signed_sync WHERE NOT EXISTS (SELECT * FROM sync WHERE community = ? AND sync.id = double_signed_sync.sync)", (community.database_id,))
+                    if not item.packet_id in packet_ids:
+                        packet_ids.add(item.packet_id)
+
+                        # ensure that we keep the identity message
+                        if not item.authentication.member.public_key in identities:
+                            identities.add(item.authentication.member.public_key)
+                            try:
+                                packet_id, = self._database.execute(u"SELECT id FROM sync WHERE meta_message = ? AND member = ?",
+                                                                    (identity_message_id, item.authentication.member.database_id)).next()
+                            except StopIteration:
+                                pass
+                            else:
+                                packet_ids.add(packet_id)
+
+                        # get proofs required for ITEM
+                        _, proofs = community._timeline.check(item)
+                        todo.extend(proofs)
+
+
+                # 1. cleanup the double_signed_sync table.
+                self._database.execute(u"DELETE FROM double_signed_sync WHERE sync IN (SELECT id FROM sync JOIN double_signed_sync ON sync.id = double_signed_sync.sync WHERE sync.community = ?)", (community.database_id,))
+
+                # 2. cleanup sync table.  everything except what we need to tell others this
+                # community is no longer available
+                self._database.execute(u"DELETE FROM sync WHERE id NOT IN (" + u", ".join(u"?" for _ in packet_ids) + ")", list(packet_ids))
 
                 # 3. cleanup the malicious_proof table.  we need nothing here anymore
                 self._database.execute(u"DELETE FROM malicious_proof WHERE community = ?", (community.database_id,))
@@ -4479,7 +4519,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
         numbers are used.
         """
         assert isinstance(meta.distribution, FullSyncDistribution), "currently only FullSyncDistribution allows sequence numbers"
-        sequence_number, = self._database.execute(u"SELECT COUNT(1) FROM sync WHERE member = ? AND sync.meta_message = ?",
+        sequence_number, = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE member = ? AND sync.meta_message = ?",
                                                   (community.master_member.database_id, meta.database_id)).next()
         return sequence_number + 1
 
