@@ -7,6 +7,7 @@ import signal
 
 from ..callback import Callback
 from ..dispersy import Dispersy
+from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 
 def watchdog(dispersy):
@@ -21,6 +22,7 @@ def start_script(opt):
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
     except Exception as exception:
+        dprint(str(exception), exception=True, level="error")
         raise SystemExit(str(exception), "Invalid --script", opt.script)
 
     try:
