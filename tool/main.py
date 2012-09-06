@@ -3,6 +3,7 @@ Run Dispersy in standalone mode.
 """
 
 import optparse
+import signal
 
 from ..callback import Callback
 from ..dispersy import Dispersy
@@ -77,6 +78,11 @@ def main(setup=None):
     # register tasks
     callback.register(watchdog, (dispersy,))
     callback.register(start_script, (opt,))
+
+    def signal_handler(sig, frame):
+        print "Received", sig, "signal in", frame
+        dispersy.callback.stop(wait=False)
+    signal.signal(signal.SIGINT, signal_handler)
 
     # start
     callback.loop()
