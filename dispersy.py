@@ -1201,8 +1201,8 @@ class Dispersy(Singleton):
         assert all(message.community == messages[0].community for message in messages)
         assert all(message.meta == messages[0].meta for message in messages)
 
-        # a message is considered unique when (creator, global-time), i.r. (authentication.member,
-        # distribution.global_time), is unique.
+        # a message is considered unique when (creator, global-time),
+        # i.e. (authentication.member.database_id, distribution.global_time), is unique.
         unique = set()
         execute = self._database.execute
         enable_sequence_number = messages[0].meta.distribution.enable_sequence_number
@@ -1217,10 +1217,10 @@ class Dispersy(Singleton):
             # obtain the highest sequence_number from the database
             highest = {}
             for message in messages:
-                if not message.authentication.member in highest:
+                if not message.authentication.member.database_id in highest:
                     seq, = execute(u"SELECT COUNT(*) FROM sync WHERE member = ? AND sync.meta_message = ?",
                                    (message.authentication.member.database_id, message.database_id)).next()
-                    highest[message.authentication.member] = seq
+                    highest[message.authentication.member.database_id] = seq
 
             # all messages must follow the sequence_number order
             for message in messages:
@@ -1234,7 +1234,7 @@ class Dispersy(Singleton):
                     continue
 
                 unique.add(key)
-                seq = highest[message.authentication.member]
+                seq = highest[message.authentication.member.database_id]
 
                 if seq >= message.distribution.sequence_number:
                     # we already have this message (drop)
@@ -1255,7 +1255,7 @@ class Dispersy(Singleton):
                     continue
 
                 # we accept this message
-                highest[message.authentication.member] += 1
+                highest[message.authentication.member.database_id] += 1
                 yield message
 
         else:
@@ -1264,7 +1264,7 @@ class Dispersy(Singleton):
                     yield DropMessage(message, "global time is not within acceptable range")
                     continue
 
-                key = (message.authentication.member, message.distribution.global_time)
+                key = (message.authentication.member.database_id, message.distribution.global_time)
                 if key in unique:
                     yield DropMessage(message, "duplicate message by member^global_time (2)")
                     continue
@@ -1325,18 +1325,18 @@ class Dispersy(Singleton):
             assert isinstance(message, Message.Implementation)
             assert isinstance(message.distribution, LastSyncDistribution.Implementation)
 
-            key = (message.authentication.member, message.distribution.global_time)
+            key = (message.authentication.member.database_id, message.distribution.global_time)
             if key in unique:
                 return DropMessage(message, "already processed message by member^global_time")
 
             else:
                 unique.add(key)
 
-                if not message.authentication.member in times:
-                    times[message.authentication.member] = [global_time for global_time, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
-                                                                                                                   (message.community.database_id, message.authentication.member.database_id, message.database_id))]
-                    assert len(times[message.authentication.member]) <= message.distribution.history_size, [message.packet_id, message.distribution.history_size, times[message.authentication.member]]
-                tim = times[message.authentication.member]
+                if not message.authentication.member.database_id in times:
+                    times[message.authentication.member.database_id] = [global_time for global_time, in self._database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
+                                                                                                                               (message.community.database_id, message.authentication.member.database_id, message.database_id))]
+                    assert len(times[message.authentication.member.database_id]) <= message.distribution.history_size, [message.packet_id, message.distribution.history_size, times[message.authentication.member.database_id]]
+                tim = times[message.authentication.member.database_id]
 
                 if message.distribution.global_time in tim and self._is_duplicate_sync_message(message):
                     return DropMessage(message, "duplicate message by member^global_time (3)")
