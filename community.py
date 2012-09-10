@@ -78,15 +78,12 @@ class Community(object):
             # new community instance
             community = cls.load_community(master, *args, **kargs)
             assert community.database_id == community_database_id
-            assert community._global_time == 0
 
             # create the dispersy-identity for the master member
             message = community.create_dispersy_identity(sign_with_master=True)
-            assert message.distribution.global_time == 1
 
             # create my dispersy-identity
             message = community.create_dispersy_identity()
-            assert message.distribution.global_time == 2
 
             # authorize MY_MEMBER
             permission_triplets = []
