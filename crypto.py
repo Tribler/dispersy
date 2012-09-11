@@ -308,7 +308,8 @@ if __name__ == "__main__":
 
     import math
     import time
-    for curve in [u"very-low", u"NID_secp224r1", u"low", u"medium", u"high"]:
+    curves = {}
+    for curve in [u"very-low", u"NID_secp224r1", u"low", u"medium", u"high", u"NID_secp160k1", u"NID_secp160r1", u"NID_secp160r2", u"NID_secp112r1", u"NID_secp112r2", u"NID_secp128r1", u"NID_secp128r2"]:
         ec = ec_generate_key(curve)
         private_pem = ec_to_private_pem(ec)
         public_pem = ec_to_public_pem(ec)
@@ -333,6 +334,21 @@ if __name__ == "__main__":
         assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
         ec2 = ec_from_private_bin(private_bin)
         assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+        
+        curves[EC_name(_curves[curve])] = ec
+        
+    for key, curve in curves.iteritems():
+        t1 = time.time()
+
+        signatures = [ec_sign(curve, str(i)) for i in xrange(1000)]
+        
+        t2 = time.time()
+        
+        for i, signature in enumerate(signatures):
+            ec_verify(curve, str(i), signature)
+            
+        t3 = time.time()
+        print key, "signing took", t2-t1, "verify took", t3-t2, "totals", t3-t1
 
     ##
 
