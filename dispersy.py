@@ -2381,11 +2381,10 @@ ORDER BY global_time, packet""", (meta.database_id, member_database_id)))
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         self._statistics.increment_walk_attempt()
-        cache = IntroductionRequestCache(community, destination)
-        destination.walk(community, time(), cache.timeout_delay)
+        destination.walk(community, time())
 
         # temporary cache object
-        identifier = self._request_cache.claim(cache)
+        identifier = self._request_cache.claim(IntroductionRequestCache(community, destination))
 
         # decide if the requested node should introduce us to someone else
         # advice = random() < 0.5 or len(self._candidates) <= 5
@@ -2694,7 +2693,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
             candidate.associate(community, message.authentication.member)
-            candidate.walk_response(community)
+            # candidate.active(community, now)
             self._filter_duplicate_candidate(candidate)
             if __debug__: dprint("introduction response from ", candidate)
 
