@@ -396,6 +396,10 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for packet_id, packet in list(self.execute(u"SELECT id, packet FROM sync WHERE meta_message = ?", (undo_own_meta.database_id,))):
                 message = convert_packet_to_message(str(packet), community)
                 if message:
+                    # 12/09/12 Boudewijn: the check_callback is required to obtain the
+                    # message.payload.packet
+                    for _ in message.check_callback([message]):
+                        pass
                     updates.append((packet_id, message.payload.packet.packet_id))
 
                 progress += 1
@@ -405,6 +409,10 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for packet_id, packet in list(self.execute(u"SELECT id, packet FROM sync WHERE meta_message = ?", (undo_other_meta.database_id,))):
                 message = convert_packet_to_message(str(packet), community)
                 if message:
+                    # 12/09/12 Boudewijn: the check_callback is required to obtain the
+                    # message.payload.packet
+                    for _ in message.check_callback([message]):
+                        pass
                     allowed, _ = community._timeline.check(message)
                     if allowed:
                         updates.append((packet_id, message.payload.packet.packet_id))
