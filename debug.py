@@ -1,19 +1,25 @@
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
+
 from time import time, sleep
 import socket
 
-from bloomfilter import BloomFilter
-from candidate import Candidate
-from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin, ec_from_private_bin
-from dprint import dprint
-from member import Member
-from message import Message
-from revision import update_revision_information
+from .bloomfilter import BloomFilter
+from .candidate import Candidate
+from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin, ec_from_private_bin
+from .dprint import dprint
+from .member import Member
+from .message import Message
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
 
 class DebugOnlyMember(Member):
-    _cache = []
+    _cache = OrderedDict()
 
     def __init__(self, public_key, private_key=""):
         super(DebugOnlyMember, self).__init__(public_key)

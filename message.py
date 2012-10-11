@@ -1,9 +1,9 @@
-from member import DummyMember
-from meta import MetaObject
-from revision import update_revision_information
+from .member import DummyMember
+from .meta import MetaObject
+from .revision import update_revision_information
 
 if __debug__:
-    from dprint import dprint
+    from .dprint import dprint
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -22,16 +22,17 @@ class DelayPacket(Exception):
     def create_request(self, candidate, delayed):
         # create and send a request.  once the response is received the _process_delayed_packet can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
+        # @return True if actual request is made
         raise NotImplementedError()
 
     def _process_delayed_packet(self, response, candidate, delayed):
         if response:
             # process the response and the delayed message
             self._community.dispersy.on_incoming_packets([(candidate, delayed)])
-
+            self._community.dispersy.statistics.delay_succes += 1
         else:
             # timeout, do nothing
-            pass
+            self._community.dispersy.statistics.delay_timeout += 1
 
 class DelayPacketByMissingMember(DelayPacket):
     def __init__(self, community, missing_member_id):
@@ -41,12 +42,12 @@ class DelayPacketByMissingMember(DelayPacket):
         self._missing_member_id = missing_member_id
 
     def create_request(self, candidate, delayed):
-        self._community.dispersy.create_missing_identity(self._community, candidate, DummyMember(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+        return self._community.dispersy.create_missing_identity(self._community, candidate, DummyMember(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
 
 class DelayPacketByMissingLastMessage(DelayPacket):
     def __init__(self, community, member, message, count):
         if __debug__:
-            from member import Member
+            from .member import Member
         assert isinstance(member, Member)
         assert isinstance(message, Message)
         assert isinstance(count, int)
@@ -56,13 +57,13 @@ class DelayPacketByMissingLastMessage(DelayPacket):
         self._count = count
 
     def create_request(self, candidate, delayed):
-        self._community.dispersy.create_missing_last_message(self._community, candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
+        return self._community.dispersy.create_missing_last_message(self._community, candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
 
 class DelayPacketByMissingMessage(DelayPacket):
     def __init__(self, community, member, global_time):
         if __debug__:
-            from community import Community
-            from member import Member
+            from .community import Community
+            from .member import Member
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
@@ -71,7 +72,7 @@ class DelayPacketByMissingMessage(DelayPacket):
         self._global_time = global_time
 
     def create_request(self, candidate, delayed):
-        self._community.dispersy.create_missing_message(self._community, candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
+        return self._community.dispersy.create_missing_message(self._community, candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
 
 class DropPacket(Exception):
     """
@@ -90,7 +91,7 @@ class DelayMessage(Exception):
     """
     def __init__(self, delayed):
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(delayed, Message.Implementation), delayed
         super(DelayMessage, self).__init__(self.__class__.__name__)
         self._delayed = delayed
@@ -108,6 +109,7 @@ class DelayMessage(Exception):
     def create_request(self):
         # create and send a request.  once the response is received the _process_delayed_message can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
+        # @return True if actual request is made
         raise NotImplementedError()
 
     def _process_delayed_message(self, response):
@@ -119,15 +121,16 @@ class DelayMessage(Exception):
 
             # process the response and the delayed message
             self._delayed.community.dispersy.on_messages([self._delayed])
-
+            self._delayed.community.dispersy.statistics.delay_succes += 1
         else:
             # timeout, do nothing
             if __debug__: dprint("ignore ", self._delayed, " (no response was received)")
+            self._delayed.community.dispersy.statistics.delay_timeout += 1
 
 class DelayMessageByProof(DelayMessage):
     def create_request(self):
         community = self._delayed.community
-        community.dispersy.create_missing_proof(community, self._delayed.candidate, self._delayed, self._process_delayed_message)
+        return community.dispersy.create_missing_proof(community, self._delayed.candidate, self._delayed, self._process_delayed_message)
 
 class DelayMessageBySequence(DelayMessage):
     def __init__(self, delayed, missing_low, missing_high):
@@ -143,12 +146,12 @@ class DelayMessageBySequence(DelayMessage):
 
     def create_request(self):
         community = self._delayed.community
-        community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
+        return community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
 
 class DelayMessageByMissingMessage(DelayMessage):
     def __init__(self, delayed, member, global_time):
         if __debug__:
-            from member import Member
+            from .member import Member
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
         super(DelayMessageByMissingMessage, self).__init__(delayed)
@@ -160,7 +163,7 @@ class DelayMessageByMissingMessage(DelayMessage):
 
     def create_request(self):
         community = self._delayed.community
-        community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
+        return community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
 
 class DropMessage(Exception):
     """
@@ -171,7 +174,7 @@ class DropMessage(Exception):
     """
     def __init__(self, dropped, msg):
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(dropped, Message.Implementation)
         assert isinstance(msg, (str, unicode))
         self._dropped = dropped
@@ -323,15 +326,15 @@ class Message(MetaObject):
     class Implementation(Packet):
         def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
             if __debug__:
-                from payload import Payload
-                from conversion import Conversion
-                from candidate import Candidate
+                from .payload import Payload
+                from .conversion import Conversion
+                from .candidate import Candidate
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
-            assert isinstance(authentication, meta._authentication.Implementation), "AUTHENTICATION has invalid type '%s'" % type(authentication)
-            assert isinstance(resolution, meta._resolution.Implementation), "RESOLUTION has invalid type '%s'" % type(resolution)
-            assert isinstance(distribution, meta._distribution.Implementation), "DISTRIBUTION has invalid type '%s'" % type(distribution)
-            assert isinstance(destination, meta._destination.Implementation), "DESTINATION has invalid type '%s'" % type(destination)
-            assert isinstance(payload, meta._payload.Implementation), "PAYLOAD has invalid type '%s'" % type(payload)
+            assert isinstance(authentication, meta.authentication.Implementation), "AUTHENTICATION has invalid type '%s'" % type(authentication)
+            assert isinstance(resolution, meta.resolution.Implementation), "RESOLUTION has invalid type '%s'" % type(resolution)
+            assert isinstance(distribution, meta.distribution.Implementation), "DISTRIBUTION has invalid type '%s'" % type(distribution)
+            assert isinstance(destination, meta.destination.Implementation), "DESTINATION has invalid type '%s'" % type(destination)
+            assert isinstance(payload, meta.payload.Implementation), "PAYLOAD has invalid type '%s'" % type(payload)
             assert conversion is None or isinstance(conversion, Conversion), "CONVERSION has invalid type '%s'" % type(conversion)
             assert candidate is None or isinstance(candidate, Candidate)
             assert isinstance(packet, str)
@@ -417,12 +420,12 @@ class Message(MetaObject):
 
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload, check_callback, handle_callback, undo_callback=None, batch=None):
         if __debug__:
-            from community import Community
-            from authentication import Authentication
-            from resolution import Resolution, DynamicResolution
-            from destination import Destination
-            from distribution import Distribution
-            from payload import Payload
+            from .community import Community
+            from .authentication import Authentication
+            from .resolution import Resolution, DynamicResolution
+            from .destination import Destination
+            from .distribution import Distribution
+            from .payload import Payload
         assert isinstance(community, Community), "COMMUNITY has invalid type '%s'" % type(community)
         assert isinstance(name, unicode), "NAME has invalid type '%s'" % type(name)
         assert isinstance(authentication, Authentication), "AUTHENTICATION has invalid type '%s'" % type(authentication)
@@ -554,10 +557,10 @@ class Message(MetaObject):
 
     @staticmethod
     def check_policy_combination(authentication, resolution, distribution, destination):
-        from authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
-        from resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
-        from distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
-        from destination import Destination, CandidateDestination, MemberDestination, CommunityDestination
+        from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
+        from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
+        from .distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
+        from .destination import Destination, CandidateDestination, MemberDestination, CommunityDestination
 
         assert isinstance(authentication, Authentication)
         assert isinstance(resolution, Resolution)

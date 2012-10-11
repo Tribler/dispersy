@@ -10,26 +10,36 @@ Community instance.
 
 from hashlib import sha1
 from itertools import islice
+from math import ceil
 from random import random, Random, randint
 from time import time
 
-from bloomfilter import BloomFilter
-from conversion import BinaryConversion, DefaultConversion
-from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from decorator import documentation, runtime_duration_warning
-from dispersy import Dispersy
-from distribution import SyncDistribution
-from math import ceil
-from member import DummyMember, Member
-from resolution import PublicResolution, LinearResolution, DynamicResolution
-from revision import update_revision_information
-from timeline import Timeline
-
-if __debug__:
-    from dprint import dprint
+from .bloomfilter import BloomFilter
+from .conversion import BinaryConversion, DefaultConversion
+from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from .decorator import documentation, runtime_duration_warning
+from .dispersy import Dispersy
+from .distribution import SyncDistribution
+from .dprint import dprint
+from .member import DummyMember, Member
+from .resolution import PublicResolution, LinearResolution, DynamicResolution
+from .revision import update_revision_information
+from .statistics import CommunityStatistics
+from .timeline import Timeline
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
+
+class SyncCache(object):
+    def __init__(self, time_low, time_high, modulo, offset, bloom_filter):
+        self.time_low = time_low
+        self.time_high = time_high
+        self.modulo = modulo
+        self.offset = offset
+        self.bloom_filter = bloom_filter
+        self.times_used = 0
+        self.responses_received = 0
+        self.candidate = None
 
 class Community(object):
     @classmethod
@@ -284,6 +294,7 @@ class Community(object):
         if __debug__: dprint("global time:   ", self._global_time)
 
         # sync range bloom filters
+        self._sync_cache = None
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
             dprint("sync bloom:    size: ", int(ceil(b.size // 8)), ";  capacity: ", b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), ";  error-rate: ", self.dispersy_sync_bloom_filter_error_rate)
@@ -295,6 +306,16 @@ class Community(object):
         # random seed, used for sync range
         self._random = Random(self._cid)
         self._nrsyncpackets = 0
+
+        # statistics...
+        self._statistics = CommunityStatistics(self)
+
+    @property
+    def statistics(self):
+        """
+        The Statistics instance.
+        """
+        return self._statistics
 
     def _download_master_member_identity(self):
         assert not self._master_member.public_key
@@ -320,7 +341,7 @@ class Community(object):
                     assert self._master_member.public_key
                     break
 
-            for candidate in islice(self._dispersy.yield_random_candidates(self), 1):
+            for candidate in islice(self.dispersy_yield_random_candidates(), 1):
                 if __debug__: dprint(self._cid.encode("HEX"), " asking for master member from ", candidate)
                 self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
                 break
@@ -368,7 +389,9 @@ class Community(object):
                 else:
                     # TODO: when a packet conversion fails we must drop something, and preferably check
                     # all messages in the database again...
-                    if __debug__: dprint("invalid message in database", level="error")
+                    if __debug__:
+                        dprint("invalid message in database [", self.get_classification(), "; ", self.cid.encode("HEX"), "]", level="error")
+                        dprint(str(packet).encode("HEX"), level="error")
 
     # @property
     def __get_dispersy_auto_load(self):
@@ -488,14 +511,62 @@ class Community(object):
         """
         return (1500 - 60 - 8 - 51 - self._my_member.signature_length - 21 - 30) * 8
 
-    def dispersy_claim_sync_bloom_filter(self, identifier):
+    @property
+    def dispersy_sync_bloom_filter_strategy(self):
+        return self._dispersy_claim_sync_bloom_filter_largest
+
+    def dispersy_store(self, messages):
         """
-        Returns a (time_low, time_high, modulo, offset, bloom_filter) tuple or None.
+        Called after new MESSAGES have been stored in the database.
         """
-        # return self.dispersy_claim_sync_bloom_filter_right()
-        # return self.dispersy_claim_sync_bloom_filter_50_50()
-        return self.dispersy_claim_sync_bloom_filter_largest()
-        # return self.dispersy_claim_sync_bloom_filter_simple()
+        if __debug__:
+            cached = 0
+
+        if self._sync_cache:
+            cache = self._sync_cache
+            for message in messages:
+                if (message.distribution.priority > 32 and
+                    cache.time_low <= message.distribution.global_time <= cache.time_high and
+                    (message.distribution.global_time + cache.offset) % cache.modulo == 0):
+
+                    if __debug__:
+                        cached += 1
+
+                    # update cached bloomfilter to avoid duplicates
+                    cache.bloom_filter.add(message.packet)
+
+                    # if this message was received from the candidate we send the bloomfilter too, increment responses
+                    if (cache.candidate and message.candidate and cache.candidate.sock_addr == message.candidate.sock_addr):
+                        cache.responses_received += 1
+
+        if __debug__:
+            if cached:
+                dprint(self._cid.encode("HEX"), "] ", cached, " out of ", len(messages), " were part of the cached bloomfilter")
+
+    def dispersy_claim_sync_bloom_filter(self, request_cache):
+        """
+        Returns a (time_low, time_high, modulo, offset, bloom_filter) or None.
+        """
+        if (self._sync_cache and
+            self._sync_cache.responses_received > 0 and
+            self._sync_cache.times_used < 100):
+            self._statistics.sync_bloom_reuse += 1
+            cache = self._sync_cache
+            cache.times_used += 1
+            cache.responses_received = 0
+            cache.candidate = request_cache.helper_candidate
+
+            if __debug__: dprint(self._cid.encode("HEX"), " reuse #", cache.times_used, " (packets received: ", cache.responses_received, "; ", hex(cache.bloom_filter._filter), ")")
+            return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
+
+        sync = self.dispersy_sync_bloom_filter_strategy()
+        if sync:
+            self._sync_cache = SyncCache(*sync)
+            self._sync_cache.candidate = request_cache.helper_candidate
+            self._statistics.sync_bloom_new += 1
+            if __debug__: dprint(self._cid.encode("HEX"), " new sync bloom (", self._statistics.sync_bloom_reuse, "/", self._statistics.sync_bloom_new, "~", round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2), ")")
+
+        return sync
 
     @runtime_duration_warning(0.5)
     def dispersy_claim_sync_bloom_filter_simple(self):
@@ -657,7 +728,7 @@ class Community(object):
 
     #instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
     @runtime_duration_warning(0.5)
-    def dispersy_claim_sync_bloom_filter_largest(self):
+    def _dispersy_claim_sync_bloom_filter_largest(self):
         if __debug__:
             t1 = time()
 
@@ -734,7 +805,7 @@ class Community(object):
 
     #instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
     @runtime_duration_warning(0.5)
-    def dispersy_claim_sync_bloom_filter_modulo(self):
+    def _dispersy_claim_sync_bloom_filter_modulo(self):
         syncable_messages = u", ".join(unicode(meta.database_id) for meta in self._meta_messages.itervalues() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32)
         if syncable_messages:
             bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
@@ -1145,7 +1216,7 @@ class Community(object):
         @type default: bool
         """
         if __debug__:
-            from conversion import Conversion
+            from .conversion import Conversion
         assert isinstance(conversion, Conversion)
         assert isinstance(default, bool)
         assert not conversion.prefix in self._conversions
@@ -1195,6 +1266,18 @@ class Community(object):
 
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
+
+    @documentation(Dispersy.yield_candidates)
+    def dispersy_yield_candidates(self):
+        return self._dispersy.yield_candidates(self)
+
+    @documentation(Dispersy.yield_random_candidates)
+    def dispersy_yield_random_candidates(self):
+        return self._dispersy.yield_random_candidates(self)
+
+    @documentation(Dispersy.yield_walk_candidates)
+    def dispersy_yield_walk_candidates(self):
+        return self._dispersy.yield_walk_candidates(self)
 
     def dispersy_cleanup_community(self, message):
         """

@@ -1,11 +1,11 @@
 import sys
-
 if __debug__:
     from time import time, sleep
-    from dprint import dprint
 
-    # update version information directly from SVN
-from revision import update_revision_information
+from .dprint import dprint
+
+# update version information directly from SVN
+from .revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Constructor(object):
@@ -107,7 +107,6 @@ def attach_profiler(func):
 
     #Niels 21-06-2012: argv seems to be missing if python is not started as a script
     if "--profiler" in getattr(sys, "argv", []):
-        from dprint import dprint
         from cProfile import Profile
         from thread import get_ident
         from threading import current_thread

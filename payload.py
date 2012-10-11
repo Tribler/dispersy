@@ -1,10 +1,10 @@
 from hashlib import sha1
 
-from meta import MetaObject
-from revision import update_revision_information
+from .meta import MetaObject
+from .revision import update_revision_information
 
 if __debug__:
-    from bloomfilter import BloomFilter
+    from .bloomfilter import BloomFilter
 
     def is_address(address):
         assert isinstance(address, tuple), type(address)
@@ -27,7 +27,7 @@ class Payload(MetaObject):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
 
     def __str__(self):
@@ -332,10 +332,10 @@ class AuthorizePayload(Payload):
             u"revoke".
             """
             if __debug__:
-                from authentication import MemberAuthentication, DoubleMemberAuthentication
-                from resolution import PublicResolution, LinearResolution, DynamicResolution
-                from member import Member
-                from message import Message
+                from .authentication import MemberAuthentication, DoubleMemberAuthentication
+                from .resolution import PublicResolution, LinearResolution, DynamicResolution
+                from .member import Member
+                from .message import Message
                 for triplet in permission_triplets:
                     assert isinstance(triplet, tuple), triplet
                     assert len(triplet) == 3, triplet
@@ -363,10 +363,10 @@ class RevokePayload(Payload):
             u"revoke".
             """
             if __debug__:
-                from authentication import MemberAuthentication, DoubleMemberAuthentication
-                from resolution import PublicResolution, LinearResolution, DynamicResolution
-                from member import Member
-                from message import Message
+                from .authentication import MemberAuthentication, DoubleMemberAuthentication
+                from .resolution import PublicResolution, LinearResolution, DynamicResolution
+                from .member import Member
+                from .message import Message
                 for triplet in permission_triplets:
                     assert isinstance(triplet, tuple)
                     assert len(triplet) == 3
@@ -387,8 +387,8 @@ class UndoPayload(Payload):
     class Implementation(Payload.Implementation):
         def __init__(self, meta, member, global_time, packet=None):
             if __debug__:
-                from member import Member
-                from message import Packet
+                from .member import Member
+                from .message import Packet
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
             assert packet is None or isinstance(packet, Packet)
@@ -412,7 +412,7 @@ class UndoPayload(Payload):
         # @packet.setter
         def __set_packet(self, packet):
             if __debug__:
-                from message import Packet
+                from .message import Packet
             assert isinstance(packet, Packet), type(packet)
             self._packet = packet
         # .setter was introduced in Python 2.6
@@ -427,8 +427,8 @@ class MissingSequencePayload(Payload):
             missing_high.
             """
             if __debug__:
-                from member import Member
-                from message import Message
+                from .member import Member
+                from .message import Message
             assert isinstance(member, Member)
             assert isinstance(message, Message)
             assert isinstance(missing_low, (int, long))
@@ -460,7 +460,7 @@ class SignaturePayload(Payload):
     class Implementation(Payload.Implementation):
         def __init__(self, meta, identifier, message):
             if __debug__:
-                from message import Message
+                from .message import Message
             assert isinstance(identifier, int), identifier
             assert 0 <= identifier < 2**16, identifier
             assert isinstance(message, Message.Implementation)
@@ -524,7 +524,7 @@ class MissingMessagePayload(Payload):
     class Implementation(Payload.Implementation):
         def __init__(self, meta, member, global_times):
             if __debug__:
-                from member import Member
+                from .member import Member
             assert isinstance(member, Member)
             assert isinstance(global_times, (tuple, list))
             assert all(isinstance(global_time, (int, long)) for global_time in global_times)
@@ -547,7 +547,7 @@ class MissingLastMessagePayload(Payload):
     class Implementation(Payload.Implementation):
         def __init__(self, meta, member, message, count):
             if __debug__:
-                from member import Member
+                from .member import Member
             assert isinstance(member, Member)
             super(MissingLastMessagePayload.Implementation, self).__init__(meta)
             self._member = member
@@ -570,7 +570,7 @@ class MissingProofPayload(Payload):
     class Implementation(Payload.Implementation):
         def __init__(self, meta, member, global_time):
             if __debug__:
-                from member import Member
+                from .member import Member
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
             assert global_time > 0
@@ -602,8 +602,8 @@ class DynamicSettingsPayload(Payload):
             @type *policies: [(meta_message, policy), ...]
             """
             if __debug__:
-                from message import Message
-                from resolution import PublicResolution, LinearResolution, DynamicResolution
+                from .message import Message
+                from .resolution import PublicResolution, LinearResolution, DynamicResolution
                 assert isinstance(policies, (tuple, list))
                 for tup in policies:
                     assert isinstance(tup, tuple)

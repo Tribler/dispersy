@@ -4,23 +4,23 @@ from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
 from random import choice
 
-from authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
-from bloomfilter import BloomFilter
-from crypto import ec_check_public_bin
-from destination import MemberDestination, CommunityDestination, CandidateDestination
-from dispersydatabase import DispersyDatabase
-from distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
-from message import DelayPacketByMissingMember, DelayPacketByMissingMessage, DropPacket, Packet, Message
-from resolution import PublicResolution, LinearResolution, DynamicResolution
-from revision import update_revision_information
+from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
+from .bloomfilter import BloomFilter
+from .crypto import ec_check_public_bin
+from .destination import MemberDestination, CommunityDestination, CandidateDestination
+from .dispersydatabase import DispersyDatabase
+from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .message import DelayPacketByMissingMember, DropPacket, Message
+from .resolution import PublicResolution, LinearResolution, DynamicResolution
+from .revision import update_revision_information
 
 if __debug__:
-    from authentication import Authentication
-    from candidate import Candidate
-    from destination import Destination
-    from distribution import Distribution
-    from dprint import dprint
-    from resolution import Resolution
+    from .authentication import Authentication
+    from .candidate import Candidate
+    from .destination import Destination
+    from .distribution import Distribution
+    from .dprint import dprint
+    from .resolution import Resolution
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -41,7 +41,8 @@ class Conversion(object):
         a proper conversion instance can be made for the Community.  '\xff' is reserved for when
         more than one byte is needed as a version indicator.
         """
-        if __debug__: from community import Community
+        if __debug__:
+            from .community import Community
         assert isinstance(community, Community), type(community)
         assert isinstance(dispersy_version, str), type(dispersy_version)
         assert len(dispersy_version) == 1, dispersy_version
@@ -1374,7 +1375,7 @@ class BinaryConversion(Conversion):
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
         if __debug__:
-            from payload import Payload
+            from .payload import Payload
             assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
             assert isinstance(placeholder.offset, (int, long))
 

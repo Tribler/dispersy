@@ -56,7 +56,9 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 class BinaryTrackerConversion(BinaryConversion):
-    pass
+    def decode_message(self, candidate, data, _=None):
+        # disable verify
+        return self._decode_message(candidate, data, False, False)
 
 class TrackerHardKilledCommunity(HardKilledCommunity):
     def __init__(self, *args, **kargs):
@@ -112,6 +114,11 @@ class TrackerCommunity(Community):
     def dispersy_auto_download_master_member(self):
         return False
 
+    @property
+    def dispersy_sync_bloom_filter_strategy(self):
+        # disable sync bloom filter
+        return lambda: None
+
     def update_strikes(self, now):
         # does the community have any active candidates
         for candidate in self._dispersy.candidates:
@@ -127,10 +134,6 @@ class TrackerCommunity(Community):
 
     def initiate_conversions(self):
         return [BinaryTrackerConversion(self, "\x00")]
-
-    def dispersy_claim_sync_bloom_filter(self, identifier):
-        # disable the sync mechanism
-        return None
 
     def get_conversion(self, prefix=None):
         if not prefix in self._conversions:
@@ -191,10 +194,8 @@ class TrackerDispersy(Dispersy):
         kargs["singleton_placeholder"] = Dispersy
         return super(TrackerDispersy, cls).get_instance(*args, **kargs)
 
-    def __init__(self, callback, working_directory, port):
-        assert isinstance(port, int)
-        assert 0 <= port
-        super(TrackerDispersy, self).__init__(callback, working_directory)
+    def __init__(self, callback, working_directory):
+        super(TrackerDispersy, self).__init__(callback, working_directory, u":memory:")
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -207,7 +208,7 @@ class TrackerDispersy(Dispersy):
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         # location of persistent storage
-        self._persistent_storage_filenam = os.path.join(working_directory, "persistent-storage.data")
+        self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
 
         callback.register(self._load_persistent_storage)
         callback.register(self._unload_communities)
@@ -215,7 +216,7 @@ class TrackerDispersy(Dispersy):
 
     @property
     def persistent_storage_filename(self):
-        return self._persistent_storage_filenam
+        return self._persistent_storage_filename
 
     def get_community(self, cid, load=False, auto_load=True):
         try:
@@ -227,7 +228,7 @@ class TrackerDispersy(Dispersy):
     def _load_persistent_storage(self):
         # load all destroyed communities
         try:
-            packets = [packet.decode("HEX") for _, packet in (line.split() for line in open(self._persistent_storage_filenam, "r") if not line.startswith("#"))]
+            packets = [packet.decode("HEX") for _, packet in (line.split() for line in open(self._persistent_storage_filename, "r") if not line.startswith("#"))]
         except IOError:
             pass
         else:
@@ -250,7 +251,7 @@ class TrackerDispersy(Dispersy):
                 if not cid in self._communities and candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
                         dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=1)
-                        self._statistics.drop("_convert_packets_into_batch:from bootstrap node for unloaded community", len(packet))
+                        self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
                     continue
 
                 yield candidate, packet
@@ -331,6 +332,8 @@ class TrackerDispersy(Dispersy):
 
 def main():
     command_line_parser = optparse.OptionParser()
+    command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
+    command_line_parser.add_option("--memory-dump", action="store_true", help="use meliae to dump the memory periodically", default=False)
     command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
@@ -339,7 +342,7 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), opt.port)
+    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir))
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
     dispersy.endpoint.start()
     dispersy.define_auto_load(TrackerCommunity)

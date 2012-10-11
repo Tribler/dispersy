@@ -1,20 +1,25 @@
 # Python 2.5 features
 from __future__ import with_statement
 
+from itertools import product
+from time import time
+from traceback import print_exc
 import errno
-import select
 import socket
 import sys
 import threading
-from time import time
-from itertools import product
 
-from candidate import Candidate
-from revision import update_revision_information
-from traceback import print_exc
+try:
+    from select import poll, POLLIN
+except ImportError:
+    #Niels 04-10-2012: poll does not exist on windows...
+    from selectpoll import poll, POLLIN
+
+from .candidate import Candidate
+from .revision import update_revision_information
 
 if __debug__:
-    from dprint import dprint
+    from .dprint import dprint
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -22,7 +27,6 @@ update_revision_information("$HeadURL$", "$Revision$")
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
 else:
-    import errno
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
@@ -40,6 +44,10 @@ class Endpoint(object):
     @property
     def total_down(self):
         return self._total_down
+
+    def reset_statistics(self):
+        self._total_up = 0
+        self._total_down = 0
 
     def get_address(self):
         raise NotImplementedError()
@@ -97,10 +105,9 @@ class StandaloneEndpoint(Endpoint):
         recvfrom = self._socket.recvfrom
         register = self._dispersy.callback.register
         dispersythread_data_came_in = self.dispersythread_data_came_in
-        POLLIN, POLLOUT = select.POLLIN, select.POLLOUT
-        poll = select.poll()
-        poll.register(self._socket, POLLIN)
-        do_poll = poll.poll
+        pl = poll()
+        pl.register(self._socket, POLLIN)
+        do_poll = pl.poll
 
         while self._running:
             for _, event in do_poll(1.0):

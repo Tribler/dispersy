@@ -9,11 +9,11 @@ This module provides basic database functionalty and simple version control.
 import hashlib
 import sqlite3
 
-from revision import update_revision_information
-from singleton import Singleton
+from .dprint import dprint
+from .revision import update_revision_information
+from .singleton import Singleton
 
 if __debug__:
-    from dprint import dprint
     import thread
 
 # update version information directly from SVN
@@ -59,9 +59,9 @@ class Database(Singleton):
         self._pending_commits = 0
 
         # collect current database configuration
-        page_size = int(self._cursor.execute(u"PRAGMA page_size").next()[0])
-        journal_mode = str(self._cursor.execute(u"PRAGMA journal_mode").next()[0]).upper()
-        synchronous = str(self._cursor.execute(u"PRAGMA synchronous").next()[0]).upper()
+        page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
+        journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
+        synchronous = unicode(next(self._cursor.execute(u"PRAGMA synchronous"))[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -98,14 +98,14 @@ class Database(Singleton):
 
         # check is the database contains an 'option' table
         try:
-            count, = self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'").next()
+            count, = next(self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'"))
         except StopIteration:
             raise RuntimeError()
 
         if count:
             # get version from required 'option' table
             try:
-                version, = self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1").next()
+                version, = next(self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1"))
             except StopIteration:
                 # the 'database_version' key was not found
                 version = u"0"
@@ -215,11 +215,9 @@ class Database(Singleton):
             return self._cursor.execute(statement, bindings)
 
         except sqlite3.Error:
-            if __debug__:
-                dprint(exception=True, level="warning")
-                dprint("Filename: ", self._file_path, level="warning")
-                dprint(statement, level="warning")
-                dprint(bindings, level="warning")
+            dprint(exception=True, level="warning")
+            dprint("Filename: ", self._file_path, level="warning")
+            dprint(statement, level="warning")
             raise
 
     def executescript(self, statements):
@@ -231,10 +229,9 @@ class Database(Singleton):
             return self._cursor.executescript(statements)
 
         except sqlite3.Error:
-            if __debug__:
-                dprint(exception=True, level="warning")
-                dprint("Filename: ", self._file_path, level="warning")
-                dprint(statements, level="warning")
+            dprint(exception=True, level="warning")
+            dprint("Filename: ", self._file_path, level="warning")
+            dprint(statements, level="warning")
             raise
 
     def executemany(self, statement, sequenceofbindings):
@@ -279,10 +276,9 @@ class Database(Singleton):
             return self._cursor.executemany(statement, sequenceofbindings)
 
         except sqlite3.Error:
-            if __debug__:
-                dprint(exception=True)
-                dprint("Filename: ", self._file_path)
-                dprint(statement)
+            dprint(exception=True)
+            dprint("Filename: ", self._file_path)
+            dprint(statement)
             raise
 
     def commit(self):

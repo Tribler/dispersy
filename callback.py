@@ -7,16 +7,20 @@ A callback thread running Dispersy.
 
 from heapq import heappush, heappop
 from thread import get_ident
-from threading import Thread, Lock, Event
+from threading import Thread, Lock, Event, currentThread
 from time import sleep, time
 from types import GeneratorType, TupleType
 
-from decorator import attach_profiler
-from dprint import dprint
-from revision import update_revision_information
+try:
+    import prctl
+except ImportError:
+    prctl = None
+
+from .decorator import attach_profiler
+from .dprint import dprint
+from .revision import update_revision_information
 
 if __debug__:
-    from threading import current_thread
     from atexit import register as atexit_register
     from inspect import getsourcefile, getsourcelines
     from types import LambdaType
@@ -94,6 +98,13 @@ class Callback(object):
     @property
     def ident(self):
         return self._thread_ident
+
+    @property
+    def is_current_thread(self):
+        """
+        Returns True when called on this Callback thread.
+        """
+        return self._thread_ident == get_ident()
 
     @property
     def is_running(self):
@@ -491,6 +502,9 @@ class Callback(object):
         if __debug__:
             dprint()
             time_since_expired = 0
+
+        if prctl:
+            prctl.set_name("Tribler" + currentThread().getName())
 
         # put some often used methods and object in the local namespace
         actual_time = 0

@@ -10,7 +10,7 @@ from random import sample
 from threading import RLock
 
 # update version information directly from SVN
-from revision import update_revision_information
+from .revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Singleton(object):
@@ -210,7 +210,7 @@ class Parameterized1Singleton(object):
         return []
 
 if __name__ == "__main__":
-    from dprint import dprint
+    from .dprint import dprint
 
     def assert_(value, *args):
         if not value:

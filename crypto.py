@@ -7,7 +7,7 @@ The crypto module provides a layer between Dispersy and low level crypographic f
 """
 
 # update version information directly from SVN
-from revision import update_revision_information
+from .revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 if False:
@@ -93,8 +93,11 @@ else:
 
     from hashlib import sha1, sha224, sha256, sha512, md5
     from math import ceil
-    from M2Crypto.m2 import bn_to_bin, bin_to_bn, bn_to_mpi, mpi_to_bn
+    # from M2Crypto.m2 import bn_to_bin, bin_to_bn, bn_to_mpi, mpi_to_bn
     from M2Crypto import EC, BIO
+    from struct import Struct
+
+    _struct_L = Struct(">L")
 
     # Allow all available curves.
     _curves = dict((unicode(curve), getattr(EC, curve)) for curve in dir(EC) if curve.startswith("NID_"))
@@ -212,12 +215,14 @@ else:
         """
         Returns the signature of DIGEST made using EC.
         """
-        r, s = ec.sign_dsa(digest)
-        # convert r and s from their MPI representation into BigNum into binary strings
-        r = bn_to_bin(mpi_to_bn(r))
-        s = bn_to_bin(mpi_to_bn(s))
-
         length = int(ceil(len(ec) / 8.0))
+
+        mpi_r, mpi_s = ec.sign_dsa(digest)
+        length_r, = _struct_L.unpack_from(mpi_r)
+        r = mpi_r[-min(length, length_r):]
+        length_s, = _struct_L.unpack_from(mpi_s)
+        s = mpi_s[-min(length, length_s):]
+
         return "".join(("\x00" * (length - len(r)), r, "\x00" * (length - len(s)), s))
 
     def ec_verify(ec, digest, signature):
@@ -227,78 +232,41 @@ else:
         assert len(signature) == ec_signature_length(ec), [len(signature), ec_signature_length(ec)]
         length = len(signature) / 2
         try:
-            return bool(ec.verify_dsa(digest, bn_to_mpi(bin_to_bn(signature[:length])), bn_to_mpi(bin_to_bn(signature[length:]))))
+            r = signature[:length]
+            # remove all "\x00" prefixes
+            while r and r[0] == "\x00":
+                r = r[1:]
+            # prepend "\x00" when the most significant bit is set
+            if ord(r[0]) & 128:
+                r = "\x00" + r
+
+            s = signature[length:]
+            # remove all "\x00" prefixes
+            while s and s[0] == "\x00":
+                s = s[1:]
+            # prepend "\x00" when the most significant bit is set
+            if ord(s[0]) & 128:
+                s = "\x00" + s
+
+            mpi_r = _struct_L.pack(len(r)) + r
+            mpi_s = _struct_L.pack(len(s)) + s
+
+            # mpi_r3 = bn_to_mpi(bin_to_bn(signature[:length]))
+            # mpi_s3 = bn_to_mpi(bin_to_bn(signature[length:]))
+
+            # if not mpi_r == mpi_r3:
+            #     raise RuntimeError([mpi_r.encode("HEX"), mpi_r3.encode("HEX")])
+            # if not mpi_s == mpi_s3:
+            #     raise RuntimeError([mpi_s.encode("HEX"), mpi_s3.encode("HEX")])
+
+            return bool(ec.verify_dsa(digest, mpi_r, mpi_s))
+
         except:
             return False
 
-# def rsa_generate_key(bits=1024, exponent=5, progress=_progress):
-#     """
-#     Generate a new RSA object with a new public / private key pair.
+if __debug__:
+    import time
 
-#     Note: with RSA it is dangerous to use a small exponent to encrypt
-#     the same message to multiple recipients, as this can lead to an
-#     algebraic attack.
-#     """
-#     assert isinstance(bits, (int, long))
-#     assert bits % 8 == 0
-#     assert isinstance(exponent, int)
-#     assert hasattr("__call__", progress)
-#     # assert bits >= 512, "Need at least 512 bits to sign sha1 message digests"
-#     return M2Crypto.RSA.gen_key(bits, exponent, progress)
-
-# def rsa_to_private_pem(rsa, cipher="aes_128_cbc", password=None):
-#     """
-#     Get the private key in PEM format.
-#     """
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     assert password is None or isinstance(password, str)
-#     def get_password(*args):
-#         return password or "-empty-"
-#     bio = M2Crypto.BIO.MemoryBuffer()
-#     rsa.save_key_bio(bio, cipher, get_password)
-#     return bio.read_all()
-
-# def rsa_to_private_bin(rsa, cipher="aes_128_cbc", password=None):
-#     pem = rsa_to_private_pem(rsa, cipher, password)
-#     lines = pem.split("\n")
-#     return "".join(lines[4:-2]).decode("BASE64")
-
-# def rsa_to_public_pem(rsa):
-#     """
-#     Get the public key in binary format from RSA.
-
-#     # note: for some reason the M2Crypto interface does not allow us
-#     # to set the cipher or the password.  These two parameters are
-#     # therefore ignored.
-#     """
-#     assert isinstance(rsa, M2Crypto.RSA.RSA)
-#     bio = M2Crypto.BIO.MemoryBuffer()
-#     rsa.save_pub_key_bio(bio)
-#     return bio.read_all()
-
-# def rsa_to_public_bin(rsa, cipher="aes_128_cbc", password=None):
-#     pem = rsa_to_public_pem(rsa, cipher, password)
-#     lines = pem.split("\n")
-#     return "".join(lines[1:-2]).decode("BASE64")
-
-# def rsa_from_private_pem(pem, password=None):
-#     """
-#     Create a RSA public / private key pair from a PEM binary string.
-#     """
-#     assert isinstance(pem, str)
-#     assert password is None or isinstance(password, str)
-#     def get_password(*args):
-#         return password or "-empty-"
-#     return M2Crypto.RSA.load_key_bio(M2Crypto.BIO.MemoryBuffer(pem), get_password)
-
-# def rsa_from_public_pem(pem):
-#     """
-#     Create a RSA public part from a PEM binary string.
-#     """
-#     assert isinstance(pem, str)
-#     return M2Crypto.RSA.load_pub_key_bio(M2Crypto.BIO.MemoryBuffer(pem))
-
-if __name__ == "__main__":
     def EC_name(curve):
         assert isinstance(curve, int)
         for name in dir(EC):
@@ -306,226 +274,70 @@ if __name__ == "__main__":
             if isinstance(value, int) and value == curve:
                 return name
 
-    import math
-    import time
-    for curve in [u"very-low", u"NID_secp224r1", u"low", u"medium", u"high"]:
-        ec = ec_generate_key(curve)
-        private_pem = ec_to_private_pem(ec)
-        public_pem = ec_to_public_pem(ec)
-        public_bin = ec_to_public_bin(ec)
-        private_bin = ec_to_private_bin(ec)
-        print
-        print "generated:", time.ctime()
-        print "curve:", curve, "<<<", EC_name(_curves[curve]), ">>>"
-        print "len:", len(ec), "bits ~", ec_signature_length(ec), "bytes signature"
-        print "pub:", len(public_bin), public_bin.encode("HEX")
-        print "prv:", len(private_bin), private_bin.encode("HEX")
-        print "pub-sha1", sha1(public_bin).digest().encode("HEX")
-        print "prv-sha1", sha1(private_bin).digest().encode("HEX")
-        print public_pem.strip()
-        print private_pem.strip()
+    def mpi_test():
+        for _ in xrange(100):
+            for curve in sorted([unicode(attr) for attr in dir(EC) if attr.startswith("NID_")]):
+                ec = ec_generate_key(curve)
+                if not ec_verify(ec, "foo-bar", ec_sign(ec, "foo-bar")):
+                    raise RuntimeError("crypto fail")
 
-        ec2 = ec_from_public_pem(public_pem)
-        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-        ec2 = ec_from_private_pem(private_pem)
-        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-        ec2 = ec_from_public_bin(public_bin)
-        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
-        ec2 = ec_from_private_bin(private_bin)
-        assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+    def speed():
+        curves = {}
+        for curve in sorted([unicode(attr) for attr in dir(EC) if attr.startswith("NID_")]):
+            ec = ec_generate_key(curve)
+            private_pem = ec_to_private_pem(ec)
+            public_pem = ec_to_public_pem(ec)
+            public_bin = ec_to_public_bin(ec)
+            private_bin = ec_to_private_bin(ec)
+            print
+            print "generated:", time.ctime()
+            print "curve:", curve, "<<<", EC_name(_curves[curve]), ">>>"
+            print "len:", len(ec), "bits ~", ec_signature_length(ec), "bytes signature"
+            print "pub:", len(public_bin), public_bin.encode("HEX")
+            print "prv:", len(private_bin), private_bin.encode("HEX")
+            print "pub-sha1", sha1(public_bin).digest().encode("HEX")
+            print "prv-sha1", sha1(private_bin).digest().encode("HEX")
+            print public_pem.strip()
+            print private_pem.strip()
 
-    ##
+            ec2 = ec_from_public_pem(public_pem)
+            assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+            ec2 = ec_from_private_pem(private_pem)
+            assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+            ec2 = ec_from_public_bin(public_bin)
+            assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
+            ec2 = ec_from_private_bin(private_bin)
+            assert ec_verify(ec2, "foo-bar", ec_sign(ec, "foo-bar"))
 
-    # all available curves
-    # from M2Crypto import EC
-    # for attr in dir(EC):
-    #     if attr.startswith("NID_"):
-    #         print attr
+            curves[EC_name(_curves[curve])] = ec
 
-    ##
+        for key, curve in sorted(curves.iteritems()):
+            t1 = time.time()
 
-    # s = open("pem2", "r").read()
-    # ec = ec_from_private_pem(s)
-    # # print ec_to_private_pem(ec)
-    # print len(ec_to_private_bin(ec)), ec_to_private_bin(ec).encode("HEX")
-    # print len(open("der", "r").read()), open("der", "r").read().encode("HEX")
+            signatures = [ec_sign(curve, str(i)) for i in xrange(100)]
 
+            t2 = time.time()
 
-    # for i in xrange(100000):
-    #     digest = sha1(str(i)).digest()
-    #     sig = ec_sign(ec, digest)
-    #     assert ec_verify(ec, digest, sig)
+            for i, signature in enumerate(signatures):
+                ec_verify(curve, str(i), signature)
 
-    # lengths_r = {}
-    # lengths_s = {}
-    # for i in xrange(100):
-    #     digest = sha1(str(i)).digest()
-    #     # a = len(ec.sign_dsa_asn1(digest))
-    #     # if a in lengths:
-    #     #     lengths[a] += 1
-    #     # else:
-    #     #     lengths[a] = 1
+            t3 = time.time()
+            print key, "signing took", round(t2-t1, 5), "verify took", round(t3-t2, 5), "totals", round(t3-t1, 5)
 
-    # # for i, j in lengths.items():
-    # #     print "Len:", i, "x", j, "times"
-
-    #     r, s = ec.sign_dsa(digest)
-    #     r = len(r)
-    #     if r in lengths_r:
-    #         lengths_r[r] += 1
-    #     else:
-    #         lengths_r[r] = 1
-
-    #     s = len(s)
-    #     if s in lengths_s:
-    #         lengths_s[s] += 1
-    #     else:
-    #         lengths_s[s] = 1
-
-    # for i, j in lengths_r.items():
-    #     print "Len r:", i, "x", j, "times"
-    # for i, j in lengths_s.items():
-    #     print "Len s:", i, "x", j, "times"
-
-
-
-    # bits = 1024
-    # exponent = 5
-    # rsa = rsa_generate_key(bits, exponent)
-    # public_pem = rsa_to_public_pem(rsa)
-    # public_bin = rsa_to_public_bin(rsa)
-    # private_pem = rsa_to_private_pem(rsa)
-    # private_bin = rsa_to_private_bin(rsa)
-
-    # print "Generating public / private key pair"
-    # print "Bits:", bits
-    # print "Exponent:", exponent
-    # print "SHA1(pub-pem).HEX:", len(public_pem), sha1(public_pem).digest().encode("HEX")
-    # print "SHA1(pub-str).HEX:", len(public_bin), sha1(public_bin).digest().encode("HEX")
-    # print "SHA1(prv-pem).HEX:", len(private_pem), sha1(private_pem).digest().encode("HEX")
-    # print "SHA1(prv-str).HEX:", len(private_bin), sha1(private_bin).digest().encode("HEX")
-    # print public_pem
-    # print private_pem
-
-    # data = "Hello World! " * 1000
-    # digest = sha1(data).digest()
-    # sig = rsa.sign(digest)
-    # assert rsa.verify(digest, sig)
-    # print "Verify = OK"
-    # print
-
-    # # # smallest sha1 (20 bytes)
-    # # bits = 20 * 8
-    # # rsa = rsa_generate_key(bits, 5)
-    # # digest = sha1(data).digest()
-    # # sig = ""
-    # # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
-    
-    # # # smallest md5 (16 bytes)
-    # # bits = 16 * 8
-    # # rsa = rsa_generate_key(bits, 5)
-    # # digest = md5(data).digest()
-    # # sig = ""
-    # # enc = rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "MESSAGE:", len(data), "DIGEST:", len(digest), "SIG:", len(sig), "ENC:", len(enc)
-
-    # # # record with md5 signature: users are identified by 20 bytes.
-    # # # the 16 byte signature is added, and the FROM USER is removed on
-    # # # the wire
-    # # from struct import pack
-    # # uid_length = 20
-    # # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # # bits = 16 * 8
-    # # rsa = rsa_generate_key(bits, 5)
-    # # digest = md5(record).digest()
-    # # enc = record[uid_length:] + rsa.private_encrypt(digest, M2Crypto.RSA.no_padding)
-    # # print "BITS:", bits, "BYTES:", bits / 8, "PUBLIC-PEM:", len(rsa_to_public_pem(rsa)), "ENC:", len(enc)
-    
-
-    # from struct import pack
-    # uid_length = 20
-    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # bits = 16 * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    # msg = record + sig
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-
-    # from struct import pack
-    # uid_length = 5
-    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # bits = 16 * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # # todo: sometimes crashes: M2Crypto.RSA.RSAError: data too large for modulus
-    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    # msg = record + sig
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-
-    # from struct import pack
-    # uid_length = 4
-    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # bits = 16 * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # sig = rsa.private_encrypt(md5(record).digest(), M2Crypto.RSA.no_padding)
-    # record = ("A" * uid_length) + pack("!LLL", 0, 10, 2)
-    # msg = record + sig
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-
-    # # encrypted record: users are identified by 20 bytes.  this
-    # # results in a 416 bits rsa key
-    # uid_length = 20
-    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # bits = len(record) * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    # msg = ("A" * uid_length) + enc
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-    
-    # # encrypted record: users are identified by 4 bytes.  this results
-    # # in a 160 bits rsa key
-    # uid_length = 5
-    # record = ("A" * uid_length) + ("B" * uid_length) + pack("!LLL", 0, 10, 2)
-    # bits = len(record) * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    # msg = ("A" * uid_length) + enc
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-
-    # # encrypted record: users are identified by 4 bytes.  this results
-    # # in a 160 bits rsa key
-    # uid_length = 4
-    # record = ("A" * uid_length) + ("B" * uid_length) + ("T" * 8) + ("U" * 4) + ("D" * 4)
-    # bits = len(record) * 8
-    # rsa = rsa_generate_key(bits, 5)
-    # enc = rsa.private_encrypt(record, M2Crypto.RSA.no_padding)
-    # msg = ("A" * uid_length) + enc
-    # print "UID:", uid_length, "BITS:", bits, "PUBLIC-KEY:", len(rsa_to_public_bin(rsa)), "MESSAGE:", len(msg)
-
-    # print
-
-    # #
-    # # EC
-    # #
-
-    # # def ec_to_private_bin(rsa, cipher="aes_128_cbc", password=None):
-    # #     pem = rsa_to_private_pem(rsa, cipher, password)
-    # #     lines = pem.split("\n")
-    # #     return "".join(lines[4:-2]).decode("BASE64")
-
-    # from M2Crypto import EC
-    # record = "A" * 20
-    # for attr in dir(EC):
-    #     if attr.startswith("NID_"):
-    #         nid = getattr(EC, attr)
-
-    #         # ec = EC.gen_params(EC.NID_sect233k1)
-    #         ec = EC.gen_params(nid)
-    #         ec.gen_key()
-    #         try:
-    #             sig = ec.sign_dsa_asn1(record)
-    #             print "SIG:", len(sig), "B64:", len(sig.encode("BASE64")), "NID:", attr
-    #         except Exception as e:
-    #             print "SIG: --", "NID:", attr, e
+    def main():
+        for curve in [u"very-low", u"NID_secp224r1", u"low", u"medium", u"high"]:
+            ec = ec_generate_key(curve)
+            private_pem = ec_to_private_pem(ec)
+            public_pem = ec_to_public_pem(ec)
+            public_bin = ec_to_public_bin(ec)
+            private_bin = ec_to_private_bin(ec)
+            print
+            print "generated:", time.ctime()
+            print "curve:", curve, "<<<", EC_name(_curves[curve]), ">>>"
+            print "len:", len(ec), "bits ~", ec_signature_length(ec), "bytes signature"
+            print "pub:", len(public_bin), public_bin.encode("HEX")
+            print "prv:", len(private_bin), private_bin.encode("HEX")
+            print "pub-sha1", sha1(public_bin).digest().encode("HEX")
+            print "prv-sha1", sha1(private_bin).digest().encode("HEX")
+            print public_pem.strip()
+            print private_pem.strip()

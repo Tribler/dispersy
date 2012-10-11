@@ -1,8 +1,8 @@
 import os
 from socket import gethostbyname
 
-from candidate import BootstrapCandidate
-from revision import update_revision_information
+from .candidate import BootstrapCandidate
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")

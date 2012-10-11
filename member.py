@@ -212,7 +212,7 @@ class MemberBase(DummyMember):
         Returns True when we have a dispersy-identity message for this member in COMMUNITY.
         """
         if __debug__:
-            from community import Community
+            from .community import Community
             assert isinstance(community, Community)
 
         if community.cid in self._has_identity:
@@ -368,6 +368,18 @@ class MemberFromId(Member):
 
         # prevent __init__ and hence caching this instance
         raise LookupError(mid)
+
+class MemberFromDatabaseId(Member):
+    def __new__(cls, database_id):
+        assert isinstance(database_id, (int, long)), type(database_id)
+
+        # retrieve Member from cache (based on database_id)
+        for member in cls._cache.itervalues():
+            if member._database_id == database_id:
+                return member
+
+        # prevent __init__ and hence caching this instance
+        raise LookupError(database_id)
 
 class MemberWithoutCheck(Member):
     def __new__(cls, public_key, private_key=""):

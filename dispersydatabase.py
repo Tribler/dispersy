@@ -6,18 +6,17 @@ This module provides an interface to the Dispersy database.
 @contact: dispersy@frayja.com
 """
 
-from os import path
+from itertools import groupby
 
-from database import Database
-from revision import update_revision_information
-
-if __debug__:
-    from dprint import dprint
+from .database import Database
+from .distribution import FullSyncDistribution
+from .dprint import dprint
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
 
-LATEST_VERSION = 13
+LATEST_VERSION = 15
 
 schema = u"""
 CREATE TABLE member(
@@ -86,16 +85,6 @@ INSERT INTO option(key, value) VALUES('database_version', '""" + str(LATEST_VERS
 class DispersyDatabase(Database):
     if __debug__:
         __doc__ = schema
-
-    def __init__(self, working_directory):
-        """
-        Initialize a new DispersyDatabase instance.
-
-        @type working_directory: unicode
-        @param working_directory: the directory name where the database file should be stored.
-        """
-        assert isinstance(working_directory, unicode)
-        Database.__init__(self, path.join(working_directory, u"dispersy.db"))
 
     def check_database(self, database_version):
         assert isinstance(database_version, unicode)
@@ -350,13 +339,21 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 self.commit()
                 if __debug__: dprint("upgrade database ", database_version, " -> ", 13, " (done)")
 
-            # upgrade from version 13 to version 14
-            if database_version < 14:
-                # there is no version 14 yet...
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 14)
-                # self.executescript(u"""UPDATE option SET value = '14' WHERE key = 'database_version';""")
+            # upgrade from version 13 to version 15
+            if database_version < 15:
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 15)
+                # only effects check_community_database
+                self.executescript(u"""UPDATE option SET value = '15' WHERE key = 'database_version';""")
+                self.commit()
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 15, " (done)")
+
+            # upgrade from version 15 to version 16
+            if database_version < 16:
+                # there is no version 16 yet...
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 16)
+                # self.executescript(u"""UPDATE option SET value = '16' WHERE key = 'database_version';""")
                 # self.commit()
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 14, " (done)")
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 16, " (done)")
                 pass
 
         return LATEST_VERSION
@@ -442,6 +439,75 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
 
             self.execute(u"UPDATE community SET database_version = 8 WHERE id = ?", (community.database_id,))
+            self.commit()
+
+            for handler in progress_handlers:
+                handler.Destroy()
+
+        if database_version < 15:
+            if __debug__: dprint("upgrade community ", database_version, " -> ", 15)
+
+            # patch notes:
+            #
+            # because of a bug in handling messages with sequence numbers, it was possible for
+            # messages to be stored in the database with missing sequence numbers.  I.e. numbers 1,
+            # 2, and 5 could be stored leaving 3 and 4 missing.
+            #
+            # this results in the problem that the message with sequence number 5 is believed to be
+            # a message with sequence number 3.  resulting in an inconsistent database and an
+            # inability to correctly handle missing sequence messages and incoming messages with
+            # specific sequence numbers.
+            #
+            # we will 'solve' this by removing all messages after a 'gap' occurred in the sequence
+            # numbers.  In our example it will result in the message with sequence number 5 to be
+            # removed.
+            #
+            # we choose not to call any undo methods because both the timeline and the votes can
+            # handle the resulting multiple calls to the undo callback.
+
+            # all meta messages that use sequence numbers
+            metas = [meta for meta in community.get_meta_messages() if isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number]
+            convert_packet_to_message = community.dispersy.convert_packet_to_message
+
+            progress = 0
+            count = 0
+            deletes = []
+            for meta in metas:
+                i, = next(self.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?", (meta.database_id,)))
+                count += i
+            if __debug__: dprint("checking ", count, " sequence number enabled messages [", community.cid.encode("HEX"), "]")
+            if count > 50:
+                progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count) for handler in community.dispersy.get_progress_handlers()]
+            else:
+                progress_handlers = []
+
+            for meta in metas:
+                for member_id, iterator in groupby(list(self.execute(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,))), key=lambda tup: tup[1]):
+                    out_of_sequence = False
+                    for sequence_number, (packet_id, _, packet) in enumerate(iterator, 1):
+
+                        if out_of_sequence:
+                            deletes.append((packet_id,))
+                        else:
+                            message = convert_packet_to_message(str(packet), community, verify=False)
+                            assert message.authentication.member.database_id == member_id
+                            if message.distribution.sequence_number != sequence_number:
+                                out_of_sequence = True
+                                deletes.append((packet_id,))
+
+                        progress += 1
+                        for handler in progress_handlers:
+                            handler.Update(progress)
+
+            for handler in progress_handlers:
+                handler.Update(progress, "Saving the results...")
+
+            if __debug__: dprint("will delete ", len(deletes), " packets from the database")
+            if deletes:
+                self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
+                assert len(deletes) == self.changes, [len(deletes), self.changes]
+
+            self.execute(u"UPDATE community SET database_version = 15 WHERE id = ?", (community.database_id,))
             self.commit()
 
             for handler in progress_handlers:

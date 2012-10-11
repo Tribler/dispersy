@@ -10,8 +10,8 @@ creator of this message.
 @contact: dispersy@frayja.com
 """
 
-from meta import MetaObject
-from revision import update_revision_information
+from .meta import MetaObject
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -36,7 +36,7 @@ class Authentication(MetaObject):
 
         def setup(self, message_impl):
             if __debug__:
-                from message import Message
+                from .message import Message
             assert isinstance(message_impl, Message.Implementation)
 
     def setup(self, message):
@@ -52,7 +52,7 @@ class Authentication(MetaObject):
         @type message: Message
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
 
 class NoAuthentication(Authentication):
@@ -109,7 +109,7 @@ class MemberAuthentication(Authentication):
             @type is_signed: bool
             """
             if __debug__:
-                from member import Member
+                from .member import Member
             assert isinstance(member, Member)
             assert isinstance(is_signed, bool)
             super(MemberAuthentication.Implementation, self).__init__(meta)
@@ -214,7 +214,7 @@ class DoubleMemberAuthentication(Authentication):
             @type signatures: list containing strings
             """
             if __debug__:
-                from member import Member
+                from .member import Member
             assert isinstance(members, list), type(members)
             assert len(members) == 2
             assert all(isinstance(member, Member) for member in members)
@@ -305,7 +305,7 @@ class DoubleMemberAuthentication(Authentication):
 
         def setup(self, message_impl):
             if __debug__:
-                from message import Message
+                from .message import Message
             assert isinstance(message_impl, Message.Implementation)
             self._regenerate_packet_func = message_impl.regenerate_packet
 

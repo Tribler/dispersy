@@ -5,12 +5,12 @@ queried as to who had what actions at some point in time.
 
 from itertools import count, groupby
 
-from authentication import MemberAuthentication, DoubleMemberAuthentication
-from resolution import PublicResolution, LinearResolution, DynamicResolution
-from revision import update_revision_information
+from .authentication import MemberAuthentication, DoubleMemberAuthentication
+from .resolution import PublicResolution, LinearResolution, DynamicResolution
+from .revision import update_revision_information
 
 if __debug__:
-    from dprint import dprint
+    from .dprint import dprint
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -18,7 +18,7 @@ update_revision_information("$HeadURL$", "$Revision$")
 class Timeline(object):
     def __init__(self, community):
         if __debug__:
-            from community import Community
+            from .community import Community
             assert isinstance(community, Community)
 
         # the community that this timeline is keeping track off
@@ -60,7 +60,7 @@ class Timeline(object):
         permissions.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message.Implementation), message
         assert isinstance(message.authentication, (MemberAuthentication.Implementation, DoubleMemberAuthentication.Implementation)), message.authentication
         assert isinstance(permission, unicode)
@@ -123,7 +123,7 @@ class Timeline(object):
         Check if we are allowed to create a message.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(meta, Message)
         assert isinstance(global_time, (int, long))
         assert global_time >= 0
@@ -139,8 +139,8 @@ class Timeline(object):
         containing the Message.Implementation instances grant or revoke the permissions.
         """
         if __debug__:
-            from member import Member
-            from message import Message
+            from .member import Member
+            from .message import Message
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
             assert global_time > 0
@@ -240,8 +240,8 @@ class Timeline(object):
 
     def authorize(self, author, global_time, permission_triplets, proof):
         if __debug__:
-            from member import Member
-            from message import Message
+            from .member import Member
+            from .message import Message
             assert isinstance(author, Member)
             assert isinstance(global_time, (int, long))
             assert global_time > 0
@@ -322,8 +322,8 @@ class Timeline(object):
 
     def revoke(self, author, global_time, permission_triplets, proof):
         if __debug__:
-            from member import Member
-            from message import Message
+            from .member import Member
+            from .message import Message
             assert isinstance(author, Member)
             assert isinstance(global_time, (int, long))
             assert global_time > 0
@@ -402,7 +402,7 @@ class Timeline(object):
         GLOBAL_TIME.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
         assert isinstance(global_time, (int, long))
 
@@ -417,7 +417,7 @@ class Timeline(object):
 
     def change_resolution_policy(self, message, global_time, policy, proof):
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
         assert isinstance(global_time, (int, long))
         assert isinstance(policy, (PublicResolution, LinearResolution))

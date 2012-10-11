@@ -10,8 +10,7 @@ echo "==========================================================================
 echo "Testcases in __debug__ mode"
 echo "================================================================================"
 
-rm -f sqlite/dispersy.db
-rm -f sqlite/dispersy.db-journal
+rm -f sqlite/dispersy.db*
 rm -f dispersy.log
 
 python -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyBatchScript || exit 1
@@ -34,8 +33,7 @@ echo "==========================================================================
 echo "Testcases in optimized mode"
 echo "================================================================================"
 
-rm -f sqlite/dispersy.db
-rm -f sqlite/dispersy.db-journal
+rm -f sqlite/dispersy.db*
 rm -f dispersy.log
 
 python -O -c "from $DISPERSY.tool.main import main; main()" --script $DISPERSY.script.DispersyBatchScript || exit 1

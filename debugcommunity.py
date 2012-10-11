@@ -1,18 +1,18 @@
 from struct import pack, unpack_from
 
-from authentication import DoubleMemberAuthentication, MemberAuthentication
-from candidate import Candidate
-from community import Community
-from conversion import BinaryConversion, DefaultConversion
-from debug import Node
-from destination import MemberDestination, CommunityDestination
-from distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
-from dprint import dprint
-from member import Member
-from message import Message, DropPacket, DelayMessageByProof
-from payload import Payload
-from resolution import PublicResolution, LinearResolution, DynamicResolution
-from revision import update_revision_information
+from .authentication import DoubleMemberAuthentication, MemberAuthentication
+from .candidate import Candidate
+from .community import Community
+from .conversion import BinaryConversion, DefaultConversion
+from .debug import Node
+from .destination import MemberDestination, CommunityDestination
+from .distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
+from .dprint import dprint
+from .member import Member
+from .message import Message, DropPacket, DelayMessageByProof
+from .payload import Payload
+from .resolution import PublicResolution, LinearResolution, DynamicResolution
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")

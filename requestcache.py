@@ -1,10 +1,10 @@
 from random import random
-from revision import update_revision_information
+from .revision import update_revision_information
 
 if __debug__:
     def identifier_to_string(identifier):
         return identifier.encode("HEX") if isinstance(identifier, str) else identifier
-    from dprint import dprint
+    from .dprint import dprint
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -85,10 +85,13 @@ class RequestCache(object):
         cache = self._identifiers.get(identifier)
         if __debug__: dprint("timeout on ", identifier_to_string(identifier), " for ", cache)
         cache.on_timeout()
-        if cache.cleanup_delay:
-            self._callback.register(self._on_cleanup, (identifier,), id_="requestcache-%s" % identifier, delay=cache.cleanup_delay)
-        else:
-            del self._identifiers[identifier]
+        
+        #Niels: 01-10-2012 if identifier is not yet removed by timeout method
+        if identifier in self._identifiers:
+            if cache.cleanup_delay:
+                self._callback.register(self._on_cleanup, (identifier,), id_="requestcache-%s" % identifier, delay=cache.cleanup_delay)
+            else:
+                del self._identifiers[identifier]
 
     def _on_cleanup(self, identifier):
         assert identifier in self._identifiers

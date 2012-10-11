@@ -1,5 +1,5 @@
-from meta import MetaObject
-from revision import update_revision_information
+from .meta import MetaObject
+from .revision import update_revision_information
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -40,7 +40,7 @@ class Distribution(MetaObject):
         Setup is called after the meta message is initially created.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
 
 class SyncDistribution(Distribution):
@@ -110,7 +110,7 @@ class SyncDistribution(Distribution):
         which messages are already in the database.
         """
         if __debug__:
-            from message import Message
+            from .message import Message
         assert isinstance(message, Message)
 
         # use cache to avoid database queries

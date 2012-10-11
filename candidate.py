@@ -1,6 +1,6 @@
 if __debug__:
-    from dprint import dprint
-    from member import Member
+    from .dprint import dprint
+    from .member import Member
 
     def is_address(address):
         assert isinstance(address, tuple), type(address)
@@ -13,7 +13,7 @@ if __debug__:
         return True
 
 # update version information directly from SVN
-from revision import update_revision_information
+from .revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
@@ -154,7 +154,7 @@ class WalkCandidate(Candidate):
 
     def _get_or_create_timestamps(self, community):
         if __debug__:
-            from community import Community
+            from .community import Community
             assert isinstance(community, Community)
         timestamps = self._timestamps.get(community.cid)
         if not timestamps:
@@ -167,7 +167,7 @@ class WalkCandidate(Candidate):
         handshake, the member can be associated with the candidate.
         """
         if __debug__:
-            from community import Community
+            from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         self._associations.add((community.cid, member))
@@ -177,7 +177,7 @@ class WalkCandidate(Candidate):
         Check if the (community, member) pair is associated with this candidate.
         """
         if __debug__:
-            from community import Community
+            from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         return (community.cid, member) in self._associations
@@ -187,7 +187,7 @@ class WalkCandidate(Candidate):
         Remove the association with a member.
         """
         if __debug__:
-            from community import Community
+            from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         self._associations.remove((community.cid, member))

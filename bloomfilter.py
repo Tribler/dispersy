@@ -20,13 +20,13 @@ from math import ceil, log
 from struct import Struct
 from binascii import hexlify, unhexlify
 
-from decorator import Constructor, constructor
-from revision import update_revision_information
+from .decorator import Constructor, constructor
+from .revision import update_revision_information
 
 if __debug__:
-    from dprint import dprint
     from time import time
-    from decorator import attach_profiler
+    from .dprint import dprint
+    from .decorator import attach_profiler
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -205,6 +205,9 @@ class BloomFilter(Constructor):
         assert isinstance(f_error_rate, float)
         assert 0 < f_error_rate < 1
         return self._get_n_capacity(self._m_size, f_error_rate)
+
+    def get_bits_checked(self):
+        return sum(1 if self._filter & (1 << i) else 0 for i in range(self._m_size))
 
     @property
     def size(self):
@@ -624,7 +627,7 @@ if __debug__:
         from struct import pack
         from random import random
 
-        from database import Database
+        from .database import Database
 
         class TestDatabase(Database):
             def check_database(self, *args):

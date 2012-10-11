@@ -12,24 +12,22 @@ Run some python code, usually to test one or more features.
 from hashlib import sha1
 from random import shuffle
 from time import time
-from tool.lencoder import log, make_valid_key
 import gc
-import hashlib
 import inspect
 import socket
 
-# from lencoder import log
-from candidate import BootstrapCandidate
-from crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from debug import Node
-from debugcommunity import DebugCommunity, DebugNode
-from dispersy import Dispersy
-from dispersydatabase import DispersyDatabase
-from dprint import dprint
-from member import Member
-from message import BatchConfiguration, Message, DelayMessageByProof, DropMessage
-from resolution import PublicResolution, LinearResolution
-from revision import update_revision_information
+from .candidate import BootstrapCandidate
+from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from .debug import Node
+from .debugcommunity import DebugCommunity, DebugNode
+from .dispersy import Dispersy
+from .dispersydatabase import DispersyDatabase
+from .dprint import dprint
+from .member import Member
+from .message import BatchConfiguration, Message, DelayMessageByProof, DropMessage
+from .resolution import PublicResolution, LinearResolution
+from .revision import update_revision_information
+from .tool.lencoder import log, make_valid_key
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -60,6 +58,7 @@ class ScriptBase(object):
         # self._dispersy.callback.register(self.run)
         if self.enable_wait_for_wan_address:
             self.add_testcase(self.wait_for_wan_address)
+            
         self.run()
 
     def add_testcase(self, func, args=()):
@@ -194,7 +193,7 @@ class ScenarioScriptBase(ScriptBase):
         #when should we start the next step?
         expected_time = self._starting_timestamp + (self._timestep * (self._stepcount + 1))
         diff = expected_time - time()
-
+        
         delay = max(0.0, diff)
         return delay
 
@@ -204,10 +203,10 @@ class ScenarioScriptBase(ScriptBase):
         log(self._logfile, "sleep", desync=desync, diff=delay, stepcount=self._stepcount)
 
     def join_community(self, my_member):
-        pass
+        raise NotImplementedError()
 
     def execute_scenario_cmds(self, commands):
-        pass
+        raise NotImplementedError()
 
     def run(self):
         self.add_testcase(self._run)
@@ -266,6 +265,7 @@ class ScenarioScriptBase(ScriptBase):
         self._stepcount = 1
         prev_total_received = {}
         prev_total_dropped = {}
+        prev_total_delayed = {}
 
         # start the scenario
         while True:
@@ -277,6 +277,7 @@ class ScenarioScriptBase(ScriptBase):
             if scenario_cmds == -1 and availability_cmds == -1:
                 if __debug__: log(self._logfile, "no-commands")
                 break
+            
             else:
                 # if there is a start in the avaibility_cmds then go
                 # online
@@ -293,16 +294,17 @@ class ScenarioScriptBase(ScriptBase):
                     self.set_offline()
                 
             #print statistics
-            total_dropped = sum([amount for amount, bytes in self._dispersy._statistics._drop.itervalues()])
-            log("dispersy.log", "statistics", total_send = self._dispersy.endpoint.total_up, total_received = self._dispersy.endpoint.total_down, total_dropped = total_dropped, walk_attempt = self._dispersy._statistics._walk_attempt, walk_success = self._dispersy._statistics._walk_success, conn_type = self._dispersy._connection_type)
+            self._dispersy.statistics.update()
+            log("dispersy.log", "statistics", total_send = self._dispersy.statistics.total_up, total_received = self._dispersy.statistics.total_down, total_dropped = self._dispersy.statistics.drop_count, delay_count = self._dispersy.statistics.delay_count, walk_attempt = self._dispersy.statistics.walk_attempt, walk_success = self._dispersy.statistics.walk_success, conn_type = self._dispersy.statistics.connection_type)
 
             total_received = {}
             didChange = False
-            for key, values in self._dispersy._statistics._success.iteritems():
-                key = make_valid_key(key)
-                total_received[key] = values[0]
-                if prev_total_received.get(key, None) != values[0]:
-                    didChange = True
+            if hasattr(self._dispersy.statistics, 'success'):
+                for key, value in self._dispersy.statistics.success.iteritems():
+                    key = make_valid_key(key)
+                    total_received[key] = value
+                    if prev_total_received.get(key, None) != value:
+                        didChange = True
 
             if didChange:
                 log("dispersy.log", "statistics-successful-messages", **total_received)
@@ -310,16 +312,31 @@ class ScenarioScriptBase(ScriptBase):
 
             total_dropped = {}
             didChange = False
-            for key, values in self._dispersy._statistics._drop.iteritems():
-                key = make_valid_key(key)
-                total_dropped[key] = values[0]
-                
-                if prev_total_dropped.get(key, None) != values[0]:
-                    didChange = True
+            if hasattr(self._dispersy.statistics, 'drop'):
+                for key, value in self._dispersy.statistics.drop.iteritems():
+                    key = make_valid_key(key)
+                    total_dropped[key] = value
+                    
+                    if prev_total_dropped.get(key, None) != value:
+                        didChange = True
 
             if didChange:
                 log("dispersy.log", "statistics-dropped-messages", **total_dropped)
                 prev_total_dropped = total_dropped
+                
+            total_delayed = {}
+            didChange = False
+            if hasattr(self._dispersy.statistics, 'delay'):
+                for key, value in self._dispersy.statistics.delay.iteritems():
+                    key = make_valid_key(key)
+                    total_delayed[key] = value
+                    
+                    if prev_total_delayed.get(key, None) != value:
+                        didChange = True
+
+            if didChange:
+                log("dispersy.log", "statistics-delayed-messages", **total_dropped)
+                prev_total_delayed = total_delayed
 
 #            def callback_cmp(a, b):
 #                return cmp(self._dispersy.callback._statistics[a][0], self._dispersy.callback._statistics[b][0])
@@ -1360,7 +1377,7 @@ class DispersyBatchScript(ScriptBase):
         dprint(self._results, lines=1)
 
         count, = self._dispersy_database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
-        assert_(count == len(messages))
+        assert_(count == len(messages), count, len(messages))
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

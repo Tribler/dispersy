@@ -2,11 +2,16 @@ try:
     from scipy.stats import poisson, expon
 except ImportError:
     poisson = expon = None
-    print "Unable to import scipy.  ScenarioPoisson and ScenarioExpon are disabled"
+    print "Unable to import from scipy.  ScenarioPoisson and ScenarioExpon are disabled"
+
+try:
+    from psutil import Process, cpu_percent
+except ImportError:
+    Process = cpu_percent = None
+    print "Unable to import from psutil.  Process statistics are disabled"
 
 from hashlib import sha1
 from os import getpid, uname
-from psutil import Process, cpu_percent
 from random import random, uniform
 from re import compile as re_compile
 from sys import maxsize
@@ -25,11 +30,11 @@ class ScenarioScript(ScriptBase):
         self._master_member = None
         self._cid = sha1(self.master_member_public_key).digest()
         self._is_joined = False
-        self._process = Process(getpid()) if self.enable_statistics or self.enable_statistics else None
 
         self.log("scenario-init", peernumber=int(self._kargs["peernumber"]), hostname=uname()[1])
 
-        if self.enable_statistics:
+        if self.enable_statistics and Process and cpu_percent:
+            self._process = Process(getpid()) if self.enable_statistics or self.enable_statistics else None
             self._dispersy.callback.register(self._periodically_log_statistics)
 
     @property
