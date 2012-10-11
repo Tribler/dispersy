@@ -86,15 +86,17 @@ class WalkCandidate(Candidate):
       after the introduction-response message (talking about the candidate) was received.
     """
     class Timestamps(object):
-        __slots__ = ["last_walk", "last_stumble", "last_intro"]
+        __slots__ = ["timeout_adjustment", "last_walk", "last_stumble", "last_intro"]
 
         def __init__(self):
+            self.timeout_adjustment = 0.0
             self.last_walk = 0.0
             self.last_stumble = 0.0
             self.last_intro = 0.0
 
         def merge(self, other):
             assert isinstance(other, WalkCandidate.Timestamps), other
+            self.timeout_adjustment = max(self.timeout_adjustment, other.timeout_adjustment)
             self.last_walk = max(self.last_walk, other.last_walk)
             self.last_stumble = max(self.last_stumble, other.last_stumble)
             self.last_intro = max(self.last_intro, other.last_intro)
@@ -206,7 +208,7 @@ class WalkCandidate(Candidate):
         """
         timestamps = self._timestamps.get(community.cid)
         if timestamps:
-            return (now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
+            return (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
                     now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME or
                     now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME)
         else:
@@ -218,7 +220,7 @@ class WalkCandidate(Candidate):
         """
         timestamps = self._timestamps.get(community.cid)
         if timestamps:
-            return (now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
+            return (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
                     now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME)
         return False
 
@@ -231,7 +233,7 @@ class WalkCandidate(Candidate):
         this rule is when a node decides to leave one or more communities while remaining active in
         one or more others.
         """
-        return any(now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME
+        return any(timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME
                    for timestamps
                    in self._timestamps.itervalues())
 
@@ -294,7 +296,7 @@ class WalkCandidate(Candidate):
         timestamps = self._timestamps.get(community.cid)
         if timestamps:
             return (timestamps.last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and
-                    (now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
+                    (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
                      now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME or
                      now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME))
         else:
@@ -320,7 +322,7 @@ class WalkCandidate(Candidate):
         assert community.cid in self._timestamps
         timestamps = self._timestamps[community.cid]
 
-        if now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
+        if timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
             return u"walk"
 
         if now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME:
@@ -331,11 +333,19 @@ class WalkCandidate(Candidate):
 
         return u"none"
 
-    def walk(self, community, now):
+    def walk(self, community, now, timeout_adjustment):
         """
         Called when we are about to send an introduction-request to this candidate.
         """
-        self._get_or_create_timestamps(community).last_walk = now
+        timestamps = self._get_or_create_timestamps(community)
+        timestamps.timeout_adjustment = timeout_adjustment
+        timestamps.last_walk = now
+
+    def walk_response(self, community):
+        """
+        Called when we received an introduction-response to this candidate.
+        """
+        self._get_or_create_timestamps(community).timeout_adjustment = 0.0
 
     def stumble(self, community, now):
         """
