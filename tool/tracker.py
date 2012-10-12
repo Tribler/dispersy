@@ -119,6 +119,11 @@ class TrackerCommunity(Community):
         # disable sync bloom filter
         return lambda: None
 
+    @property
+    def dispersy_acceptable_global_time_range(self):
+        # we will accept the full 64 bit global time range
+        return 2**64 - self._global_time
+
     def update_strikes(self, now):
         # does the community have any active candidates
         for candidate in self._dispersy.candidates:
