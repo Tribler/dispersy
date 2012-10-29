@@ -335,6 +335,8 @@ class MemberBase(DummyMember):
 class Member(MemberBase):
     _cache_length = 1024
     _cache = OrderedDict()
+    _mid_cache = {}
+    _did_cache = {}
 
     def __new__(cls, public_key, private_key=""):
         assert isinstance(public_key, str)
@@ -353,30 +355,33 @@ class Member(MemberBase):
 
         # store Member in cache
         self._cache[public_key] = self
+        self._mid_cache[self._mid] = self
+        self._did_cache[self._database_id] = self
+        
         if len(self._cache) > self._cache_length:
-            self._cache.popitem(False)
+            replaced_member = self._cache.popitem(False)
+            if replaced_member:
+                del self._mid_cache[replaced_member._mid]
+                del self._did_cache[replaced_member._database_id]
 
 class MemberFromId(Member):
     def __new__(cls, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
-
+        
         # retrieve Member from cache (based on mid)
-        for member in cls._cache.itervalues():
-            if member._mid == mid:
-                return member
-
+        if mid in cls._mid_cache:
+            return cls._mid_cache[mid]
+        
         # prevent __init__ and hence caching this instance
         raise LookupError(mid)
 
 class MemberFromDatabaseId(Member):
     def __new__(cls, database_id):
         assert isinstance(database_id, (int, long)), type(database_id)
-
-        # retrieve Member from cache (based on database_id)
-        for member in cls._cache.itervalues():
-            if member._database_id == database_id:
-                return member
+        
+        if database_id in cls._did_cache:
+            return cls._did_cache[database_id]
 
         # prevent __init__ and hence caching this instance
         raise LookupError(database_id)
@@ -388,4 +393,3 @@ class MemberWithoutCheck(Member):
         assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
         assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
         return object.__new__(cls)
-
