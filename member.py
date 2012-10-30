@@ -361,6 +361,7 @@ class Member(MemberBase):
         if len(self._cache) > self._cache_length:
             replaced_member = self._cache.popitem(False)
             if replaced_member:
+                replaced_member = replaced_member[1]
                 del self._mid_cache[replaced_member._mid]
                 del self._did_cache[replaced_member._database_id]
 
