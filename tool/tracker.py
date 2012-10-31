@@ -49,6 +49,7 @@ from ..dispersy import Dispersy
 from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from ..member import DummyMember, Member
+from ..message import Message, DropMessage
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -316,10 +317,18 @@ class TrackerDispersy(Dispersy):
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
             print "CANDIDATE", len(self._candidates)
 
-    def create_introduction_request(self, destination, allow_sync, forward=True):
+    def create_introduction_request(self, community, destination, allow_sync, forward=True):
         # prevent steps towards other trackers
         if not isinstance(destination, BootstrapCandidate):
-            return super(TrackerDispersy, self).create_introduction_request(destination, allow_sync, forward)
+            return super(TrackerDispersy, self).create_introduction_request(community, destination, allow_sync, forward)
+
+    def check_introduction_request(self, messages):
+        for message in super(TrackerDispersy, self).check_introduction_request(messages):
+            if isinstance(message, Message.Implementation) and isinstance(message.candidate, BootstrapCandidate):
+                yield DropMessage(message, "drop dispersy-introduction-request from bootstrap peer")
+                continue
+
+            yield message
 
     def on_introduction_request(self, messages):
         hex_cid = messages[0].community.cid.encode("HEX")
