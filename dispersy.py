@@ -2409,7 +2409,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             #     return False
 
             if candidate.wan_address[0] == introduced.wan_address[0]:
-                if candidate.sock_addr == introduced.lan_address:
+                if candidate.lan_address == introduced.lan_address:
                     # must not introduce someone to herself (inside same LAN)
                     return False
 
