@@ -2435,9 +2435,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         responses = []
         requests = []
         now = time()
-
         random_candidate_iterator = cycle(community.dispersy_yield_random_candidates())
-        random_candidate_sock_addr = None
 
         for message in messages:
             payload = message.payload
@@ -2469,23 +2467,31 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             if __debug__: dprint("received introduction request from ", candidate)
 
             if payload.advice:
+                first_invalid_sock_addr = None
                 for introduced in random_candidate_iterator:
                     if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break
 
-                    if introduced.sock_addr == random_candidate_sock_addr:
+                    if introduced.sock_addr == first_invalid_sock_addr:
                         # we cycled through all candidates in
                         # random_candidate_iterator and did not find
                         # any valid ones
                         introduced = None
                         break
 
-                    # introduced is not valid for this candidate, we
-                    # will remember its sock_addr to ensure that we do
-                    # not endlessly loop over the
-                    # random_candidate_iterator
-                    random_candidate_sock_addr = introduced.sock_addr
+                    if first_invalid_sock_addr is None:
+                        # introduced is not valid for this candidate,
+                        # we will remember its sock_addr to ensure
+                        # that we do not endlessly loop over the
+                        # random_candidate_iterator
+                        first_invalid_sock_addr = introduced.sock_addr
+
+                else:
+                    # no more entries in random_candidate_iterator.
+                    # this means that the iterator is empty (since
+                    # this is a cycled iterator)
+                    introduced = None
 
             else:
                 if __debug__: dprint("no candidates available to introduce")
