@@ -41,7 +41,7 @@ import sys
 import netifaces
 
 from hashlib import sha1
-from itertools import groupby, islice, count
+from itertools import groupby, islice, count, cycle
 from random import random, shuffle
 from socket import inet_aton, error as socket_error
 from time import time
@@ -2436,8 +2436,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         requests = []
         now = time()
 
-        random_candidate_iterator = community.dispersy_yield_random_candidates()
-        random_candidate_stack = []
+        random_candidate_iterator = cycle(community.dispersy_yield_random_candidates())
+        random_candidate_sock_addr = None
 
         for message in messages:
             payload = message.payload
@@ -2474,20 +2474,18 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                         # found candidate, break
                         break
 
-                    else:
-                        random_candidate_stack.append(introduced)
-
-                else:
-                    # did not break, no candidate found in iterator.  try the stack
-                    for index, introduced in enumerate(random_candidate_stack):
-                        if is_valid_candidate(message, candidate, introduced):
-                            # found candidate, break
-                            del random_candidate_stack[index]
-                            break
-
-                    else:
-                        # did not break, no candidate found
+                    if introduced.sock_addr == random_candidate_sock_addr:
+                        # we cycled through all candidates in
+                        # random_candidate_iterator and did not find
+                        # any valid ones
                         introduced = None
+                        break
+
+                    # introduced is not valid for this candidate, we
+                    # will remember its sock_addr to ensure that we do
+                    # not endlessly loop over the
+                    # random_candidate_iterator
+                    random_candidate_sock_addr = introduced.sock_addr
 
             else:
                 if __debug__: dprint("no candidates available to introduce")
