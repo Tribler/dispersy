@@ -2443,7 +2443,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         responses = []
         requests = []
         now = time()
-        random_candidate_iterator = cycle(community.dispersy_yield_random_candidates())
 
         for message in messages:
             payload = message.payload
@@ -2473,6 +2472,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # candidate.active(community, now)
             self._filter_duplicate_candidate(candidate)
             if __debug__: dprint("received introduction request from ", candidate)
+
+        # create iterator -after- creating all the candidates.  this will allow the candidates in
+        # one batch to be introduced to each other
+        random_candidate_iterator = cycle(community.dispersy_yield_random_candidates())
+
+        for message in messages:
+            payload = message.payload
 
             if payload.advice:
                 first_invalid_sock_addr = None
