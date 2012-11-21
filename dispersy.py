@@ -2443,6 +2443,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         responses = []
         requests = []
         now = time()
+        
+        import sys
+        print >> sys.stderr, "GOT %d introduction-request messages"%len(messages)
 
         for message in messages:
             payload = message.payload
