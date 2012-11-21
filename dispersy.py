@@ -337,6 +337,14 @@ class Dispersy(Singleton):
                 if "broadcast" in option and "addr" in option and not option["addr"] in blacklist:
                     if __debug__: dprint("interface ", interface, " address ", option["addr"])
                     return option["addr"]
+        #Exception for virtual machines/containers
+        for interface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(interface)
+            for option in addresses.get(netifaces.AF_INET, []):
+                if "addr" in option and not option["addr"] in blacklist:
+                    if __debug__: dprint("interface ", interface, " address ", option["addr"])
+                    return option["addr"]
+        dprint("Unable to find our public interface!", level="error")
         return None
 
     def _retry_bootstrap_candidates(self):
