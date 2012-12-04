@@ -15,6 +15,7 @@ from .singleton import Singleton
 
 if __debug__:
     import thread
+    from threading import current_thread
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -205,7 +206,7 @@ class Database(Singleton):
         @returns: unknown
         @raise sqlite.Error: unknown
         """
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread (%s %d-%d)"%(current_thread().getName(), self._debug_thread_ident, thread.get_ident())
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
         assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
@@ -281,7 +282,7 @@ class Database(Singleton):
             dprint(statement)
             raise
 
-    def commit(self):
+    def commit(self, exiting = False):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
 
         if self._pending_commits:
@@ -294,7 +295,7 @@ class Database(Singleton):
             result = self._connection.commit()
             for callback in self._commit_callbacks:
                 try:
-                    callback()
+                    callback(exiting = exiting)
                 except Exception:
                     if __debug__: dprint(exception=True, stack=True)
             return result

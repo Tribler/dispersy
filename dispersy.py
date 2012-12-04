@@ -4521,7 +4521,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 except StopIteration:
                     pass
                 # commit database
-                self._database.commit()
+                self._database.commit(exiting = True)
                 break
 
     def _candidate_walker(self):
