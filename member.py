@@ -21,8 +21,6 @@ class DummyMember(object):
     def __init__(self, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
-        self._mid = mid
-
         assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
         database = DispersyDatabase.get_instance()
 
