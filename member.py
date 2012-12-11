@@ -352,6 +352,10 @@ class Member(MemberBase):
 
         assert hasattr(self, "_public_key"), self
         assert hasattr(self, "_mid"), self
+        
+        assert self._cache.get(public_key, self) == self 
+        assert self._mid_cache.get(self._mid, self) == self
+        assert self._did_cache.get(self._database_id, self) == self
 
         # store Member in cache
         self._cache[public_key] = self
@@ -364,6 +368,8 @@ class Member(MemberBase):
                 replaced_member = replaced_member[1]
                 del self._mid_cache[replaced_member._mid]
                 del self._did_cache[replaced_member._database_id]
+                
+        assert len(self._cache) == len(self._mid_cache) and len(self._mid_cache) == len(self._did_cache), "Cache sizes are not synchronized after inserting (%s-%s) (%d,%d,%d)"%(type(self), str(self), len(self._cache), len(self._mid_cache), len(self._did_cache))
 
 class MemberFromId(Member):
     def __new__(cls, mid):
