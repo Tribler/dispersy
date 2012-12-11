@@ -126,16 +126,21 @@ class StandaloneEndpoint(Endpoint):
                                 if DEBUG:
                                     for sock_addr, data in packets:
                                         try:
-                                            name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
+                                            name = self._dispersy.convert_packet_to_meta_message(data[4:] if data.startswith(TUNNEL_PREFIX) else data, load=False, auto_load=False).name
                                         except:
                                             name = "???"
-                                        print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+                                        print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes \"%s\"" % (time(), name, sock_addr[0], sock_addr[1], len(data), data.encode("HEX"))
 
                             self._total_down += sum(len(data) for _, data in packets)
-                            register(dispersythread_data_came_in, (packets,))
+                            register(dispersythread_data_came_in, (packets, time()))
 
-    def dispersythread_data_came_in(self, packets):
-        self._dispersy.on_incoming_packets([(Candidate(sock_addr, False), data) for sock_addr, data in packets])
+    def dispersythread_data_came_in(self, packets, timestamp):
+        iterator = ((data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
+        self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data[4:] if tunnel else data)
+                                            for tunnel, sock_addr, data
+                                            in iterator],
+                                           True,
+                                           timestamp)
 
     def send(self, candidates, packets):
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
@@ -152,16 +157,17 @@ class StandaloneEndpoint(Endpoint):
             assert self._dispersy.is_valid_remote_address(sock_addr)
 
             for data in packets:
+                if candidate.tunnel:
+                    data = TUNNEL_PREFIX + data
+
                 if __debug__:
                     if DEBUG:
                         try:
-                            name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
+                            name = self._dispersy.convert_packet_to_meta_message(data[4:] if data.startswith(TUNNEL_PREFIX) else data, load=False, auto_load=False).name
                         except:
                             name = "???"
-                        print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+                        print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes \"%s\"" % (time(), name, sock_addr[0], sock_addr[1], len(data), data.encode("HEX"))
 
-                if candidate.tunnel:
-                    data = TUNNEL_PREFIX + data
                 try:
                     self._socket.sendto(data, sock_addr)
                 except socket.error:
