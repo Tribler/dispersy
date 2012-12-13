@@ -1621,12 +1621,12 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             if __debug__: dprint("unable to convert a ", len(packet), " byte packet (", exception, ")", level="warning")
             return None
 
-    def convert_packets_to_messages(self, packets, community=None, load=True, auto_load=True, candidate=None):
+    def convert_packets_to_messages(self, packets, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
         Returns a list with messages representing each packet or None when no conversion is
         possible.
         """
-        return [self.convert_packet_to_message(packet, community, load, auto_load, candidate) for packet in packets]
+        return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
