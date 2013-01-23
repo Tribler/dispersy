@@ -38,7 +38,7 @@ def start_script(opt):
     script = cls(**kargs)
     script.next_testcase()
 
-def main(setup=None):
+def main_real(setup=None):
     assert setup is None or callable(setup)
 
     # define options
@@ -89,4 +89,11 @@ def main(setup=None):
 
     # start
     callback.loop()
+    Dispersy.del_instance()
+    return callback
+
+
+def main(setup=None):
+    callback = main_real(setup)
     exit(1 if callback.exception else 0)
+
