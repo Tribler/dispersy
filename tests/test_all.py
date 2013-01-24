@@ -22,7 +22,7 @@ def dispersyTest(callable_):
         sys.argv = ['', '--script', script, '--statedir', mkdtemp(suffix=name, dir=os.path.join('tmp','dispersy_tests'))]
         callback = main_real()
         if callback.exception:
-            raise type(callback.exception), callback.exception, callback.exception_traceback
+            raise type(callback.exception), callback.exception
     caller.__name__ = callable_.__name__
     return caller
 
