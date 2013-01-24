@@ -3494,7 +3494,7 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
             result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
-            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject"
+            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s"%(type(cache), str(cache.response_func)) 
             if result:
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
