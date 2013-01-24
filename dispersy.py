@@ -1056,13 +1056,14 @@ class Dispersy(Singleton):
 
         else:
             have_packet = str(have_packet)
+            if __debug__:
+                if isinstance(message.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
+                    seq = " #%d" % message.distribution.sequence_number
+                else:
+                    seq = ""
             if have_packet == message.packet:
                 # exact binary duplicate, do NOT process the message
                 if __debug__:
-                    if isinstance(message.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
-                        seq = " #%d" % message.distribution.sequence_number
-                    else:
-                        seq = ""
                     dprint(message.candidate, " received identical message [", message.name, " ", message.authentication.member.database_id, "@", message.distribution.global_time, seq, " undone" if undone else "", "]", level="warning")
 
                 if undone:

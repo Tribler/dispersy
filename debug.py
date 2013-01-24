@@ -20,6 +20,8 @@ update_revision_information("$HeadURL$", "$Revision$")
 
 class DebugOnlyMember(Member):
     _cache = OrderedDict()
+    _mid_cache = {}
+    _did_cache = {}
 
     def __init__(self, public_key, private_key=""):
         super(DebugOnlyMember, self).__init__(public_key)
