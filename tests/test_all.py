@@ -19,7 +19,10 @@ def dispersyTest(callable_):
     """
     assert(callable_.__name__.startswith('test'))
     name = callable_.__name__[4:]
-    script='dispersy.script.%s' % name
+    #Ugly hack to otain the working copy dir name
+    #this file is at [...]/BRANCH_NAME/tests/test_all.py and we want to obtain BRANCH_NAME
+    working_copy_dirname = __file__.split(os.sep)[-3]
+    script='%s.script.%s' % (working_copy_dirname, name)
     def caller(self):
         sys.argv = ['', '--script', script, '--statedir', mkdtemp(suffix=name, dir=TMPDIR)]
         callback = main_real()

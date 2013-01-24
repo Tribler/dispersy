@@ -2,13 +2,12 @@
 
 set -e
 
-unset PYTHONPATH
+#Go to the tests' dir parent
+cd $(dirname $(readlink -f $0))/..
 
-FILE_PATH=$(dirname $(readlink -f $0))
-
-cd $FILE_PATH/..
 MODNAME=$(basename $PWD)
 cd ..
-
 nosetests --all-modules --traverse-namespace --cover-package=$MODNAME --cover-inclusive $MODNAME/tests/test_all.py $*
+#We could do it like this instead, it's simpler but uglier
+#nosetests --all-modules --traverse-namespace --cover-package=. --cover-inclusive tests/test_all.py $*
 
