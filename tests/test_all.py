@@ -11,6 +11,8 @@ from shutil import rmtree
 import unittest
 from ..tool.main import main_real
 
+TMPDIR='dispersy_tests_temp_dir'
+
 def dispersyTest(callable_):
     """
     Decorator that calls the test named like the method name from dispersy.script.*
@@ -19,7 +21,7 @@ def dispersyTest(callable_):
     name = callable_.__name__[4:]
     script='dispersy.script.%s' % name
     def caller(self):
-        sys.argv = ['', '--script', script, '--statedir', mkdtemp(suffix=name, dir=os.path.join('tmp','dispersy_tests'))]
+        sys.argv = ['', '--script', script, '--statedir', mkdtemp(suffix=name, dir=TMPDIR)]
         callback = main_real()
         if callback.exception:
             raise type(callback.exception), callback.exception
@@ -31,16 +33,12 @@ class TestDispersyBatch(unittest.TestCase):
         unittest.TestCase.__init__(self, methodname)
 
     def setUp(self):
-        os.chdir(sys.path[0])
-        try:
-            os.makedirs(os.path.join('tmp','dispersy_tests'))
-        except OSError:
-            pass
-        assert(os.path.exists('dispersy'))
+        if not os.path.exists(TMPDIR):
+            os.makedirs(TMPDIR)
 
     def tearDown(self):
         try:
-            rmtree(os.path.join('tmp','dispersy_tests'))
+            rmtree(TMPDIR)
         except:
             pass
 
@@ -92,5 +90,3 @@ class TestDispersyBatch(unittest.TestCase):
     @dispersyTest
     def testDispersyUndoScript(self):
         pass
-"""
-"""
