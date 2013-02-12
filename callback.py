@@ -33,6 +33,20 @@ if __debug__:
 update_revision_information("$HeadURL$", "$Revision$")
 
 class Callback(object):
+    if __debug__:
+        @staticmethod
+        def _debug_call_to_string(call):
+            # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
+            if isinstance(call, TupleType):
+                if isinstance(call[0], LambdaType):
+                    return "lambda@%s:%d" % (getsourcefile(call[0])[-25:], getsourcelines(call[0])[1])
+                else:
+                    return call[0].__name__
+            elif isinstance(call, GeneratorType):
+                return call.__name__
+            else:
+                return str(call)
+
     def __init__(self):
         # _event is used to wakeup the thread when new actions arrive
         self._event = Event()
@@ -548,16 +562,7 @@ class Callback(object):
                     wait = 0.0
 
                     if __debug__:
-                        # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
-                        if isinstance(call, TupleType):
-                            if isinstance(call[0], LambdaType):
-                                self._debug_call_name = "lambda@%s:%d" % (getsourcefile(call[0])[-25:], getsourcelines(call[0])[1])
-                            else:
-                                self._debug_call_name = call[0].__name__
-                        elif isinstance(call, GeneratorType):
-                            self._debug_call_name = call.__name__
-                        else:
-                            self._debug_call_name = str(call)
+                        self._debug_call_name = self._debug_call_to_string(call)
 
                     # ignore removed tasks
                     if call is None:
@@ -583,7 +588,7 @@ class Callback(object):
 
             else:
                 if __debug__:
-                    dprint(self._debug_thread_name, " calling ", self._debug_call_name)
+                    dprint(self._debug_thread_name, "] calling ", self._debug_call_name, " (prio:", priority, ", id:", root_id, ")")
                     debug_call_start = time()
 
                 # call can be either:
@@ -650,9 +655,10 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        if __debug__: dprint("there are ", len(expired), " expired tasks")
+        if __debug__: dprint(self._debug_thread_name, "] there are ", len(expired), " expired tasks")
         while expired:
-            _, _, _, call, callback = heappop(expired)
+            priority, root_id, _, call, callback = heappop(expired)
+            if __debug__: dprint(self._debug_thread_name, "] calling ", self._debug_call_to_string(call), " (prio:", priority, ", id:", root_id, ")")
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
