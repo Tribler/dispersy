@@ -1693,7 +1693,11 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                     if __debug__: dprint("schedule processing ", len(batch), " ", meta.name, " messages immediately (exceeded batch size)")
                     self._callback.register(self._on_batch_cache_timeout, (meta, current_timestamp, batch), priority=meta.batch.priority)
 
-                    task_identifier = self._callback.replace_register(task_identifier, self._on_batch_cache_timeout, (meta, timestamp, current_batch), delay=meta.batch.max_window, priority=meta.batch.priority)
+                    # we can not use callback.replace_register because
+                    # it would not re-schedule the task, i.e. not at
+                    # the end of the task queue
+                    self._callback.unregister(task_identifier)
+                    task_identifier = self._callback.register(self._on_batch_cache_timeout, (meta, timestamp, current_batch), delay=meta.batch.max_window, priority=meta.batch.priority)
                     self._batch_cache[meta] = (task_identifier, timestamp, current_batch)
 
             else:
@@ -1714,9 +1718,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(batch, list)
         assert len(batch) > 0
         if __debug__:
-            dprint("processing  ", len(batch), "x ", meta.name, " batched messages")
+            dprint("processing ", len(batch), "x ", meta.name, " batched messages")
 
         if meta in self._batch_cache and id(self._batch_cache[meta][2]) == id(batch):
+            if __debug__: dprint("pop batch cache for ", len(batch), "x ", meta.name)
             self._batch_cache.pop(meta)
 
         if not self._communities.get(meta.community.cid, None) == meta.community:
