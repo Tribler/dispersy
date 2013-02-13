@@ -3086,7 +3086,7 @@ class DispersyBootstrapServers(ScriptBase):
                 meta = self._meta_messages[u"dispersy-introduction-response"]
                 self._original_on_introduction_response = meta.handle_callback
                 self._meta_messages[meta.name] = Message(meta.community, meta.name, meta.authentication, meta.resolution, meta.distribution, meta.destination, meta.payload, meta.check_callback, self.on_introduction_response, meta.undo_callback, meta.batch)
-                assert self._original_on_introduction_response
+                assert_(self._original_on_introduction_response)
 
             @property
             def dispersy_enable_candidate_walker(self):
@@ -3123,9 +3123,18 @@ class DispersyBootstrapServers(ScriptBase):
                     else:
                         dprint(sock_addr[0], ":", sock_addr[1], "  missing", force=True)
 
+            def finish(self, request_count, min_response_count, max_rtt):
+                for sock_addr, rtts in self._summary.iteritems():
+                    assert_(len(rtts) >= min_response_count, "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
+                    assert_(sum(rtts) / len(rtts) < max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
+
+
         community = PingCommunity.create_community(self._my_member)
 
-        for _ in xrange(10):
+        PING_COUNT = 10
+        ASSERT_MARGIN = 0.9
+        MAX_RTT = 0.5
+        for _ in xrange(PING_COUNT):
             community.ping(time())
             yield 5.0
             community.summary()
@@ -3133,6 +3142,9 @@ class DispersyBootstrapServers(ScriptBase):
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
+
+        # assert when not all of the servers are responding
+        community.finish(PING_COUNT, PING_COUNT * ASSERT_MARGIN, MAX_RTT)
 
 class DispersyBootstrapServersStresstest(ScriptBase):
     def run(self):
