@@ -2127,7 +2127,7 @@ class DispersySignatureScript(ScriptBase):
             assert_(response.authentication.is_signed)
             assert_(modified == False)
             container["response"] += 1
-            return False, False, False
+            return False
         community.create_double_signed_text("Accept=<does not matter>", Member(node.my_member.public_key), on_response, (), 3.0)
         yield 0.11
 
