@@ -2825,6 +2825,8 @@ ORDER BY meta_message.priority DESC, sync.global_time * meta_message.direction""
                 begin = time()
             try:
                 messages[0].handle_callback(messages)
+            except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
+                raise
             except:
                 dprint("exception during handle_callback for ", messages[0].name, exception=True, level="error")
                 return False
