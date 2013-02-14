@@ -29,7 +29,7 @@ class DelayPacket(Exception):
         if response:
             # process the response and the delayed message
             self._community.dispersy.on_incoming_packets([(candidate, delayed)])
-            self._community.dispersy.statistics.delay_succes += 1
+            self._community.dispersy.statistics.delay_success += 1
         else:
             # timeout, do nothing
             self._community.dispersy.statistics.delay_timeout += 1
@@ -121,7 +121,7 @@ class DelayMessage(Exception):
 
             # process the response and the delayed message
             self._delayed.community.dispersy.on_messages([self._delayed])
-            self._delayed.community.dispersy.statistics.delay_succes += 1
+            self._delayed.community.dispersy.statistics.delay_success += 1
         else:
             # timeout, do nothing
             if __debug__: dprint("ignore ", self._delayed, " (no response was received)")
@@ -189,7 +189,9 @@ class DropMessage(Exception):
         Create another instance of the same class with another DELAYED.
         """
         return self.__class__(dropped, self.message)
-
+    
+    def __str__(self):
+        return super(DropMessage, self).__str__() + self._dropped.name
 #
 # batch
 #

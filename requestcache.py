@@ -15,6 +15,9 @@ class Cache(object):
 
     def on_timeout(self):
         raise NotImplementedError()
+    
+    def on_cleanup(self):
+        pass
 
     def __str__(self):
         return "<%s>" % self.__class__.__name__
@@ -95,5 +98,8 @@ class RequestCache(object):
 
     def _on_cleanup(self, identifier):
         assert identifier in self._identifiers
-        if __debug__: dprint("cleanup on ", identifier_to_string(identifier), " for ", self._identifiers[identifier])
+        cache = self._identifiers[identifier]
+        if __debug__: dprint("cleanup on ", identifier_to_string(identifier), " for ", cache)
+        cache.on_cleanup()
+        
         del self._identifiers[identifier]

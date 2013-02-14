@@ -10,6 +10,7 @@ from thread import get_ident
 from threading import Thread, Lock, Event, currentThread
 from time import sleep, time
 from types import GeneratorType, TupleType
+from sys import exc_info
 
 try:
     import prctl
@@ -75,6 +76,7 @@ class Callback(object):
         # any of the registered callbacks raises any of these exceptions.  in this case _state will
         # be set to STATE_EXCEPTION.  it is protected by _lock
         self._exception = None
+        self._exception_traceback = None
 
         # _exception_handlers contains a list with callable functions of methods.  all handlers are
         # called whenever an exception occurs.  first parameter is the exception, second parameter
@@ -130,10 +132,10 @@ class Callback(object):
     @property
     def is_finished(self):
         """
-        Returns True when the state is either STATE_FINISHED or STATE_EXCEPTION.  In either case the
+        Returns True when the state is either STATE_FINISHED, STATE_EXCEPTION or STATE_INIT.  In either case the
         thread is no longer running.
         """
-        return self._state == "STATE_FINISHED" or self._state == "STATE_EXCEPTION"
+        return self._state == "STATE_FINISHED" or self._state == "STATE_EXCEPTION" or self._state == "STATE_INIT"
 
     @property
     def exception(self):
@@ -142,6 +144,13 @@ class Callback(object):
         raises either SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError.
         """
         return self._exception
+    
+    @property
+    def exception_traceback(self):
+        """
+        Returns the traceback of the exception that caused the thread to exit when when any of the registered callbacks
+        """
+        return self._exception_traceback
 
     def attach_exception_handler(self, func):
         """
@@ -246,11 +255,11 @@ class Callback(object):
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
+                          time(),
                           id_,
                           None,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
-
             else:
                 heappush(self._requests,
                          (delay + time(),
@@ -301,7 +310,7 @@ class Callback(object):
             else:
                 # not found in requests
                 for tup in self._expired:
-                    if tup[1] == id_:
+                    if tup[2] == id_:
                         break
 
                 else:
@@ -309,6 +318,7 @@ class Callback(object):
                     if delay <= 0.0:
                         heappush(self._expired,
                                  (-priority,
+                                  time(),
                                   id_,
                                   None,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
@@ -355,14 +365,15 @@ class Callback(object):
                     if __debug__: dprint("in _requests: ", id_)
 
             for index, tup in enumerate(self._expired_mirror):
-                if tup[1] == id_:
-                    self._expired_mirror[index] = (tup[0], id_, tup[2], None, None)
+                if tup[2] == id_:
+                    self._expired_mirror[index] = (tup[0], tup[1], id_, tup[3], None, None)
                     if __debug__: dprint("in _expired: ", id_)
 
             # register
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
+                          time(),
                           id_,
                           None,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
@@ -396,8 +407,8 @@ class Callback(object):
                     if __debug__: dprint("in _requests: ", id_)
 
             for index, tup in enumerate(self._expired_mirror):
-                if tup[1] == id_:
-                    self._expired_mirror[index] = (tup[0], id_, tup[2], None, None)
+                if tup[2] == id_:
+                    self._expired_mirror[index] = (tup[0], tup[1], id_, tup[2], None, None)
                     if __debug__: dprint("in _expired: ", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", include_id=False, timeout=0.0, default=None):
@@ -483,6 +494,7 @@ class Callback(object):
             with self._lock:
                 if exception:
                     self._exception = exception
+                    self._exception_traceback = exc_info()[2]
                 self._state = "STATE_PLEASE_STOP"
                 if __debug__: dprint("STATE_PLEASE_STOP")
 
@@ -549,8 +561,8 @@ class Callback(object):
                 while requests and requests[0][0] <= actual_time:
                     # notice that the deadline and priority entries are switched, hence, the entries in
                     # the EXPIRED list are ordered by priority instead of deadline
-                    _, priority, root_id, call, callback = heappop(requests)
-                    heappush(expired, (priority, root_id, None, call, callback))
+                    deadline, priority, root_id, call, callback = heappop(requests)
+                    heappush(expired, (priority, deadline, root_id, None, call, callback))
 
                 if expired:
                     if __debug__ and len(expired) > 10:
@@ -558,7 +570,7 @@ class Callback(object):
                             time_since_expired = actual_time
 
                     # we need to handle the next call in line
-                    priority, root_id, _, call, callback = heappop(expired)
+                    priority, deadline, root_id, _, call, callback = heappop(expired)
                     wait = 0.0
 
                     if __debug__:
@@ -606,7 +618,7 @@ class Callback(object):
 
                         elif callback:
                             with lock:
-                                heappush(expired, (priority, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+                                heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
                     if isinstance(call, GeneratorType):
                         # start next generator iteration
@@ -619,24 +631,26 @@ class Callback(object):
                 except StopIteration:
                     if callback:
                         with lock:
-                            heappush(expired, (priority, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+                            heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
                 except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
                     dprint("attempting proper shutdown", exception=True, level="error")
                     with lock:
                         self._state = "STATE_EXCEPTION"
                         self._exception = exception
+                        self._exception_traceback = exc_info()[2]
                     self._call_exception_handlers(exception, True)
 
                 except Exception, exception:
                     if callback:
                         with lock:
-                            heappush(expired, (priority, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
+                            heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
                     if __debug__:
                         dprint("__debug__ only shutdown", exception=True, level="error")
                         with lock:
                             self._state = "STATE_EXCEPTION"
                             self._exception = exception
+                            self._exception_traceback = exc_info()[2]
                         self._call_exception_handlers(exception, True)
                     else:
                         dprint(exception=True, level="error")
@@ -657,8 +671,7 @@ class Callback(object):
         # new tasks will not be accepted
         if __debug__: dprint(self._debug_thread_name, "] there are ", len(expired), " expired tasks")
         while expired:
-            priority, root_id, _, call, callback = heappop(expired)
-            if __debug__: dprint(self._debug_thread_name, "] calling ", self._debug_call_to_string(call), " (prio:", priority, ", id:", root_id, ")")
+            _, _, _, _, call, callback = heappop(expired)
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])

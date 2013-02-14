@@ -6,6 +6,8 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
+from os import environ
+
 import hashlib
 import sqlite3
 
@@ -16,6 +18,16 @@ from .singleton import Singleton
 if __debug__:
     import thread
     from threading import current_thread
+
+__DEBUG_QUERIES__ = environ.has_key('DISPERSY_DEBUG_DATABASE_QUERIES')
+if __DEBUG_QUERIES__:
+    from random import randint
+    from os.path import exists
+    from time import time
+    DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
+    while exists(DB_DEBUG_FILE):
+        DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
+
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -48,9 +60,7 @@ class Database(Singleton):
             self._debug_thread_ident = thread.get_ident()
         self._file_path = file_path
 
-        self._connection = sqlite3.Connection(file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
-        self._cursor = self._connection.cursor()
+        self._connect(file_path)
 
         # _commit_callbacks contains a list with functions that are called on each database commit
         self._commit_callbacks = []
@@ -63,6 +73,7 @@ class Database(Singleton):
         page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
         journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
         synchronous = unicode(next(self._cursor.execute(u"PRAGMA synchronous"))[0]).upper()
+        temp_store = unicode(next(self._cursor.execute(u"PRAGMA temp_store"))[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -96,6 +107,15 @@ class Database(Singleton):
         if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
         if not synchronous in (u"NORMAL", u"1"):
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
+        
+        #
+        # PRAGMA temp_store = 0 | DEFAULT | 1 | FILE | 2 | MEMORY;
+        # http://www.sqlite.org/pragma.html#pragma_temp_store
+        #
+#DISABLED temp_store memory        
+#        if __debug__: dprint("PRAGMA temp_store = MEMORY (previously: ", temp_store, ")")    
+#        if not temp_store in (u"MEMORY", u"2"):
+#            self._cursor.execute(u"PRAGMA temp_store = MEMORY")
 
         # check is the database contains an 'option' table
         try:
@@ -113,9 +133,19 @@ class Database(Singleton):
         else:
             # the 'option' table probably hasn't been created yet
             version = u"0"
+            
+        self._init_database()
 
         self._database_version = self.check_database(version)
         assert isinstance(self._database_version, (int, long)), type(self._database_version)
+        
+    def _connect(self, file_path):
+        self._connection = sqlite3.Connection(file_path)
+        # self._connection.setrollbackhook(self._on_rollback)
+        self._cursor = self._connection.cursor()
+
+    def _init_database(self):
+        pass
 
     @property
     def database_version(self):
@@ -126,6 +156,12 @@ class Database(Singleton):
         The database filename including path.
         """
         return self._file_path
+
+    def close(self, commit=True):
+        if commit:
+            self.commit()
+        self._cursor.close()
+        self._connection.close()
 
     def __enter__(self):
         """
@@ -154,12 +190,14 @@ class Database(Singleton):
                 if __debug__: dprint("performing ", pending_commits - 1, " pending commits")
                 self.commit()
             return True
+        
         elif isinstance(exc_value, IgnoreCommits):
             if __debug__: dprint("enabling Database.commit() without committing now")
             return True
+        
         else:
-            if __debug__: dprint("ROLLBACK", level="error")
-            self._connection.rollback()
+            #Niels 23-01-2013, an exception happened from within the with database block
+            #returning False to let Python reraise the exception.
             return False
 
     @property
@@ -213,7 +251,30 @@ class Database(Singleton):
 
         try:
             if __debug__: dprint(statement, " <-- ", bindings)
-            return self._cursor.execute(statement, bindings)
+
+            if __DEBUG_QUERIES__:
+                f = open(DB_DEBUG_FILE, 'a')
+                #Store the query plan with EXPLAIN QUERY PLAN to detect possible optimizations
+                debug_bindings = list(bindings)
+                for i, binding in enumerate(debug_bindings):
+                    if isinstance(binding, buffer):
+                        try:
+                            binding = str(binding).encode("HEX")[:100] #try to show content of buffer, but a most 100 characters
+                        except:
+                            pass
+                        debug_bindings[i] = binding
+                    
+                f.write('QueryDebug: (%f) %s %s\n' % (time(), statement, str(debug_bindings)))
+                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, bindings).fetchall():
+                    f.write('%s %s %s\t%s\n' % row)
+                
+            result = self._cursor.execute(statement, bindings)
+            
+            if __DEBUG_QUERIES__:
+                f.write('QueryDebug: (%f) END\n' % time())
+                f.close()
+                
+            return result
 
         except sqlite3.Error:
             dprint(exception=True, level="warning")
@@ -227,7 +288,18 @@ class Database(Singleton):
 
         try:
             if __debug__: dprint(statements)
-            return self._cursor.executescript(statements)
+            
+            if __DEBUG_QUERIES__:
+                f = open(DB_DEBUG_FILE, 'a')
+                f.write('QueryDebug-script: (%f) %s\n' % (time(), statements))
+
+            result = self._cursor.executescript(statements)
+        
+            if __DEBUG_QUERIES__:
+                f.write('QueryDebug-script: (%f) END\n' % time())
+                f.close()
+                
+            return result
 
         except sqlite3.Error:
             dprint(exception=True, level="warning")
@@ -274,7 +346,22 @@ class Database(Singleton):
 
         try:
             if __debug__: dprint(statement)
-            return self._cursor.executemany(statement, sequenceofbindings)
+            
+                        
+            if __DEBUG_QUERIES__:
+                f = open(DB_DEBUG_FILE, 'a')
+                                    
+                f.write('QueryDebug-executemany: (%f) %s %s %d times\n' % (time(), statement, len(sequenceofbindings)))
+                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, sequenceofbindings[0]).fetchall():
+                    f.write('%s %s %s\t%s\n' % row)
+            
+            result =  self._cursor.executemany(statement, sequenceofbindings)        
+                    
+            if __DEBUG_QUERIES__:
+                f.write('QueryDebug-executemany: (%f) END\n' % time())
+                f.close()
+            
+            return result
 
         except sqlite3.Error:
             dprint(exception=True)
@@ -292,12 +379,22 @@ class Database(Singleton):
 
         else:
             if __debug__: dprint("COMMIT")
+            
+            if __DEBUG_QUERIES__:
+                f = open(DB_DEBUG_FILE, 'a')
+                f.write('QueryDebug-commit: (%f)\n' % time())
+            
             result = self._connection.commit()
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting = exiting)
                 except Exception:
                     if __debug__: dprint(exception=True, stack=True)
+            
+            if __DEBUG_QUERIES__:     
+                f.write('QueryDebug-commit: (%f) END\n' % time())
+                f.close()
+            
             return result
 
     # def _on_rollback(self):
@@ -329,3 +426,91 @@ class Database(Singleton):
     def detach_commit_callback(self, func):
         assert func in self._commit_callbacks
         self._commit_callbacks.remove(func)
+        
+class APSWDatabase(Database):
+    def _connect(self, file_path):
+        import apsw
+        self._connection = apsw.Connection(file_path)
+        self._cursor = self._connection.cursor()
+
+    def _init_database(self):
+        self.execute("BEGIN")
+
+    def execute(self, statement, bindings=()):
+        import apsw
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+        assert isinstance(bindings, (tuple, list, dict)), "The bindings must be a tuple, list, or dictionary"
+        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+
+        try:
+            if __debug__: dprint(statement, " <-- ", bindings)
+            return self._cursor.execute(statement, bindings)
+
+        except apsw.Error:
+            if __debug__:
+                dprint(exception=True, level="warning")
+                dprint("Filename: ", self._file_path, level="warning")
+                dprint(statement, level="warning")
+                dprint(bindings, level="warning")
+            raise
+
+    def executescript(self, statements):
+        return self.execute(statements)
+
+    def executemany(self, statement, sequenceofbindings):
+        import apsw
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        if __debug__:
+            # we allow GeneratorType but must convert it to a list in __debug__ mode since a
+            # generator can only iterate once
+            from types import GeneratorType
+            if isinstance(sequenceofbindings, GeneratorType):
+                sequenceofbindings = list(sequenceofbindings)
+        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+        assert isinstance(sequenceofbindings, (tuple, list)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
+        assert all(isinstance(x, (tuple, list, dict)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
+        assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
+
+        try:
+            if __debug__: dprint(statement)
+            return self._cursor.executemany(statement, sequenceofbindings)
+
+        except apsw.Error:
+            if __debug__:
+                dprint(exception=True)
+                dprint("Filename: ", self._file_path)
+                dprint(statement)
+            raise
+
+    @property
+    def last_insert_rowid(self):
+        """
+        The row id of the most recent insert query.
+        @rtype: int or long
+        """
+        assert self._debug_thread_ident == thread.get_ident()
+        assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
+        return self._connection.last_insert_rowid()
+
+    @property
+    def changes(self):
+        """
+        The number of changes that resulted from the most recent query.
+        @rtype: int or long
+        """
+        assert self._debug_thread_ident == thread.get_ident()
+        return self._connection.totalchanges()
+
+    def commit(self):
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
+
+        if __debug__: dprint("COMMIT")
+        result = self.execute("COMMIT;BEGIN")
+        for callback in self._commit_callbacks:
+            try:
+                callback()
+            except Exception:
+                if __debug__: dprint(exception=True, stack=True)
+        return result
+

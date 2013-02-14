@@ -112,26 +112,40 @@ class ScenarioScriptBase(ScriptBase):
 
         self._timestep = float(kargs.get('timestep', 1.0))
         self._stepcount = 0
-        self._starting_timestamp = float(kargs.get('starting_timestamp', time()))
         self._logfile = logfile
+        
+        self._my_name = None
+        self._my_address = None
+        
+        self._nr_peers = self.__get_nr_peers()
+        
+        if 'starting_timestamp' in kargs:
+            self._starting_timestamp = int(kargs['starting_timestamp'])
+            log(self._logfile, "Using %d as starting timestamp, will wait for %d seconds"%(self._starting_timestamp, self._starting_timestamp - int(time())))
+        else:
+            self._starting_timestamp = int(time())
+            log(self._logfile, "No starting_timestamp specified, using currentime")
 
     @property
     def enable_wait_for_wan_address(self):
         return False
 
-    def find_peer_by_name(self, peername):
-        assert_(isinstance(peername, str))
-        if not peername in self._members:
-            with open('data/peers') as fp:
-                for line in fp:
-                    name, ip, port, public_key, _ = line.split()
-                    if name == peername:
-                        public_key = public_key.decode("HEX")
-                        self._members[name] = (Member(public_key, sync_with_database=True), (ip, int(port)))
-                        break
-                else:
-                    raise ValueError("Node with name '%s' not in nodes db" % peername)
-        return self._members[peername]
+    def get_peer_ip_port(self, peer_id):
+        assert isinstance(peer_id, int), type(peer_id)
+        
+        line_nr = 1
+        for line in open('data/peers'):
+            if line_nr == peer_id:
+                ip, port = line.split()
+                return ip, int(port)
+            line_nr += 1
+            
+    def __get_nr_peers(self):
+        line_nr = 0
+        for line in open('data/peers'):
+            line_nr +=1
+            
+        return line_nr
 
     def set_online(self):
         """ Restore on_socket_endpoint and _send functions of
@@ -151,11 +165,14 @@ class ScenarioScriptBase(ScriptBase):
         This simulates a node going offline, since it's not able to
         send or receive any messages
         """
-        def dummy_function(*params):
+        def dummy_on_socket(*params):
             return
+        def dummy_send(*params):
+            return False
+        
         log(self._logfile, "Going offline")
-        self._dispersy.on_socket_endpoint = dummy_function
-        self._dispersy._send = dummy_function
+        self._dispersy.on_socket_endpoint = dummy_on_socket
+        self._dispersy.endpoint.send = dummy_send
 
     def get_commands_from_fp(self, fp, step):
         """ Return a list of commands from file handle for step
@@ -198,9 +215,7 @@ class ScenarioScriptBase(ScriptBase):
         return delay
 
     def log_desync(self, desync):
-        # delay = 1.0 - desync
-        delay = None
-        log(self._logfile, "sleep", desync=desync, diff=delay, stepcount=self._stepcount)
+        log(self._logfile, "sleep", desync=desync, stepcount=self._stepcount)
 
     def join_community(self, my_member):
         raise NotImplementedError()
@@ -219,10 +234,10 @@ class ScenarioScriptBase(ScriptBase):
         # name, ip, port, public and private key
         #
         with open('data/peer.conf') as fp:
-            my_name, ip, port = fp.readline().split()
-            my_address = (ip, int(port))
+            self._my_name, ip, port, _ = fp.readline().split()
+            self._my_address = (ip, int(port))
 
-        if __debug__: log(self._logfile, "read-config-done", my_name = my_name, my_address = my_address)
+        log(self._logfile, "Read config done", my_name = self._my_name, my_address = self._my_address)
 
         # create my member
         ec = ec_generate_key(u"low")
@@ -236,15 +251,13 @@ class ScenarioScriptBase(ScriptBase):
         self._community = self.join_community(my_member)
         dprint("Joined community ", self._community._my_member)
 
-        log(self._logfile, "joined-community", name="time", value=time())
-        log(self._logfile, "community-property", name="timestep", value=self._timestep)
-        log(self._logfile, "community-property", name="sync_response_limit", value=self._community.dispersy_sync_response_limit)
-        log(self._logfile, "community-property", name="starting_timestamp", value=self._starting_timestamp)
+        log("dispersy.log", "joined-community", time = time(), timestep = self._timestep, sync_response_limit = self._community.dispersy_sync_response_limit, starting_timestamp = self._starting_timestamp)
 
         self._stepcount = 0
 
         # wait until we reach the starting time
         self._dispersy.callback.register(self.do_steps, delay=self.sleep())
+        self._dispersy.callback.register(self.do_log)
 
         # I finished the scenario execution. I should stay online
         # until killed. Note that I can still sync and exchange
@@ -255,17 +268,13 @@ class ScenarioScriptBase(ScriptBase):
 
     def do_steps(self):
         self._dispersy._statistics.reset()
-        
         scenario_fp = open('data/bartercast.log')
         try:
             availability_fp = open('data/availability.log')
         except:
             availability_fp = None
 
-        self._stepcount = 1
-        prev_total_received = {}
-        prev_total_dropped = {}
-        prev_total_delayed = {}
+        self._stepcount += 1
 
         # start the scenario
         while True:
@@ -273,71 +282,74 @@ class ScenarioScriptBase(ScriptBase):
             scenario_cmds = self.get_commands_from_fp(scenario_fp, self._stepcount)
             availability_cmds = self.get_commands_from_fp(availability_fp, self._stepcount)
 
-            # if there are no commands exit the while loop
-            if scenario_cmds == -1 and availability_cmds == -1:
-                if __debug__: log(self._logfile, "no-commands")
-                break
-            
-            else:
-                # if there is a start in the avaibility_cmds then go
-                # online
-                if availability_cmds != -1 and 'start' in availability_cmds:
-                    self.set_online()
-
-                # if there are barter_cmds then execute them
-                if scenario_cmds != -1:
-                    self.execute_scenario_cmds(scenario_cmds)
-
-                # if there is a stop in the availability_cmds then go
-                # offline
-                if availability_cmds != -1 and 'stop' in availability_cmds:
-                    self.set_offline()
+            # if there is a start in the avaibility_cmds then go
+            # online
+            if availability_cmds != -1 and 'start' in availability_cmds:
+                self.set_online()
                 
+            # if there are barter_cmds then execute them
+            if scenario_cmds != -1:
+                self.execute_scenario_cmds(scenario_cmds)
+
+            # if there is a stop in the availability_cmds then go offline
+            if availability_cmds != -1 and 'stop' in availability_cmds:
+                self.set_offline()
+
+            sleep = self.sleep()
+            if sleep < 0.5:
+                self.log_desync(1.0 - sleep)
+            yield sleep
+            self._stepcount += 1
+            
+    def do_log(self):
+        def print_on_change(name, prev_dict, cur_dict):
+            new_values = {}
+            changed_values = {}
+            if cur_dict:
+                for key, value in cur_dict.iteritems():
+                    if not isinstance(key, (basestring, int, long)):
+                        key = str(key)
+                        
+                    key = make_valid_key(key)
+                    new_values[key] = value
+                    if prev_dict.get(key, None) != value:
+                        changed_values[key] = value
+
+            if changed_values:
+                log("dispersy.log", name, **changed_values)
+                return new_values
+            return prev_dict
+        
+        prev_statistics = {}
+        prev_total_received = {}
+        prev_total_dropped = {}
+        prev_total_delayed = {}
+        prev_total_outgoing = {}
+        prev_total_fail = {}
+        prev_endpoint_recv = {}
+        prev_endpoint_send = {}
+        prev_created_messages = {}
+        prev_bootstrap_candidates = {}
+        
+        while True:
             #print statistics
             self._dispersy.statistics.update()
-            log("dispersy.log", "statistics", total_send = self._dispersy.statistics.total_up, total_received = self._dispersy.statistics.total_down, total_dropped = self._dispersy.statistics.drop_count, delay_count = self._dispersy.statistics.delay_count, walk_attempt = self._dispersy.statistics.walk_attempt, walk_success = self._dispersy.statistics.walk_success, conn_type = self._dispersy.statistics.connection_type)
-
-            total_received = {}
-            didChange = False
-            if hasattr(self._dispersy.statistics, 'success'):
-                for key, value in self._dispersy.statistics.success.iteritems():
-                    key = make_valid_key(key)
-                    total_received[key] = value
-                    if prev_total_received.get(key, None) != value:
-                        didChange = True
-
-            if didChange:
-                log("dispersy.log", "statistics-successful-messages", **total_received)
-                prev_total_received = total_received
-
-            total_dropped = {}
-            didChange = False
-            if hasattr(self._dispersy.statistics, 'drop'):
-                for key, value in self._dispersy.statistics.drop.iteritems():
-                    key = make_valid_key(key)
-                    total_dropped[key] = value
-                    
-                    if prev_total_dropped.get(key, None) != value:
-                        didChange = True
-
-            if didChange:
-                log("dispersy.log", "statistics-dropped-messages", **total_dropped)
-                prev_total_dropped = total_dropped
-                
-            total_delayed = {}
-            didChange = False
-            if hasattr(self._dispersy.statistics, 'delay'):
-                for key, value in self._dispersy.statistics.delay.iteritems():
-                    key = make_valid_key(key)
-                    total_delayed[key] = value
-                    
-                    if prev_total_delayed.get(key, None) != value:
-                        didChange = True
-
-            if didChange:
-                log("dispersy.log", "statistics-delayed-messages", **total_dropped)
-                prev_total_delayed = total_delayed
-
+            
+            bl_reuse = sum(c.sync_bloom_reuse for c in self._dispersy.statistics.communities)
+            candidates = [(c.classification, len(c.candidates) if c.candidates else 0) for c in self._dispersy.statistics.communities]
+            statistics_dict= {'received_count': self._dispersy.statistics.received_count, 'total_up': self._dispersy.statistics.total_up, 'total_down': self._dispersy.statistics.total_down, 'drop_count': self._dispersy.statistics.drop_count, 'total_send': self._dispersy.statistics.total_send, 'cur_sendqueue': self._dispersy.statistics.cur_sendqueue, 'delay_count': self._dispersy.statistics.delay_count, 'delay_success': self._dispersy.statistics.delay_success, 'delay_timeout': self._dispersy.statistics.delay_timeout, 'walk_attempt': self._dispersy.statistics.walk_attempt, 'walk_success': self._dispersy.statistics.walk_success, 'walk_reset': self._dispersy.statistics.walk_reset, 'conn_type': self._dispersy.statistics.connection_type, 'bl_reuse': bl_reuse, 'candidates': candidates}
+            
+            prev_statistics = print_on_change("statistics", prev_statistics, statistics_dict)
+            prev_total_received = print_on_change("statistics-successful-messages", prev_total_received ,self._dispersy.statistics.success)
+            prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped ,self._dispersy.statistics.drop)
+            prev_total_delayed = print_on_change("statistics-delayed-messages", prev_total_delayed ,self._dispersy.statistics.delay)
+            prev_total_outgoing = print_on_change("statistics-outgoing-messages", prev_total_outgoing ,self._dispersy.statistics.outgoing)
+            prev_total_fail = print_on_change("statistics-walk-fail", prev_total_fail ,self._dispersy.statistics.walk_fail)
+            prev_endpoint_recv = print_on_change("statistics-endpoint-recv", prev_endpoint_recv ,self._dispersy.statistics.endpoint_recv)
+            prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send ,self._dispersy.statistics.endpoint_send)
+            prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages ,self._dispersy.statistics.created)
+            prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates ,self._dispersy.statistics.bootstrap_candidates)
+            
 #            def callback_cmp(a, b):
 #                return cmp(self._dispersy.callback._statistics[a][0], self._dispersy.callback._statistics[b][0])
 #            keys = self._dispersy.callback._statistics.keys()
@@ -363,11 +375,8 @@ class ScenarioScriptBase(ScriptBase):
 #                if key.startswith("decode") and not key == "decode-message" and total:
 #                    nice_total[make_valid_key(key)] = "%7.2fs ~%5.1f%%" % (value, 100.0 * value / total)
 #            log("dispersy.log", "statistics-decode", **nice_total)
-
-            desync = yield self._timestep
-            self.log_desync(desync)
-
-            self._stepcount += 1
+            
+            yield 1.0
 
 class DispersyClassificationScript(ScriptBase):
     def run(self):
@@ -3070,10 +3079,10 @@ class DispersyBootstrapServers(ScriptBase):
                 self._summary = {}
                 self._hostname = {}
                 self._identifiers = {}
-                self._candidates = self._dispersy._bootstrap_candidates.values()
-                # self._candidates = [BootstrapCandidate(("130.161.211.198", 6431))]
+                self._pcandidates = self._dispersy._bootstrap_candidates.values()
+                # self._pcandidates = [BootstrapCandidate(("130.161.211.198", 6431))]
 
-                for candidate in self._candidates:
+                for candidate in self._pcandidates:
                     self._request[candidate.sock_addr] = {}
                     self._summary[candidate.sock_addr] = []
                     self._hostname[candidate.sock_addr] = socket.getfqdn(candidate.sock_addr[0])
@@ -3112,7 +3121,7 @@ class DispersyBootstrapServers(ScriptBase):
 
             def ping(self, now):
                 dprint("PING", line=1)
-                for candidate in self._candidates:
+                for candidate in self._pcandidates:
                     request = self._dispersy.create_introduction_request(self, candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
 
@@ -3168,12 +3177,12 @@ class DispersyBootstrapServersStresstest(ScriptBase):
                 self._summary = {}
                 self._hostname = {}
                 self._identifiers = {}
-                self._candidates = candidates
+                self._pcandidates = candidates
                 self._queue = []
-                # self._candidates = self._dispersy._bootstrap_candidates.values()
-                # self._candidates = [BootstrapCandidate(("130.161.211.198", 6431))]
+                # self._pcandidates = self._dispersy._bootstrap_candidates.values()
+                # self._pcandidates = [BootstrapCandidate(("130.161.211.198", 6431))]
 
-                for candidate in self._candidates:
+                for candidate in self._pcandidates:
                     self._request[candidate.sock_addr] = {}
                     self._summary[candidate.sock_addr] = []
                     self._hostname[candidate.sock_addr] = socket.getfqdn(candidate.sock_addr[0])
@@ -3221,7 +3230,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
             def prepare_ping(self, member):
                 self._my_member = member
                 try:
-                    for candidate in self._candidates:
+                    for candidate in self._pcandidates:
                         request = self._dispersy.create_introduction_request(self, candidate, False, forward=False)
                         self._queue.append((request.payload.identifier, request.packet, candidate))
                 finally:
@@ -3237,7 +3246,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
             def ping(self, member):
                 self._my_member = member
                 try:
-                    for candidate in self._candidates:
+                    for candidate in self._pcandidates:
                         request = self._dispersy.create_introduction_request(self, candidate, False)
                         self._request[candidate.sock_addr][request.payload.identifier] = time()
                 finally:

@@ -11,13 +11,15 @@ except ImportError:
     print "Unable to import from psutil.  Process statistics are disabled"
 
 from hashlib import sha1
-from os import getpid, uname
+from os import getpid, uname, path
 from random import random, uniform
 from re import compile as re_compile
 from sys import maxsize
 from time import time
+from shutil import copyfile
 
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ..dispersydatabase import DispersyDatabase
 from ..dprint import dprint
 from ..member import Member
 from ..script import ScriptBase
@@ -33,8 +35,7 @@ class ScenarioScript(ScriptBase):
 
         self.log("scenario-init", peernumber=int(self._kargs["peernumber"]), hostname=uname()[1])
 
-        if self.enable_statistics and Process and cpu_percent:
-            self._process = Process(getpid()) if self.enable_statistics or self.enable_statistics else None
+        if self.enable_statistics:
             self._dispersy.callback.register(self._periodically_log_statistics)
 
     @property
@@ -84,18 +85,48 @@ class ScenarioScript(ScriptBase):
         pass
 
     def _periodically_log_statistics(self):
+        statistics = self._dispersy.statistics
+        process = Process(getpid()) if Process else None
+
         while True:
+            statistics.update()
+
             # CPU
-            self.log("scenario-cpu", percentage=cpu_percent(interval=0, percpu=True))
+            if cpu_percent:
+                self.log("scenario-cpu", percentage=cpu_percent(interval=0, percpu=True))
 
             # memory
-            rss, vms = self._process.get_memory_info()
-            self.log("scenario-memory", rss=rss, vms=vms)
+            if process:
+                rss, vms = process.get_memory_info()
+                self.log("scenario-memory", rss=rss, vms=vms)
 
             # bandwidth
             self.log("scenario-bandwidth",
-                     up=self._dispersy.endpoint.total_up, down=self._dispersy.endpoint.total_down,
-                     drop=self._dispersy.statistics.drop_count, success=self._dispersy.statistics.success_count)
+                     up=self._dispersy.endpoint.total_up,
+                     down=self._dispersy.endpoint.total_down,
+                     drop_count=self._dispersy.statistics.drop_count,
+                     delay_count=statistics.delay_count,
+                     delay_send=statistics.delay_send,
+                     delay_success=statistics.delay_success,
+                     delay_timeout=statistics.delay_timeout,
+                     success_count=statistics.success_count,
+                     received_count=statistics.received_count)
+
+            # dispersy statistics
+            self.log("scenario-connection",
+                     connection_type=statistics.connection_type,
+                     lan_address=statistics.lan_address,
+                     wan_address=statistics.wan_address)
+
+            # communities
+            for community in statistics.communities:
+                self.log("scenario-community",
+                         hex_cid=community.hex_cid,
+                         classification=community.classification,
+                         global_time=community.global_time,
+                         sync_bloom_new=community.sync_bloom_new,
+                         sync_bloom_reuse=community.sync_bloom_reuse,
+                         candidates=[dict(zip(["lan_address", "wan_address", "global_time"], tup)) for tup in community.candidates])
 
             # wait
             yield self.enable_statistics
@@ -187,11 +218,44 @@ class ScenarioScript(ScriptBase):
         except KeyError:
             return None
 
-    def scenario_start(self):
-        assert self.has_community() == None
-        ec = ec_generate_key(self.my_member_security)
-        self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        self._master_member = Member(self.master_member_public_key)
+    def scenario_start(self, filepath=""):
+        if self._my_member or self._master_member:
+            raise RuntimeError("scenario_start must be called only once")
+        if self._is_joined:
+            raise RuntimeError("scenario_start must be called BEFORE scenario_churn")
+
+        if filepath:
+            # clone the database from filepath instead of using a new one
+            origional_database_filename = path.join(self._kargs["localcodedir"], filepath)
+            database_filename = self._dispersy.database.file_path()
+            self.log("scenario-start-clone", source=origional_database_filename, destination=database_filename)
+
+            # HACK: close the old database, copy the original database file, and open the new file
+            self._dispersy._database.close()
+            self._dispersy._database = None
+            DispersyDatabase.del_instance()
+            copyfile(origional_database_filename, database_filename)
+            self._dispersy._database = DispersyDatabase.get_instance(database_filename)
+
+            ec = ec_generate_key(self.my_member_security)
+            self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+            self._master_member = Member(self.master_member_public_key)
+            self._is_joined = True
+
+            self._dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ? AND classification = ?",
+                                            (self._my_member.database_id, self._master_member.database_id, self.community_class.get_classification()))
+            assert self._dispersy.database.changes == 1
+            community = self.community_class.load_community(self._master_member, *self.community_args, **self.community_kargs)
+            community.auto_load = False
+            community.create_dispersy_identity()
+            community.unload_community()
+            self.log("scenario-start-clone-complete")
+
+        else:
+            ec = ec_generate_key(self.my_member_security)
+            self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+            self._master_member = Member(self.master_member_public_key)
+
         self.log("scenario-start", my_member=self._my_member.mid, master_member=self._master_member.mid, classification=self.community_class.get_classification())
 
     def scenario_end(self):
@@ -365,8 +429,10 @@ class ScenarioParser2(Parser):
         self.cur = database.cursor()
         self.cur.execute(u"CREATE TABLE cpu (timestamp FLOAT, peer INTEGER, percentage FLOAT)")
         self.cur.execute(u"CREATE TABLE memory (timestamp FLOAT, peer INTEGER, rss INTEGER, vms INTEGER)")
-        self.cur.execute(u"CREATE TABLE bandwidth (timestamp FLOAT, peer INTEGER, up INTEGER, down INTEGER, loss INTEGER, success INTEGER, up_rate INTEGER, down_rate INTEGER)")
+        self.cur.execute(u"CREATE TABLE bandwidth (timestamp FLOAT, peer INTEGER, up INTEGER, down INTEGER, drop_count INTEGER, delay_count INTEGER, delay_send INTEGER, delay_success INTEGER, delay_timeout INTEGER, success_count INTEGER, received_count INTEGER)")
+        self.cur.execute(u"CREATE TABLE bandwidth_rate (timestamp FLOAT, peer INTEGER, up INTEGER, down INTEGER)")
         self.cur.execute(u"CREATE TABLE churn (peer INTEGER, online FLOAT, offline FLOAT)")
+        self.cur.execute(u"CREATE TABLE community (timestamp FLOAT, peer INTEGER, hex_cid TEXT, classification TEXT, global_time INTEGER, sync_bloom_new INTEGER, sync_bloom_reuse INTEGER, candidate_count INTEGER)")
 
         self.mid_cache = {}
         self.hostname = ""
@@ -391,6 +457,7 @@ class ScenarioParser2(Parser):
         self.mapto(self.scenario_cpu, "scenario-cpu")
         self.mapto(self.scenario_memory, "scenario-memory")
         self.mapto(self.scenario_bandwidth, "scenario-bandwidth")
+        self.mapto(self.scenario_community, "scenario-community")
 
     def start_parser(self, filename):
         """Called once before starting to parse FILENAME"""
@@ -408,10 +475,11 @@ class ScenarioParser2(Parser):
             try:
                 peer_id, = self.cur.execute(u"SELECT id FROM peer WHERE mid = ?", (buffer(mid),)).next()
             except StopIteration:
-                raise ValueError(mid)
+                self.cur.execute(u"INSERT INTO peer (mid) VALUES (?)", (buffer(mid),))
+                return self.cur.lastrowid
             else:
                 if peer_id is None:
-                    raise ValueError(mid)
+                    raise ValueError(mid.encode("HEX"))
                 else:
                     self.mid_cache[mid] = peer_id
                     return peer_id
@@ -443,13 +511,20 @@ class ScenarioParser2(Parser):
     def scenario_memory(self, timestamp, _, vms, rss):
         self.cur.execute(u"INSERT INTO memory (timestamp, peer, rss, vms) VALUES (?, ?, ?, ?)", (timestamp, self.peer_id, rss, vms))
 
-    def scenario_bandwidth(self, timestamp, _, down, up, drop, success):
+    def scenario_bandwidth(self, timestamp, _, up, down, drop_count, delay_count, delay_send, delay_success, delay_timeout, success_count, received_count):
+        self.cur.execute(u"INSERT INTO bandwidth (timestamp, peer, up, down, drop_count, delay_count, delay_send, delay_success, delay_timeout, success_count, received_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (timestamp, self.peer_id, up, down, drop_count, delay_count, delay_send, delay_success, delay_timeout, success_count, received_count))
+
         delta = timestamp - self.bandwidth_timestamp
-        self.cur.execute(u"INSERT INTO bandwidth (timestamp, peer, up, down, loss, success, up_rate, down_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                         (timestamp, self.peer_id, up, down, drop, success, (up-self.bandwidth_up)/delta, (down-self.bandwidth_down)/delta))
+        self.cur.execute(u"INSERT INTO bandwidth_rate (timestamp, peer, up, down) VALUES (?, ?, ?, ?)",
+                         (timestamp, self.peer_id, (up-self.bandwidth_up)/delta, (down-self.bandwidth_down)/delta))
         self.bandwidth_timestamp = timestamp
         self.bandwidth_up = up
         self.bandwidth_down = down
+
+    def scenario_community(self, timestamp, _, hex_cid, classification, global_time, sync_bloom_new, sync_bloom_reuse, candidates):
+        self.cur.execute(u"INSERT INTO community (timestamp, peer, hex_cid, classification, global_time, sync_bloom_new, sync_bloom_reuse, candidate_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (timestamp, self.peer_id, hex_cid, classification, global_time, sync_bloom_new, sync_bloom_reuse, len(candidates)))
 
     def parse_directory(self, *args, **kargs):
         try:

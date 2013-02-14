@@ -8,7 +8,12 @@ This module provides an interface to the Dispersy database.
 
 from itertools import groupby
 
-from .database import Database
+import sys
+if "--apswtrace" in getattr(sys, "argv", []):
+    from .database import APSWDatabase as Database
+else:
+    from .database import Database
+    
 from .distribution import FullSyncDistribution
 from .dprint import dprint
 from .revision import update_revision_information

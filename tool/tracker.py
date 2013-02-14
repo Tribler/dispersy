@@ -92,6 +92,8 @@ class TrackerCommunity(Community):
         # by one.  once 'strike' reaches a predefined value the community is cleaned
         self._strikes = 0
 
+        self._walked_stumbled_candidates = self._iter_categories([u'walk', u'stumble'])
+
     def _initialize_meta_messages(self):
         super(TrackerCommunity, self)._initialize_meta_messages()
 
@@ -194,13 +196,33 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
+    def dispersy_yield_random_candidates(self, candidate = None):
+        """
+        Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
+        """
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        import sys
+        prev_result = None
+        while True:
+            result = self._walked_stumbled_candidates.next() 
+            if prev_result == result:
+                print >> sys.stderr,  long(time()), "yielding random", None
+                yield None
+                
+            else:
+                prev_result = result
+                if result == candidate:
+                    continue
+                print >> sys.stderr, long(time()), "yielding random", result
+                yield result
+
 class TrackerDispersy(Dispersy):
     @classmethod
     def get_instance(cls, *args, **kargs):
         kargs["singleton_placeholder"] = Dispersy
         return super(TrackerDispersy, cls).get_instance(*args, **kargs)
 
-    def __init__(self, callback, working_directory):
+    def __init__(self, callback, working_directory, silent = False):
         super(TrackerDispersy, self).__init__(callback, working_directory, u":memory:")
 
         # non-autoload nodes
@@ -215,10 +237,13 @@ class TrackerDispersy(Dispersy):
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
+        self._silent = silent
 
         callback.register(self._load_persistent_storage)
         callback.register(self._unload_communities)
-        callback.register(self._report_statistics)
+        
+        if not self._silent:
+            callback.register(self._report_statistics)
 
     @property
     def persistent_storage_filename(self):
@@ -254,7 +279,7 @@ class TrackerDispersy(Dispersy):
             for candidate, packet in packets:
                 cid = packet[2:22]
 
-                if not cid in self._communities and candidate.sock_addr[0] in self._non_autoload:
+                if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
                         dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=1)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
@@ -268,21 +293,6 @@ class TrackerDispersy(Dispersy):
 
         else:
             return []
-
-    def yield_random_candidates(self, community):
-        # the regular yield_random_candidates includes a security mechanism where we first choose
-        # the category (walk or stumble) and than a candidate.  this results in a problem with flash
-        # crowds, we solve this by removing the security mechanism.  this mechanism is not useful
-        # for trackers as they will always receive a steady supply of valid connections as well.
-        now = time()
-        candidates = self._candidates.values()
-        for length in xrange(len(candidates), 0, -1):
-            candidate = candidates.pop(int(random() * length))
-            if candidate.in_community(community, now) and candidate.is_any_active(now):
-                yield candidate
-        # candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
-        # for length in xrange(len(candidates), 0, -1):
-        #     yield candidates.pop(int(random() * length))
 
     def _unload_communities(self):
         def is_active(community, now):
@@ -316,6 +326,10 @@ class TrackerDispersy(Dispersy):
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
             print "CANDIDATE", len(self._candidates)
+            
+            if self._statistics.outgoing:
+                for key, value in self._statistics.outgoing.iteritems():
+                    print "OUTGOING", key, value
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         # prevent steps towards other trackers
@@ -331,17 +345,19 @@ class TrackerDispersy(Dispersy):
             yield message
 
     def on_introduction_request(self, messages):
-        hex_cid = messages[0].community.cid.encode("HEX")
-        for message in messages:
-            host, port = message.candidate.sock_addr
-            print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+        if not self._silent:
+            hex_cid = messages[0].community.cid.encode("HEX")
+            for message in messages:
+                host, port = message.candidate.sock_addr
+                print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_request(messages)
 
     def on_introduction_response(self, messages):
-        hex_cid = messages[0].community.cid.encode("HEX")
-        for message in messages:
-            host, port = message.candidate.sock_addr
-            print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+        if not self._silent:
+            hex_cid = messages[0].community.cid.encode("HEX")
+            for message in messages:
+                host, port = message.candidate.sock_addr
+                print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
 def main():
@@ -351,12 +367,13 @@ def main():
     command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
+    command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
 
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir))
+    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), bool(opt.silent))
     dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
     dispersy.endpoint.start()
     dispersy.define_auto_load(TrackerCommunity)
