@@ -371,7 +371,7 @@ class Database(Singleton):
 
     def commit(self, exiting = False):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
-        assert (not exiting) and self._pending_commits, "No pending commits should be present when exiting"
+        assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:
             if __debug__: dprint("defer COMMIT")
