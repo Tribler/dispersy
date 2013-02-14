@@ -15,16 +15,11 @@ update_revision_information("$HeadURL$", "$Revision$")
 
 def cleanup():
     """
-    Removes all singleton instances from existing objects.
-
-    - Removes _singleton_instance parameters from all Singleton subclasses
-    - Unsets all _singleton_lock objects in all Singleton subclasses
+    Removes all singleton instances from existing Singleton subclasses
     """
     for cls in Singleton.__subclasses__():
         if hasattr(cls, "_singleton_instance"):
             delattr(cls, "_singleton_instance")
-        if cls._singleton_lock.isset():
-            cls._singleton_lock.unset()
 
 class Singleton(object):
     """
