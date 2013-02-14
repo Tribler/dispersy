@@ -57,6 +57,7 @@ from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistri
 from .dprint import dprint
 from .endpoint import DummyEndpoint
 from .member import DummyMember, Member, MemberFromId, MemberFromDatabaseId, MemberWithoutCheck
+from .member import cleanup as cleanup_members
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
 from .message import DropPacket, DelayPacket
@@ -73,6 +74,7 @@ from .resolution import PublicResolution, LinearResolution
 from .revision import update_revision_information
 from .statistics import DispersyStatistics
 from .singleton import Singleton
+from .singleton import cleanup as cleanup_singletons
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -4477,6 +4479,12 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         Flush changes to disk.
         """
         self._database.commit()
+        
+    def stop(self, timeout=2.0):
+        self._callback.stop(timeout=timeout)
+        
+        cleanup_members()
+        cleanup_singletons()
 
     def _candidate_walker(self):
         """
