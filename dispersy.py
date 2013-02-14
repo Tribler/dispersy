@@ -4481,6 +4481,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         self._database.commit()
         
     def stop(self, timeout=2.0):
+        """
+        Stop the callback thread and clean all caches.
+        """
         self._callback.stop(timeout=timeout)
         
         cleanup_members()
