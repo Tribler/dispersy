@@ -17,14 +17,11 @@ def cleanup():
     """
     Removes all singleton instances from existing Singleton subclasses
     """
-    import sys
     def clear(cls):
         if hasattr(cls, "_singleton_instance"):
-            print >> sys.stderr, "clearing singleton", cls
             delattr(cls, "_singleton_instance")
         
         if hasattr(cls, "_singleton_instances"):
-            print >> sys.stderr, "clearing singleton", cls
             delattr(cls, "_singleton_instances")
             
         for subcls in cls.__subclasses__():
