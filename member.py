@@ -25,15 +25,21 @@ def cleanup():
     - Clears _mid_cache from all DummyMember subclasses
     - Clears _did_cache from all DummyMember subclasses
     """
-    for cls in DummyMember.__subclasses__():
-        import sys
+    import sys
+    def clear(cls):
         print >> sys.stderr, "clearing class", cls
+        
         if hasattr(cls, "_cache"):
             cls._cache.clear()
         if hasattr(cls, "_mid_cache"):
             cls._mid_cache.clear()
         if hasattr(cls, "_did_cache"):
             cls._did_cache.clear()
+        
+        for subcls in cls.__subclasses__():
+            clear(subcls)
+    
+    clear(DummyMember)
 
 class DummyMember(object):
     def __init__(self, mid):

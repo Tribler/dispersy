@@ -20,6 +20,10 @@ def cleanup():
     for cls in Singleton.__subclasses__():
         if hasattr(cls, "_singleton_instance"):
             delattr(cls, "_singleton_instance")
+            
+    for cls in Parameterized1Singleton.__subclasses__():
+        if hasattr(cls, "_singleton_instances"):
+            delattr(cls, "_singleton_instances")
 
 class Singleton(object):
     """
