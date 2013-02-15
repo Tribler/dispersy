@@ -3111,8 +3111,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             return False
 
         # ending with .0
-        if binary[3] == "\x00":
-            return False
+#Niels: is now allowed, subnet mask magic call actually allow for this
+#        if binary[3] == "\x00":
+#            return False
 
         # ending with .255
         if binary[3] == "\xff":

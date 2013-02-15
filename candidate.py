@@ -7,7 +7,7 @@ if __debug__:
         assert len(address) == 2, len(address)
         assert isinstance(address[0], str), type(address[0])
         assert address[0], address[0]
-        assert all(ipdigit > 0 and ipdigit < 255 for ipdigit in map(int, address[0].split("."))), address[0]
+        assert not address[0] == "0.0.0.0", address
         assert isinstance(address[1], int), type(address[1])
         assert address[1] >= 0, address[1]
         return True
@@ -45,7 +45,6 @@ class Candidate(object):
         return self._sock_addr
     # @sock_addr.setter
     def __set_sock_addr(self, sock_addr):
-        assert is_address(sock_addr), sock_addr
         self._sock_addr = sock_addr
     # .setter was introduced in Python 2.6
     sock_addr = property(__get_sock_addr, __set_sock_addr)
