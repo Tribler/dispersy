@@ -7,7 +7,7 @@ if __debug__:
         assert len(address) == 2, len(address)
         assert isinstance(address[0], str), type(address[0])
         assert address[0], address[0]
-        assert not address[0] == "0.0.0.0", address
+        assert all(ipdigit > 0 and ipdigit < 255 for ipdigit in map(int, address[0].split("."))), address[0]
         assert isinstance(address[1], int), type(address[1])
         assert address[1] >= 0, address[1]
         return True
