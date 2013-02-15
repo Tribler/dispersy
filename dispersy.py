@@ -2219,8 +2219,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # we are unable to determine the WAN address, we are probably behind the same NAT
             wan_address = ("0.0.0.0", 0)
 
-        assert self._lan_address != sock_addr, [self.lan_address, lan_address]
-        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(sock_addr), [self.lan_address, lan_address]
+        assert self._lan_address != sock_addr, [self.lan_address, sock_addr]
+        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(sock_addr), [lan_address, sock_addr]
         assert self._wan_address != wan_address, [self._wan_address, wan_address]
         assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
         return lan_address, wan_address
