@@ -45,6 +45,7 @@ class Candidate(object):
         return self._sock_addr
     # @sock_addr.setter
     def __set_sock_addr(self, sock_addr):
+        assert is_address(sock_addr), sock_addr
         self._sock_addr = sock_addr
     # .setter was introduced in Python 2.6
     sock_addr = property(__get_sock_addr, __set_sock_addr)
