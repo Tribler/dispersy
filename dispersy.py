@@ -2564,10 +2564,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     yield DropMessage(message, "invalid LAN introduction address [is_valid_address]")
                     continue
 
-                if message.payload.lan_introduction_address == self._lan_address:
-                    yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
-                    continue
-
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
                 if not self.is_valid_address(message.payload.wan_introduction_address):
@@ -2576,6 +2572,17 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
                 if message.payload.wan_introduction_address == self._wan_address:
                     yield DropMessage(message, "invalid WAN introduction address [introduced to myself]")
+                    continue
+                
+                #if WAN ip-addresses match, check if the LAN address is not the same 
+                if message.payload.wan_introduction_address[0] == self._wan_address[0] and message.payload.lan_introduction_address == self._lan_address:
+                    yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
+                    continue
+                
+            # if we do not know the WAN address, make sure that the LAN address is not the same
+            elif not message.payload.lan_introduction_address == ("0.0.0.0", 0):
+                if message.payload.lan_introduction_address == self._lan_address:
+                    yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
                     continue
 
             yield message
@@ -2652,24 +2659,24 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 yield DropMessage(message, "invalid LAN walker address [puncture herself]")
                 continue
 
-            if not self.is_valid_address(message.payload.lan_walker_address):
-                yield DropMessage(message, "invalid LAN walker address [is_valid_address]")
-                continue
-
-            if message.payload.lan_walker_address == self._lan_address:
-                yield DropMessage(message, "invalid LAN walker address [puncture myself]")
-                continue
-
             if message.payload.wan_walker_address == message.candidate.sock_addr:
                 yield DropMessage(message, "invalid WAN walker address [puncture herself]")
                 continue
 
+            if not self.is_valid_address(message.payload.lan_walker_address):
+                yield DropMessage(message, "invalid LAN walker address [is_valid_address]")
+                continue
+            
             if not self.is_valid_address(message.payload.wan_walker_address):
                 yield DropMessage(message, "invalid WAN walker address [is_valid_address]")
                 continue
 
             if message.payload.wan_walker_address == self._wan_address:
                 yield DropMessage(message, "invalid WAN walker address [puncture myself]")
+                continue
+            
+            if message.payload.wan_walker_address[0] == self._wan_address[0] and message.payload.lan_walker_address == self._lan_address:
+                yield DropMessage(message, "invalid LAN walker address [puncture myself]")
                 continue
 
             yield message
