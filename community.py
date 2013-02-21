@@ -568,6 +568,7 @@ class Community(object):
             self._sync_cache.responses_received > 0 and
             self._sync_cache.times_used < 100):
             self._statistics.sync_bloom_reuse += 1
+            self._statistics.sync_bloom_send += 1
             cache = self._sync_cache
             cache.times_used += 1
             cache.responses_received = 0
@@ -581,6 +582,7 @@ class Community(object):
             self._sync_cache = SyncCache(*sync)
             self._sync_cache.candidate = request_cache.helper_candidate
             self._statistics.sync_bloom_new += 1
+            self._statistics.sync_bloom_send += 1
             if __debug__: dprint(self._cid.encode("HEX"), " new sync bloom (", self._statistics.sync_bloom_reuse, "/", self._statistics.sync_bloom_new, "~", round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2), ")")
 
         return sync
