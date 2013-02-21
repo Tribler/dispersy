@@ -75,6 +75,10 @@ class TestDispersyBatch(unittest.TestCase):
         pass
 
     @dispersyTest
+    def testDispersyMissingSequenceScript(self):
+        pass
+
+    @dispersyTest
     def testDispersyMissingMessageScript(self):
         pass
 

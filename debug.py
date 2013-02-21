@@ -330,6 +330,18 @@ class Node(object):
                          destination=(destination_candidate,),
                          payload=(missing_member, missing_global_times))
 
+    def create_dispersy_missing_sequence_message(self, missing_member, missing_message, missing_sequence_low, missing_sequence_high, global_time, destination_candidate):
+        assert isinstance(missing_member, Member)
+        assert isinstance(missing_message, Message)
+        assert isinstance(missing_sequence_low, (int, long))
+        assert isinstance(missing_sequence_high, (int, long))
+        assert isinstance(global_time, (int, long))
+        assert isinstance(destination_candidate, Candidate)
+        meta = self._community.get_meta_message(u"dispersy-missing-sequence")
+        return meta.impl(distribution=(global_time,),
+                         destination=(destination_candidate,),
+                         payload=(missing_member, missing_message, missing_sequence_low, missing_sequence_high))
+
     def create_dispersy_missing_proof_message(self, member, global_time):
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))

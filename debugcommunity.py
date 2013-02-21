@@ -97,6 +97,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(11), community.get_meta_message(u"last-1-doublemember-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(12), community.get_meta_message(u"protected-full-sync-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(13), community.get_meta_message(u"dynamic-resolution-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(14), community.get_meta_message(u"sequence-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         return pack("!B", len(message.payload.text)), message.payload.text
@@ -166,6 +167,7 @@ class DebugCommunity(Community):
                 Message(self, u"DESC-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"DESC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"protected-full-sync-text", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"dynamic-resolution-text", MemberAuthentication(), DynamicResolution(PublicResolution(), LinearResolution()), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
+                Message(self, u"sequence-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 ]
 
     def create_full_sync_text(self, text, store=True, update=True, forward=True):
@@ -220,6 +222,17 @@ class DebugCommunity(Community):
         meta = self.get_meta_message(u"dynamic-resolution-text")
         message = meta.impl(authentication=(self._my_member,),
                             distribution=(self.claim_global_time(),),
+                            payload=(text,))
+        self._dispersy.store_update_forward([message], store, update, forward)
+        return message
+
+    #
+    # sequence-text
+    #
+    def create_sequence_text(self, text, store=True, update=True, forward=True):
+        meta = self.get_meta_message(u"sequence-text")
+        message = meta.impl(authentication=(self._my_member,),
+                            distribution=(self.claim_global_time(), meta.distribution.claim_sequence_number()),
                             payload=(text,))
         self._dispersy.store_update_forward([message], store, update, forward)
         return message

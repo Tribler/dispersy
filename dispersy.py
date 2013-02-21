@@ -40,6 +40,7 @@ import os
 import sys
 import netifaces
 
+from collections import defaultdict
 from hashlib import sha1
 from itertools import groupby, islice, count, cycle
 from random import random, shuffle
@@ -3508,36 +3509,35 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         To limit the amount of bandwidth used we will not sent back more data after a certain amount
         has been sent.  This magic number is subject to change.
 
+        Sometimes peers will request overlapping sequence numbers.  Only unique messages will be
+        given back (per batch).  Also, if multiple sequence number ranges are requested, these
+        ranges are translated into one large range, and all containing sequence numbers are given
+        back.
+
         @param messages: dispersy-missing-sequence messages.
         @type messages: [Message.Implementation]
-
-        @todo: we need to optimise this to include a bandwidth throttle.  Otherwise a node can
-         easilly force us to send arbitrary large amounts of data.
         """
         community = messages[0].community
-        requests = {}
+        sources = defaultdict(lambda: defaultdict(set))
 
         if __debug__: dprint("received ", len(messages), " missing-sequence message for community ", community.database_id)
 
         # we know that there are buggy clients out there that give numerous overlapping requests.
         # we will filter these to perform as few queries on the database as possible
         for message in messages:
-            request = requests.get(message.candidate.sock_addr)
-            if not request:
-                requests[message.candidate.sock_addr] = request = (message.candidate, set())
-            candidate, numbers = request
-
             member_id = message.payload.member.database_id
             message_id = message.payload.message.database_id
             if __debug__:
-                dprint(candidate, " requests member:", member_id, " message_id:", message_id, " range:[", message.payload.missing_low, ":", message.payload.missing_high, "]")
+                dprint(message.candidate, " requests member:", member_id, " message_id:", message_id, " range:[", message.payload.missing_low, ":", message.payload.missing_high, "]")
                 for sequence in xrange(message.payload.missing_low, message.payload.missing_high + 1):
-                    if (member_id, message_id, sequence) in numbers:
-                        dprint("ignoring duplicate request for ", member_id, ":", message_id, ":", sequence, " from ", candidate)
-            numbers.update((member_id, message_id, sequence) for sequence in xrange(message.payload.missing_low, message.payload.missing_high + 1))
+                    # if (member_id, message_id, sequence) in numbers:
+                    if sequence in sources[message.candidate][(member_id, message_id)]:
+                        dprint("ignoring duplicate request for ", member_id, ":", message_id, ":", sequence, " from ", message.candidate)
+            sources[message.candidate][(member_id, message_id)].update(xrange(message.payload.missing_low, message.payload.missing_high + 1))
 
-        keyfunc = lambda tup: (tup[0], tup[1])
-        for candidate, numbers in requests.itervalues():
+        for candidate, requests in sources.iteritems():
+            assert isinstance(candidate, Candidate), type(candidate)
+
             # we limit the response by byte_limit bytes per incoming candidate
             byte_limit = community.dispersy_missing_sequence_response_limit
 
@@ -3547,10 +3547,11 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             packet_limit = max(1, int(byte_limit / 128))
 
             packets = []
-            for (member_id, message_id), iterator in groupby(sorted(numbers), keyfunc):
-                _, _, lowest = _, _, highest = iterator.next()
-                for _, _, highest in iterator:
-                    pass
+            for (member_id, message_id), sequences in requests.iteritems():
+                if not sequences:
+                    # empty set will fail min(...) and max(...)
+                    continue
+                lowest, highest = min(sequences), max(sequences)
 
                 # limiter
                 highest = min(lowest + packet_limit, highest)
@@ -3575,10 +3576,10 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 for packet in packets:
                     msg = self.convert_packet_to_message(packet, community)
                     assert msg
-                    key = (msg.authentication.member.database_id, msg.database_id, msg.distribution.sequence_number)
-                    assert key in requests[candidate.sock_addr][1], [key, sorted(numbers), lowest, highest]
-                    dprint("Syncing ", len(packet), " member:", key[0], " message:", key[1], " sequence:", key[2], " to " , candidate)
-            
+                    assert min(requests[(msg.authentication.member.database_id, msg.database_id)]) <= msg.distribution.sequence_number, ["giving back a seq-number that is smaller than the lowest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
+                    assert msg.distribution.sequence_number <= max(requests[(msg.authentication.member.database_id, msg.database_id)]), ["giving back a seq-number that is larger than the highest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
+                    dprint("Syncing ", len(packet), " member:", msg.authentication.member.database_id, " message:", msg.database_id, " sequence:", msg.distribution.sequence_number, " explicit:", "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", " to ", candidate)
+
             self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-", len(packets))
             self._endpoint.send([candidate], packets)
 
