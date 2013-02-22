@@ -25,7 +25,8 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
-DEBUG = False
+DEBUG = True
+
 class Endpoint(object):
     def __init__(self):
         self._total_up = 0
