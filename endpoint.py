@@ -261,6 +261,7 @@ class StandaloneEndpoint(RawserverEndpoint):
                     while True:
                         (data, sock_addr) = recvfrom(65535)
                         if data:
+                            print >> sys.stderr, sock_addr
                             packets.append((sock_addr, data))
                         else:
                             break
