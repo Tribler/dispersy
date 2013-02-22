@@ -2220,10 +2220,14 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # we are unable to determine the WAN address, we are probably behind the same NAT
             wan_address = ("0.0.0.0", 0)
 
-        assert self._lan_address != sock_addr, [self.lan_address, sock_addr]
-        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(sock_addr), [lan_address, sock_addr]
+        assert self._lan_address != lan_address, [self.lan_address, lan_address]
+        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(lan_address), [self._lan_address, lan_address]
         assert self._wan_address != wan_address, [self._wan_address, wan_address]
         assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
+        
+        #TEMP for das2 testing
+        assert lan_address[0].split(".")[-1] == wan_address[0].split(".")[-1], [lan_address, wan_address]
+        
         return lan_address, wan_address
 
     def take_step(self, community, allow_sync):
@@ -2917,7 +2921,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         messages_send = False
         if len(candidates) and len(messages):
             packets = [message.packet for message in messages]
-            messages_send = self.endpoint.send(candidates, packets)
+            messages_send = self._endpoint.send(candidates, packets)
         
         if messages_send:
             for message in messages:
@@ -3533,6 +3537,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     # if (member_id, message_id, sequence) in numbers:
                     if sequence in sources[message.candidate][(member_id, message_id)]:
                         dprint("ignoring duplicate request for ", member_id, ":", message_id, ":", sequence, " from ", message.candidate)
+            
             sources[message.candidate][(member_id, message_id)].update(xrange(message.payload.missing_low, message.payload.missing_high + 1))
 
         for candidate, requests in sources.iteritems():
@@ -3565,10 +3570,11 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
                     byte_limit -= len(packet)
                     if byte_limit <= 0:
-                        if __debug__: dprint("Bandwidth throttle")
+                        if __debug__: dprint("Bandwidth throttle", byte_limit, packet_limit)
                         break
 
                 if byte_limit <= 0 or packet_limit <= 0:
+                    if __debug__: dprint("Bandwidth throttle", byte_limit, packet_limit)
                     break
 
             if __debug__:
@@ -3578,7 +3584,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     assert msg
                     assert min(requests[(msg.authentication.member.database_id, msg.database_id)]) <= msg.distribution.sequence_number, ["giving back a seq-number that is smaller than the lowest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
                     assert msg.distribution.sequence_number <= max(requests[(msg.authentication.member.database_id, msg.database_id)]), ["giving back a seq-number that is larger than the highest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
-                    dprint("Syncing ", len(packet), " member:", msg.authentication.member.database_id, " message:", msg.database_id, " sequence:", msg.distribution.sequence_number, " explicit:", "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", " to ", candidate)
+                    dprint("Syncing ", len(packet), " member:", msg.authentication.member.database_id, " message:", msg.database_id, " sequence:", msg.distribution.sequence_number, " explicit:", "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", " to ", candidate, force = 1)
 
             self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-", len(packets))
             self._endpoint.send([candidate], packets)
