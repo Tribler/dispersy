@@ -2674,6 +2674,10 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
     def check_puncture_request(self, messages):
         for message in messages:
+            
+            import sys
+            print >> sys.stderr, "check_puncture_req", message.payload.lan_walker_address, message.payload.wan_walker_address, message.candidate.sock_addr
+            
             if message.payload.lan_walker_address == message.candidate.sock_addr:
                 yield DropMessage(message, "invalid LAN walker address [puncture herself]")
                 continue
