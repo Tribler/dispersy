@@ -2226,7 +2226,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
         
         #TEMP for das2 testing
-        assert lan_address[0].split(".")[-1] == wan_address[0].split(".")[-1], [lan_address, wan_address]
+        if wan_address[0] != "130.161.211.245":  
+            assert lan_address[0].split(".")[-1] == wan_address[0].split(".")[-1], [lan_address, wan_address]
         return lan_address, wan_address
 
     def take_step(self, community, allow_sync):
