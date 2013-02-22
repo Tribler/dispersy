@@ -2382,6 +2382,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 if __debug__: dprint("dropping dispersy-introduction-request, this identifier is already in use.")
                 yield DropMessage(message, "Duplicate identifier from %s (most likely received from ourself)" % str(message.candidate))
                 continue
+            
+            import sys
+            print >> sys.stderr, "check_intro_req", message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.sock_addr
 
             if __debug__: dprint("accepting dispersy-introduction-request from ", message.candidate)
             yield message
@@ -2570,7 +2573,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 continue
             
             import sys
-            print >> sys.stderr, "check_intro", message.payload.lan_introduction_address, message.payload.wan_introduction_address, message.candidate.sock_addr
+            print >> sys.stderr, "check_intro_resp", message.payload.lan_introduction_address, message.payload.wan_introduction_address, message.candidate.sock_addr
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
