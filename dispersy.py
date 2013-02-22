@@ -2187,12 +2187,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         is_valid_address.  Similarly, the returned WAN address is either ("0.0.0.0", 0) or it is not
         our WAN address while passing is_valid_address.
         """
-        
-        orig_lan_address = lan_address
-        orig_wan_address = wan_address
-        orig_sock_address = sock_addr
-        
-        
         if self._lan_address == lan_address or not self.is_valid_address(lan_address):
             if __debug__:
                 if lan_address != sock_addr:
@@ -2231,9 +2225,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert self._wan_address != wan_address, [self._wan_address, wan_address]
         assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
         
-        #TEMP for das2 testing
-        if wan_address[0] != "130.161.211.245":  
-            assert lan_address[0].split(".")[-1] == wan_address[0].split(".")[-1], [lan_address, wan_address, orig_lan_address, orig_wan_address, orig_sock_address]
         return lan_address, wan_address
 
     def take_step(self, community, allow_sync):
@@ -2382,9 +2373,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 if __debug__: dprint("dropping dispersy-introduction-request, this identifier is already in use.")
                 yield DropMessage(message, "Duplicate identifier from %s (most likely received from ourself)" % str(message.candidate))
                 continue
-            
-            import sys
-            print >> sys.stderr, "check_intro_req", message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.sock_addr
 
             if __debug__: dprint("accepting dispersy-introduction-request from ", message.candidate)
             yield message
@@ -2571,9 +2559,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
                 yield DropMessage(message, "invalid response identifier")
                 continue
-            
-            import sys
-            print >> sys.stderr, "check_intro_resp", message.payload.lan_introduction_address, message.payload.wan_introduction_address, message.candidate.sock_addr
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
@@ -2672,10 +2657,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
     def check_puncture_request(self, messages):
         for message in messages:
-            
-            import sys
-            print >> sys.stderr, "check_puncture_req", message.payload.lan_walker_address, message.payload.wan_walker_address, message.candidate.sock_addr
-            
             if message.payload.lan_walker_address == message.candidate.sock_addr:
                 yield DropMessage(message, "invalid LAN walker address [puncture herself]")
                 continue

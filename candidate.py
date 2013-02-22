@@ -120,10 +120,6 @@ class WalkCandidate(Candidate):
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
                 dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error", stack=True)
                 assert False
-                
-        #TEMP for das2
-        if wan_address[0] != "130.161.211.245":  
-            assert self._lan_address[0].split(".")[-1] == self._wan_address[0].split(".")[-1], [self._lan_address, self._wan_address]
 
     @property
     def lan_address(self):
@@ -397,10 +393,6 @@ class WalkCandidate(Candidate):
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
                 dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error", stack=True)
-        
-        #TEMP for das2
-        if wan_address[0] != "130.161.211.245":  
-            assert self._lan_address[0].split(".")[-1] == self._wan_address[0].split(".")[-1], [lan_address, wan_address, self._lan_address, self._wan_address]
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:
