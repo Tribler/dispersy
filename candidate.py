@@ -123,6 +123,7 @@ class WalkCandidate(Candidate):
                 
         #TEMP for das2
         assert self._lan_address[0].split(".")[-1] == self._wan_address[0].split(".")[-1], [self._lan_address, self._wan_address]
+        assert False
 
     @property
     def lan_address(self):
