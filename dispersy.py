@@ -2568,6 +2568,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
                 yield DropMessage(message, "invalid response identifier")
                 continue
+            
+            import sys
+            print >> sys.stderr, "check_intro", message.payload.lan_introduction_address, message.payload.wan_introduction_address, message.candidate.sock_addr
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
