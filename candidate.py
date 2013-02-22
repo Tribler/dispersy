@@ -395,7 +395,7 @@ class WalkCandidate(Candidate):
                 dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error", stack=True)
         
         #TEMP for das2
-        assert self._lan_address[0].split(".")[-1] == self._wan_address[0].split(".")[-1], [lan_address, wan_address, self._lan_address, self._wan_address]
+        #assert self._lan_address[0].split(".")[-1] == self._wan_address[0].split(".")[-1], [lan_address, wan_address, self._lan_address, self._wan_address]
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:
