@@ -2605,6 +2605,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             yield message
 
     def on_introduction_response(self, messages):
+        return
+        
         community = messages[0].community
         now = time()
 
@@ -2731,6 +2733,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             yield message
 
     def on_puncture(self, messages):
+        return
+        
         community = messages[0].community
         now = time()
 
