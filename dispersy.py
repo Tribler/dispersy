@@ -286,6 +286,7 @@ class Dispersy(Singleton):
         assert isinstance(callback, Callback)
         assert isinstance(working_directory, unicode)
         assert isinstance(database_filename, unicode)
+        assert False
 
         super(Dispersy, self).__init__()
 
