@@ -27,13 +27,15 @@ class RequestCache(object):
         self._callback = callback
         self._identifiers = dict()
 
-    def claim(self, cache):
+    def generate_identifier(self):
         while True:
             identifier = int(random() * 2**16)
             if not identifier in self._identifiers:
                 if __debug__: dprint("claiming on ", identifier_to_string(identifier), " for ", cache)
-                break
+                return identifier
 
+    def claim(self, cache):
+        identifier = self.generate_identifier()
         self.set(identifier, cache)
         return identifier
 
