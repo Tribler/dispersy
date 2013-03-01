@@ -76,7 +76,8 @@ class RequestCache(object):
 
             if cache.cleanup_delay:
                 self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
-            else:
+            
+            elif identifier in self._identifiers:
                 self._callback.unregister("requestcache-%s" % identifier)
                 del self._identifiers[identifier]
 
@@ -90,7 +91,8 @@ class RequestCache(object):
         
         if cache.cleanup_delay:
             self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
-        else:
+        
+        elif identifier in self._identifiers:
             del self._identifiers[identifier]
 
     def _on_cleanup(self, identifier):
@@ -99,4 +101,5 @@ class RequestCache(object):
         if __debug__: dprint("cleanup on ", identifier_to_string(identifier), " for ", cache)
         cache.on_cleanup()
         
-        del self._identifiers[identifier]
+        if identifier in self._identifiers:
+            del self._identifiers[identifier]
