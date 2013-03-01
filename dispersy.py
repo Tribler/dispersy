@@ -2610,7 +2610,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             candidate.associate(community, message.authentication.member)
             candidate.walk_response(community)
             self._filter_duplicate_candidate(candidate)
-            if __debug__: dprint("introduction response from ", candidate, force = 1)
+            if __debug__: dprint("introduction response from ", candidate)
 
             # apply vote to determine our WAN address
             self.wan_address_vote(payload.destination_address, candidate)
@@ -2644,7 +2644,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # reset the 'I have been introduced' timer
                 candidate.intro(community, now)
                 self._filter_duplicate_candidate(candidate)
-                if __debug__: dprint("received introduction to ", candidate, force = 1)
+                if __debug__: dprint("received introduction to ", candidate)
                 
                 cache.response_candidate = candidate
                 
