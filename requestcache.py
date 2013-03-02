@@ -31,11 +31,12 @@ class RequestCache(object):
         while True:
             identifier = int(random() * 2**16)
             if not identifier in self._identifiers:
-                if __debug__: dprint("claiming on ", identifier_to_string(identifier), " for ", cache)
+                if __debug__: dprint("claiming on ", identifier_to_string(identifier))
                 return identifier
 
     def claim(self, cache):
         identifier = self.generate_identifier()
+        if __debug__: dprint("claiming on ", identifier_to_string(identifier), " for ", cache)
         self.set(identifier, cache)
         return identifier
 
