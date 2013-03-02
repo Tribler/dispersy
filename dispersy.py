@@ -1540,6 +1540,11 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 if __debug__: dprint("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
                 return None
             
+            # check if we have this candidate registered at its sock_addr
+            candidate = self.get_candidate(message.candidate.sock_addr, replace = False, source_lan_address)
+            if candidate:
+                return candidate
+            
             candidate = community.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
             return candidate
             
