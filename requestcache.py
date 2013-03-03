@@ -51,6 +51,18 @@ class RequestCache(object):
         self._callback.register(self._on_timeout, (identifier,), id_="requestcache-%s" % identifier, delay=cache.timeout_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
+        
+    def replace(self, identifier, cache):
+        assert isinstance(identifier, (int, long, str)), type(identifier)
+        assert identifier in self._identifiers, identifier
+        assert isinstance(cache, Cache)
+        assert isinstance(cache.timeout_delay, float)
+        assert cache.timeout_delay > 0.0
+
+        if __debug__: dprint("replace ", identifier_to_string(identifier), " for ", cache, " (", cache.timeout_delay, "s timeout)")
+        self._callback.replace_register("requestcache-%s" % identifier, self._on_timeout, (identifier,), delay=cache.cleanup_delay)
+        self._identifiers[identifier] = cache
+        cache.identifier = identifier
 
     def has(self, identifier, cls):
         assert isinstance(identifier, (int, long, str)), type(identifier)
