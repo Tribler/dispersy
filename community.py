@@ -1601,7 +1601,7 @@ class Community(object):
         @return: The new meta messages.
         @rtype: [Message]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(self)
 
     def initiate_conversions(self):
         """
@@ -1615,11 +1615,11 @@ class Community(object):
 
         @rtype: [Conversion]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(self)
 
 class HardKilled(object):
     def __init__(self, *args, **kargs):
-        super(HardKilledBase, self).__init__(*args, **kargs)
+        super(HardKilled, self).__init__(*args, **kargs)
 
         destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
         try:
@@ -1631,7 +1631,7 @@ class HardKilled(object):
             self._destroy_community_packet = str(packet)
 
     def _initialize_meta_messages(self):
-        super(HardKilledBase, self)._initialize_meta_messages()
+        super(HardKilled, self)._initialize_meta_messages()
 
         # replace introduction_request behavior
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
@@ -1679,5 +1679,5 @@ class HardKilled(object):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
         self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
 
-class HardKilledCommunity(Community, HardKilled):
+class HardKilledCommunity(HardKilled, Community):
     pass

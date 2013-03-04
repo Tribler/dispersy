@@ -272,5 +272,5 @@ class DebugCommunity(Community):
         elif message.payload.is_hard_kill:
             return HardKilledDebugCommunity
 
-class HardKilledDebugCommunity(DebugCommunity, HardKilled):
+class HardKilledDebugCommunity(HardKilled, DebugCommunity):
     pass
