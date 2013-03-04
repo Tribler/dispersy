@@ -1636,15 +1636,15 @@ class HardKilledCommunity(Community):
         # remove all messages that we no longer need
         meta_messages = self._meta_messages
         self._meta_messages = {}
-        for name in [u"dispersy-authorize",
-                     u"dispersy-destroy-community",
-                     u"dispersy-dynamic-settings",
-                     u"dispersy-identity",
-                     u"dispersy-introduction-request",
-                     u"dispersy-missing-identity",
-                     u"dispersy-missing-proof",
-                     u"dispersy-revoke"]:
-            self._meta_messages[name] = meta_messages[name]
+        for name, meta in meta_messages.iteritems():
+            if (name in [u"dispersy-authorize",
+                         u"dispersy-identity",
+                         u"dispersy-introduction-request",
+                         u"dispersy-missing-identity",
+                         u"dispersy-missing-proof",
+                         u"dispersy-revoke"] or
+                isinstance(meta.resolution, (LinearResolution, DynamicResolution))):
+                self._meta_messages[name] = meta
 
         # replace introduction_request behavior
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
