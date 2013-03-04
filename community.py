@@ -408,7 +408,6 @@ class Community(object):
                     if __debug__:
                         dprint("invalid message in database [", self.get_classification(), "; ", self.cid.encode("HEX"), "]", level="error")
                         dprint(str(packet).encode("HEX"), level="error")
-                        assert False
 
     # @property
     def __get_dispersy_auto_load(self):
