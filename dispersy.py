@@ -2391,19 +2391,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             assert self.is_valid_address(introduced.lan_address), [introduced.lan_address, self.lan_address]
             assert self.is_valid_address(introduced.wan_address), [introduced.wan_address, self.wan_address]
 
-            # # we can only use WalkCandidates
-            # if not isinstance(candidate, WalkCandidate):
-            #     return False
-
-            if candidate.wan_address[0] == introduced.wan_address[0]:
-                if candidate.lan_address == introduced.lan_address:
-                    # must not introduce someone to herself (inside same LAN)
-                    return False
-
-            elif candidate.sock_addr == introduced.wan_address:
-                # must not introduce someone to herself
-                return False
-
             if (message.payload.connection_type == u"symmetric-NAT" and
                 introduced.connection_type == u"symmetric-NAT" and
                 not candidate.wan_address[0] == introduced.wan_address[0]):
@@ -2411,7 +2398,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 return False
 
             return True
-
+        
         #
         # process the walker part of the request
         #
@@ -2444,41 +2431,27 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             
             self._filter_duplicate_candidate(candidate)
             if __debug__: dprint("received introduction request from ", candidate)
-            
-        # create iterator -after- creating all the candidates.  this will allow the candidates in
-        # one batch to be introduced to each other
-        random_candidate_iterator = community.dispersy_yield_introduce_candidates()
-
-        for message in messages:
-            payload = message.payload
 
             if payload.advice:
                 first_invalid_sock_addr = None
-                for introduced in random_candidate_iterator:
+                for introduced in community.dispersy_yield_introduce_candidates(candidate):
                     if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break
-
-                    if introduced.sock_addr == first_invalid_sock_addr:
-                        # we cycled through all candidates in
-                        # random_candidate_iterator and did not find
-                        # any valid ones
-                        introduced = None
-                        break
-
+                    
                     if first_invalid_sock_addr is None:
                         # introduced is not valid for this candidate,
                         # we will remember its sock_addr to ensure
                         # that we do not endlessly loop over the
-                        # random_candidate_iterator
+                        # dispersy_yield_random_candidates
                         first_invalid_sock_addr = introduced.sock_addr
-
-                else:
-                    # no more entries in random_candidate_iterator.
-                    # this means that the iterator is empty (since
-                    # this is a cycled iterator)
-                    introduced = None
-
+                        
+                    elif first_invalid_sock_addr == introduced.sock_addr:
+                        # we cycled through all candidates in
+                        # dispersy_yield_random_candidates and did not find
+                        # any valid ones
+                        introduced = None
+                        break
             else:
                 if __debug__: dprint("no candidates available to introduce")
                 introduced = None
