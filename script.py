@@ -58,7 +58,7 @@ class ScriptBase(object):
         # self._dispersy.callback.register(self.run)
         if self.enable_wait_for_wan_address:
             self.add_testcase(self.wait_for_wan_address)
-            
+
         self.run()
 
     def add_testcase(self, func, args=()):
@@ -73,9 +73,11 @@ class ScriptBase(object):
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
-            if __debug__: dprint("start ", call, line=True, force=True)
+            dprint("start ", call, line=True, force=True)
+            if args:
+                dprint("arguments ", args, force=True)
             if call.__doc__:
-                dprint(call.__doc__, box=True)
+                dprint(call.__doc__, box=True, force=True)
             self._dispersy.callback.register(call, args, callback=self.next_testcase)
 
         else:
@@ -3162,6 +3164,57 @@ class DispersyDynamicSettings(ScriptBase):
             pass
         else:
             assert_(False, "must NOT accept the message")
+
+        # cleanup
+        community.create_dispersy_destroy_community(u"hard-kill")
+        self._dispersy.get_community(community.cid).unload_community()
+
+class DispersyNeighborhoodScript(ScriptBase):
+    def run(self):
+        ec = ec_generate_key(u"low")
+        self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+
+        self.add_testcase(self.forward, (1,))
+        self.add_testcase(self.forward, (10,))
+        self.add_testcase(self.forward, (2,))
+        self.add_testcase(self.forward, (3,))
+        self.add_testcase(self.forward, (20,))
+
+    def forward(self, node_count):
+        """
+        SELF should forward created messages to its neighbors.
+
+        - Multiple (NODE_COUNT) nodes connect to SELF
+        - SELF creates a new message
+        - At most 10 NODES should receive the message once
+        """
+        community = DebugCommunity.create_community(self._my_member)
+        meta = community.get_meta_message(u"full-sync-text")
+
+        # check configuration
+        assert_(meta.destination.node_count == 10, meta.destination.node_count)
+
+        # provide SELF with a neighborhood
+        nodes = [DebugNode() for _ in xrange(node_count)]
+        for node in nodes:
+            node.init_socket()
+            node.set_community(community)
+            node.init_my_member()
+
+        # SELF creates a message
+        message = community.create_full_sync_text("Hello World!")
+        yield 0.1
+
+        # ensure sufficient NODES received the message
+        forwarded_node_count = 0
+        for node in nodes:
+            forwarded = [m for _, m in node.receive_messages(message_names=[u"full-sync-text"])]
+            assert_(len(forwarded) in (0, 1), "should only receive one or none", len(forwarded))
+            if len(forwarded) == 1:
+                assert_(forwarded[0].packet == message.packet, "did not receive the correct message")
+                forwarded_node_count += 1
+
+        assert_(forwarded_node_count == min(node_count, meta.destination.node_count))
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

@@ -18,7 +18,7 @@ class TestCandidates(unittest.TestCase):
     def tearDown(self):
         Dispersy.del_instance()
         
-    def test_yield_random_candidates(self):
+    def test_yield_introduce_candidates(self):
         c = DebugCommunity.create_community(self.mm)
         candidates = []
         for i in range(5):
@@ -33,7 +33,7 @@ class TestCandidates(unittest.TestCase):
         for candidate in candidates:
             candidate.stumble(c, now)
 
-            candidate = c.dispersy_yield_random_candidates(candidate).next()
+            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
             got.append(candidate.lan_address if candidate else None)
         
         self.assertEquals(expected, got)
@@ -45,7 +45,7 @@ class TestCandidates(unittest.TestCase):
         for candidate in reversed(candidates):
             candidate.stumble(c2, now)
             
-            candidate = c2.dispersy_yield_random_candidates(candidate).next()
+            candidate = c2.dispersy_yield_introduce_candidates(candidate).next()
             got.append(candidate.lan_address if candidate else None)
         
         self.assertEquals(expected, got)
@@ -62,7 +62,7 @@ class TestCandidates(unittest.TestCase):
             
             candidate = c.create_candidate(address, False, address, address, u"unknown")
             candidate.stumble(c, now)
-            candidate = c.dispersy_yield_random_candidates(candidate).next()
+            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
             got.append(candidate.lan_address if candidate else None)
         
         self.assertEquals(expected, got)

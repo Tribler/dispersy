@@ -320,7 +320,7 @@ class Community(object):
         self._walked_candidates = self._iter_category(u'walk')
         self._stumbled_candidates = self._iter_category(u'stumble')
         self._introduced_candidates = self._iter_category(u'intro')
-        
+
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
         self._bootstrap_candidates = self._iter_bootstrap()
 
@@ -1377,10 +1377,29 @@ class Community(object):
         if not result:
             result = b.next() if r <= .5 else a.next()
         return result
-    
-    def dispersy_yield_random_candidates(self, candidate = None):
+
+    def dispersy_yield_random_candidates(self):
         """
-        Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
+        Yields unique active candidates.
+
+        The returned 'walk' and 'stumble' candidates are randomized on every call and returned only
+        once each.
+        """
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        now = time()
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.is_any_active(now) and candidate.get_category(self, now) in (u"walk", u"stumble")]
+        shuffle(candidates)
+        return iter(candidates)
+
+    def dispersy_yield_introduce_candidates(self, candidate = None):
+        """
+        Yield non-unique active candidates or None in round robin fashion.
+
+        This method is used by the walker to choose the candidates to introduce when an introduction
+        request is received.
+
+        None is yielded whenever either self._walked_candidates or self._stumbled_candidates runs
+        out of candidates.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
         prev_result = None

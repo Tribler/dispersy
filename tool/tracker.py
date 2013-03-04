@@ -32,7 +32,6 @@ if __name__ == "__main__":
     print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
     exit(1)
 
-from random import random
 from time import time
 import os
 import errno
@@ -196,26 +195,6 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
-    def dispersy_yield_random_candidates(self, candidate = None):
-        """
-        Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
-        """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-        import sys
-        prev_result = None
-        while True:
-            result = self._walked_stumbled_candidates.next() 
-            if prev_result == result:
-                print >> sys.stderr,  long(time()), "yielding random", None
-                yield None
-                
-            else:
-                prev_result = result
-                if result == candidate:
-                    continue
-                print >> sys.stderr, long(time()), "yielding random", result
-                yield result
-
 class TrackerDispersy(Dispersy):
     @classmethod
     def get_instance(cls, *args, **kargs):
@@ -326,7 +305,7 @@ class TrackerDispersy(Dispersy):
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
             print "CANDIDATE", len(self._candidates)
-            
+
             if self._statistics.outgoing:
                 for key, value in self._statistics.outgoing.iteritems():
                     print "OUTGOING", key, value

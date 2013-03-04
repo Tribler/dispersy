@@ -262,6 +262,15 @@ class Node(object):
             dprint(message.name, " (", len(packet), " bytes) from ", candidate)
             return candidate, message
 
+    def receive_messages(self, *args, **kargs):
+        messages = []
+        while True:
+            try:
+                messages.append(self.receive_message(*args, **kargs))
+            except socket.error:
+                break
+        return messages
+
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):
         meta = self._community.get_meta_message(u"dispersy-authorize")
         return meta.impl(authentication=(self._my_member,),

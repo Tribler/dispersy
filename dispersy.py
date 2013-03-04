@@ -2447,7 +2447,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             
         # create iterator -after- creating all the candidates.  this will allow the candidates in
         # one batch to be introduced to each other
-        random_candidate_iterator = cycle(community.dispersy_yield_random_candidates())
+        random_candidate_iterator = community.dispersy_yield_introduce_candidates()
 
         for message in messages:
             payload = message.payload
@@ -2898,7 +2898,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             raise NotImplementedError(meta.destination)
         
         if __debug__ and not result:
-            candidates = list(islice(meta.community.dispersy_yield_random_candidates(), 10))
+            candidates = list(islice(meta.community.dispersy_yield_random_candidates(), meta.destination.node_count))
             dprint("_forward failed, did not send %d %s messages destinationtype %s nr candidates %d"%(len(messages), meta.name, type(meta.destination), len(candidates)), level="warning")
         return result
     
@@ -2914,7 +2914,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         @type messages: [Message.Implementation]
         """
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
-        candidates = [candidate for candidate in candidates if candidate]
+        # 04/03/13 boudewijn: CANDIDATES should contain candidates, never None
+        # candidates = [candidate for candidate in candidates if candidate]
         assert all(isinstance(candidate, Candidate) for candidate in candidates)
         assert isinstance(messages, (tuple, list))
         assert len(messages) > 0
