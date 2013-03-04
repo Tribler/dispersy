@@ -13,7 +13,6 @@ from itertools import islice
 from math import ceil
 from random import random, Random, randint, shuffle
 from time import time
-from itertools import cycle
 
 try:
     # python 2.7 only...
@@ -409,6 +408,7 @@ class Community(object):
                     if __debug__:
                         dprint("invalid message in database [", self.get_classification(), "; ", self.cid.encode("HEX"), "]", level="error")
                         dprint(str(packet).encode("HEX"), level="error")
+                        assert False
 
     # @property
     def __get_dispersy_auto_load(self):
@@ -1515,8 +1515,8 @@ class Community(object):
 
         Once a community is destroyed, it must be reclassified to ensure that it is not loaded in
         its regular form.  This method returns the class that the community will be reclassified
-        into.  The default is either the SoftKilledCommunity or the HardKilledCommunity class,
-        depending on the received dispersy-destroy-community message.
+        into.  It should return either a subclass of SoftKilled or HardKilled depending on the
+        received dispersy-destroy-community message.
 
         Depending on the degree of the destroy message, we will need to cleanup in different ways.
 
@@ -1617,9 +1617,9 @@ class Community(object):
         """
         raise NotImplementedError()
 
-class HardKilledCommunity(Community):
+class HardKilled(object):
     def __init__(self, *args, **kargs):
-        super(HardKilledCommunity, self).__init__(*args, **kargs)
+        super(HardKilledBase, self).__init__(*args, **kargs)
 
         destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
         try:
@@ -1631,20 +1631,7 @@ class HardKilledCommunity(Community):
             self._destroy_community_packet = str(packet)
 
     def _initialize_meta_messages(self):
-        super(HardKilledCommunity, self)._initialize_meta_messages()
-
-        # remove all messages that we no longer need
-        meta_messages = self._meta_messages
-        self._meta_messages = {}
-        for name, meta in meta_messages.iteritems():
-            if (name in [u"dispersy-authorize",
-                         u"dispersy-identity",
-                         u"dispersy-introduction-request",
-                         u"dispersy-missing-identity",
-                         u"dispersy-missing-proof",
-                         u"dispersy-revoke"] or
-                isinstance(meta.resolution, (LinearResolution, DynamicResolution))):
-                self._meta_messages[name] = meta
+        super(HardKilledBase, self)._initialize_meta_messages()
 
         # replace introduction_request behavior
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
@@ -1691,3 +1678,6 @@ class HardKilledCommunity(Community):
     def dispersy_on_introduction_request(self, messages):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
         self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
+
+class HardKilledCommunity(Community, HardKilled):
+    pass

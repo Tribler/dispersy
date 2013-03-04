@@ -2,7 +2,7 @@ from struct import pack, unpack_from
 
 from .authentication import DoubleMemberAuthentication, MemberAuthentication
 from .candidate import Candidate
-from .community import Community
+from .community import Community, HardKilled
 from .conversion import BinaryConversion, DefaultConversion
 from .debug import Node
 from .destination import MemberDestination, CommunityDestination
@@ -264,3 +264,13 @@ class DebugCommunity(Community):
         for member, global_time, packet in descriptors:
             message = packet.load_message()
             dprint("undo \"", message.payload.text, "\" @", global_time)
+
+    def dispersy_cleanup_community(self, message):
+        if message.payload.is_soft_kill:
+            raise NotImplementedError()
+
+        elif message.payload.is_hard_kill:
+            return HardKilledDebugCommunity
+
+class HardKilledDebugCommunity(DebugCommunity, HardKilled):
+    pass
