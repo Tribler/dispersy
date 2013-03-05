@@ -4331,7 +4331,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     counter_member_id = 0
                     exception = None
                     for packet_id, member_id, packet in select(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time LIMIT ? OFFSET ?", (meta.database_id,)):
-                        message = self.convert_packet_to_message(str(packet), community, verify=False)
+                        packet = str(packet)
+                        message = self.convert_packet_to_message(packet, community, verify=False)
                         assert message
 
                         if member_id != counter_member_id:
