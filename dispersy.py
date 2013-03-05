@@ -3513,7 +3513,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     # if (member_id, message_id, sequence) in numbers:
                     if sequence in sources[message.candidate][(member_id, message_id)]:
                         dprint("ignoring duplicate request for ", member_id, ":", message_id, ":", sequence, " from ", message.candidate)
-            
             sources[message.candidate][(member_id, message_id)].update(xrange(message.payload.missing_low, message.payload.missing_high + 1))
 
         for candidate, requests in sources.iteritems():
@@ -3526,6 +3525,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             # into a packet limit.  we will assume a 256 byte packet size (security packets are
             # generally small)
             packet_limit = max(1, int(byte_limit / 128))
+            if __debug__: dprint("will allow at most... byte_limit:", byte_limit, " packet_limit:", packet_limit, " for ", candidate)
 
             packets = []
             for (member_id, message_id), sequences in requests.iteritems():
@@ -3536,7 +3536,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
                 # limiter
                 highest = min(lowest + packet_limit, highest)
-                packet_limit -= (highest - lowest) + 1
 
                 if __debug__: dprint("fetching member:", member_id, " message:", message_id, ", ", highest - lowest + 1, " packets from database for ", candidate)
                 for packet, in self._database.execute(u"SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time LIMIT ? OFFSET ?",
@@ -3544,13 +3543,14 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     packet = str(packet)
                     packets.append(packet)
 
+                    packet_limit -= 1
                     byte_limit -= len(packet)
                     if byte_limit <= 0:
-                        if __debug__: dprint("Bandwidth throttle", byte_limit, packet_limit)
+                        if __debug__: dprint("Bandwidth throttle.  byte_limit:", byte_limit, "  packet_limit:", packet_limit)
                         break
 
                 if byte_limit <= 0 or packet_limit <= 0:
-                    if __debug__: dprint("Bandwidth throttle", byte_limit, packet_limit)
+                    if __debug__: dprint("Bandwidth throttle.  byte_limit:", byte_limit, "  packet_limit:", packet_limit)
                     break
 
             if __debug__:
