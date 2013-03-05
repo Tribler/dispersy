@@ -4341,7 +4341,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                                 break
 
                         if not counter == message.distribution.sequence_number:
-                            dprint(meta.name, " for member ", member_id, " has sequence number ", message.distribution.sequence_number, " expected ", counter, level="error")
+                            dprint(meta.name, " for member ", member_id, " has sequence number ", message.distribution.sequence_number, " expected ", counter, "\n", packet.encode("HEX"), level="error")
                             exception = ValueError("inconsistent sequence numbers in packet ", packet_id)
 
                         counter += 1
