@@ -2167,111 +2167,107 @@ class DispersyMissingSequenceScript(ScriptBase):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.add_testcase(self.setup, (10,))
+        self.add_testcase(self.setup, (3, 10))
         # single range requests
-        self.add_testcase(self.requests, ([1], (1, 1),))
-        self.add_testcase(self.requests, ([10], (10, 10),))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8,9,10], (1, 10),))
-        self.add_testcase(self.requests, ([3,4,5,6,7,8,9,10], (3, 10),))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7], (1, 7),))
-        self.add_testcase(self.requests, ([3,4,5,6,7], (3, 7),))
+        for node_count in [1, 2, 3]:
+            self.add_testcase(self.requests, (node_count, [1], (1, 1),))
+            self.add_testcase(self.requests, (node_count, [10], (10, 10),))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8,9,10], (1, 10),))
+            self.add_testcase(self.requests, (node_count, [3,4,5,6,7,8,9,10], (3, 10),))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7], (1, 7),))
+            self.add_testcase(self.requests, (node_count, [3,4,5,6,7], (3, 7),))
 
-        # multi-range requests
-        self.add_testcase(self.requests, ([1], (1,1), (1,1), (1,1)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (1,4), (2,5)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (1,2), (2,3), (3,4), (4,5)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (1,1), (5,5)))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8)))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9)))
+            # multi-range requests
+            self.add_testcase(self.requests, (node_count, [1], (1,1), (1,1), (1,1)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (1,4), (2,5)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (1,1), (5,5)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9)))
 
-        # multi-range requests, in different orders
-        self.add_testcase(self.requests, ([1], (1,1), (1,1), (1,1)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (2,5), (1,4)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (4,5), (3,4), (1,2), (2,3)))
-        self.add_testcase(self.requests, ([1,2,3,4,5], (5,5), (1,1)))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5)))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2)))
+            # multi-range requests, in different orders
+            self.add_testcase(self.requests, (node_count, [1], (1,1), (1,1), (1,1)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (2,5), (1,4)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5], (5,5), (1,1)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5)))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2)))
 
-        # single range requests, invalid requests
-        self.add_testcase(self.requests, ([10], (10, 11),))
-        self.add_testcase(self.requests, ([], (11, 11),))
-        self.add_testcase(self.requests, ([1,2,3,4,5,6,7,8,9,10], (1, 11112),))
-        self.add_testcase(self.requests, ([], (1111, 11112),))
+            # single range requests, invalid requests
+            self.add_testcase(self.requests, (node_count, [10], (10, 11),))
+            self.add_testcase(self.requests, (node_count, [], (11, 11),))
+            self.add_testcase(self.requests, (node_count, [1,2,3,4,5,6,7,8,9,10], (1, 11112),))
+            self.add_testcase(self.requests, (node_count, [], (1111, 11112),))
 
-        # multi-range requests, invalid requests
-        self.add_testcase(self.requests, ([10], (10, 11), (10, 100), (50, 75)))
-        self.add_testcase(self.requests, ([], (11, 11), (11, 50), (100, 200)))
+            # multi-range requests, invalid requests
+            self.add_testcase(self.requests, (node_count, [10], (10, 11), (10, 100), (50, 75)))
+            self.add_testcase(self.requests, (node_count, [], (11, 11), (11, 50), (100, 200)))
 
         # cleanup
         self.add_testcase(self.teardown)
 
-    def setup(self, count):
+    def setup(self, node_count, message_count):
         """
-        SELF generates messages with sequence [1:COUNT].
+        SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
         self._community = DebugCommunity.create_community(self._my_member)
-        self._node = DebugNode()
-        self._node.init_socket()
-        self._node.set_community(self._community)
-        self._node.init_my_member()
+        self._nodes = [DebugNode() for _ in xrange(node_count)]
+        for node in self._nodes:
+            node.init_socket()
+            node.set_community(self._community)
+            node.init_my_member()
 
         # create messages
         self._messages = []
-        for i in xrange(1, count + 1):
+        for i in xrange(1, message_count + 1):
             message = self._community.create_sequence_text("Sequence message #%d" % i)
             assert_(message.distribution.sequence_number == i, message.distribution.sequence_number, i)
             self._messages.append(message)
 
     def teardown(self):
+        """
+        Cleanup.
+        """
         # cleanup
         self._community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(self._community.cid).unload_community()
 
-    def requests(self, responses, *pairs):
+    def requests(self, node_count, responses, *pairs):
         """
-        NODE requests non-overlapping sequences, SELF should send back the requested messages only once
-
-        For example, requesting ranges [1:2] and [4:5] should result in messages 1, 2, 4, and 5
-        (explicitly requested) but also 3, implicitly requested.  With the implicitly requested
-        messages we assume that the incoming missing-sequence was lost (i.e. UDP drop).
+        NODE1 and NODE2 requests (non)overlapping sequences, SELF should send back the requested
+        messages only once.
         """
         community = self._community
-        node = self._node
+        nodes = self._nodes[:node_count]
         meta = self._messages[0].meta
 
         # flush incoming socket buffer
-        self._node.drop_packets()
+        for node in nodes:
+            node.drop_packets()
 
         # request missing
         sequence_numbers = set()
         for low, high in pairs:
             sequence_numbers.update(xrange(low, high + 1))
-            node.give_message(node.create_dispersy_missing_sequence_message(community.my_member, meta, low, high, community.global_time, community.my_candidate), cache=True)
+            for node in nodes:
+                node.give_message(node.create_dispersy_missing_sequence_message(community.my_member, meta, low, high, community.global_time, community.my_candidate), cache=True)
             # one additional yield.  Dispersy should batch these requests together
-            yield 0.01
+            yield 0.001
 
-            # there should not yet be any responses
-            try:
-                _, response = node.receive_message(message_names=[meta.name])
-            except socket.error:
-                pass
-            else:
-                assert_(False, "should not yet have any responses", response)
+            for node in nodes:
+                assert_(node.receive_messages(message_names=[meta.name]) == [], "should not yet have any responses")
 
         yield 0.11
 
         # receive response
-        for i in responses:
-            _, response = node.receive_message(message_names=[meta.name])
-            assert_(response.distribution.sequence_number == i, response.distribution.sequence_number, i)
+        for node in nodes:
+            for i in responses:
+                _, response = node.receive_message(message_names=[meta.name])
+                assert_(response.distribution.sequence_number == i, response.distribution.sequence_number, i)
 
         # there should not be any no further responses
-        try:
-            _, response = node.receive_message(message_names=[meta.name])
-        except socket.error:
-            pass
-        else:
-            assert_(False, "should not have more responses", response)
+        for node in nodes:
+            assert_(node.receive_messages(message_names=[meta.name]) == [], "should not yet have any responses")
 
 class DispersyMissingMessageScript(ScriptBase):
     def run(self):
