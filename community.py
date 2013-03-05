@@ -1514,8 +1514,8 @@ class Community(object):
 
         Once a community is destroyed, it must be reclassified to ensure that it is not loaded in
         its regular form.  This method returns the class that the community will be reclassified
-        into.  It should return either a subclass of SoftKilled or HardKilled depending on the
-        received dispersy-destroy-community message.
+        into.  It should return either a subclass of SoftKilledCommity or HardKilledCommunity
+        depending on the received dispersy-destroy-community message.
 
         Depending on the degree of the destroy message, we will need to cleanup in different ways.
 
@@ -1616,9 +1616,9 @@ class Community(object):
         """
         raise NotImplementedError(self)
 
-class HardKilled(object):
+class HardKilledCommunity(Community):
     def __init__(self, *args, **kargs):
-        super(HardKilled, self).__init__(*args, **kargs)
+        super(HardKilledCommunity, self).__init__(*args, **kargs)
 
         destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
         try:
@@ -1630,7 +1630,7 @@ class HardKilled(object):
             self._destroy_community_packet = str(packet)
 
     def _initialize_meta_messages(self):
-        super(HardKilled, self)._initialize_meta_messages()
+        super(HardKilledCommunity, self)._initialize_meta_messages()
 
         # replace introduction_request behavior
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
@@ -1677,6 +1677,3 @@ class HardKilled(object):
     def dispersy_on_introduction_request(self, messages):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
         self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
-
-class HardKilledCommunity(Community, HardKilled):
-    pass

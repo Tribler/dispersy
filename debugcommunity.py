@@ -2,7 +2,7 @@ from struct import pack, unpack_from
 
 from .authentication import DoubleMemberAuthentication, MemberAuthentication
 from .candidate import Candidate
-from .community import Community, HardKilled
+from .community import Community, HardKilledCommunity
 from .conversion import BinaryConversion, DefaultConversion
 from .debug import Node
 from .destination import MemberDestination, CommunityDestination
@@ -272,5 +272,5 @@ class DebugCommunity(Community):
         elif message.payload.is_hard_kill:
             return HardKilledDebugCommunity
 
-class HardKilledDebugCommunity(DebugCommunity, HardKilled):
+class HardKilledDebugCommunity(DebugCommunity, HardKilledCommunity):
     pass
