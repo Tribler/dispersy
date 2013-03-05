@@ -1678,5 +1678,5 @@ class HardKilled(object):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
         self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
 
-class HardKilledCommunity(HardKilled, Community):
+class HardKilledCommunity(Community, HardKilled):
     pass
