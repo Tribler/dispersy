@@ -1370,10 +1370,10 @@ class Community(object):
             if once:
                 break
                     
-    def _iter_a_or_b(self, a, b):
+    def _iter_a_or_b(self, a, b, prev_result = None):
         r = random()
         result = a.next() if r <= .5 else b.next()
-        if not result:
+        if not result or result == prev_result:
             result = b.next() if r <= .5 else a.next()
         return result
 
@@ -1403,7 +1403,7 @@ class Community(object):
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
         prev_result = None
         while True:
-            result = self._iter_a_or_b(self._walked_candidates, self._stumbled_candidates)
+            result = self._iter_a_or_b(self._walked_candidates, self._stumbled_candidates, prev_result)
             
             if prev_result == result:
                 yield None

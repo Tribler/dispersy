@@ -19,7 +19,32 @@ class TestCandidates(unittest.TestCase):
         Dispersy.del_instance()
         
     def test_yield_introduce_candidates(self):
-        c = DebugCommunity.create_community(self.mm)
+        self.__test_introduce(DebugCommunity.create_community)
+            
+    def test_tracker_yield_introduce_candidates(self):
+        communities, candidates = self.__test_introduce(TrackerCommunity.create_community)
+        
+        #trackers should not prefer either stumbled or walked candidates, i.e. it should not return
+        #candidate 1 more than once/in the wrong position
+        now = time()
+        c = communities[0]
+        
+        candidates[0].walk(c, now, 10.5)
+        candidates[0].walk_response(c)
+        
+        expected = [("127.0.0.1", 5), ("127.0.0.1", 1), ("127.0.0.1", 2), ("127.0.0.1", 3), ("127.0.0.1", 4)]
+        got = []
+
+        for candidate in candidates:
+            candidate.stumble(c, now)
+
+            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
+            got.append(candidate.lan_address if candidate else None)
+        
+        self.assertEquals(expected, got)
+        
+    def __test_introduce(self, community_create_method):
+        c = community_create_method(self.mm)
         candidates = []
         for i in range(5):
             address = ("127.0.0.1", i+1)
@@ -38,10 +63,11 @@ class TestCandidates(unittest.TestCase):
         
         self.assertEquals(expected, got)
         
+        #ordering should not interfere between communities
         expected = [None, ("127.0.0.1", 5), ("127.0.0.1", 4), ("127.0.0.1", 3), ("127.0.0.1", 2)]
         got = []
 
-        c2 = DebugCommunity.create_community(self.mm)        
+        c2 = community_create_method(self.mm)        
         for candidate in reversed(candidates):
             candidate.stumble(c2, now)
             
@@ -49,23 +75,7 @@ class TestCandidates(unittest.TestCase):
             got.append(candidate.lan_address if candidate else None)
         
         self.assertEquals(expected, got)
-    
-    def test_yield_random_tracker_candidates(self):
-        c = TrackerCommunity.create_community(self.mm)
-        
-        expected = [None, ("127.0.0.1", 1), ("127.0.0.1", 2), ("127.0.0.1", 3), ("127.0.0.1", 4)]
-        got = []
-        
-        now = time()
-        for i in range(5):
-            address = ("127.0.0.1", i+1)
-            
-            candidate = c.create_candidate(address, False, address, address, u"unknown")
-            candidate.stumble(c, now)
-            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
-            got.append(candidate.lan_address if candidate else None)
-        
-        self.assertEquals(expected, got)
+        return [c,c2], candidates
     
     def test_merge_candidates(self):
         c = DebugCommunity.create_community(self.mm)
