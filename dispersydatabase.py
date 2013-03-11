@@ -450,8 +450,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for handler in progress_handlers:
                 handler.Destroy()
 
-        # TODO remove catch all
-        if database_version < 16 or True:
+        if database_version < 16:
             if __debug__: dprint("upgrade community ", database_version, " -> ", 16)
 
             # patch 14 -> 15 notes:
