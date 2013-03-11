@@ -2294,7 +2294,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
-        self._statistics.walk_attempt += 1
         
         cache = IntroductionRequestCache(community, destination)
         destination.walk(community, time(), cache.timeout_delay)
