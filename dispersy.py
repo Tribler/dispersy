@@ -1057,20 +1057,15 @@ class Dispersy(Singleton):
         Returns True when this message is a duplicate, otherwise the message must be processed.
 
         === Problem: duplicate message ===
-
-        The simplest reason to reject an incoming message is when we already have it.  No further
-        action is performed.
-
+        The simplest reason to reject an incoming message is when we already have it, based on the
+        community, member, and global time.  No further action is performed.
 
         === Problem: duplicate message, but that message is undone ===
-
         When a message is undone it should no longer be synced.  Hence, someone who syncs an undone
         message must not be aware of the undo message yet.  We will drop this message, but we will
         also send the appropriate undo message as a response.
 
-
         === Problem: same payload, different signature ===
-
         There is a possibility that a message is created that contains exactly the same payload but
         has a different signature.  This can occur when a message is created, forwarded, and for
         some reason the database is reset.  The next time that the client starts the exact same
@@ -1084,9 +1079,7 @@ class Dispersy(Singleton):
         the message with the highest binary value while destroying the one with the lower binary
         value.
 
-
         === Optimization: temporarily modify the bloom filter ===
-
         Note: currently we generate bloom filters on the fly, therefore, we can not use this
         optimization.
 
@@ -1100,7 +1093,7 @@ class Dispersy(Singleton):
             have_packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                     (community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
         except StopIteration:
-            # this message is not a duplicate
+            if __debug__: dprint("this message is not a duplicate")
             return False
 
         else:
@@ -1184,9 +1177,9 @@ class Dispersy(Singleton):
             highest = {}
             for message in messages:
                 if not message.authentication.member.database_id in highest:
-                    seq, = execute(u"SELECT COUNT(*) FROM sync WHERE member = ? AND sync.meta_message = ?",
-                                   (message.authentication.member.database_id, message.database_id)).next()
-                    highest[message.authentication.member.database_id] = seq
+                    last_global_time, seq = execute(u"SELECT MAX(global_time), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                                                    (message.authentication.member.database_id, message.database_id)).next()
+                    highest[message.authentication.member.database_id] = (last_global_time or 0, seq)
 
             # all messages must follow the sequence_number order
             for message in messages:
@@ -1200,13 +1193,38 @@ class Dispersy(Singleton):
                     continue
 
                 unique.add(key)
-                seq = highest[message.authentication.member.database_id]
+                last_global_time, seq = highest[message.authentication.member.database_id]
 
                 if seq >= message.distribution.sequence_number:
                     # we already have this message (drop)
-                    # TODO: something similar to _is_duplicate_sync_message can occur...
-                    yield DropMessage(message, "duplicate message by sequence_number")
-                    continue
+
+                    # fetch the corresponding packet from the database (it should be binary identical)
+                    global_time, packet = execute(u"SELECT global_time, packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time, packet LIMIT 1 OFFSET ?",
+                                                  (message.authentication.member.database_id, message.database_id, message.distribution.sequence_number - 1)).next()
+                    packet = str(packet)
+                    if message.packet == packet:
+                        yield DropMessage(message, "duplicate message by binary packet")
+                        continue
+
+                    else:
+                        # we already have a message with this sequence number, but apparently both
+                        # are signed/valid.  we need to discard one of them
+                        if (global_time, packet) < (message.distribution.global_time, message.packet):
+                            # we keep PACKET (i.e. the message that we currently have in our database)
+                            yield DropMessage(message, "duplicate message by sequence number (1)")
+                            continue
+
+                        else:
+                            # TODO we should undo the messages that we are about to remove (when applicable)
+                            execute(u"DELETE FROM sync WHERE member = ? AND meta_message = ? AND global_time >= ?",
+                                    (message.authentication.member.database_id, message.database_id, global_time))
+                            if __debug__: dprint("removed ", self._database.changes, " entries from sync because the member created multiple sequences")
+
+                            # by deleting messages we changed SEQ and the HIGHEST cache
+                            last_global_time, seq = execute(u"SELECT MAX(global_time), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                                                       (message.authentication.member.database_id, message.database_id)).next()
+                            highest[message.authentication.member.database_id] = (last_global_time or 0, seq)
+                            # we can allow MESSAGE to be processed
 
                 if seq + 1 != message.distribution.sequence_number:
                     # we do not have the previous message (delay and request)
@@ -1220,8 +1238,14 @@ class Dispersy(Singleton):
                     yield DropMessage(message, "duplicate message by global_time (1)")
                     continue
 
+                # ensure that MESSAGE.distribution.global_time > LAST_GLOBAL_TIME
+                if last_global_time and message.distribution.global_time <= last_global_time:
+                    dprint("last_global_time: ", last_global_time, "  message @", message.distribution.global_time)
+                    yield DropMessage(message, "higher sequence number with lower global time than most recent message")
+                    continue
+
                 # we accept this message
-                highest[message.authentication.member.database_id] += 1
+                highest[message.authentication.member.database_id] = (message.distribution.global_time, seq + 1)
                 yield message
 
         else:
@@ -1681,6 +1705,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         Returns a list with messages representing each packet or None when no conversion is
         possible.
         """
+        assert isinstance(packets, (list, tuple)), type(packets)
+        assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):

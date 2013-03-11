@@ -9,6 +9,7 @@ Run some python code, usually to test one or more features.
 @contact: dispersy@frayja.com
 """
 
+from collections import defaultdict
 from hashlib import sha1
 from random import shuffle
 from time import time
@@ -2162,13 +2163,16 @@ class DispersySignatureScript(ScriptBase):
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
-class DispersyMissingSequenceScript(ScriptBase):
+class DispersySequenceScript(ScriptBase):
     def run(self):
         ec = ec_generate_key(u"low")
         self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        self.add_testcase(self.setup, (3, 10))
-        # single range requests
+        # test incoming message code
+        self.add_testcase(self.incoming_simple_conflict_different_global_time)
+
+        # test on_missing_sequence code
+        self.add_testcase(self.requests_setup, (3, 10))
         for node_count in [1, 2, 3]:
             self.add_testcase(self.requests, (node_count, [1], (1, 1),))
             self.add_testcase(self.requests, (node_count, [10], (10, 10),))
@@ -2202,11 +2206,108 @@ class DispersyMissingSequenceScript(ScriptBase):
             # multi-range requests, invalid requests
             self.add_testcase(self.requests, (node_count, [10], (10, 11), (10, 100), (50, 75)))
             self.add_testcase(self.requests, (node_count, [], (11, 11), (11, 50), (100, 200)))
+        # cleanup
+        self.add_testcase(self.requests_teardown)
+
+    def incoming_simple_conflict_different_global_time(self):
+        """
+        A broken NODE creates conflicting messages with the same sequence number that SELF should
+        properly filter.
+
+        We use the following messages:
+        - M@5#1 :: global time 5, sequence number 1
+        - M@6#1 :: global time 6, sequence number 1
+        - etc...
+
+        TODO Same payload?  Different signatures?
+        """
+        community = DebugCommunity.create_community(self._my_member)
+        meta = community.get_meta_message(u"sequence-text")
+        node = DebugNode()
+        node.init_socket()
+        node.set_community(community)
+        node.init_my_member()
+
+        # MSGS[GLOBAL-TIME][SEQUENCE-NUMBER]
+        msgs = defaultdict(dict)
+        for i in xrange(1, 10):
+            for j in xrange(1, 10):
+                msgs[i][j] = node.create_sequence_test_message("M@%d#%d" % (i, j), i, j)
+
+        community.delete_messages(meta.name)
+        # SELF must accept M@6#1
+        node.give_message(msgs[6][1])
+        assert_(community.fetch_packets(meta.name) == [msgs[6][1].packet])
+
+        # SELF must reject M@6#1 (already have this message)
+        node.give_message(msgs[6][1])
+        assert_(community.fetch_packets(meta.name) == [msgs[6][1].packet])
+
+        # SELF must prefer M@5#1 (duplicate sequence number, prefer lower global time)
+        node.give_message(msgs[5][1])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet])
+
+        # SELF must reject M@6#1 (duplicate sequence number, prefer lower global time)
+        node.give_message(msgs[6][1])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet])
+
+        # SELF must reject M@4#2 (global time is lower than previous global time in sequence)
+        node.give_message(msgs[4][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet])
+
+        # SELF must reject M@5#2 (global time is lower than previous global time in sequence)
+        node.give_message(msgs[5][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet])
+
+
+        # SELF must accept M@7#2
+        node.give_message(msgs[7][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[7][2].packet])
+
+        # SELF must reject M@7#2 (already have this message)
+        node.give_message(msgs[7][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[7][2].packet])
+
+        # SELF must prefer M@6#2 (duplicate sequence number, prefer lower global time)
+        node.give_message(msgs[6][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet])
+
+        # SELF must reject M@7#2 (duplicate sequence number, prefer lower global time)
+        node.give_message(msgs[7][2])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet])
+
+        # SELF must reject M@4#3 (global time is lower than previous global time in sequence)
+        node.give_message(msgs[4][3])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet])
+
+        # SELF must reject M@6#3 (global time is lower than previous global time in sequence)
+        node.give_message(msgs[6][3])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet])
+
+
+        # SELF must accept M@8#3
+        node.give_message(msgs[8][3])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet])
+
+        # SELF must accept M@9#4
+        node.give_message(msgs[9][4])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet, msgs[9][4].packet])
+
+        # SELF must accept M@7#3
+        # It would be possible to keep M@9#4, but the way that the code is structures makes this
+        # difficult (i.e. M@7#3 has not yet passed all the numerous checks at the point where we
+        # have to delete).  In the future we can optimize by pushing the newer messages (such as
+        # M@7#3) into the waiting or incoming packet queue, this will allow them to be re-inserted
+        # after M@6#2 has been fully accepted.
+        node.give_message(msgs[7][3])
+        assert_(community.fetch_packets(meta.name) == [msgs[5][1].packet, msgs[6][2].packet, msgs[7][3].packet])
+
 
         # cleanup
-        self.add_testcase(self.teardown)
+        community.create_dispersy_destroy_community(u"hard-kill")
+        self._dispersy.get_community(community.cid).unload_community()
 
-    def setup(self, node_count, message_count):
+    def requests_setup(self, node_count, message_count):
         """
         SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
@@ -2224,11 +2325,10 @@ class DispersyMissingSequenceScript(ScriptBase):
             assert_(message.distribution.sequence_number == i, message.distribution.sequence_number, i)
             self._messages.append(message)
 
-    def teardown(self):
+    def requests_teardown(self):
         """
         Cleanup.
         """
-        # cleanup
         self._community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(self._community.cid).unload_community()
 

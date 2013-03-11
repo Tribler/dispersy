@@ -189,9 +189,9 @@ class DropMessage(Exception):
         Create another instance of the same class with another DELAYED.
         """
         return self.__class__(dropped, self.message)
-    
+
     def __str__(self):
-        return super(DropMessage, self).__str__() + self._dropped.name
+        return "".join((super(DropMessage, self).__str__(), " [", self._dropped.name, "]"))
 #
 # batch
 #

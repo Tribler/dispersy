@@ -7,13 +7,14 @@ This module provides an interface to the Dispersy database.
 """
 
 from itertools import groupby
+from collections import defaultdict
 
 import sys
 if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
 else:
     from .database import Database
-    
+
 from .distribution import FullSyncDistribution
 from .dprint import dprint
 from .revision import update_revision_information
@@ -21,7 +22,7 @@ from .revision import update_revision_information
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
 
-LATEST_VERSION = 15
+LATEST_VERSION = 16
 
 schema = u"""
 CREATE TABLE member(
@@ -344,21 +345,21 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 self.commit()
                 if __debug__: dprint("upgrade database ", database_version, " -> ", 13, " (done)")
 
-            # upgrade from version 13 to version 15
-            if database_version < 15:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 15)
-                # only effects check_community_database
-                self.executescript(u"""UPDATE option SET value = '15' WHERE key = 'database_version';""")
-                self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 15, " (done)")
-
-            # upgrade from version 15 to version 16
+            # upgrade from version 13 to version 16
             if database_version < 16:
-                # there is no version 16 yet...
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 16)
-                # self.executescript(u"""UPDATE option SET value = '16' WHERE key = 'database_version';""")
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 16)
+                # only effects check_community_database
+                self.executescript(u"""UPDATE option SET value = '16' WHERE key = 'database_version';""")
+                self.commit()
+                if __debug__: dprint("upgrade database ", database_version, " -> ", 16, " (done)")
+
+            # upgrade from version 16 to version 17
+            if database_version < 17:
+                # there is no version 17 yet...
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 17)
+                # self.executescript(u"""UPDATE option SET value = '17' WHERE key = 'database_version';""")
                 # self.commit()
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 16, " (done)")
+                # if __debug__: dprint("upgrade database ", database_version, " -> ", 17, " (done)")
                 pass
 
         return LATEST_VERSION
@@ -396,7 +397,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 progress_handlers = []
 
             for packet_id, packet in list(self.execute(u"SELECT id, packet FROM sync WHERE meta_message = ?", (undo_own_meta.database_id,))):
-                message = convert_packet_to_message(str(packet), community)
+                message = convert_packet_to_message(str(packet), community, verify=False)
                 if message:
                     # 12/09/12 Boudewijn: the check_callback is required to obtain the
                     # message.payload.packet
@@ -409,7 +410,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                     handler.Update(progress)
 
             for packet_id, packet in list(self.execute(u"SELECT id, packet FROM sync WHERE meta_message = ?", (undo_other_meta.database_id,))):
-                message = convert_packet_to_message(str(packet), community)
+                message = convert_packet_to_message(str(packet), community, verify=False)
                 if message:
                     # 12/09/12 Boudewijn: the check_callback is required to obtain the
                     # message.payload.packet
@@ -449,10 +450,11 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for handler in progress_handlers:
                 handler.Destroy()
 
-        if database_version < 15:
-            if __debug__: dprint("upgrade community ", database_version, " -> ", 15)
+        # TODO remove catch all
+        if database_version < 16 or True:
+            if __debug__: dprint("upgrade community ", database_version, " -> ", 16)
 
-            # patch notes:
+            # patch 14 -> 15 notes:
             #
             # because of a bug in handling messages with sequence numbers, it was possible for
             # messages to be stored in the database with missing sequence numbers.  I.e. numbers 1,
@@ -469,6 +471,25 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             #
             # we choose not to call any undo methods because both the timeline and the votes can
             # handle the resulting multiple calls to the undo callback.
+            #
+            # patch 15 -> 16 notes:
+            #
+            # because of a bug in handling messages with sequence numbers, it was possible for
+            # messages to be stored in the database with conflicting global time values.  For
+            # example, M@6#1 and M@5#2 could be in the database.
+            #
+            # This could occur when a peer removed the Dispersy database but not the public/private
+            # key files, resulting in a fresh sequence number starting at 1.  Different peers would
+            # store different message combinations.  Incoming message checking incorrectly allowed
+            # this to happen, resulting in many peers consistently dropping messages.
+            #
+            # New rules will ensure all peers converge to the same database content.  However, we do
+            # need to remove the messages that have previously been (incorrectly) accepted.
+            #
+            # The rules are as follows:
+            # - seq(M_i), where i = 1 is the first message in the sequence
+            # - seq(M_j) = seq(M_i) - 1, where i = j - 1
+            # - gt(M_i) < gt(M_j), where i = j - 1
 
             # all meta messages that use sequence numbers
             metas = [meta for meta in community.get_meta_messages() if isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number]
@@ -488,17 +509,21 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
 
             for meta in metas:
                 for member_id, iterator in groupby(list(self.execute(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,))), key=lambda tup: tup[1]):
-                    out_of_sequence = False
-                    for sequence_number, (packet_id, _, packet) in enumerate(iterator, 1):
+                    last_global_time = 0
+                    last_sequence_number = 0
+                    for packet_id, _, packet in iterator:
 
-                        if out_of_sequence:
-                            deletes.append((packet_id,))
+                        message = convert_packet_to_message(str(packet), community, verify=False)
+                        assert message.authentication.member.database_id == member_id
+                        if (last_sequence_number + 1 == message.distribution.sequence_number and
+                            last_global_time < message.distribution.global_time):
+                            # message is OK
+                            last_sequence_number += 1
+                            last_global_time = message.distribution.global_time
+
                         else:
-                            message = convert_packet_to_message(str(packet), community, verify=False)
-                            assert message.authentication.member.database_id == member_id
-                            if message.distribution.sequence_number != sequence_number:
-                                out_of_sequence = True
-                                deletes.append((packet_id,))
+                            deletes.append((packet_id,))
+                            if __debug__: dprint("delete id:", packet_id)
 
                         progress += 1
                         for handler in progress_handlers:
@@ -512,7 +537,18 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
                 assert len(deletes) == self.changes, [len(deletes), self.changes]
 
-            self.execute(u"UPDATE community SET database_version = 15 WHERE id = ?", (community.database_id,))
+            # we may have removed some undo-other or undo-own messages.  we must ensure that there
+            # are no messages in the database that point to these removed messages
+            updates = list(self.execute(u"""
+SELECT a.id
+FROM sync a
+LEFT JOIN sync b ON a.undone = b.id
+WHERE a.community = ? AND a.undone > 0 AND b.id is NULL""", (community.database_id,)))
+            if updates:
+                self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
+                assert len(updates) == self.changes, [len(updates), self.changes]
+
+            self.execute(u"UPDATE community SET database_version = 16 WHERE id = ?", (community.database_id,))
             self.commit()
 
             for handler in progress_handlers:

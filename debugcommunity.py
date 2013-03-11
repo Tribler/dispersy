@@ -81,6 +81,8 @@ class DebugNode(Node):
         assert isinstance(policy, (PublicResolution.Implementation, LinearResolution.Implementation))
         return self._create_text_message(u"dynamic-resolution-text", text, global_time, resolution=(policy,))
 
+    def create_sequence_test_message(self, text, global_time, sequence_number):
+        return self._create_sequence_text_message(u"sequence-text", text, global_time, sequence_number)
 #
 # Conversion
 #
@@ -156,6 +158,30 @@ class DebugCommunity(Community):
 
     def initiate_conversions(self):
         return [DefaultConversion(self), DebugCommunityConversion(self)]
+
+    #
+    # helper methods to check database status
+    #
+
+    def fetch_packets(self, *message_names):
+        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+                                                                                [self.get_meta_message(name).database_id for name in message_names]))]
+
+    def fetch_messages(self, *message_names):
+        """
+        Fetch all packets for MESSAGE_NAMES from the database and converts them into
+        Message.Implementation instances.
+        """
+        return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self, verify=False)
+
+    def delete_messages(self, *message_names):
+        """
+        Deletes all packets for MESSAGE_NAMES from the database.  Returns the number of packets
+        removed.
+        """
+        self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ")",
+                                        [self.get_meta_message(name).database_id for name in message_names])
+        return self._dispersy.database.changes
 
     def initiate_meta_messages(self):
         return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
