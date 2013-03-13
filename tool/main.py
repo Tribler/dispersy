@@ -9,6 +9,7 @@ from ..callback import Callback
 from ..dispersy import Dispersy
 from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
+from threading import currentThread
 
 def watchdog(dispersy):
     try:
@@ -38,18 +39,20 @@ def start_script(opt):
     script = cls(**kargs)
     script.next_testcase()
 
-def main(setup=None):
+def main_real(setup=None):
     assert setup is None or callable(setup)
 
     # define options
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
     command_line_parser.add_option("--memory-dump", action="store_true", help="use meliae to dump the memory periodically", default=False)
+    command_line_parser.add_option("--databasefile", action="store", help="use an alternate databasefile", default=u"dispersy.db")
     command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=u".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=12345)
     command_line_parser.add_option("--script", action="store", type="string", help="Script to execute, i.e. module.module.class", default="")
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
+    command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
     # # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
@@ -65,8 +68,11 @@ def main(setup=None):
         exit(1)
 
     # setup
+    currentThread().setName('Dispersy')
     callback = Callback()
-    dispersy = Dispersy.get_instance(callback, unicode(opt.statedir))
+    dispersy = Dispersy.get_instance(callback, unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
+    
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
     #     sesslock = threading.Lock()
@@ -89,4 +95,11 @@ def main(setup=None):
 
     # start
     callback.loop()
+    Dispersy.del_instance()
+    return callback
+
+
+def main(setup=None):
+    callback = main_real(setup)
     exit(1 if callback.exception else 0)
+

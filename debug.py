@@ -20,6 +20,8 @@ update_revision_information("$HeadURL$", "$Revision$")
 
 class DebugOnlyMember(Member):
     _cache = OrderedDict()
+    _mid_cache = {}
+    _did_cache = {}
 
     def __init__(self, public_key, private_key=""):
         super(DebugOnlyMember, self).__init__(public_key)
@@ -260,6 +262,15 @@ class Node(object):
             dprint(message.name, " (", len(packet), " bytes) from ", candidate)
             return candidate, message
 
+    def receive_messages(self, *args, **kargs):
+        messages = []
+        while True:
+            try:
+                messages.append(self.receive_message(*args, **kargs))
+            except socket.error:
+                break
+        return messages
+
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):
         meta = self._community.get_meta_message(u"dispersy-authorize")
         return meta.impl(authentication=(self._my_member,),
@@ -327,6 +338,18 @@ class Node(object):
         return meta.impl(distribution=(global_time,),
                          destination=(destination_candidate,),
                          payload=(missing_member, missing_global_times))
+
+    def create_dispersy_missing_sequence_message(self, missing_member, missing_message, missing_sequence_low, missing_sequence_high, global_time, destination_candidate):
+        assert isinstance(missing_member, Member)
+        assert isinstance(missing_message, Message)
+        assert isinstance(missing_sequence_low, (int, long))
+        assert isinstance(missing_sequence_high, (int, long))
+        assert isinstance(global_time, (int, long))
+        assert isinstance(destination_candidate, Candidate)
+        meta = self._community.get_meta_message(u"dispersy-missing-sequence")
+        return meta.impl(distribution=(global_time,),
+                         destination=(destination_candidate,),
+                         payload=(missing_member, missing_message, missing_sequence_low, missing_sequence_high))
 
     def create_dispersy_missing_proof_message(self, member, global_time):
         assert isinstance(member, Member)

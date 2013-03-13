@@ -13,6 +13,23 @@ from threading import RLock
 from .revision import update_revision_information
 update_revision_information("$HeadURL$", "$Revision$")
 
+def cleanup():
+    """
+    Removes all singleton instances from existing Singleton subclasses
+    """
+    def clear(cls):
+        if hasattr(cls, "_singleton_instance"):
+            delattr(cls, "_singleton_instance")
+        
+        if hasattr(cls, "_singleton_instances"):
+            delattr(cls, "_singleton_instances")
+            
+        for subcls in cls.__subclasses__():
+            clear(subcls)
+    
+    clear(Singleton)
+    clear(Parameterized1Singleton)
+
 class Singleton(object):
     """
     Usage:

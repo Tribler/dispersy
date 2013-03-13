@@ -140,14 +140,22 @@ class WalkCandidate(Candidate):
     def merge(self, other):
         assert isinstance(other, WalkCandidate), other
         self._associations.update(other._associations)
+        
         for cid, timestamps in other._timestamps.iteritems():
             if cid in self._timestamps:
                 self._timestamps[cid].merge(timestamps)
             else:
                 self._timestamps[cid] = timestamps
+                
+                #TODO: this should be improved
+                from .dispersy import Dispersy
+                dispersy = Dispersy.get_instance()
+                community = dispersy._communities.get(cid, None)
+                community.add_candidate(self)
+                
         for cid, global_time in self._global_times.iteritems():
             self._global_times[cid] = max(self._global_times.get(cid, 0), global_time)
-
+        
     def set_global_time(self, community, global_time):
         self._global_times[community.cid] = max(self._global_times.get(community.cid, 0), global_time)
 
@@ -319,17 +327,16 @@ class WalkCandidate(Candidate):
         Returns the category (u"walk", u"stumble", u"intro", or u"none") depending on the current
         time NOW.
         """
-        assert community.cid in self._timestamps
-        timestamps = self._timestamps[community.cid]
-
-        if timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
-            return u"walk"
-
-        if now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME:
-            return u"stumble"
-
-        if now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME:
-            return u"intro"
+        timestamps = self._timestamps.get(community.cid)
+        if timestamps:
+            if timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
+                return u"walk"
+    
+            if now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME:
+                return u"stumble"
+    
+            if now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME:
+                return u"intro"
 
         return u"none"
 
@@ -340,6 +347,9 @@ class WalkCandidate(Candidate):
         timestamps = self._get_or_create_timestamps(community)
         timestamps.timeout_adjustment = timeout_adjustment
         timestamps.last_walk = now
+        
+        if not isinstance(self, BootstrapCandidate):
+            community.add_candidate(self)
 
     def walk_response(self, community):
         """
@@ -352,12 +362,18 @@ class WalkCandidate(Candidate):
         Called when we receive an introduction-request from this candidate.
         """
         self._get_or_create_timestamps(community).last_stumble = now
+        
+        if not isinstance(self, BootstrapCandidate):
+            community.add_candidate(self)
 
     def intro(self, community, now):
         """
         Called when we receive an introduction-response introducing this candidate.
         """
         self._get_or_create_timestamps(community).last_intro = now
+        
+        if not isinstance(self, BootstrapCandidate):
+            community.add_candidate(self)
 
     def update(self, tunnel, lan_address, wan_address, connection_type):
         assert isinstance(tunnel, bool)
@@ -406,6 +422,12 @@ class BootstrapCandidate(WalkCandidate):
         assert community.cid in self._timestamps
         timestamps = self._timestamps[community.cid]
         return now >= timestamps.last_walk + CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY
+
+    def is_associated(self, community, member):
+        """
+        Bootstrap nodes are, by definition, always associated hence we return true.
+        """
+        return True
 
     def __str__(self):
         return "B!" + super(BootstrapCandidate, self).__str__()

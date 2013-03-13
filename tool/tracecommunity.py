@@ -57,7 +57,7 @@ def do_trace(dispersy, community, packets):
         payload = message.payload
         mid = message.authentication.member.mid
         
-        if hasattr(payload, 'timestamp')
+        if hasattr(payload, 'timestamp'):
             timestamp = payload.timestamp
             timestamp = int((timestamp / 60.0)) * 60
             
