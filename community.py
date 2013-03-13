@@ -11,8 +11,14 @@ Community instance.
 from hashlib import sha1
 from itertools import islice
 from math import ceil
-from random import random, Random, randint
+from random import random, Random, randint, shuffle
 from time import time
+
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
 
 from .bloomfilter import BloomFilter
 from .conversion import BinaryConversion, DefaultConversion
@@ -21,11 +27,12 @@ from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution
 from .dprint import dprint
-from .member import DummyMember, Member
+from .member import DummyMember, Member, MemberFromId
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .revision import update_revision_information
 from .statistics import CommunityStatistics
 from .timeline import Timeline
+from .candidate import WalkCandidate
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -306,10 +313,19 @@ class Community(object):
         # random seed, used for sync range
         self._random = Random(self._cid)
         self._nrsyncpackets = 0
+        
+        #Initialize all the candidate iterators
+        self._candidates = OrderedDict()
+        self._walked_candidates = self._iter_category(u'walk')
+        self._stumbled_candidates = self._iter_category(u'stumble')
+        self._introduced_candidates = self._iter_category(u'intro')
+
+        self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
+        self._bootstrap_candidates = self._iter_bootstrap()
 
         # statistics...
         self._statistics = CommunityStatistics(self)
-
+        
     @property
     def statistics(self):
         """
@@ -342,9 +358,9 @@ class Community(object):
                     break
 
             for candidate in islice(self.dispersy_yield_random_candidates(), 1):
-                if __debug__: dprint(self._cid.encode("HEX"), " asking for master member from ", candidate)
-                self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
-                break
+                if candidate:
+                    if __debug__: dprint(self._cid.encode("HEX"), " asking for master member from ", candidate)
+                    self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
 
             yield delay
             delay = min(300.0, delay * 1.1)
@@ -551,6 +567,7 @@ class Community(object):
             self._sync_cache.responses_received > 0 and
             self._sync_cache.times_used < 100):
             self._statistics.sync_bloom_reuse += 1
+            self._statistics.sync_bloom_send += 1
             cache = self._sync_cache
             cache.times_used += 1
             cache.responses_received = 0
@@ -564,6 +581,7 @@ class Community(object):
             self._sync_cache = SyncCache(*sync)
             self._sync_cache.candidate = request_cache.helper_candidate
             self._statistics.sync_bloom_new += 1
+            self._statistics.sync_bloom_send += 1
             if __debug__: dprint(self._cid.encode("HEX"), " new sync bloom (", self._statistics.sync_bloom_reuse, "/", self._statistics.sync_bloom_new, "~", round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2), ")")
 
         return sync
@@ -615,7 +633,7 @@ class Community(object):
         if from_gbtime < 1:
             from_gbtime = int(self._random.random() * self.global_time)
 
-        import sys
+        #import sys
         #print >> sys.stderr, "Pivot", from_gbtime
 
         mostRecent = False
@@ -815,11 +833,12 @@ class Community(object):
             modulo = int(ceil(self._nrsyncpackets / float(capacity)))
             if modulo > 1:
                 offset = randint(0, modulo-1)
+                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
             else:
                 offset = 0
                 modulo = 1
-
-            packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND sync.global_time > 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
+                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0" % syncable_messages))
+            
             bloom.add_keys(packets)
 
             if __debug__:
@@ -830,7 +849,6 @@ class Community(object):
         elif __debug__:
             dprint(self.cid.encode("HEX"), " NOT syncing no syncable messages")
         return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
-
 
     def _select_and_fix(self, syncable_messages, global_time, to_select, higher = True):
         assert isinstance(syncable_messages, unicode)
@@ -1070,6 +1088,8 @@ class Community(object):
 
         @rtype: int or long
         """
+        now = time()
+        
         def acceptable_global_time_helper():
             options = sorted(global_time for global_time in (candidate.get_global_time(self) for candidate in self._dispersy.candidates if candidate.in_community(self, now) and candidate.is_any_active(now)) if global_time > 0)
 
@@ -1086,7 +1106,6 @@ class Community(object):
             return min(max(self._global_time, median_global_time) + self.dispersy_acceptable_global_time_range, 2**63-1)
 
         # get opinions from all active candidates
-        now = time()
         if self._acceptable_global_time_deadline < now:
             self._acceptable_global_time_cache = acceptable_global_time_helper()
             self._acceptable_global_time_deadline = now + 5.0
@@ -1267,17 +1286,227 @@ class Community(object):
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
 
-    @documentation(Dispersy.yield_candidates)
     def dispersy_yield_candidates(self):
-        return self._dispersy.yield_candidates(self)
+        """
+        Yields all active candidates that are part of COMMUNITY.
+        """
+        now = time()
+        return (candidate for candidate in self._candidates.itervalues() if candidate.in_community(self, now) and candidate.is_any_active(now))
 
-    @documentation(Dispersy.yield_random_candidates)
+    def _iter_category(self, category):
+        while True:
+            no_result = True
+            
+            keys = self._candidates.keys()
+            key_index = 0
+            key_value = None
+
+            while True:
+                try:
+                    key_value = keys[key_index]
+                    candidate = self._candidates[key_value]
+                    
+                    if candidate.in_community(self, time()) and candidate.is_any_active(time()) and category == candidate.get_category(self, time()):
+                        no_result = False
+                        yield candidate
+                        
+                        keys = self._candidates.keys()
+                        if key_value in keys:
+                            key_index = keys.index(key_value)
+                        
+                    key_index += 1
+                        
+                except IndexError:
+                    break
+            
+            if no_result:
+                yield None
+                
+    def _iter_categories(self, categories, once = False):
+        while True:
+            no_result = True
+
+            keys = self._candidates.keys()
+            key_index = 0
+            key_value = None
+            
+            while True:
+                try:
+                    key_value = keys[key_index]
+                    candidate = self._candidates[key_value]
+                    
+                    if candidate.in_community(self, time()) and candidate.is_any_active(time()) and candidate.get_category(self, time()) in categories:
+                        no_result = False
+                        yield candidate
+                        
+                        keys = self._candidates.keys()
+                        if key_value in keys:
+                            key_index = keys.index(key_value)
+                        
+                    key_index += 1
+                        
+                except IndexError:
+                    break
+                    
+            if no_result:
+                yield None
+            
+            if once:
+                break
+                
+    def _iter_bootstrap(self, once = False):
+        while True:
+            no_result = True
+            
+            bootstrap_candidates = list(self._dispersy.bootstrap_candidates)
+            for candidate in bootstrap_candidates:
+                if candidate.in_community(self, time()) and candidate.is_eligible_for_walk(self, time()):
+                    no_result = False
+                    yield candidate
+                    
+            if no_result:
+                yield None
+                
+            if once:
+                break
+                    
+    def _iter_a_or_b(self, a, b, prev_result = None):
+        r = random()
+        result = a.next() if r <= .5 else b.next()
+        if not result or result == prev_result:
+            result = b.next() if r <= .5 else a.next()
+        return result
+
     def dispersy_yield_random_candidates(self):
-        return self._dispersy.yield_random_candidates(self)
+        """
+        Yields unique active candidates.
 
-    @documentation(Dispersy.yield_walk_candidates)
+        The returned 'walk' and 'stumble' candidates are randomized on every call and returned only
+        once each.
+        """
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        now = time()
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.is_any_active(now) and candidate.get_category(self, now) in (u"walk", u"stumble")]
+        shuffle(candidates)
+        return iter(candidates)
+
+    def dispersy_yield_introduce_candidates(self, candidate = None):
+        """
+        Yield non-unique active candidates or None in round robin fashion.
+
+        This method is used by the walker to choose the candidates to introduce when an introduction
+        request is received.
+
+        None is yielded whenever either self._walked_candidates or self._stumbled_candidates runs
+        out of candidates.
+        """
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        prev_result = None
+        while True:
+            result = self._iter_a_or_b(self._walked_candidates, self._stumbled_candidates, prev_result)
+            
+            if prev_result == result:
+                yield None
+            else:
+                prev_result = result
+                if result == candidate:
+                    continue
+                
+                yield result
+
     def dispersy_yield_walk_candidates(self):
-        return self._dispersy.yield_walk_candidates(self)
+        """
+        Yields a mixture of all candidates that we could get our hands on that are part of
+        COMMUNITY.
+        """
+        # TODO we can optimize by not doing all the sorting until we select where we want to pick a
+        # node.  since we always just need one candidate the other sorts would be useless
+
+        # 13/02/12 Boudewijn: normal peers can not be visited multiple times within 30 seconds,
+        # bootstrap peers can not be visited multiple times within 55 seconds.  this is handled by
+        # the Candidate.is_eligible_for_walk(...) method
+        
+        now = time()
+        categories = {u"walk":[], u"stumble":[], u"intro":[], u"none":[]}
+        for candidate in self._candidates.itervalues():
+            if candidate.is_eligible_for_walk(self, now):
+                categories[candidate.get_category(self, now)].append(candidate)
+
+        walks = sorted(categories[u"walk"], key=lambda candidate: candidate.last_walk(self))
+        stumbles = sorted(categories[u"stumble"], key=lambda candidate: candidate.last_stumble(self))
+        intros = sorted(categories[u"intro"], key=lambda candidate: candidate.last_intro(self))
+
+        while walks or stumbles or intros:
+            r = random()
+
+            # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
+            if r <= .4975: # ~50%
+                if walks:
+                    if __debug__: dprint("yield [%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros)), walks[0])
+                    yield walks.pop(0)
+
+            elif r <= .995: # ~50%
+                if stumbles or intros:
+                    while True:
+                        if random() <= .5:
+                            if stumbles:
+                                if __debug__: dprint("yield [%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros)), stumbles[0])
+                                yield stumbles.pop(0)
+                                break
+
+                        else:
+                            if intros:
+                                if __debug__: dprint("yield [%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros)), intros[0])
+                                yield intros.pop(0)
+                                break
+
+            else: # ~.5%
+                candidate = self._bootstrap_candidates.next()
+                if candidate:
+                    if __debug__: dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+                    yield candidate
+        
+        bootstrap_candidates = list(self._iter_bootstrap(once = True))
+        shuffle(bootstrap_candidates)
+        
+        for candidate in bootstrap_candidates:
+            if candidate:
+                if __debug__: dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+            yield candidate
+            
+        if __debug__: dprint("no candidates or bootstrap candidates available")
+    
+    def create_candidate(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
+        """
+        Creates and returns a new WalkCandidate instance.
+        """
+        assert not sock_addr in self._candidates
+        assert isinstance(tunnel, bool)
+        candidate = WalkCandidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
+        self.add_candidate(candidate)
+        
+        if __debug__: dprint(candidate)
+        return candidate
+    
+    def add_candidate(self, candidate):
+        assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+        
+        if candidate.sock_addr not in self._candidates:
+            self._candidates[candidate.sock_addr] = candidate
+            
+            self._dispersy.statistics.total_candidates_discovered += 1
+            if len(candidate._timestamps) > 1:
+                self._dispersy.statistics.total_candidates_overlapped += 1
+                self._dispersy.statistics.dict_inc(self._dispersy.statistics.overlapping_stumble_candidates, str(self))
+    
+    def get_candidate_mid(self, mid):
+        try:
+            member = MemberFromId(mid)
+            for candidate in self._candidates.itervalues():
+                if candidate.is_associated(self, member):
+                    return candidate
+        except LookupError:
+            pass
 
     def dispersy_cleanup_community(self, message):
         """
@@ -1285,7 +1514,7 @@ class Community(object):
 
         Once a community is destroyed, it must be reclassified to ensure that it is not loaded in
         its regular form.  This method returns the class that the community will be reclassified
-        into.  The default is either the SoftKilledCommunity or the HardKilledCommunity class,
+        into.  It should return either a subclass of SoftKilledCommity or HardKilledCommunity
         depending on the received dispersy-destroy-community message.
 
         Depending on the degree of the destroy message, we will need to cleanup in different ways.
@@ -1371,7 +1600,7 @@ class Community(object):
         @return: The new meta messages.
         @rtype: [Message]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(self)
 
     def initiate_conversions(self):
         """
@@ -1385,7 +1614,7 @@ class Community(object):
 
         @rtype: [Conversion]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(self)
 
 class HardKilledCommunity(Community):
     def __init__(self, *args, **kargs):
@@ -1402,19 +1631,6 @@ class HardKilledCommunity(Community):
 
     def _initialize_meta_messages(self):
         super(HardKilledCommunity, self)._initialize_meta_messages()
-
-        # remove all messages that we no longer need
-        meta_messages = self._meta_messages
-        self._meta_messages = {}
-        for name in [u"dispersy-authorize",
-                     u"dispersy-destroy-community",
-                     u"dispersy-dynamic-settings",
-                     u"dispersy-identity",
-                     u"dispersy-introduction-request",
-                     u"dispersy-missing-identity",
-                     u"dispersy-missing-proof",
-                     u"dispersy-revoke"]:
-            self._meta_messages[name] = meta_messages[name]
 
         # replace introduction_request behavior
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
@@ -1459,4 +1675,5 @@ class HardKilledCommunity(Community):
         return self._conversions[prefix]
 
     def dispersy_on_introduction_request(self, messages):
+        self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
         self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])

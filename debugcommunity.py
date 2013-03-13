@@ -2,7 +2,7 @@ from struct import pack, unpack_from
 
 from .authentication import DoubleMemberAuthentication, MemberAuthentication
 from .candidate import Candidate
-from .community import Community
+from .community import Community, HardKilledCommunity
 from .conversion import BinaryConversion, DefaultConversion
 from .debug import Node
 from .destination import MemberDestination, CommunityDestination
@@ -81,6 +81,8 @@ class DebugNode(Node):
         assert isinstance(policy, (PublicResolution.Implementation, LinearResolution.Implementation))
         return self._create_text_message(u"dynamic-resolution-text", text, global_time, resolution=(policy,))
 
+    def create_sequence_test_message(self, text, global_time, sequence_number):
+        return self._create_sequence_text_message(u"sequence-text", text, global_time, sequence_number)
 #
 # Conversion
 #
@@ -97,6 +99,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(11), community.get_meta_message(u"last-1-doublemember-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(12), community.get_meta_message(u"protected-full-sync-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(13), community.get_meta_message(u"dynamic-resolution-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(14), community.get_meta_message(u"sequence-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         return pack("!B", len(message.payload.text)), message.payload.text
@@ -156,6 +159,30 @@ class DebugCommunity(Community):
     def initiate_conversions(self):
         return [DefaultConversion(self), DebugCommunityConversion(self)]
 
+    #
+    # helper methods to check database status
+    #
+
+    def fetch_packets(self, *message_names):
+        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+                                                                                [self.get_meta_message(name).database_id for name in message_names]))]
+
+    def fetch_messages(self, *message_names):
+        """
+        Fetch all packets for MESSAGE_NAMES from the database and converts them into
+        Message.Implementation instances.
+        """
+        return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self, verify=False)
+
+    def delete_messages(self, *message_names):
+        """
+        Deletes all packets for MESSAGE_NAMES from the database.  Returns the number of packets
+        removed.
+        """
+        self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ")",
+                                        [self.get_meta_message(name).database_id for name in message_names])
+        return self._dispersy.database.changes
+
     def initiate_meta_messages(self):
         return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=9), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
@@ -166,6 +193,7 @@ class DebugCommunity(Community):
                 Message(self, u"DESC-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"DESC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"protected-full-sync-text", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"dynamic-resolution-text", MemberAuthentication(), DynamicResolution(PublicResolution(), LinearResolution()), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
+                Message(self, u"sequence-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 ]
 
     def create_full_sync_text(self, text, store=True, update=True, forward=True):
@@ -225,6 +253,17 @@ class DebugCommunity(Community):
         return message
 
     #
+    # sequence-text
+    #
+    def create_sequence_text(self, text, store=True, update=True, forward=True):
+        meta = self.get_meta_message(u"sequence-text")
+        message = meta.impl(authentication=(self._my_member,),
+                            distribution=(self.claim_global_time(), meta.distribution.claim_sequence_number()),
+                            payload=(text,))
+        self._dispersy.store_update_forward([message], store, update, forward)
+        return message
+
+    #
     # any text-payload
     #
 
@@ -251,3 +290,13 @@ class DebugCommunity(Community):
         for member, global_time, packet in descriptors:
             message = packet.load_message()
             dprint("undo \"", message.payload.text, "\" @", global_time)
+
+    def dispersy_cleanup_community(self, message):
+        if message.payload.is_soft_kill:
+            raise NotImplementedError()
+
+        elif message.payload.is_hard_kill:
+            return HardKilledDebugCommunity
+
+class HardKilledDebugCommunity(DebugCommunity, HardKilledCommunity):
+    pass
