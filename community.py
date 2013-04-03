@@ -1295,65 +1295,63 @@ class Community(object):
 
     def _iter_category(self, category):
         while True:
-            no_result = True
-            
+            index = 0
             keys = self._candidates.keys()
-            key_index = 0
-            key_value = None
 
-            while True:
-                try:
-                    key_value = keys[key_index]
-                    candidate = self._candidates[key_value]
-                    
-                    if candidate.in_community(self, time()) and candidate.is_any_active(time()) and category == candidate.get_category(self, time()):
-                        no_result = False
-                        yield candidate
-                        
-                        keys = self._candidates.keys()
-                        if key_value in keys:
-                            key_index = keys.index(key_value)
-                        
-                    key_index += 1
-                        
-                except IndexError:
-                    break
-            
-            if no_result:
-                yield None
-                
+            while index < len(keys):
+                now = time()
+                key = keys[index]
+                candidate  = self._candidates.get(key)
+
+                if (candidate and
+                    candidate.is_any_active(now) and
+                    candidate.get_category(self, now) == category):
+                    assert candidate.in_community(self, now)
+                    yield candidate
+
+                    keys = self._candidates.keys()
+                    try:
+                        if keys[index] != key:
+                            # a key has been removed from self._candidates
+                            index = keys.index(key)
+                    except (IndexError, ValueError):
+                        index -= 1
+
+                index += 1
+
+            yield None
+
     def _iter_categories(self, categories, once = False):
         while True:
-            no_result = True
-
+            index = 0
             keys = self._candidates.keys()
-            key_index = 0
-            key_value = None
-            
-            while True:
-                try:
-                    key_value = keys[key_index]
-                    candidate = self._candidates[key_value]
-                    
-                    if candidate.in_community(self, time()) and candidate.is_any_active(time()) and candidate.get_category(self, time()) in categories:
-                        no_result = False
-                        yield candidate
-                        
-                        keys = self._candidates.keys()
-                        if key_value in keys:
-                            key_index = keys.index(key_value)
-                        
-                    key_index += 1
-                        
-                except IndexError:
-                    break
-                    
-            if no_result:
-                yield None
-            
+
+            while index < len(keys):
+                now = time()
+                key = keys[index]
+                candidate  = self._candidates.get(key)
+
+                if (candidate and
+                    candidate.is_any_active(now) and
+                    candidate.get_category(self, now) in categories):
+                    assert candidate.in_community(self, now)
+                    yield candidate
+
+                    keys = self._candidates.keys()
+                    try:
+                        if keys[index] != key:
+                            # a key has been removed from self._candidates
+                            index = keys.index(key)
+                    except (IndexError, ValueError):
+                        index -= 1
+
+                index += 1
+
             if once:
                 break
-                
+            else:
+                yield None
+
     def _iter_bootstrap(self, once = False):
         while True:
             no_result = True
