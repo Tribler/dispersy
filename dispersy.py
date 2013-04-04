@@ -4481,13 +4481,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 except StopIteration:
                     pass
                 # commit database
-                # unload all communities
-                try:
-                    while True:
-                        next(self._communities.itervalues()).unload_community()
-                except StopIteration:
-                    pass
-                # commit database
                 self._database.commit(exiting = True)
                 break
 
