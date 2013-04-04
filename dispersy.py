@@ -4457,8 +4457,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
     def _watchdog(self):
         """
-        Periodically called to flush changes to disk, most importantly, it will catch the
-        GeneratorExit exception when it is thrown to properly shutdown the database.
+        Periodically called to commit database changes to disk.
         """
         while True:
             try:
@@ -4472,28 +4471,26 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # OperationalError: database is locked
                 dprint(exception=True, level="error")
 
-            except GeneratorExit:
-                if __debug__: dprint("shutdown")
-                # unload all communities
-                try:
-                    while True:
-                        next(self._communities.itervalues()).unload_community()
-                except StopIteration:
-                    pass
-                # commit database
-                self._database.commit(exiting = True)
-                break
-
     def _commit_now(self):
         """
         Flush changes to disk.
         """
         self._database.commit()
-        
+
     def stop(self, timeout=2.0):
         """
         Stop the callback thread and clean all caches.
         """
+        # unload all communities
+        try:
+            while True:
+                next(self._communities.itervalues()).unload_community()
+        except StopIteration:
+            pass
+
+        # commit database
+        self._database.commit(exiting = True)
+
         self._callback.stop(timeout=timeout)
         
         cleanup_members()
