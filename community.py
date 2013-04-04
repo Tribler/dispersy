@@ -1296,6 +1296,7 @@ class Community(object):
     def _iter_category(self, category):
         while True:
             index = 0
+            has_result = False
             keys = self._candidates.keys()
 
             while index < len(keys):
@@ -1307,7 +1308,9 @@ class Community(object):
                     candidate.is_any_active(now) and
                     candidate.get_category(self, now) == category):
                     assert candidate.in_community(self, now)
+
                     yield candidate
+                    has_result = True
 
                     keys = self._candidates.keys()
                     try:
@@ -1319,11 +1322,13 @@ class Community(object):
 
                 index += 1
 
-            yield None
+            if not has_result:
+                yield None
 
     def _iter_categories(self, categories, once = False):
         while True:
             index = 0
+            has_result = False
             keys = self._candidates.keys()
 
             while index < len(keys):
@@ -1335,7 +1340,9 @@ class Community(object):
                     candidate.is_any_active(now) and
                     candidate.get_category(self, now) in categories):
                     assert candidate.in_community(self, now)
+
                     yield candidate
+                    has_result = True
 
                     keys = self._candidates.keys()
                     try:
@@ -1349,7 +1356,7 @@ class Community(object):
 
             if once:
                 break
-            else:
+            elif not has_result:
                 yield None
 
     def _iter_bootstrap(self, once = False):
