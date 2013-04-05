@@ -52,6 +52,7 @@ from .bloomfilter import BloomFilter
 from .bootstrap import get_bootstrap_candidates
 from .callback import Callback
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
+from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination, MemberDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
@@ -658,6 +659,14 @@ class Dispersy(object):
         assert isinstance(private_key, str)
         return Member(self, public_key, private_key)
 
+    def get_new_member(self, curve=u"medium"):
+        """
+        Returns a Member instance created from a newly generated public key.
+        """
+        assert isinstance(curve, unicode), type(curve)
+        ec = ec_generate_key(curve)
+        return Member(self, ec_to_public_bin(ec), ec_to_private_bin(ec))
+
     def get_temporary_member_from_id(self, mid, cache=True):
         """
         Returns a temporary Member instance reserving the MID until (hopefully) the public key
@@ -678,7 +687,7 @@ class Dispersy(object):
         assert isinstance(cache, bool), type(cache)
         if cache:
             try:
-                return [MemberFromId(mid)]
+                return [MemberFromId(self, mid)]
             except LookupError:
                 pass
 
@@ -711,7 +720,7 @@ class Dispersy(object):
         assert isinstance(cache, bool), type(cache)
         if cache:
             try:
-                return [MemberFromId(mid)]
+                return [MemberFromId(self, mid)]
             except LookupError:
                 pass
 
@@ -719,7 +728,7 @@ class Dispersy(object):
         # has the same sha1 as the master member, however unlikely.  the only way to prevent this,
         # as far as we know, is to increase the size of the community identifier, for instance by
         # using sha256 instead of sha1.
-        return [MemberWithoutCheck(str(public_key))
+        return [MemberWithoutCheck(self, str(public_key))
                 for public_key,
                 in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
                 if public_key]
@@ -733,7 +742,7 @@ class Dispersy(object):
         assert isinstance(cache, bool), type(cache)
         if cache:
             try:
-                return MemberFromDatabaseId(database_id)
+                return MemberFromDatabaseId(self, database_id)
             except LookupError:
                 pass
 
@@ -742,7 +751,7 @@ class Dispersy(object):
         except StopIteration:
             return None
         else:
-            return MemberWithoutCheck(str(public_key))
+            return MemberWithoutCheck(self, str(public_key))
 
     def attach_community(self, community):
         """

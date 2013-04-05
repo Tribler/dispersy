@@ -45,7 +45,7 @@ class TestCandidates(unittest.TestCase):
         self.assertEquals(expected, got)
         
     def __test_introduce(self, community_create_method):
-        c = community_create_method(self.mm)
+        c = community_create_method(self.d, self.mm)
         candidates = []
         for i in range(5):
             address = ("127.0.0.1", i+1)
@@ -68,7 +68,7 @@ class TestCandidates(unittest.TestCase):
         expected = [None, ("127.0.0.1", 5), ("127.0.0.1", 4), ("127.0.0.1", 3), ("127.0.0.1", 2)]
         got = []
 
-        c2 = community_create_method(self.mm)        
+        c2 = community_create_method(self.d, self.mm)        
         for candidate in reversed(candidates):
             candidate.stumble(c2, now)
             

@@ -23,8 +23,8 @@ class DebugOnlyMember(Member):
     _mid_cache = {}
     _did_cache = {}
 
-    def __init__(self, public_key, private_key=""):
-        super(DebugOnlyMember, self).__init__(public_key)
+    def __init__(self, dispersy, public_key, private_key=""):
+        super(DebugOnlyMember, self).__init__(dispersy, public_key)
 
         if private_key:
             self._private_key = private_key
@@ -100,7 +100,7 @@ class Node(object):
         assert sync_with_database is None, "The parameter sync_with_database is deprecated and must be None"
 
         ec = ec_generate_key(u"low")
-        self._my_member = DebugOnlyMember(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        self._my_member = DebugOnlyMember(self._dispersy, ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         if identity:
             # update identity information
@@ -210,12 +210,15 @@ class Node(object):
             try:
                 packet, address = self._socket.recvfrom(10240)
             except:
+                dprint("No more packets")
                 raise
 
             if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
+                dprint("Ignored ", len(packet), " bytes from ", address[0], ":", address[1])
                 continue
 
             if not (packets is None or packet in packets):
+                dprint("Ignored ", len(packet), " bytes from ", address[0], ":", address[1])
                 continue
 
             if packet.startswith("ffffffff".decode("HEX")):
@@ -227,6 +230,15 @@ class Node(object):
             candidate = Candidate(address, tunnel)
             dprint(len(packet), " bytes from ", candidate)
             return candidate, packet
+
+    def receive_packets(self, timeout=None, addresses=None, packets=None):
+        packets_ = []
+        while True:
+            try:
+                packets_.append(self.receive_packet(timeout, addresses, packets))
+            except socket.error:
+                break
+        return packets_
 
     def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
         assert timeout is None, "The parameter TIMEOUT is deprecated and must be None"
@@ -262,11 +274,11 @@ class Node(object):
             dprint(message.name, " (", len(packet), " bytes) from ", candidate)
             return candidate, message
 
-    def receive_messages(self, *args, **kargs):
+    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
         messages = []
         while True:
             try:
-                messages.append(self.receive_message(*args, **kargs))
+                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations))
             except socket.error:
                 break
         return messages
