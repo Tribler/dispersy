@@ -1,27 +1,15 @@
-import unittest
 from time import time
 
-from ..dispersy import Dispersy
-from ..callback import Callback
 from ..debugcommunity import DebugCommunity
-from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..tool.tracker import TrackerCommunity
+from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
-class TestCandidates(unittest.TestCase):
-
-    def setUp(self):
-        self.c = Callback()
-        self.d = Dispersy(self.c, u".", u":memory:")
-        ec = ec_generate_key(u"low")
-        self.mm = self.d.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        
-    def tearDown(self):
-        self.d.stop()
-        self.c.stop()
-        
+class TestCandidates(DispersyTestClass):
+    @call_on_dispersy_thread
     def test_yield_introduce_candidates(self):
         self.__test_introduce(DebugCommunity.create_community)
-            
+
+    @call_on_dispersy_thread
     def test_tracker_yield_introduce_candidates(self):
         communities, candidates = self.__test_introduce(TrackerCommunity.create_community)
         
@@ -44,8 +32,9 @@ class TestCandidates(unittest.TestCase):
         
         self.assertEquals(expected, got)
         
+    @call_on_dispersy_thread
     def __test_introduce(self, community_create_method):
-        c = community_create_method(self.d, self.mm)
+        c = community_create_method(self._dispersy, self._my_member)
         candidates = []
         for i in range(5):
             address = ("127.0.0.1", i+1)
@@ -68,7 +57,7 @@ class TestCandidates(unittest.TestCase):
         expected = [None, ("127.0.0.1", 5), ("127.0.0.1", 4), ("127.0.0.1", 3), ("127.0.0.1", 2)]
         got = []
 
-        c2 = community_create_method(self.d, self.mm)        
+        c2 = community_create_method(self._dispersy, self._my_member)        
         for candidate in reversed(candidates):
             candidate.stumble(c2, now)
             
@@ -78,8 +67,9 @@ class TestCandidates(unittest.TestCase):
         self.assertEquals(expected, got)
         return [c,c2], candidates
     
+    @call_on_dispersy_thread
     def test_merge_candidates(self):
-        c = DebugCommunity.create_community(self.d, self.mm)
+        c = DebugCommunity.create_community(self._dispersy, self._my_member)
         
         #let's make a list of all possible combinations which should be merged into one candidate
         candidates = []
@@ -88,12 +78,12 @@ class TestCandidates(unittest.TestCase):
         candidates.append(c.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
         candidates.append(c.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
         
-        self.d._filter_duplicate_candidate(candidates[0])
+        self._dispersy._filter_duplicate_candidate(candidates[0])
         
         expected = [candidates[0].wan_address]
         
         got = []
-        for candidate in self.d._candidates.itervalues():
+        for candidate in self._dispersy._candidates.itervalues():
             got.append(candidate.wan_address)
         
         self.assertEquals(expected, got)

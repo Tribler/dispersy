@@ -4519,10 +4519,13 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         """
         self._database.commit()
 
-    def stop(self, timeout=2.0):
+    def stop(self):
         """
-        Stop the callback thread and clean all caches.
+        Will unload all communities and commit the Dispersy database.
         """
+        assert self._callback.is_current_thread, "Must be called from the callback thread"
+        assert self._callback.is_running, "Must be called before the callback thread has stopped"
+
         # unload all communities
         try:
             while True:
@@ -4532,8 +4535,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         # commit database
         self._database.commit(exiting = True)
-
-        self._callback.stop(timeout=timeout)
 
     def _candidate_walker(self):
         """
