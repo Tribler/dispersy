@@ -6,7 +6,6 @@ try:
 except ImportError:
     from .python27_ordereddict import OrderedDict
 
-from .dispersydatabase import DispersyDatabase
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
 from .revision import update_revision_information
 
@@ -39,11 +38,12 @@ def cleanup():
     clear(DummyMember)
 
 class DummyMember(object):
-    def __init__(self, mid):
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-        database = DispersyDatabase.get_instance()
+    def __init__(self, dispersy, mid):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(mid, str), type(mid)
+        assert len(mid) == 20, len(mid)
+        database = dispersy.database
 
         try:
             database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
@@ -133,10 +133,12 @@ class DummyMember(object):
         return "<%s 0 %s>" % (self.__class__.__name__, self._mid.encode("HEX"))
 
 class MemberBase(DummyMember):
-    def __init__(self, public_key, private_key=""):
+    def __init__(self, dispersy, public_key, private_key=""):
         """
         Create a new Member instance.
         """
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), public_key.encode("HEX")
@@ -147,12 +149,11 @@ class MemberBase(DummyMember):
             if private_key and not self._private_key:
                 self._private_key = private_key
                 self._ec = ec_from_private_bin(private_key)
-                DispersyDatabase.get_instance().execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+                dispersy.database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
 
         else:
             # create a new instance
-            assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-            database = DispersyDatabase.get_instance()
+            database = dispersy.database
 
             try:
                 database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
@@ -357,7 +358,9 @@ class Member(MemberBase):
     _mid_cache = {}
     _did_cache = {}
 
-    def __new__(cls, public_key, private_key=""):
+    def __new__(cls, dispersy, public_key, private_key=""):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
@@ -366,8 +369,10 @@ class Member(MemberBase):
         # retrieve Member from cache (based on public_key)
         return cls._cache.get(public_key) or object.__new__(cls)
 
-    def __init__(self, public_key, private_key=""):
-        super(Member, self).__init__(public_key, private_key)
+    def __init__(self, dispersy, public_key, private_key=""):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        super(Member, self).__init__(dispersy, public_key, private_key)
 
         assert hasattr(self, "_public_key"), self
         assert hasattr(self, "_mid"), self
@@ -391,7 +396,9 @@ class Member(MemberBase):
         assert len(self._cache) == len(self._mid_cache) and len(self._mid_cache) == len(self._did_cache), "Cache sizes are not synchronized after inserting (%s-%s) (%d,%d,%d)"%(type(self), str(self), len(self._cache), len(self._mid_cache), len(self._did_cache))
 
 class MemberFromId(Member):
-    def __new__(cls, mid):
+    def __new__(cls, dispersy, mid):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(mid, str)
         assert len(mid) == 20
         
@@ -403,7 +410,9 @@ class MemberFromId(Member):
         raise LookupError(mid)
 
 class MemberFromDatabaseId(Member):
-    def __new__(cls, database_id):
+    def __new__(cls, dispersy, database_id):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(database_id, (int, long)), type(database_id)
         
         if database_id in cls._did_cache:
@@ -413,7 +422,9 @@ class MemberFromDatabaseId(Member):
         raise LookupError(database_id)
 
 class MemberWithoutCheck(Member):
-    def __new__(cls, public_key, private_key=""):
+    def __new__(cls, dispersy, public_key, private_key=""):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]

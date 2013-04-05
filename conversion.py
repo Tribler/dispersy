@@ -8,7 +8,6 @@ from .authentication import NoAuthentication, MemberAuthentication, DoubleMember
 from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
 from .destination import MemberDestination, CommunityDestination, CandidateDestination
-from .dispersydatabase import DispersyDatabase
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
@@ -48,9 +47,6 @@ class Conversion(object):
         assert len(dispersy_version) == 1, dispersy_version
         assert isinstance(community_version, str), type(community_version)
         assert len(community_version) == 1, community_version
-
-        # the dispersy database
-        self._dispersy_database = DispersyDatabase.get_instance()
 
         # the community that this conversion belongs to.
         self._community = community

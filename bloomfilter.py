@@ -633,7 +633,7 @@ if __debug__:
             def check_database(self, *args):
                 pass
 
-        db = TestDatabase.get_instance(u"test.db")
+        db = TestDatabase(u"test.db")
 
         DATA_COUNT = 1000
         RUN_COUNT = 1000

@@ -3,7 +3,6 @@ from time import time
 
 from ..dispersy import Dispersy
 from ..callback import Callback
-from ..member import Member
 from ..debugcommunity import DebugCommunity
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..tool.tracker import TrackerCommunity
@@ -11,12 +10,14 @@ from ..tool.tracker import TrackerCommunity
 class TestCandidates(unittest.TestCase):
 
     def setUp(self):
-        self.d = Dispersy.get_instance(Callback(), u".", u":memory:")
+        self.c = Callback()
+        self.d = Dispersy(self.c, u".", u":memory:")
         ec = ec_generate_key(u"low")
-        self.mm = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        self.mm = self.d.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
         
     def tearDown(self):
-        Dispersy.del_instance()
+        self.d.stop()
+        self.c.stop()
         
     def test_yield_introduce_candidates(self):
         self.__test_introduce(DebugCommunity.create_community)
@@ -78,7 +79,7 @@ class TestCandidates(unittest.TestCase):
         return [c,c2], candidates
     
     def test_merge_candidates(self):
-        c = DebugCommunity.create_community(self.mm)
+        c = DebugCommunity.create_community(self.d, self.mm)
         
         #let's make a list of all possible combinations which should be merged into one candidate
         candidates = []

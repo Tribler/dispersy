@@ -58,7 +58,7 @@ class Community(object):
         return cls.__name__.decode("UTF-8")
 
     @classmethod
-    def create_community(cls, my_member, *args, **kargs):
+    def create_community(cls, dispersy, my_member, *args, **kargs):
         """
         Create a new community owned by my_member.
 
@@ -67,6 +67,9 @@ class Community(object):
 
         Furthermore, my_member will be granted permission to use all the messages that the community
         provides.
+
+        @param dispersy: The Dispersy instance where this community will attach itself to.
+        @type dispersy: Dispersy
 
         @param my_member: The Member that will be granted Permit, Authorize, and Revoke for all
          messages.
@@ -81,19 +84,19 @@ class Community(object):
         @return: The created community instance.
         @rtype: Community
         """
-        assert isinstance(my_member, Member), my_member
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
         ec = ec_generate_key(u"high")
-        master = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        master = dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-        database = Dispersy.get_instance().database
-        database.execute(u"INSERT INTO community (master, member, classification) VALUES(?, ?, ?)", (master.database_id, my_member.database_id, cls.get_classification()))
-        community_database_id = database.last_insert_rowid
+        dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES(?, ?, ?)", (master.database_id, my_member.database_id, cls.get_classification()))
+        community_database_id = dispersy.database.last_insert_rowid
 
         try:
             # new community instance
-            community = cls.load_community(master, *args, **kargs)
+            community = cls.load_community(dispersy, master, *args, **kargs)
             assert community.database_id == community_database_id
 
             # create the dispersy-identity for the master member
@@ -138,7 +141,7 @@ class Community(object):
         except:
             # undo the insert info the database
             # TODO it might still leave unused database entries referring to the community id
-            database.execute(u"DELETE FROM community WHERE id = ?", (community_database_id,))
+            dispersy.database.execute(u"DELETE FROM community WHERE id = ?", (community_database_id,))
 
             # raise the exception because this shouldn't happen
             raise
@@ -147,7 +150,7 @@ class Community(object):
             return community
 
     @classmethod
-    def join_community(cls, master, my_member, *args, **kargs):
+    def join_community(cls, dispersy, master, my_member, *args, **kargs):
         """
         Join an existing community.
 
@@ -157,6 +160,9 @@ class Community(object):
         Joining a community does not mean that you obtain permissions in that community, those will
         need to be granted by another member who is allowed to do so.  However, it will let you
         receive, send, and disseminate messages that do not require any permission to use.
+
+        @param dispersy: The Dispersy instance where this community will attach itself to.
+        @type dispersy: Dispersy
 
         @param master: The master member that identified the community that we want to join.
         @type master: DummyMember or Member
@@ -174,20 +180,20 @@ class Community(object):
         @return: The created community instance.
         @rtype: Community
         """
-        assert isinstance(master, DummyMember)
-        assert isinstance(my_member, Member)
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(master, DummyMember), type(master)
+        assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
         if __debug__: dprint("joining ", cls.get_classification(), " ", master.mid.encode("HEX"))
 
-        database = Dispersy.get_instance().database
-        database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
-                         (master.database_id, my_member.database_id, cls.get_classification()))
-        community_database_id = database.last_insert_rowid
+        dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
+                                  (master.database_id, my_member.database_id, cls.get_classification()))
+        community_database_id = dispersy.database.last_insert_rowid
 
         try:
             # new community instance
-            community = cls.load_community(master, *args, **kargs)
+            community = cls.load_community(dispersy, master, *args, **kargs)
             assert community.database_id == community_database_id
 
             # create my dispersy-identity
@@ -196,7 +202,7 @@ class Community(object):
         except:
             # undo the insert info the database
             # TODO it might still leave unused database entries referring to the community id
-            database.execute(u"DELETE FROM community WHERE id = ?", (community_database_id,))
+            dispersy.database.execute(u"DELETE FROM community WHERE id = ?", (community_database_id,))
 
             # raise the exception because this shouldn't happen
             raise
@@ -205,16 +211,17 @@ class Community(object):
             return community
 
     @classmethod
-    def get_master_members(cls):
+    def get_master_members(cls, dispersy):
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         if __debug__: dprint("retrieving all master members owning ", cls.get_classification(), " communities")
-        execute = Dispersy.get_instance().database.execute
-        return [Member(str(public_key)) if public_key else DummyMember(str(mid))
+        execute = dispersy.database.execute
+        return [dispersy.get_member(str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
                 for mid, public_key,
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
 
     @classmethod
-    def load_community(cls, master, *args, **kargs):
+    def load_community(cls, dispersy, master, *args, **kargs):
         """
         Load a single community.
 
@@ -226,32 +233,37 @@ class Community(object):
         @return: The community identified by master.
         @rtype: Community
         """
-        assert isinstance(master, DummyMember)
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(master, DummyMember), type(master)
         if __debug__: dprint("loading ", cls.get_classification(), " ", master.mid.encode("HEX"))
-        community = cls(master, *args, **kargs)
+        community = cls(dispersy, master, *args, **kargs)
 
         # tell dispersy that there is a new community
-        community._dispersy.attach_community(community)
+        dispersy.attach_community(community)
 
         return community
 
-    def __init__(self, master):
+    def __init__(self, dispersy, master):
         """
         Initialize a community.
 
         Generally a new community is created using create_community.  Or an existing community is
         loaded using load_community.  These two methods prepare and call this __init__ method.
 
+        @param dispersy: The Dispersy instance where this community will attach itself to.
+        @type dispersy: Dispersy
+
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
         """
-        assert isinstance(master, DummyMember)
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(master, DummyMember), type(master)
         if __debug__:
             dprint("initializing:  ", self.get_classification())
             dprint("master member: ", master.mid.encode("HEX"), "" if isinstance(master, Member) else " (using DummyMember)")
 
-        # dispersy
-        self._dispersy = Dispersy.get_instance()
+        # Dispersy
+        self._dispersy = dispersy
 
         # _pending_callbacks contains all id's for registered calls that should be removed when the
         # community is unloaded.  most of the time this contains all the generators that are being
@@ -266,7 +278,7 @@ class Community(object):
 
         self._cid = master.mid
         self._master_member = master
-        self._my_member = Member(str(member_public_key))
+        self._my_member = self._dispersy.get_member(str(member_public_key))
         if __debug__: dprint("my member:     ", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
@@ -353,7 +365,7 @@ class Community(object):
             else:
                 if public_key:
                     if __debug__: dprint(self._cid.encode("HEX"), " found master member")
-                    self._master_member = Member(str(public_key))
+                    self._master_member = self._dispersy.get_member(self._dispersy, str(public_key))
                     assert self._master_member.public_key
                     break
 

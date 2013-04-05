@@ -51,11 +51,12 @@ def assert_message_stored(community, member, global_time, undone="done"):
     assert_((undone == "done" and actual_undone == 0) or undone == "undone" and 0 < actual_undone, [undone, actual_undone])
 
 class ScriptBase(object):
-    def __init__(self, **kargs):
+    def __init__(self, dispersy, **kargs):
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         self._kargs = kargs
         self._testcases = []
-        self._dispersy = Dispersy.get_instance()
-        self._dispersy_database = DispersyDatabase.get_instance()
+        self._dispersy = dispersy
+        self._dispersy_database = self._dispersy.database
         # self._dispersy.callback.register(self.run)
         if self.enable_wait_for_wan_address:
             self.add_testcase(self.wait_for_wan_address)

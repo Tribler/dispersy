@@ -18,7 +18,7 @@ def watchdog(dispersy):
     except GeneratorExit:
         dispersy.endpoint.stop()
 
-def start_script(opt):
+def start_script(dispersy, opt):
     try:
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
@@ -36,7 +36,7 @@ def start_script(opt):
     except:
         raise SystemExit("Invalid --kargs", opt.kargs)
 
-    script = cls(**kargs)
+    script = cls(dispersy, **kargs)
     script.next_testcase()
 
 def main_real(setup=None):
@@ -70,7 +70,7 @@ def main_real(setup=None):
     # setup
     currentThread().setName('Dispersy')
     callback = Callback()
-    dispersy = Dispersy.get_instance(callback, unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(callback, unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
     
     # if opt.swiftproc:
@@ -86,7 +86,7 @@ def main_real(setup=None):
 
     # register tasks
     callback.register(watchdog, (dispersy,))
-    callback.register(start_script, (opt,))
+    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
         print "Received", sig, "signal in", frame
@@ -95,9 +95,9 @@ def main_real(setup=None):
 
     # start
     callback.loop()
-    Dispersy.del_instance()
+    dispersy.endpoint.stop()
+    dispersy.stop()
     return callback
-
 
 def main(setup=None):
     callback = main_real(setup)

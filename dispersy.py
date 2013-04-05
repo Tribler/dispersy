@@ -74,8 +74,6 @@ from .requestcache import Cache, RequestCache
 from .resolution import PublicResolution, LinearResolution
 from .revision import update_revision_information
 from .statistics import DispersyStatistics
-from .singleton import Singleton
-from .singleton import cleanup as cleanup_singletons
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -261,21 +259,17 @@ class GlobalCandidateCache():
         return len(candidates)
 
 
-class Dispersy(Singleton):
+class Dispersy(object):
     """
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
     outgoing data for, possibly, multiple communities.
     """
     def __init__(self, callback, working_directory, database_filename=u"dispersy.db"):
         """
-        Initialize the Dispersy singleton instance.
-
-        Currently we use the rawserver to schedule events.  This may change in the future to offload
-        all data processing to a different thread.  The only mechanism used from the rawserver is
-        the add_task method.
+        Initialise a Dispersy instance.
 
         @param callback: Object for callback scheduling.
-        @type rawserver: Callback
+        @type callback: Callback
 
         @param working_directory: The directory where all files should be stored.
         @type working_directory: unicode
@@ -304,7 +298,7 @@ class Dispersy(Singleton):
             if not os.path.isdir(database_directory):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
-        self._database = DispersyDatabase.get_instance(database_filename)
+        self._database = DispersyDatabase(database_filename)
 
         # peer selection candidates.  address:Candidate pairs (where
         # address is obtained from socket.recv_from)
@@ -608,7 +602,7 @@ class Dispersy(Singleton):
         COMMUNITY is the community class that is defined.
 
         ARGS an KARGS are optional arguments and keyword arguments used when a community is loaded
-        using COMMUNITY.load_community(master, *ARGS, **KARGS).
+        using COMMUNITY.load_community(self, master, *ARGS, **KARGS).
         """
         if __debug__:
             from .community import Community
@@ -662,7 +656,33 @@ class Dispersy(Singleton):
         """
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
-        return Member(public_key, private_key)
+        return Member(self, public_key, private_key)
+
+    def get_temporary_member_from_id(self, mid, cache=True):
+        """
+        Returns a temporary Member instance reserving the MID until (hopefully) the public key
+        becomes available.
+
+        This method should be used with caution as this will create a real Member without having the
+        public key available.  This method is (sometimes) used when joining a community when we only
+        have its CID (=MID).
+
+        @param mid: The 20 byte sha1 digest indicating a member.
+        @type mid: string
+
+        @return: A (Dummy)Member instance
+        @rtype: DummyMember or Member
+        """
+        assert isinstance(mid, str), type(mid)
+        assert len(mid) == 20, len(mid)
+        assert isinstance(cache, bool), type(cache)
+        if cache:
+            try:
+                return [MemberFromId(mid)]
+            except LookupError:
+                pass
+
+        return DummyMember(self, mid)
 
     def get_members_from_id(self, mid, cache=True):
         """
@@ -849,7 +869,7 @@ class Dispersy(Singleton):
             args = ()
             kargs = {}
 
-        return destination.load_community(master, *args, **kargs)
+        return destination.load_community(self, master, *args, **kargs)
 
     def has_community(self, cid):
         """
@@ -901,9 +921,9 @@ class Dispersy(Singleton):
                 if load or (auto_load and auto_load_flag):
 
                     if classification in self._auto_load_communities:
-                        master = Member(str(master_public_key)) if master_public_key else DummyMember(cid)
+                        master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
                         cls, args, kargs = self._auto_load_communities[classification]
-                        community = cls.load_community(master, *args, **kargs)
+                        community = cls.load_community(self, master, *args, **kargs)
                         assert master.mid in self._communities
                         return community
 
@@ -1595,7 +1615,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # all except for the CANDIDATE
             if not other == candidate:
                 if __debug__: dprint("removing ", other, " in favor of ", candidate, force = 1)
-                candidate.merge(other)
+                candidate.merge(self, other)
                 del self._candidates[other.sock_addr]
                 self.wan_address_unvote(other)
 
@@ -3654,7 +3674,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         >>> # Authorize Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member(bob_public_key)
+        >>> bob = dispersy.get_member(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_authorize(community, [(bob, msg, u'permit')])
 
@@ -3754,7 +3774,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         >>> # Revoke the right of Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member(bob_public_key)
+        >>> bob = dispersy.get_member(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_revoke(community, [(bob, msg, u'permit')])
 
@@ -4496,7 +4516,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         self._callback.stop(timeout=timeout)
         
         cleanup_members()
-        cleanup_singletons()
 
     def _candidate_walker(self):
         """

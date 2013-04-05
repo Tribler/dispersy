@@ -13,7 +13,6 @@ import sqlite3
 
 from .dprint import dprint
 from .revision import update_revision_information
-from .singleton import Singleton
 
 if __debug__:
     import thread
@@ -46,7 +45,7 @@ class IgnoreCommits(Exception):
     def __init__(self):
         super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
 
-class Database(Singleton):
+class Database(object):
     def __init__(self, file_path):
         """
         Initialize a new Database instance.
