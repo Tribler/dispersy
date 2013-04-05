@@ -40,6 +40,12 @@ import os
 import sys
 import netifaces
 
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
+
 from collections import defaultdict
 from hashlib import sha1
 from itertools import groupby, islice, count, cycle
@@ -58,8 +64,7 @@ from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .dprint import dprint
 from .endpoint import DummyEndpoint
-from .member import DummyMember, Member, MemberFromId, MemberFromDatabaseId, MemberWithoutCheck
-from .member import cleanup as cleanup_members
+from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
 from .message import DropPacket, DelayPacket
@@ -292,6 +297,10 @@ class Dispersy(object):
 
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
+
+        self._member_cache_by_public_key = OrderedDict()
+        self._member_cache_by_hash = dict()
+        self._member_cache_by_database_id = dict()
 
         # our data storage
         if not database_filename == u":memory:":
@@ -657,7 +666,22 @@ class Dispersy(object):
         """
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
-        return Member(self, public_key, private_key)
+        member = self._member_cache_by_public_key.get(public_key)
+        if not member:
+            member = Member(self, public_key, private_key)
+
+            # store in caches
+            self._member_cache_by_public_key[public_key] = member
+            self._member_cache_by_hash[member.mid] = member
+            self._member_cache_by_database_id[member.database_id] = member
+
+            # limit cache length
+            if len(self._member_cache_by_public_key) > 1024:
+                _, pop = self._member_cache_by_public_key.popitem(False)
+                del self._member_cache_by_hash[pop.mid]
+                del self._member_cache_by_database_id[pop.database_id]
+
+        return member
 
     def get_new_member(self, curve=u"medium"):
         """
@@ -665,9 +689,9 @@ class Dispersy(object):
         """
         assert isinstance(curve, unicode), type(curve)
         ec = ec_generate_key(curve)
-        return Member(self, ec_to_public_bin(ec), ec_to_private_bin(ec))
+        return self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
-    def get_temporary_member_from_id(self, mid, cache=True):
+    def get_temporary_member_from_id(self, mid):
         """
         Returns a temporary Member instance reserving the MID until (hopefully) the public key
         becomes available.
@@ -684,16 +708,9 @@ class Dispersy(object):
         """
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        assert isinstance(cache, bool), type(cache)
-        if cache:
-            try:
-                return [MemberFromId(self, mid)]
-            except LookupError:
-                pass
+        return self._member_cache_by_hash.get(mid) or DummyMember(self, mid)
 
-        return DummyMember(self, mid)
-
-    def get_members_from_id(self, mid, cache=True):
+    def get_members_from_id(self, mid):
         """
         Returns zero or more Member instances associated with mid, where mid is the sha1 digest of a
         member public key.
@@ -717,41 +734,35 @@ class Dispersy(object):
         """
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        assert isinstance(cache, bool), type(cache)
-        if cache:
-            try:
-                return [MemberFromId(self, mid)]
-            except LookupError:
-                pass
+        member = self._member_cache_by_hash.get(mid)
+        if member:
+            return [member]
 
-        # note that this allows a security attack where someone might obtain a crypographic key that
-        # has the same sha1 as the master member, however unlikely.  the only way to prevent this,
-        # as far as we know, is to increase the size of the community identifier, for instance by
-        # using sha256 instead of sha1.
-        return [MemberWithoutCheck(self, str(public_key))
-                for public_key,
-                in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
-                if public_key]
+        else:
+            # note that this allows a security attack where someone might obtain a crypographic
+            # key that has the same sha1 as the master member, however unlikely.  the only way to
+            # prevent this, as far as we know, is to increase the size of the community
+            # identifier, for instance by using sha256 instead of sha1.
+            return [self.get_member(str(public_key))
+                    for public_key,
+                    in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
+                    if public_key]
 
-    def get_member_from_database_id(self, database_id, cache=True):
+    def get_member_from_database_id(self, database_id):
         """
         Returns a Member instance associated with DATABASE_ID or None when this row identifier is
         not available.
         """
         assert isinstance(database_id, (int, long)), type(database_id)
-        assert isinstance(cache, bool), type(cache)
-        if cache:
+        member = self._member_cache_by_database_id.get(database_id)
+        if not member:
             try:
-                return MemberFromDatabaseId(self, database_id)
-            except LookupError:
+                public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
+            except StopIteration:
                 pass
-
-        try:
-            public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
-        except StopIteration:
-            return None
-        else:
-            return MemberWithoutCheck(self, str(public_key))
+            else:
+                member = self.get_member(str(public_key))
+        return member
 
     def attach_community(self, community):
         """
@@ -4523,8 +4534,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         self._database.commit(exiting = True)
 
         self._callback.stop(timeout=timeout)
-        
-        cleanup_members()
 
     def _candidate_walker(self):
         """

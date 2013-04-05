@@ -27,7 +27,7 @@ from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution
 from .dprint import dprint
-from .member import DummyMember, Member, MemberFromId
+from .member import DummyMember, Member
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .revision import update_revision_information
 from .statistics import CommunityStatistics
@@ -1517,13 +1517,13 @@ class Community(object):
                 self._dispersy.statistics.dict_inc(self._dispersy.statistics.overlapping_stumble_candidates, str(self))
     
     def get_candidate_mid(self, mid):
-        try:
-            member = MemberFromId(mid)
+        members = self._dispersy.get_members_from_id(mid)
+        if members:
+            member = members[0]
+
             for candidate in self._candidates.itervalues():
                 if candidate.is_associated(self, member):
                     return candidate
-        except LookupError:
-            pass
 
     def dispersy_cleanup_community(self, message):
         """

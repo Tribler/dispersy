@@ -16,27 +16,6 @@ if __debug__:
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
 
-def cleanup():
-    """
-    Removes all member caches.
-
-    - Clears _cache from all DummyMember subclasses
-    - Clears _mid_cache from all DummyMember subclasses
-    - Clears _did_cache from all DummyMember subclasses
-    """
-    def clear(cls):
-        if hasattr(cls, "_cache"):
-            cls._cache.clear()
-        if hasattr(cls, "_mid_cache"):
-            cls._mid_cache.clear()
-        if hasattr(cls, "_did_cache"):
-            cls._did_cache.clear()
-        
-        for subcls in cls.__subclasses__():
-            clear(subcls)
-    
-    clear(DummyMember)
-
 class DummyMember(object):
     def __init__(self, dispersy, mid):
         if __debug__: from .dispersy import Dispersy
@@ -132,7 +111,7 @@ class DummyMember(object):
     def __str__(self):
         return "<%s 0 %s>" % (self.__class__.__name__, self._mid.encode("HEX"))
 
-class MemberBase(DummyMember):
+class Member(DummyMember):
     def __init__(self, dispersy, public_key, private_key=""):
         """
         Create a new Member instance.
@@ -351,82 +330,3 @@ class MemberBase(DummyMember):
         Returns a human readable string representing the member.
         """
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
-
-class Member(MemberBase):
-    _cache_length = 1024
-    _cache = OrderedDict()
-    _mid_cache = {}
-    _did_cache = {}
-
-    def __new__(cls, dispersy, public_key, private_key=""):
-        if __debug__: from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-
-        # retrieve Member from cache (based on public_key)
-        return cls._cache.get(public_key) or object.__new__(cls)
-
-    def __init__(self, dispersy, public_key, private_key=""):
-        if __debug__: from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        super(Member, self).__init__(dispersy, public_key, private_key)
-
-        assert hasattr(self, "_public_key"), self
-        assert hasattr(self, "_mid"), self
-        
-        assert self._cache.get(public_key, self) == self 
-        assert self._mid_cache.get(self._mid, self) == self
-        assert self._did_cache.get(self._database_id, self) == self
-
-        # store Member in cache
-        self._cache[public_key] = self
-        self._mid_cache[self._mid] = self
-        self._did_cache[self._database_id] = self
-        
-        if len(self._cache) > self._cache_length:
-            replaced_member = self._cache.popitem(False)
-            if replaced_member:
-                replaced_member = replaced_member[1]
-                del self._mid_cache[replaced_member._mid]
-                del self._did_cache[replaced_member._database_id]
-                
-        assert len(self._cache) == len(self._mid_cache) and len(self._mid_cache) == len(self._did_cache), "Cache sizes are not synchronized after inserting (%s-%s) (%d,%d,%d)"%(type(self), str(self), len(self._cache), len(self._mid_cache), len(self._did_cache))
-
-class MemberFromId(Member):
-    def __new__(cls, dispersy, mid):
-        if __debug__: from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        
-        # retrieve Member from cache (based on mid)
-        if mid in cls._mid_cache:
-            return cls._mid_cache[mid]
-        
-        # prevent __init__ and hence caching this instance
-        raise LookupError(mid)
-
-class MemberFromDatabaseId(Member):
-    def __new__(cls, dispersy, database_id):
-        if __debug__: from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(database_id, (int, long)), type(database_id)
-        
-        if database_id in cls._did_cache:
-            return cls._did_cache[database_id]
-
-        # prevent __init__ and hence caching this instance
-        raise LookupError(database_id)
-
-class MemberWithoutCheck(Member):
-    def __new__(cls, dispersy, public_key, private_key=""):
-        if __debug__: from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-        return object.__new__(cls)
