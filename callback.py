@@ -501,14 +501,16 @@ class Callback(object):
                 # wakeup if sleeping
                 self._event.set()
 
-            if wait and not self._thread_ident == get_ident():
-                while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
-                    sleep(0.01)
-                    timeout -= 0.01
+        # 05/04/13 Boudewijn: we must also wait when self._state != RUNNING.  This can occur when
+        # stop() has already been called from SELF._THREAD_IDENT, changing the state to PLEASE_STOP.
+        if wait and not self._thread_ident == get_ident():
+            while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
+                sleep(0.01)
+                timeout -= 0.01
 
-                if __debug__:
-                    if timeout <= 0.0:
-                        dprint("timeout.  perhaps callback.stop() was called on the same thread?")
+            if __debug__:
+                if timeout <= 0.0:
+                    dprint("timeout.  perhaps callback.stop() was called on the same thread?")
 
         return self.is_finished
 
