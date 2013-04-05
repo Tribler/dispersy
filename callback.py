@@ -635,7 +635,7 @@ class Callback(object):
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
-                except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
+                except (SystemExit, KeyboardInterrupt, GeneratorExit), exception:
                     dprint("attempting proper shutdown", exception=True, level="error")
                     with lock:
                         self._state = "STATE_EXCEPTION"
@@ -647,16 +647,8 @@ class Callback(object):
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    if __debug__:
-                        dprint("__debug__ only shutdown", exception=True, level="error")
-                        with lock:
-                            self._state = "STATE_EXCEPTION"
-                            self._exception = exception
-                            self._exception_traceback = exc_info()[2]
-                        self._call_exception_handlers(exception, True)
-                    else:
-                        dprint(exception=True, level="error")
-                        self._call_exception_handlers(exception, False)
+                    dprint("keep running regardless of exception", exception=True, level="error")
+                    self._call_exception_handlers(exception, False)
 
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
