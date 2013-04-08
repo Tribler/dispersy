@@ -3242,7 +3242,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             assert isinstance(community, Community)
             assert isinstance(candidate, Candidate)
             assert isinstance(dummy_member, DummyMember)
-            assert not dummy_member.public_key
             assert response_func is None or callable(response_func)
             assert isinstance(response_args, tuple)
             assert isinstance(timeout, float)
