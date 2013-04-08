@@ -667,7 +667,11 @@ class Dispersy(object):
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         member = self._member_cache_by_public_key.get(public_key)
-        if not member:
+        if member:
+            if private_key and not member.private_key:
+                member.set_private_key(private_key)
+
+        else:
             member = Member(self, public_key, private_key)
 
             # store in caches

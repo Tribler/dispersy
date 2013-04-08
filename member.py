@@ -123,60 +123,51 @@ class Member(DummyMember):
         assert ec_check_public_bin(public_key), public_key.encode("HEX")
         assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
 
-        if hasattr(self, "_public_key"):
-            # already have an instance.  however, it is possible that we did not yet have PRIVATE_KEY
-            if private_key and not self._private_key:
-                self._private_key = private_key
-                self._ec = ec_from_private_bin(private_key)
-                dispersy.database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+        database = dispersy.database
 
-        else:
-            # create a new instance
-            database = dispersy.database
+        try:
+            database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
 
+        except StopIteration:
+            mid = sha1(public_key).digest()
+            private_key_from_db = None
             try:
-                database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
+                database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
 
             except StopIteration:
-                mid = sha1(public_key).digest()
-                private_key_from_db = None
-                try:
-                    database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
-
-                except StopIteration:
-                    database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-                    database_id = database.last_insert_rowid
-                    tags = u""
-
-                else:
-                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
+                database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
+                database_id = database.last_insert_rowid
+                tags = u""
 
             else:
-                mid = str(mid)
-                private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
-                assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+                database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
 
-            if private_key_from_db:
-                private_key = private_key_from_db
-            elif private_key:
-                database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
+        else:
+            mid = str(mid)
+            private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
+            assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
-            self._database = database
-            self._database_id = database_id
-            self._mid = mid
-            self._public_key = public_key
-            self._private_key = private_key
-            self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
-            self._signature_length = ec_signature_length(self._ec)
-            self._tags = [tag for tag in tags.split(",") if tag]
-            self._has_identity = set()
+        if private_key_from_db:
+            private_key = private_key_from_db
+        elif private_key:
+            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
 
-            if __debug__:
-                assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
-                for tag in self._tags:
-                    assert tag in (u"store", u"ignore", u"blacklist"), tag
+        self._database = database
+        self._database_id = database_id
+        self._mid = mid
+        self._public_key = public_key
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
+        self._signature_length = ec_signature_length(self._ec)
+        self._tags = [tag for tag in tags.split(",") if tag]
+        self._has_identity = set()
 
-            if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
+        if __debug__:
+            assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
+            for tag in self._tags:
+                assert tag in (u"store", u"ignore", u"blacklist"), tag
+
+        if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
 
     @property
     def public_key(self):
@@ -205,6 +196,13 @@ class Member(DummyMember):
         The length, in bytes, of a signature.
         """
         return self._signature_length
+
+    def set_private_key(self, private_key):
+        assert isinstance(private_key, str)
+        assert self._private_key == ""
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key)
+        self._database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
 
     def has_identity(self, community):
         """
