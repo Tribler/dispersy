@@ -49,6 +49,9 @@ class SyncCache(object):
         self.candidate = None
 
 class Community(object):
+    #Probability steps to get a sync skipped if the previous one was empty
+    _SKIP_CURVE_STEPS = [0, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    _SKIP_STEPS = len(_SKIP_CURVE_STEPS)
     @classmethod
     def get_classification(cls):
         """
@@ -302,6 +305,8 @@ class Community(object):
 
         # sync range bloom filters
         self._sync_cache = None
+        self.dispersy_sync_skip_enable = True
+        self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
             dprint("sync bloom:    size: ", int(ceil(b.size // 8)), ";  capacity: ", b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), ";  error-rate: ", self.dispersy_sync_bloom_filter_error_rate)
@@ -566,15 +571,38 @@ class Community(object):
         if (self._sync_cache and
             self._sync_cache.responses_received > 0 and
             self._sync_cache.times_used < 100):
+
             self._statistics.sync_bloom_reuse += 1
             self._statistics.sync_bloom_send += 1
             cache = self._sync_cache
             cache.times_used += 1
             cache.responses_received = 0
             cache.candidate = request_cache.helper_candidate
+            self._sync_cache_skip_count  = 0
 
             if __debug__: dprint(self._cid.encode("HEX"), " reuse #", cache.times_used, " (packets received: ", cache.responses_received, "; ", hex(cache.bloom_filter._filter), ")")
             return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
+
+        # Skip up to _SKIP_MAX_FACT*100% syncs
+        if self.dispersy_sync_skip_enable:
+            if self._sync_cache:
+                if self._sync_cache.responses_received > 0:
+                    # We received an update, stop skipping updates
+                    dprint("skip:", self._sync_cache_skip_count , "->", 0, "received:", self._sync_cache.responses_received)
+                    self._sync_cache_skip_count  = 0
+                elif self._sync_cache.times_used == 0:
+                    # Still no updates, gradually increment the skipping probability one notch
+                    dprint("skip:", self._sync_cache_skip_count , "->", min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS), "received:", self._sync_cache.responses_received)
+                    self._sync_cache_skip_count  = min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS)
+            else:
+                dprint("skip:", self._sync_cache_skip_count , "received:", "none (skipped last sync)")
+
+            if self._sync_cache_skip_count and random() < self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1]:
+                # Lets skip this one
+                dprint("skip: random() was <", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1])
+                self._statistics.sync_bloom_skip += 1
+                self._sync_cache = None
+                return None
 
         sync = self.dispersy_sync_bloom_filter_strategy()
         if sync:
