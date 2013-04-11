@@ -9,6 +9,7 @@ from ..debugcommunity import DebugCommunity
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):
+    @skip("The stress test is not actually a unittest")
     @call_on_dispersy_thread
     def test_servers_are_up(self):
         """
