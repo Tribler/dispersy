@@ -568,36 +568,30 @@ class Community(object):
         """
         Returns a (time_low, time_high, modulo, offset, bloom_filter) or None.
         """
-        if (self._sync_cache and
-            self._sync_cache.responses_received > 0 and
-            self._sync_cache.times_used < 100):
-
-            self._statistics.sync_bloom_reuse += 1
-            self._statistics.sync_bloom_send += 1
-            cache = self._sync_cache
-            cache.times_used += 1
-            cache.responses_received = 0
-            cache.candidate = request_cache.helper_candidate
-            self._sync_cache_skip_count  = 0
-
-            if __debug__: dprint(self._cid.encode("HEX"), " reuse #", cache.times_used, " (packets received: ", cache.responses_received, "; ", hex(cache.bloom_filter._filter), ")")
-            return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
-
-        # Skip up to _SKIP_MAX_FACT*100% syncs
-        if self.dispersy_sync_skip_enable:
-            if self._sync_cache:
-                if self._sync_cache.responses_received > 0:
-                    # We received an update, stop skipping updates
-                    dprint("skip:", self._sync_cache_skip_count , "->", 0, "received:", self._sync_cache.responses_received)
-                    self._sync_cache_skip_count  = 0
-                elif self._sync_cache.times_used == 0:
+        if self._sync_cache:
+            if self._dispersy_sync_skip_enable:
+                #We have received data, reset skip counter
+                self._sync_cache_skip_count  = 0
+                if self._sync_cache.times_used == 0:
                     # Still no updates, gradually increment the skipping probability one notch
                     dprint("skip:", self._sync_cache_skip_count , "->", min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS), "received:", self._sync_cache.responses_received)
                     self._sync_cache_skip_count  = min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS)
-            else:
-                dprint("skip:", self._sync_cache_skip_count , "received:", "none (skipped last sync)")
 
-            if self._sync_cache_skip_count and random() < self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1]:
+            if self._sync_cache.responses_received > 0 and self._sync_cache.times_used < 100:
+                self._statistics.sync_bloom_reuse += 1
+                self._statistics.sync_bloom_send += 1
+                cache = self._sync_cache
+                cache.times_used += 1
+                cache.responses_received = 0
+                cache.candidate = request_cache.helper_candidate
+                self._sync_cache_skip_count  = 0
+
+                if __debug__: dprint(self._cid.encode("HEX"), " reuse #", cache.times_used, " (packets received: ", cache.responses_received, "; ", hex(cache.bloom_filter._filter), ")")
+                return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
+
+        if (self.dispersy_sync_skip_enable and
+            self._sync_cache_skip_count and
+            random() < self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1]):
                 # Lets skip this one
                 dprint("skip: random() was <", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1])
                 self._statistics.sync_bloom_skip += 1
