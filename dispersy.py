@@ -4580,11 +4580,28 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             except StopIteration:
                 pass
 
-            # stop
+            # stop endpoint
             self._endpoint.close(timeout)
+            # Murphy tells us that endpoint just added tasks that will cause new communities to load
+            # into memory
+
+            # because this task has a very low priority, yielding 0.0 will wait until all endpoint
+            # tasks have finished
+            if timeout > 0.0:
+                yield 0.0
+
+            if self._communities:
+                if __debug__: dprint("Murphy was right!", box=1, force=1)
+                try:
+                    while True:
+                        next(self._communities.itervalues()).unload_community()
+                except StopIteration:
+                    pass
+
+            # stop the database
             self._database.close()
 
-        self._callback.call(stop)
+        self._callback.call(stop, priority=-512)
         return self._callback.stop(timeout)
 
     def _candidate_walker(self):
