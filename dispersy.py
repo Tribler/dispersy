@@ -4546,8 +4546,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             for cls, args, kargs in self._auto_load_communities.values():
                 for master in cls.get_master_members(self):
                     if not master.mid in self._communities:
+                        if __debug__: dprint("Loading ", cls.get_classification(), " at start")
                         try:
-                            cls(self, master, *args, **kargs)
+                            cls.load_community(self, master, *args, **kargs)
                             assert master.mid in self._communities
                         except Exception:
                             dprint(exception=True, level="error")
