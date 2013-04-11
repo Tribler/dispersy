@@ -56,14 +56,12 @@ from time import time
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .bootstrap import get_bootstrap_candidates
-from .callback import Callback
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination, MemberDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .dprint import dprint
-from .endpoint import DummyEndpoint
 from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
@@ -80,6 +78,10 @@ from .requestcache import Cache, RequestCache
 from .resolution import PublicResolution, LinearResolution
 from .revision import update_revision_information
 from .statistics import DispersyStatistics
+
+if __debug__:
+    from .callback import Callback
+    from .endpoint import Endpoint
 
 # update version information directly from SVN
 update_revision_information("$HeadURL$", "$Revision$")
@@ -270,12 +272,15 @@ class Dispersy(object):
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
     outgoing data for, possibly, multiple communities.
     """
-    def __init__(self, callback, working_directory, database_filename=u"dispersy.db"):
+    def __init__(self, callback, endpoint, working_directory, database_filename=u"dispersy.db"):
         """
         Initialise a Dispersy instance.
 
-        @param callback: Object for callback scheduling.
+        @param callback: Instance for callback scheduling.
         @type callback: Callback
+
+        @param endpoint: Instance for communication.
+        @type callback: Endpoint
 
         @param working_directory: The directory where all files should be stored.
         @type working_directory: unicode
@@ -283,14 +288,17 @@ class Dispersy(object):
         @param database_filename: The database filename or u":memory:"
         @type database_filename: unicode
         """
-        assert isinstance(callback, Callback)
-        assert isinstance(working_directory, unicode)
-        assert isinstance(database_filename, unicode)
-
+        assert isinstance(callback, Callback), type(callback)
+        assert isinstance(endpoint, Endpoint), type(endpoint)
+        assert isinstance(working_directory, unicode), type(working_directory)
+        assert isinstance(database_filename, unicode), type(database_filename)
         super(Dispersy, self).__init__()
 
-        # the raw server
+        # the thread we will be using
         self._callback = callback
+
+        # communication endpoint
+        self._endpoint = endpoint
 
         # batch caching incoming packets
         self._batch_cache = {}
@@ -337,14 +345,11 @@ class Dispersy(object):
         self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in bootstrap_candidates if candidate)
 
         # communities that can be auto loaded.  classification:(cls, args, kargs) pairs.
-        self._auto_load_communities = {}
+        self._auto_load_communities = OrderedDict()
 
         # loaded communities.  cid:Community pairs.
         self._communities = {}
         self._walker_commmunities = []
-
-        # communication endpoint
-        self._endpoint = DummyEndpoint()
 
         self._check_distribution_batch_map = {DirectDistribution:self._check_direct_distribution_batch,
                                               FullSyncDistribution:self._check_full_sync_distribution_batch,
@@ -427,23 +432,21 @@ class Dispersy(object):
         """
         return self._working_directory
 
-    # @property
-    def __get_endpoint(self):
+    @property
+    def endpoint(self):
         """
         The endpoint object used to send packets.
         @rtype: Object with a send(address, data) method
         """
         return self._endpoint
-    # @endpoint.setter
-    def __set_endpoint(self, endpoint):
-        """
-        Set a endpoint object.
-        @param endpoint: The endpoint object.
-        @type endpoint: Object with a send(address, data) method
-        """
-        self._endpoint = endpoint
 
-        host, port = endpoint.get_address()
+    def _endpoint_ready(self):
+        """
+        Guess our LAN and WAN address from information provided by endpoint.
+
+        This method is called immediately after endpoint.start finishes.
+        """
+        host, port = self._endpoint.get_address()
         if __debug__: dprint("update LAN address ", self._lan_address[0], ":", self._lan_address[1], " -> ", self._lan_address[0], ":", port, force=True)
         self._lan_address = (self._lan_address[0], port)
 
@@ -468,8 +471,6 @@ class Dispersy(object):
         # our address may not be a candidate
         if self._lan_address in self._candidates:
             del self._candidates[self._lan_address]
-    # .setter was introduced in Python 2.6
-    endpoint = property(__get_endpoint, __set_endpoint)
 
     @property
     def lan_address(self):
@@ -4522,22 +4523,69 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         """
         self._database.commit()
 
-    def stop(self):
+    def start(self):
         """
-        Will unload all communities and commit the Dispersy database.
+        Starts Dispersy.
+
+        This method is thread safe.
+
+        1. starts callback
+        2. opens database
+        3. opens endpoint
+        4. loads all defined auto load communities
         """
-        assert self._callback.is_current_thread, "Must be called from the callback thread"
-        assert self._callback.is_running, "Must be called before the callback thread has stopped"
+        assert not self._callback.is_running, "Must be called before callback.start()"
 
-        # unload all communities
-        try:
-            while True:
-                next(self._communities.itervalues()).unload_community()
-        except StopIteration:
-            pass
+        def start():
+            assert self._callback.is_current_thread, "Must be called from the callback thread"
+            self._database.open()
+            self._endpoint.open(self)
+            self._endpoint_ready()
 
-        # commit database
-        self._database.commit(exiting = True)
+            # load all communities that have been defined to auto load
+            for cls, args, kargs in self._auto_load_communities.values():
+                for master in cls.get_master_members(self):
+                    if not master.mid in self._communities:
+                        try:
+                            cls(self, master, *args, **kargs)
+                            assert master.mid in self._communities
+                        except Exception:
+                            dprint(exception=True, level="error")
+
+        # start
+        self._callback.start()
+        self._callback.call(start)
+        return True
+
+    def stop(self, timeout=10.0):
+        """
+        Stops Dispersy.
+
+        This method is thread safe.
+
+        1. unload all communities
+        2. closes endpoint
+        3. closes database
+        4. stops callback
+        """
+        assert self._callback.is_running, "Must be called before the callback.stop()"
+        assert isinstance(timeout, float), type(timeout)
+        assert 0.0 <= timeout, timeout
+
+        def stop():
+            # unload all communities
+            try:
+                while True:
+                    next(self._communities.itervalues()).unload_community()
+            except StopIteration:
+                pass
+
+            # stop
+            self._endpoint.close(timeout)
+            self._database.close()
+
+        self._callback.call(stop)
+        return self._callback.stop(timeout)
 
     def _candidate_walker(self):
         """

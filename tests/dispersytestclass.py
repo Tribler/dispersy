@@ -15,9 +15,7 @@ class DispersyTestClass(TestCase):
     Setup Dispersy test.
 
     setUpClass will ensure the following members exists:
-    - cls._callback
     - cls._dispersy
-    - cls._dispersy.endpoint
     - cls._my_member
 
     tearDownClass will ensure these members are properly cleaned after all the class tests have
@@ -27,20 +25,16 @@ class DispersyTestClass(TestCase):
     def setUpClass(cls):
         super(DispersyTestClass, cls).setUpClass()
 
-        def create_dispersy():
-            dispersy = Dispersy(cls._callback, u".", u":memory:")
-            dispersy.endpoint = StandaloneEndpoint(dispersy, 12345)
-            dispersy.endpoint.start()
-            return dispersy
+        callback = Callback("Dispersy-Unit-Test")
+        endpoint = StandaloneEndpoint(12345)
+        working_directory = u"."
+        database_filename = u":memory:"
 
-        cls._callback = Callback()
-        cls._callback.start()
-        cls._dispersy = cls._callback.call(create_dispersy)
-        cls._my_member = cls._callback.call(cls._dispersy.get_new_member, (u"low",))
+        cls._dispersy = Dispersy(callback, endpoint, working_directory, database_filename)
+        cls._dispersy.start()
+        cls._my_member = callback.call(cls._dispersy.get_new_member, (u"low",))
 
     @classmethod
     def tearDownClass(cls):
         super(DispersyTestClass, cls).tearDownClass()
-        cls._callback.call(cls._dispersy.endpoint.stop)
-        cls._callback.call(cls._dispersy.stop)
-        cls._callback.stop()
+        cls._dispersy.stop()

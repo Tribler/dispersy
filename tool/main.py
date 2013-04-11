@@ -11,6 +11,10 @@ from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from threading import currentThread
 
+class MainThreadCallback(Callback):
+    def start(self, *args, **kargs):
+        return True
+
 def watchdog(dispersy):
     try:
         while True:
@@ -69,7 +73,7 @@ def main_real(setup=None):
 
     # setup
     currentThread().setName('Dispersy')
-    callback = Callback()
+    callback = MainThreadCallback()
     dispersy = Dispersy(callback, unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
     
@@ -90,13 +94,11 @@ def main_real(setup=None):
 
     def signal_handler(sig, frame):
         print "Received", sig, "signal in", frame
-        dispersy.callback.stop(wait=False)
+        dispersy.stop()
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
     callback.loop()
-    dispersy.endpoint.stop()
-    dispersy.stop()
     return callback
 
 def main(setup=None):

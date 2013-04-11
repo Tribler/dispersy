@@ -365,17 +365,15 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy(Callback(), unicode(opt.statedir), bool(opt.silent))
-    dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
-    dispersy.endpoint.start()
+    dispersy = TrackerDispersy(Callback(), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
+    dispersy.start()
 
     def signal_handler(sig, frame):
         print "Received signal '", sig, "' in", frame, "(shutting down)"
-        dispersy.callback.stop(wait=False)
+        dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
 
     # wait forever
     dispersy.callback.loop()
-    dispersy.endpoint.stop()

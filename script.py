@@ -40,7 +40,7 @@ class ScriptBase(object):
     def next_testcase(self, result=None):
         if isinstance(result, Exception):
             dprint("exception! shutdown", box=True, level="error")
-            self._dispersy.callback.stop(wait=False, exception=result)
+            self._dispersy.callback.stop(timeout=0.0, exception=result)
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
@@ -53,7 +53,7 @@ class ScriptBase(object):
 
         else:
             dprint("shutdown", box=True)
-            self._dispersy.callback.stop(wait=False)
+            self._dispersy.callback.stop(timeout=0.0)
 
     def caller(self, run, args=()):
         assert callable(run)
