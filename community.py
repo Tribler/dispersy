@@ -29,13 +29,9 @@ from .distribution import SyncDistribution
 from .dprint import dprint
 from .member import DummyMember, Member, MemberFromId
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
-from .revision import update_revision_information
 from .statistics import CommunityStatistics
 from .timeline import Timeline
 from .candidate import WalkCandidate
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class SyncCache(object):
     def __init__(self, time_low, time_high, modulo, offset, bloom_filter):

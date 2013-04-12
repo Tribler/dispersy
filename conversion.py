@@ -12,7 +12,6 @@ from .dispersydatabase import DispersyDatabase
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
-from .revision import update_revision_information
 
 if __debug__:
     from .authentication import Authentication
@@ -21,9 +20,6 @@ if __debug__:
     from .distribution import Distribution
     from .dprint import dprint
     from .resolution import Resolution
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class Conversion(object):
     """

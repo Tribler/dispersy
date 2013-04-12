@@ -6,10 +6,6 @@ The crypto module provides a layer between Dispersy and low level crypographic f
 @contact: dispersy@frayja.com
 """
 
-# update version information directly from SVN
-from .revision import update_revision_information
-update_revision_information("$HeadURL$", "$Revision$")
-
 if False:
     #
     # disable crypto

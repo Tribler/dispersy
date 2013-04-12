@@ -7,13 +7,9 @@ from itertools import count, groupby
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
-from .revision import update_revision_information
 
 if __debug__:
     from .dprint import dprint
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class Timeline(object):
     def __init__(self, community):

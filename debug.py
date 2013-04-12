@@ -13,10 +13,6 @@ from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin, ec_fro
 from .dprint import dprint
 from .member import Member
 from .message import Message
-from .revision import update_revision_information
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class DebugOnlyMember(Member):
     _cache = OrderedDict()
