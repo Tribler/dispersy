@@ -606,22 +606,39 @@ class Dispersy(object):
 
         return messages
 
-    def define_auto_load(self, community, args=(), kargs=None):
+    def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
         """
         Tell Dispersy how to load COMMUNITY is needed.
 
-        COMMUNITY is the community class that is defined.
+        COMMUNITY_CLS is the community class that is defined.
 
         ARGS an KARGS are optional arguments and keyword arguments used when a community is loaded
-        using COMMUNITY.load_community(self, master, *ARGS, **KARGS).
+        using COMMUNITY_CLS.load_community(self, master, *ARGS, **KARGS).
+
+        When LOAD is True all available communities of this type will be immediately loaded.
         """
         if __debug__:
             from .community import Community
-        assert issubclass(community, Community)
-        assert isinstance(args, tuple)
-        assert kargs is None or isinstance(kargs, dict)
-        assert not community.get_classification() in self._auto_load_communities
-        self._auto_load_communities[community.get_classification()] = (community, args, kargs if kargs else {})
+        assert self._callback.is_current_thread, "Must be called from the callback thread"
+        assert issubclass(community_cls, Community), type(community_cls)
+        assert isinstance(args, tuple), type(args)
+        assert kargs is None or isinstance(kargs, dict), type(kargs)
+        assert not community_cls.get_classification() in self._auto_load_communities
+        assert isinstance(load, bool), type(load)
+
+        if kargs is None:
+            kargs = {}
+        self._auto_load_communities[community_cls.get_classification()] = (community_cls, args, kargs)
+
+        if load:
+            for master in community_cls.get_master_members(self):
+                if not master.mid in self._communities:
+                    if __debug__: dprint("Loading ", community_cls.get_classification(), " at start")
+                    try:
+                        community_cls.load_community(self, master, *args, **kargs)
+                        assert master.mid in self._communities
+                    except Exception:
+                        dprint(exception=True, level="error")
 
     def undefine_auto_load(self, community):
         """
@@ -4532,7 +4549,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         1. starts callback
         2. opens database
         3. opens endpoint
-        4. loads all defined auto load communities
         """
         assert not self._callback.is_running, "Must be called before callback.start()"
 
@@ -4541,17 +4557,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             self._database.open()
             self._endpoint.open(self)
             self._endpoint_ready()
-
-            # load all communities that have been defined to auto load
-            for cls, args, kargs in self._auto_load_communities.values():
-                for master in cls.get_master_members(self):
-                    if not master.mid in self._communities:
-                        if __debug__: dprint("Loading ", cls.get_classification(), " at start")
-                        try:
-                            cls.load_community(self, master, *args, **kargs)
-                            assert master.mid in self._communities
-                        except Exception:
-                            dprint(exception=True, level="error")
 
         # start
         self._callback.start()
