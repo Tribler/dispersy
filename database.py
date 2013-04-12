@@ -12,7 +12,6 @@ import hashlib
 import sqlite3
 
 from .dprint import dprint
-from .revision import update_revision_information
 from .singleton import Singleton
 
 if __debug__:
@@ -27,10 +26,6 @@ if __DEBUG_QUERIES__:
     DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
     while exists(DB_DEBUG_FILE):
         DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
-
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class IgnoreCommits(Exception):
     """

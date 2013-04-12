@@ -12,10 +12,6 @@ from .member import Member
 from .message import Message, DropPacket, DelayMessageByProof
 from .payload import Payload
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
-from .revision import update_revision_information
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 #
 # Node

@@ -27,11 +27,7 @@ from .dprint import dprint
 from .member import Member
 from .message import BatchConfiguration, Message, DelayMessageByProof, DropMessage
 from .resolution import PublicResolution, LinearResolution
-from .revision import update_revision_information
 from .tool.lencoder import log, make_valid_key
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 def assert_(value, *args):
     if not value:

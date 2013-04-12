@@ -1,10 +1,5 @@
 from time import time
 
-from .revision import update_revision_information, get_revision_information
-
-# update version information directly from SVN
-update_revision_information("$HeadURL: https://svn.tribler.org/dispersy/branches/20120612-27046-mainbranch/dispersy.py $", "$Revision: 28434 $")
-
 class Statistics():
     @staticmethod
     def dict_inc(dictionary, key, value=1L):
@@ -25,7 +20,6 @@ class DispersyStatistics(Statistics):
         self.connection_type = None
         self.database_version = dispersy.database.database_version
         self.lan_address = None
-        self.revision = get_revision_information()
         self.start = self.timestamp = time()
         
         # nr packets received
