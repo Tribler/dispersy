@@ -11,13 +11,9 @@ import sys
 import threading
 
 from .candidate import Candidate
-from .revision import update_revision_information
 
 if __debug__:
     from .dprint import dprint
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK

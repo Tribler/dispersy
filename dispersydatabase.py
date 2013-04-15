@@ -17,10 +17,6 @@ else:
 
 from .distribution import FullSyncDistribution
 from .dprint import dprint
-from .revision import update_revision_information
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 LATEST_VERSION = 16
 

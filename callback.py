@@ -14,7 +14,6 @@ from sys import exc_info
 
 from .decorator import attach_profiler
 from .dprint import dprint
-from .revision import update_revision_information
 
 if __debug__:
     from atexit import register as atexit_register
@@ -24,9 +23,6 @@ if __debug__:
     CALL_DELAY_FOR_WARNING = 0.5
     # dprint warning when registered call, or generator call, should have run N seconds ago
     QUEUE_DELAY_FOR_WARNING = 1.0
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class Callback(object):
     if __debug__:

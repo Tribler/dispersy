@@ -7,11 +7,9 @@ This module provides basic database functionalty and simple version control.
 """
 
 from os import environ
-
 from sqlite3 import Connection, Error
 
 from .dprint import dprint
-from .revision import update_revision_information
 
 if __debug__:
     import thread
@@ -25,10 +23,6 @@ if __DEBUG_QUERIES__:
     DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
     while exists(DB_DEBUG_FILE):
         DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
-
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class IgnoreCommits(Exception):
     """

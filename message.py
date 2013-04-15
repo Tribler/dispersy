@@ -1,11 +1,7 @@
 from .meta import MetaObject
-from .revision import update_revision_information
 
 if __debug__:
     from .dprint import dprint
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 #
 # Exceptions

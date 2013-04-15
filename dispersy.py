@@ -76,15 +76,11 @@ from .payload import MissingSequencePayload, MissingProofPayload
 from .payload import SignatureRequestPayload, SignatureResponsePayload
 from .requestcache import Cache, RequestCache
 from .resolution import PublicResolution, LinearResolution
-from .revision import update_revision_information
 from .statistics import DispersyStatistics
 
 if __debug__:
     from .callback import Callback
     from .endpoint import Endpoint
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 # the callback identifier for the task that periodically takes a step
 CANDIDATE_WALKER_CALLBACK_ID = "dispersy-candidate-walker"
