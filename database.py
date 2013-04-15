@@ -74,7 +74,7 @@ class Database(object):
 
     def close(self, commit=True):
         if commit:
-            self.commit()
+            self.commit(exiting=True)
         self._cursor.close()
         self._connection.close()
 
@@ -494,14 +494,15 @@ class APSWDatabase(Database):
         assert self._debug_thread_ident == thread.get_ident()
         return self._connection.totalchanges()
 
-    def commit(self):
+    def commit(self, exiting = False):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
+        assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if __debug__: dprint("COMMIT")
         result = self.execute("COMMIT;BEGIN")
         for callback in self._commit_callbacks:
             try:
-                callback()
+                callback(exiting = exiting)
             except Exception:
                 if __debug__: dprint(exception=True, stack=True)
         return result
