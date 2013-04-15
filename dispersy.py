@@ -4597,6 +4597,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # force remove incoming messages
                 for task_identifier, _, _ in self._batch_cache.itervalues():
                     self._callback.unregister(task_identifier)
+                self._batch_cache.clear()
 
                 # unload all communities
                 try:
