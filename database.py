@@ -385,7 +385,8 @@ class Database(Singleton):
                 try:
                     callback(exiting = exiting)
                 except Exception:
-                    if __debug__: dprint(exception=True, stack=True)
+                    #TODO: DPRINT This statement had the stack=True arg.
+                    if __debug__: dprint(exception=True)
             
             if __DEBUG_QUERIES__:     
                 f.write('QueryDebug-commit: (%f) END\n' % time())
@@ -507,6 +508,7 @@ class APSWDatabase(Database):
             try:
                 callback()
             except Exception:
-                if __debug__: dprint(exception=True, stack=True)
+                #TODO: DPRINT This statement had the stack=True arg.
+                if __debug__: dprint(exception=True)
         return result
 
