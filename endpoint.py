@@ -11,9 +11,7 @@ import sys
 import threading
 
 from .candidate import Candidate
-
-if __debug__:
-    from .dprint import dprint
+from .dprint import dprint
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -94,6 +92,11 @@ class RawserverEndpoint(Endpoint):
         self._rawserver.start_listening_udp(self._socket, self)
 
     def close(self, timeout=0.0):
+        try:
+            self._socket.close()
+        except socket.error:
+            dprint("IGNORE", exception=True, error=True)
+
         super(RawserverEndpoint, self).close(timeout)
 
     def get_address(self):
