@@ -4584,16 +4584,21 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
             # stop endpoint
             self._endpoint.close(timeout)
-            # Murphy tells us that endpoint just added tasks that will cause new communities to load
-            # into memory
 
-            # because this task has a very low priority, yielding 0.0 will wait until all endpoint
-            # tasks have finished
-            if timeout > 0.0:
-                yield 0.0
+            # Murphy tells us that endpoint just added tasks that caused new communities to load
+            while self._batch_cache or self._communities:
+                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=1, force=1)            
 
-            if self._communities:
-                if __debug__: dprint("Murphy was right!", box=1, force=1)
+                # because this task has a very low priority, yielding 0.0 will wait until other
+                # tasks have finished
+                if timeout > 0.0:
+                    yield 0.0
+
+                # force remove incoming messages
+                for task_identifier, _, _ in self._batch_cache.itervalues():
+                    self._callback.unregister(task_identifier)
+
+                # unload all communities
                 try:
                     while True:
                         next(self._communities.itervalues()).unload_community()
