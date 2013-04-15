@@ -457,7 +457,7 @@ class Callback(object):
         """
         assert self._state == "STATE_INIT", "Already (done) running"
         assert isinstance(wait, bool), "WAIT has invalid type: %s" % type(wait)
-        if __debug__: dprint(stack=True, force=1)
+        if __debug__: dprint(stack=True)
         with self._lock:
             self._state = "STATE_PLEASE_RUN"
             if __debug__: dprint("STATE_PLEASE_RUN")
@@ -483,7 +483,7 @@ class Callback(object):
         Returns True when the callback thread is finished, otherwise returns False.
         """
         assert isinstance(timeout, float)
-        if __debug__: dprint(stack=True, force=1)
+        if __debug__: dprint(stack=True)
         if self._state == "STATE_RUNNING":
             with self._lock:
                 if exception:
