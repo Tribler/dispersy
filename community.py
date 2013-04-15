@@ -1157,8 +1157,9 @@ class Community(object):
         if __debug__:
             previous = self._global_time
             new = max(self._global_time, global_time)
-            level = "warning" if new - previous >= 100 else "normal"
-            dprint(previous, " -> ", new, level=level)
+            #TODO: DPRINT manually migrate this dprint statement
+            #level = "warning" if new - previous >= 100 else "normal"
+            #dprint(previous, " -> ", new, level=level)
         self._global_time = max(self._global_time, global_time)
 
     def dispersy_check_database(self):

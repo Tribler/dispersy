@@ -1972,8 +1972,9 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # tell what happened
             if __debug__:
                 debug_end = time()
-                level = "warning" if (debug_end - debug_begin) > 1.0 else "normal"
-                dprint("handled ", len(messages), "/", debug_count, " %.2fs" % (debug_end - debug_begin), " ", meta.name, " messages (with ", meta.batch.max_window, "s cache window)", level=level)
+                #TODO: DPRINT manually fix this dprint statement
+                #level = "warning" if (debug_end - debug_begin) > 1.0 else "normal"
+                #dprint("handled ", len(messages), "/", debug_count, " %.2fs" % (debug_end - debug_begin), " ", meta.name, " messages (with ", meta.batch.max_window, "s cache window)", level=level)
     
             # return the number of messages that were correctly handled (non delay, duplictes, etc)
             return len(messages)
@@ -2818,8 +2819,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 return False
             if __debug__:
                 end = time()
-                level = "warning" if (end - begin) > 1.0 else "normal"
-                dprint("handler for ", messages[0].name, " took ", end - begin, " seconds", level=level)
+                #TODO: DPRINT fix this dprint statement
+                #level = "warning" if (end - begin) > 1.0 else "normal"
+                #dprint("handler for ", messages[0].name, " took ", end - begin, " seconds", level=level)
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
