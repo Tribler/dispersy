@@ -4587,7 +4587,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
             while self._batch_cache or self._communities:
-                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=1, force=1)            
+                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=True)
 
                 # because this task has a very low priority, yielding 0.0 will wait until other
                 # tasks have finished
