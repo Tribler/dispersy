@@ -456,7 +456,8 @@ if __debug__:
             b = BloomFilter(1, 32)
             b.add(x)
             dprint(x)
-            dprint(b._bytes.tostring(), binary=1)
+            #TODO: DPRINT  this statement had binary=1
+            dprint(b._bytes.tostring())
 
         bob = ["cake", "lemonade", "beer", "pubs"]
 
@@ -465,22 +466,26 @@ if __debug__:
             b = BloomFilter(1, 32)
             b.add(x)
             dprint(x)
-            dprint(b._bytes.tostring(), binary=1)
+            #TODO: DPRINT  this statement had binary=1
+            dprint(b._bytes.tostring())
 
         a = BloomFilter(1, 32)
         map(a.add, alice)
         dprint(alice)
-        dprint(a._bytes.tostring(), binary=1)
+        #TODO: DPRINT  this statement had binary=1
+        dprint(a._bytes.tostring())
 
         b = BloomFilter(1, 32)
         map(b.add, bob)
         dprint(bob)
-        dprint(b._bytes.tostring(), binary=1)
+        #TODO: DPRINT  this statement had binary=1
+        dprint(b._bytes.tostring())
 
         c = BloomFilter(1, 32)
         map(c.add, carol)
         dprint(carol)
-        dprint(c._bytes.tostring(), binary=1)
+        #TODO: DPRINT  this statement had binary=1
+        dprint(c._bytes.tostring())
 
         dprint("Alice bic Bob: ", a.bic_occurrence(b))
         dprint("Alice bic Carol: ", a.bic_occurrence(c))
@@ -513,8 +518,10 @@ if __debug__:
         b.add("b1")
         b.add("b2")
 
-        dprint(a._bytes.tostring(), binary=1)
-        dprint(b._bytes.tostring(), binary=1)
+        #TODO: DPRINT  this statement had binary=1
+        dprint(a._bytes.tostring())
+        #TODO: DPRINT  this statement had binary=1
+        dprint(b._bytes.tostring())
 
         assert a.and_occurrence(b) == 1
         assert a.xor_occurrence(b) == 3
