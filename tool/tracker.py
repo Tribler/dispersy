@@ -279,7 +279,7 @@ class TrackerDispersy(Dispersy):
 
                 if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
-                        dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=1)
+                        dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=True)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
                     continue
 

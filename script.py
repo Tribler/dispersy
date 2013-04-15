@@ -241,7 +241,7 @@ class ScenarioScriptBase(ScriptBase):
         # create my member
         ec = ec_generate_key(u"low")
         my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        dprint("-my member- ", my_member.database_id, " ", id(my_member), " ", my_member.mid.encode("HEX"), force=1)
+        dprint("-my member- ", my_member.database_id, " ", id(my_member), " ", my_member.mid.encode("HEX"), force=True)
 
         self.original_on_incoming_packets = self._dispersy.on_incoming_packets
         self.original_send = self._dispersy.endpoint.send
@@ -3519,7 +3519,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
         COMMUNITIES = 1
         ROUNDS = 10
 
-        dprint("prepare communities, members, etc", force=1)
+        dprint("prepare communities, members, etc", force=True)
         with self._dispersy.database:
             candidates = [BootstrapCandidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._my_member, candidates) for _ in xrange(COMMUNITIES)]
@@ -3529,7 +3529,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
                 for member in members:
                     community.create_dispersy_identity(member)
 
-        dprint("prepare request messages", force=1)
+        dprint("prepare request messages", force=True)
         for _ in xrange(ROUNDS):
             for community in communities:
                 for member in members:
@@ -3538,7 +3538,7 @@ class DispersyBootstrapServersStresstest(ScriptBase):
             yield 5.0
         yield 15.0
 
-        dprint("ping-ping", force=1)
+        dprint("ping-ping", force=True)
         BEGIN = time()
         for _ in xrange(ROUNDS):
             for community in communities:
@@ -3551,8 +3551,8 @@ class DispersyBootstrapServersStresstest(ScriptBase):
         END = time()
 
         yield 10.0
-        dprint("--- did ", ROUNDS * MEMBERS, " requests per community", force=1)
-        dprint("--- spread over ", round(END - BEGIN, 1), " seconds", force=1)
+        dprint("--- did ", ROUNDS * MEMBERS, " requests per community", force=True)
+        dprint("--- spread over ", round(END - BEGIN, 1), " seconds", force=True)
         for community in communities:
             community.summary()
 

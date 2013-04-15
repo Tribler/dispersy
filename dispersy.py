@@ -1590,7 +1590,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         for other in others:
             # all except for the CANDIDATE
             if not other == candidate:
-                if __debug__: dprint("removing ", other, " in favor of ", candidate, force = 1)
+                if __debug__: dprint("removing ", other, " in favor of ", candidate, force=True)
                 candidate.merge(other)
                 del self._candidates[other.sock_addr]
                 self.wan_address_unvote(other)
@@ -4535,7 +4535,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
             actualtime = time()
             allow_sync = actualtime - community.__most_recent_sync > 4.5
-            # dprint("previous sync was ", round(actualtime - community.__most_recent_sync, 1), " seconds ago", "" if allow_sync else " (no sync this cycle)", force=1)
+            # dprint("previous sync was ", round(actualtime - community.__most_recent_sync, 1), " seconds ago", "" if allow_sync else " (no sync this cycle)", force=True)
             if allow_sync:
                 community.__most_recent_sync = actualtime
 

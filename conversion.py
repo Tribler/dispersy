@@ -1249,8 +1249,8 @@ class BinaryConversion(Conversion):
                 found_valid_combination = True
                 for index, member in zip(range(2), members):
                     signature = data[signature_offset:signature_offset+member.signature_length]
-                    # dprint("INDEX: ", index, force=1)
-                    # dprint(signature.encode('HEX'), force=1)
+                    # dprint("INDEX: ", index, force=True)
+                    # dprint(signature.encode('HEX'), force=True)
                     if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
                         signatures[index] = ""
 
