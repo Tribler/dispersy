@@ -431,4 +431,4 @@ class Timeline(object):
 
         # TODO it is possible that different members set different policies at the same time
         policies[u"resolution^" + message.name] = (policy, [proof])
-        if __debug__: dprint('\n'.join(self._policies))
+        if __debug__: dprint('\n'.join([ str(item) for item in self._policies]))
