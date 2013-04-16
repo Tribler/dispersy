@@ -224,7 +224,7 @@ class BinaryConversion(Conversion):
 
         if __debug__:
             if debug_non_available:
-                dprint("unable to define non-available messages , ", ''.join(debug_non_available), level="warning")
+                dprint("unable to define non-available messages , ", "".join(debug_non_available), level="warning")
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
