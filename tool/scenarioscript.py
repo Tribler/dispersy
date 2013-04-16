@@ -264,7 +264,10 @@ class ScenarioScript(ScriptBase):
         return "END"
 
     def scenario_print(self, *args):
-        dprint(*args, glue=" ", force=True)
+        #TODO: DPRINT fix this one manually
+        pass
+        #dprint(*args, glue=" ", force=True)
+
 
     def scenario_churn(self, state, duration=None):
         assert isinstance(state, str), type(state)
