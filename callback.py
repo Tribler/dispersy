@@ -723,7 +723,7 @@ if __debug__:
         c.register(call1, delay=1.0)
 
         sleep(2)
-        dprint(line=1)
+        logger.debug('\n')
 
         def call2():
             delay = 3.0
@@ -735,7 +735,7 @@ if __debug__:
                 yield 1.0
         c.register(call2)
         sleep(11)
-        dprint(line=1)
+        logger.debug('\n')
 
         def call3():
             delay = 3.0
@@ -751,7 +751,7 @@ if __debug__:
                 # perform code on Callback c
         c.register(call3)
         sleep(11.0)
-        dprint(line=1)
+        logger.debug('\n')
 
         # CPU intensive call... should 'back off'
         def call4():
@@ -763,7 +763,7 @@ if __debug__:
                     dprint("backing off... ", desync)
                     desync = (yield desync)
                     dprint("next try... ", desync)
-        dprint(line=1)
+        logger.debug('\n')
 
         def call5_bussy():
             for _ in xrange(10):
@@ -776,7 +776,7 @@ if __debug__:
                 dprint("on idle (", desync, ")")
         c.register(call5_bussy)
         c.register(call5_idle)
-        dprint(line=1)
+        logger.debug('\n')
 
         def call6():
             dprint("before")
@@ -794,7 +794,7 @@ if __debug__:
         c.unregister(task_id)
 
         sleep(21.0)
-        dprint(line=1)
+        logger.debug('\n')
 
         def call8(index):
             container1[index] += 1

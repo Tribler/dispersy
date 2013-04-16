@@ -3376,7 +3376,7 @@ class DispersyBootstrapServers(ScriptBase):
                 return self._original_on_introduction_response(messages)
 
             def ping(self, now):
-                dprint("PING", line=1)
+                dprint("\nPING")
                 for candidate in self._pcandidates:
                     request = self._dispersy.create_introduction_request(self, candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
