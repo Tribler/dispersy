@@ -965,8 +965,6 @@ class Dispersy(object):
                         return community
 
                     else:
-                        import sys
-                        print >> sys.stderr, "unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]"
                         if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="warning")
 
                 else:
