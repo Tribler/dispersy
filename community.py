@@ -259,7 +259,8 @@ class Community(object):
         assert isinstance(master, DummyMember), type(master)
         if __debug__:
             dprint("initializing:  ", self.get_classification())
-            dprint("master member: ", master.mid.encode("HEX"), "" if isinstance(master, Member) else " (using DummyMember)")
+            #TODO: DPRINT Fix this one manually
+            #dprint("master member: ", master.mid.encode("HEX"), "" if isinstance(master, Member) else " (using DummyMember)")
 
         # Dispersy
         self._dispersy = dispersy
