@@ -4619,11 +4619,12 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
                     for category, candidates in categories.iteritems():
                         for candidate in candidates:
-                            dprint("%4ds " % min(candidate.age(now), 9999),
-                                   "A " if candidate.is_any_active(now) else " I",
-                                   "O" if candidate.is_all_obsolete(now) else " ",
-                                   "E" if candidate.is_eligible_for_walk(community, now) else " ",
-                                   "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                   " %-7s" % category,
-                                   " %-13s" % candidate.connection_type,
-                                   " ", candidate)
+                            #TODO: DPRINT Manually update this one
+                            #dprint("%4ds " % min(candidate.age(now), 9999),
+                            #       "A " if candidate.is_any_active(now) else " I",
+                            #       "O" if candidate.is_all_obsolete(now) else " ",
+                            #       "E" if candidate.is_eligible_for_walk(community, now) else " ",
+                            #       "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                            #       " %-7s" % category,
+                            #       " %-13s" % candidate.connection_type,
+                            #       " ", candidate)
