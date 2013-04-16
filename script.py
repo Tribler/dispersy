@@ -65,20 +65,20 @@ class ScriptBase(object):
 
     def next_testcase(self, result=None):
         if isinstance(result, Exception):
-            dprint("exception! shutdown", box=True, level="error")
+            dprint("exception! shutdown", level="error")
             self._dispersy.callback.stop(wait=False, exception=result)
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
-            dprint("start ", call, line=True, force=True)
+            dprint("\nstart ", call, force=True)
             if args:
                 dprint("arguments ", args, force=True)
             if call.__doc__:
-                dprint(call.__doc__, box=True, force=True)
+                dprint(call.__doc__, force=True)
             self._dispersy.callback.register(call, args, callback=self.next_testcase)
 
         else:
-            dprint("shutdown", box=True)
+            dprint("shutdown")
             self._dispersy.callback.stop(wait=False)
 
     def caller(self, run, args=()):
