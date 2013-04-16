@@ -212,42 +212,42 @@ class MissingSequenceCache(MissingSomethingCache):
     @staticmethod
     def message_to_identifier(message):
         return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
-    
+
 class GlobalCandidateCache():
     def __init__(self, dispersy):
         self._dispersy = dispersy
-        
+
     def __contains__(self, item):
         for community in self._dispersy._communities.itervalues():
             if item in community._candidates:
                 return True
-            
+
     def __setitem__(self, key, item):
         now = time()
         for community in self._dispersy._communities.itervalues():
             if item.in_community(community, now):
                 community._candidates[key] = item
-        
+
     def __delitem__(self, item):
         for community in self._dispersy._communities.itervalues():
             if item in community._candidates:
                 del community._candidates[item]
-    
+
     def iteritems(self):
         for community in self._dispersy._communities.itervalues():
             for key, value in community._candidates.iteritems():
                 yield key, value
-                
+
     def itervalues(self):
         for community in self._dispersy._communities.itervalues():
             for value in community._candidates.itervalues():
                 yield value
-                
+
     def get(self, item, default=None):
         for community in self._dispersy._communities.itervalues():
             if item in community._candidates:
                 return community._candidates[item]
-        
+
         return default
 
     def __len__(self):
@@ -748,7 +748,7 @@ class Dispersy(Singleton):
 
         # count the number of times that a community was attached
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
-        
+
         if __debug__:
             # schedule the sanity check... it also checks that the dispersy-identity is available and
             # when this is a create or join this message is created only after the attach_community
@@ -1008,7 +1008,7 @@ class Dispersy(Singleton):
             votes[address] = set()
         votes[address].add(voter.sock_addr)
 
-        if __debug__: dprint(["%5d %15s:%-d [%s]" % (len(voters), vote[0], vote[1], ", ".join("%s:%d" % key for key in voters)) for vote, voters in votes.iteritems()], lines=True)
+        if __debug__: dprint('\n'.join(["%5d %15s:%-d [%s]" % (len(voters), vote[0], vote[1], ", ".join("%s:%d" % key for key in voters)) for vote, voters in votes.iteritems()]))
 
         # change when new vote count equal or higher than old address vote count
         if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
@@ -1548,26 +1548,26 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 candidate = None
 
         return candidate
-    
+
     def get_walkcandidate(self, message, community):
         if isinstance(message.candidate, WalkCandidate):
             return message.candidate
-        
+
         else:
             # modify either the senders LAN or WAN address based on how we perceive that node
             source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
             if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
                 if __debug__: dprint("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
                 return None
-            
+
             # check if we have this candidate registered at its sock_addr
             candidate = self.get_candidate(message.candidate.sock_addr, lan_address = source_lan_address)
             if candidate:
                 return candidate
-            
+
             candidate = community.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
             return candidate
-            
+
     def _filter_duplicate_candidate(self, candidate):
         """
         A node told us its LAN and WAN address, it is possible that we can now determine that we
@@ -1739,7 +1739,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(isinstance(packet[1], str) for packet in packets), packets
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
-        
+
         self._statistics.received_count += len(packets)
 
         sort_key = lambda tup: (tup[0].batch.priority, tup[0]) # meta, address, packet, conversion
@@ -1801,7 +1801,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             self._batch_cache.pop(meta)
 
         if not self._communities.get(meta.community.cid, None) == meta.community:
-            if __debug__: 
+            if __debug__:
                 dprint("dropped ", len(batch), "x ", meta.name, " packets (community no longer loaded)", level="warning")
             self._statistics.dict_inc(self._statistics.drop, "on_batch_cache_timeout: community no longer loaded", len(batch))
             self._statistics.drop_count += len(batch)
@@ -1907,7 +1907,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             if isinstance(message, DelayMessage):
                 if __debug__:
                     dprint(message.delayed.candidate, " delay ", message.delayed, " (", message, ")")
-                    
+
                 if message.create_request():
                     self._statistics.delay_send += 1
                 self._statistics.dict_inc(self._statistics.delay, "om_message_batch:%s" % message.delayed)
@@ -1963,9 +1963,9 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # store to disk and update locally
         if __debug__:
             dprint("in... ", len(messages), " ", meta.name, " messages from ", ", ".join(str(candidate) for candidate in set(message.candidate for message in messages)))
-        
+
         if self.store_update_forward(messages, True, True, False):
-            
+
             self._statistics.dict_inc(self._statistics.success, meta.name, len(messages))
             self._statistics.success_count += len(messages)
 
@@ -1975,10 +1975,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 #TODO: DPRINT manually fix this dprint statement
                 #level = "warning" if (debug_end - debug_begin) > 1.0 else "normal"
                 #dprint("handled ", len(messages), "/", debug_count, " %.2fs" % (debug_end - debug_begin), " ", meta.name, " messages (with ", meta.batch.max_window, "s cache window)", level=level)
-    
+
             # return the number of messages that were correctly handled (non delay, duplictes, etc)
             return len(messages)
-        
+
         return 0
 
     def _convert_packets_into_batch(self, packets):
@@ -2065,7 +2065,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
             except DelayPacket, delay:
                 if __debug__:
-                    dprint("delay a ", len(packet), " byte packet (", delay, ") from ", candidate)                
+                    dprint("delay a ", len(packet), " byte packet (", delay, ") from ", candidate)
 
                 if delay.create_request(candidate, packet):
                     self._statistics.delay_send += 1
@@ -2201,7 +2201,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
     @property
     def candidates(self):
         return self._candidates.itervalues()
-    
+
     @property
     def bootstrap_candidates(self):
         return self._bootstrap_candidates.itervalues()
@@ -2252,7 +2252,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(lan_address), [self._lan_address, lan_address]
         assert self._wan_address != wan_address, [self._wan_address, wan_address]
         assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
-        
+
         return lan_address, wan_address
 
     def take_step(self, community, allow_sync):
@@ -2291,7 +2291,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
-        
+
         cache = IntroductionRequestCache(community, destination)
         destination.walk(community, time(), cache.timeout_delay)
 
@@ -2373,14 +2373,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 dprint(community.cid.encode("HEX"), " ", type(community), " sending introduction request to ", destination, " [", time_low, ":", time_high, "] %", modulo, "+", offset)
             else:
                 dprint(community.cid.encode("HEX"), " ", type(community), " sending introduction request to ", destination)
-                
+
         if forward:
             self._statistics.walk_attempt += 1
             if isinstance(destination, BootstrapCandidate):
                 self._statistics.walk_bootstrap_attempt += 1
-                
+
             self._forward([request])
-            
+
         return request
 
     def check_introduction_request(self, messages):
@@ -2408,7 +2408,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         def is_valid_candidate(message, candidate, introduced):
             if introduced == None:
                 return True
-            
+
             assert isinstance(introduced, WalkCandidate)
             assert self.is_valid_address(introduced.lan_address), [introduced.lan_address, self.lan_address]
             assert self.is_valid_address(introduced.wan_address), [introduced.wan_address, self.wan_address]
@@ -2420,7 +2420,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 return False
 
             return True
-        
+
         #
         # process the walker part of the request
         #
@@ -2435,7 +2435,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             candidate = self.get_walkcandidate(message, community)
             if not candidate:
                 continue
-            
+
             payload = message.payload
             message._candidate = candidate
 
@@ -2450,7 +2450,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
             candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
             candidate.stumble(community, now)
-            
+
             self._filter_duplicate_candidate(candidate)
             if __debug__: dprint("received introduction request from ", candidate)
 
@@ -2460,14 +2460,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break
-                    
+
                     if first_invalid_sock_addr is None:
                         # introduced is not valid for this candidate,
                         # we will remember its sock_addr to ensure
                         # that we do not endlessly loop over the
                         # dispersy_yield_random_candidates
                         first_invalid_sock_addr = introduced.sock_addr
-                        
+
                     elif first_invalid_sock_addr == introduced.sock_addr:
                         # we cycled through all candidates in
                         # dispersy_yield_random_candidates and did not find
@@ -2505,13 +2505,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # obtain all available messages for this community
         meta_messages = [(meta.distribution.priority, -meta.distribution.synchronization_direction_value, meta) for meta in community.get_meta_messages() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32]
         meta_messages.sort(reverse = True)
-        
+
         sub_selects = []
         for _, _, meta in meta_messages:
             sub_selects.append(u"""SELECT * FROM (SELECT sync.packet FROM sync
 WHERE sync.meta_message = %d AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) %% ? = 0
 ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchronization_direction))
-        
+
         sql = u"SELECT * FROM ("
         sql += " UNION ALL ".join(sub_selects)
         sql += ")"
@@ -2531,13 +2531,13 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # overflow exceptions in the sqlite3 wrapper
                 time_low = min(payload.time_low, 2**63-1)
                 time_high = min(time_high, 2**63-1)
-                
+
                 offset = long(payload.offset)
                 modulo = long(payload.modulo)
-                
+
                 packets = []
                 generator = ((str(packet),) for packet, in self._database.execute(sql, (time_low, long(time_high), offset, modulo) * len(sub_selects)))
-                    
+
                 for packet, in payload.bloom_filter.not_filter(generator):
                     if __debug__:dprint("found missing (", len(packet), " bytes) ", sha1(packet).digest().encode("HEX"), " for ", message.candidate)
 
@@ -2575,12 +2575,12 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 if message.payload.wan_introduction_address == self._wan_address:
                     yield DropMessage(message, "invalid WAN introduction address [introduced to myself]")
                     continue
-                
-                #if WAN ip-addresses match, check if the LAN address is not the same 
+
+                #if WAN ip-addresses match, check if the LAN address is not the same
                 if message.payload.wan_introduction_address[0] == self._wan_address[0] and message.payload.lan_introduction_address == self._lan_address:
                     yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
                     continue
-                
+
             # if we do not know the WAN address, make sure that the LAN address is not the same
             elif not message.payload.lan_introduction_address == ("0.0.0.0", 0):
                 if message.payload.lan_introduction_address == self._lan_address:
@@ -2645,15 +2645,15 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 candidate.intro(community, now)
                 self._filter_duplicate_candidate(candidate)
                 if __debug__: dprint("received introduction to ", candidate)
-                
+
                 cache.response_candidate = candidate
-                
+
                 # TEMP: see which peers we get returned by the trackers
                 if self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
                     self._statistics.bootstrap_candidates[candidate.sock_addr] = self._statistics.bootstrap_candidates.get(candidate.sock_addr, 0) + 1
-                    
+
             elif self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
-                    self._statistics.bootstrap_candidates["none"] = self._statistics.bootstrap_candidates.get("none", 0) + 1 
+                    self._statistics.bootstrap_candidates["none"] = self._statistics.bootstrap_candidates.get("none", 0) + 1
 
     def check_puncture_request(self, messages):
         for message in messages:
@@ -2668,7 +2668,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if not self.is_valid_address(message.payload.lan_walker_address):
                 yield DropMessage(message, "invalid LAN walker address [is_valid_address]")
                 continue
-            
+
             if not self.is_valid_address(message.payload.wan_walker_address):
                 yield DropMessage(message, "invalid WAN walker address [is_valid_address]")
                 continue
@@ -2676,7 +2676,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if message.payload.wan_walker_address == self._wan_address:
                 yield DropMessage(message, "invalid WAN walker address [puncture myself]")
                 continue
-            
+
             if message.payload.wan_walker_address[0] == self._wan_address[0] and message.payload.lan_walker_address == self._lan_address:
                 yield DropMessage(message, "invalid LAN walker address [puncture myself]")
                 continue
@@ -2831,7 +2831,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if my_messages:
                 if __debug__: dprint("commit user generated message")
                 self._database.commit()
-            
+
                 self._statistics.created_count += my_messages
                 self._statistics.dict_inc(self._statistics.created, messages[0].meta.name, my_messages)
 
@@ -2892,20 +2892,20 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         else:
             raise NotImplementedError(meta.destination)
-        
+
         if __debug__ and not result:
             candidates = list(islice(meta.community.dispersy_yield_random_candidates(), meta.destination.node_count))
             dprint("_forward failed, did not send %d %s messages destinationtype %s nr candidates %d"%(len(messages), meta.name, type(meta.destination), len(candidates)), level="warning")
         return result
-    
+
     def _send(self, candidates, messages, debug = False):
         """
         Send a list of messages to a list of candidates. If no candidates are specified or endpoint reported
         a failure this method will return False.
-        
+
         @param candidates: A sequence with one or more candidates.
         @type candidates: [Candidate]
-        
+
         @param messages: A sequence with one or more messages.
         @type messages: [Message.Implementation]
         """
@@ -2916,18 +2916,18 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         assert isinstance(messages, (tuple, list))
         assert len(messages) > 0
         assert all(isinstance(message, Message.Implementation) for message in messages)
-        
+
         messages_send = False
         if len(candidates) and len(messages):
             packets = [message.packet for message in messages]
             messages_send = self._endpoint.send(candidates, packets)
-        
+
         if messages_send:
             for message in messages:
                 self._statistics.dict_inc(self._statistics.outgoing, message.meta.name, len(candidates))
-        
+
         return messages_send
-    
+
     def declare_malicious_member(self, member, packets):
         """
         Provide one or more signed messages that prove that the creator is malicious.
@@ -3010,7 +3010,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
     def create_missing_message(self, community, candidate, member, global_time, response_func=None, response_args=(), timeout=10.0):
         # ensure that the identifier is 'triggered' somewhere, i.e. using
         # handle_missing_messages(messages, MissingMessageCache)
-        
+
         sendRequest = False
 
         identifier = MissingMessageCache.properties_to_identifier(community, member, global_time)
@@ -3023,12 +3023,12 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             meta = community.get_meta_message(u"dispersy-missing-message")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, [global_time]))
             self._forward([request])
-            
+
             sendRequest = True
 
         if response_func:
             cache.callbacks.append((response_func, response_args))
-        
+
         return sendRequest
 
     def on_missing_message(self, messages):
@@ -3064,9 +3064,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             assert isinstance(response_args, tuple)
             assert isinstance(timeout, float)
             assert timeout > 0.0
-        
+
         sendRequest = False
-        
+
         identifier = MissingLastMessageCache.properties_to_identifier(community, member, message)
         cache = self._request_cache.get(identifier, MissingLastMessageCache)
         if not cache:
@@ -3190,7 +3190,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         To verify a message signature we need the corresponding public key from the member who made
         the signature.  When we are missing a public key, we can request a dispersy-identity message
         which contains this public key.
-        
+
         # @return True if actual request is made
         """
         if __debug__:
@@ -3205,7 +3205,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             assert isinstance(forward, bool)
 
         sendRequest = False
-        
+
         identifier = MissingMemberCache.properties_to_identifier(community, dummy_member)
         cache = self._request_cache.get(identifier, MissingMemberCache)
         if not cache:
@@ -3216,7 +3216,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             meta = community.get_meta_message(u"dispersy-missing-identity")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
             self._forward([request])
-            
+
             sendRequest = True
 
         cache.callbacks.append((response_func, response_args))
@@ -3456,7 +3456,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
             result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
-            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s"%(type(cache), str(cache.response_func)) 
+            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s"%(type(cache), str(cache.response_func))
             if result:
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
@@ -3469,7 +3469,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
     def create_missing_sequence(self, community, candidate, member, message, missing_low, missing_high, response_func=None, response_args=(), timeout=10.0):
         # ensure that the identifier is 'triggered' somewhere, i.e. using
         # handle_missing_messages(messages, MissingSequenceCache)
-        
+
         sendRequest = False
 
         # the MissingSequenceCache allows us to match the missing_high to the response_func
@@ -3499,7 +3499,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             self._forward([request])
 
             sendRequest = True
-           
+
         return sendRequest
 
     def on_missing_sequence(self, messages):
@@ -4396,7 +4396,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
                             if counter > meta.distribution.history_size:
                                 raise ValueError("decayed packet ", packet_id, " still in database")
-                            
+
                             if __debug__: dprint("LastSyncDistribution for '", meta.name, "' is OK")
 
                     else:
@@ -4494,13 +4494,13 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         Flush changes to disk.
         """
         self._database.commit()
-        
+
     def stop(self, timeout=2.0):
         """
         Stop the callback thread and clean all caches.
         """
         self._callback.stop(timeout=timeout)
-        
+
         cleanup_members()
         cleanup_singletons()
 
