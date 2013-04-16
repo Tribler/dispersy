@@ -7,16 +7,15 @@ This module provides an interface to the Dispersy database.
 """
 
 from itertools import groupby
-from collections import defaultdict
+
+from .database import Database
+from .distribution import FullSyncDistribution
+from .dprint import dprint
 
 import sys
 if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
-else:
-    from .database import Database
 
-from .distribution import FullSyncDistribution
-from .dprint import dprint
 
 LATEST_VERSION = 16
 

@@ -40,6 +40,12 @@ import os
 import sys
 import netifaces
 
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
+
 from collections import defaultdict
 from hashlib import sha1
 from itertools import groupby, islice, count, cycle
@@ -50,15 +56,13 @@ from time import time
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .bootstrap import get_bootstrap_candidates
-from .callback import Callback
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
+from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination, MemberDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .dprint import dprint
-from .endpoint import DummyEndpoint
-from .member import DummyMember, Member, MemberFromId, MemberFromDatabaseId, MemberWithoutCheck
-from .member import cleanup as cleanup_members
+from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
 from .message import DropPacket, DelayPacket
@@ -73,8 +77,10 @@ from .payload import SignatureRequestPayload, SignatureResponsePayload
 from .requestcache import Cache, RequestCache
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
-from .singleton import Singleton
-from .singleton import cleanup as cleanup_singletons
+
+if __debug__:
+    from .callback import Callback
+    from .endpoint import Endpoint
 
 # the callback identifier for the task that periodically takes a step
 CANDIDATE_WALKER_CALLBACK_ID = "dispersy-candidate-walker"
@@ -257,21 +263,20 @@ class GlobalCandidateCache():
         return len(candidates)
 
 
-class Dispersy(Singleton):
+class Dispersy(object):
     """
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
     outgoing data for, possibly, multiple communities.
     """
-    def __init__(self, callback, working_directory, database_filename=u"dispersy.db"):
+    def __init__(self, callback, endpoint, working_directory, database_filename=u"dispersy.db"):
         """
-        Initialize the Dispersy singleton instance.
+        Initialise a Dispersy instance.
 
-        Currently we use the rawserver to schedule events.  This may change in the future to offload
-        all data processing to a different thread.  The only mechanism used from the rawserver is
-        the add_task method.
+        @param callback: Instance for callback scheduling.
+        @type callback: Callback
 
-        @param callback: Object for callback scheduling.
-        @type rawserver: Callback
+        @param endpoint: Instance for communication.
+        @type callback: Endpoint
 
         @param working_directory: The directory where all files should be stored.
         @type working_directory: unicode
@@ -279,14 +284,17 @@ class Dispersy(Singleton):
         @param database_filename: The database filename or u":memory:"
         @type database_filename: unicode
         """
-        assert isinstance(callback, Callback)
-        assert isinstance(working_directory, unicode)
-        assert isinstance(database_filename, unicode)
-
+        assert isinstance(callback, Callback), type(callback)
+        assert isinstance(endpoint, Endpoint), type(endpoint)
+        assert isinstance(working_directory, unicode), type(working_directory)
+        assert isinstance(database_filename, unicode), type(database_filename)
         super(Dispersy, self).__init__()
 
-        # the raw server
+        # the thread we will be using
         self._callback = callback
+
+        # communication endpoint
+        self._endpoint = endpoint
 
         # batch caching incoming packets
         self._batch_cache = {}
@@ -294,13 +302,17 @@ class Dispersy(Singleton):
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
 
+        self._member_cache_by_public_key = OrderedDict()
+        self._member_cache_by_hash = dict()
+        self._member_cache_by_database_id = dict()
+
         # our data storage
         if not database_filename == u":memory:":
             database_directory = os.path.join(self._working_directory, u"sqlite")
             if not os.path.isdir(database_directory):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
-        self._database = DispersyDatabase.get_instance(database_filename)
+        self._database = DispersyDatabase(database_filename)
 
         # peer selection candidates.  address:Candidate pairs (where
         # address is obtained from socket.recv_from)
@@ -329,14 +341,11 @@ class Dispersy(Singleton):
         self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in bootstrap_candidates if candidate)
 
         # communities that can be auto loaded.  classification:(cls, args, kargs) pairs.
-        self._auto_load_communities = {}
+        self._auto_load_communities = OrderedDict()
 
         # loaded communities.  cid:Community pairs.
         self._communities = {}
         self._walker_commmunities = []
-
-        # communication endpoint
-        self._endpoint = DummyEndpoint()
 
         self._check_distribution_batch_map = {DirectDistribution:self._check_direct_distribution_batch,
                                               FullSyncDistribution:self._check_full_sync_distribution_batch,
@@ -419,23 +428,21 @@ class Dispersy(Singleton):
         """
         return self._working_directory
 
-    # @property
-    def __get_endpoint(self):
+    @property
+    def endpoint(self):
         """
         The endpoint object used to send packets.
         @rtype: Object with a send(address, data) method
         """
         return self._endpoint
-    # @endpoint.setter
-    def __set_endpoint(self, endpoint):
-        """
-        Set a endpoint object.
-        @param endpoint: The endpoint object.
-        @type endpoint: Object with a send(address, data) method
-        """
-        self._endpoint = endpoint
 
-        host, port = endpoint.get_address()
+    def _endpoint_ready(self):
+        """
+        Guess our LAN and WAN address from information provided by endpoint.
+
+        This method is called immediately after endpoint.start finishes.
+        """
+        host, port = self._endpoint.get_address()
         if __debug__: dprint("update LAN address ", self._lan_address[0], ":", self._lan_address[1], " -> ", self._lan_address[0], ":", port, force=True)
         self._lan_address = (self._lan_address[0], port)
 
@@ -460,8 +467,6 @@ class Dispersy(Singleton):
         # our address may not be a candidate
         if self._lan_address in self._candidates:
             del self._candidates[self._lan_address]
-    # .setter was introduced in Python 2.6
-    endpoint = property(__get_endpoint, __set_endpoint)
 
     @property
     def lan_address(self):
@@ -597,22 +602,39 @@ class Dispersy(Singleton):
 
         return messages
 
-    def define_auto_load(self, community, args=(), kargs=None):
+    def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
         """
         Tell Dispersy how to load COMMUNITY is needed.
 
-        COMMUNITY is the community class that is defined.
+        COMMUNITY_CLS is the community class that is defined.
 
         ARGS an KARGS are optional arguments and keyword arguments used when a community is loaded
-        using COMMUNITY.load_community(master, *ARGS, **KARGS).
+        using COMMUNITY_CLS.load_community(self, master, *ARGS, **KARGS).
+
+        When LOAD is True all available communities of this type will be immediately loaded.
         """
         if __debug__:
             from .community import Community
-        assert issubclass(community, Community)
-        assert isinstance(args, tuple)
-        assert kargs is None or isinstance(kargs, dict)
-        assert not community.get_classification() in self._auto_load_communities
-        self._auto_load_communities[community.get_classification()] = (community, args, kargs if kargs else {})
+        assert self._callback.is_current_thread, "Must be called from the callback thread"
+        assert issubclass(community_cls, Community), type(community_cls)
+        assert isinstance(args, tuple), type(args)
+        assert kargs is None or isinstance(kargs, dict), type(kargs)
+        assert not community_cls.get_classification() in self._auto_load_communities
+        assert isinstance(load, bool), type(load)
+
+        if kargs is None:
+            kargs = {}
+        self._auto_load_communities[community_cls.get_classification()] = (community_cls, args, kargs)
+
+        if load:
+            for master in community_cls.get_master_members(self):
+                if not master.mid in self._communities:
+                    if __debug__: dprint("Loading ", community_cls.get_classification(), " at start")
+                    try:
+                        community_cls.load_community(self, master, *args, **kargs)
+                        assert master.mid in self._communities
+                    except Exception:
+                        dprint(exception=True, level="error")
 
     def undefine_auto_load(self, community):
         """
@@ -658,9 +680,55 @@ class Dispersy(Singleton):
         """
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
-        return Member(public_key, private_key)
+        member = self._member_cache_by_public_key.get(public_key)
+        if member:
+            if private_key and not member.private_key:
+                member.set_private_key(private_key)
 
-    def get_members_from_id(self, mid, cache=True):
+        else:
+            member = Member(self, public_key, private_key)
+
+            # store in caches
+            self._member_cache_by_public_key[public_key] = member
+            self._member_cache_by_hash[member.mid] = member
+            self._member_cache_by_database_id[member.database_id] = member
+
+            # limit cache length
+            if len(self._member_cache_by_public_key) > 1024:
+                _, pop = self._member_cache_by_public_key.popitem(False)
+                del self._member_cache_by_hash[pop.mid]
+                del self._member_cache_by_database_id[pop.database_id]
+
+        return member
+
+    def get_new_member(self, curve=u"medium"):
+        """
+        Returns a Member instance created from a newly generated public key.
+        """
+        assert isinstance(curve, unicode), type(curve)
+        ec = ec_generate_key(curve)
+        return self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+
+    def get_temporary_member_from_id(self, mid):
+        """
+        Returns a temporary Member instance reserving the MID until (hopefully) the public key
+        becomes available.
+
+        This method should be used with caution as this will create a real Member without having the
+        public key available.  This method is (sometimes) used when joining a community when we only
+        have its CID (=MID).
+
+        @param mid: The 20 byte sha1 digest indicating a member.
+        @type mid: string
+
+        @return: A (Dummy)Member instance
+        @rtype: DummyMember or Member
+        """
+        assert isinstance(mid, str), type(mid)
+        assert len(mid) == 20, len(mid)
+        return self._member_cache_by_hash.get(mid) or DummyMember(self, mid)
+
+    def get_members_from_id(self, mid):
         """
         Returns zero or more Member instances associated with mid, where mid is the sha1 digest of a
         member public key.
@@ -684,41 +752,35 @@ class Dispersy(Singleton):
         """
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        assert isinstance(cache, bool), type(cache)
-        if cache:
-            try:
-                return [MemberFromId(mid)]
-            except LookupError:
-                pass
+        member = self._member_cache_by_hash.get(mid)
+        if member:
+            return [member]
 
-        # note that this allows a security attack where someone might obtain a crypographic key that
-        # has the same sha1 as the master member, however unlikely.  the only way to prevent this,
-        # as far as we know, is to increase the size of the community identifier, for instance by
-        # using sha256 instead of sha1.
-        return [MemberWithoutCheck(str(public_key))
-                for public_key,
-                in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
-                if public_key]
+        else:
+            # note that this allows a security attack where someone might obtain a crypographic
+            # key that has the same sha1 as the master member, however unlikely.  the only way to
+            # prevent this, as far as we know, is to increase the size of the community
+            # identifier, for instance by using sha256 instead of sha1.
+            return [self.get_member(str(public_key))
+                    for public_key,
+                    in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
+                    if public_key]
 
-    def get_member_from_database_id(self, database_id, cache=True):
+    def get_member_from_database_id(self, database_id):
         """
         Returns a Member instance associated with DATABASE_ID or None when this row identifier is
         not available.
         """
         assert isinstance(database_id, (int, long)), type(database_id)
-        assert isinstance(cache, bool), type(cache)
-        if cache:
+        member = self._member_cache_by_database_id.get(database_id)
+        if not member:
             try:
-                return MemberFromDatabaseId(database_id)
-            except LookupError:
+                public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
+            except StopIteration:
                 pass
-
-        try:
-            public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
-        except StopIteration:
-            return None
-        else:
-            return MemberWithoutCheck(str(public_key))
+            else:
+                member = self.get_member(str(public_key))
+        return member
 
     def attach_community(self, community):
         """
@@ -845,7 +907,7 @@ class Dispersy(Singleton):
             args = ()
             kargs = {}
 
-        return destination.load_community(master, *args, **kargs)
+        return destination.load_community(self, master, *args, **kargs)
 
     def has_community(self, cid):
         """
@@ -897,9 +959,9 @@ class Dispersy(Singleton):
                 if load or (auto_load and auto_load_flag):
 
                     if classification in self._auto_load_communities:
-                        master = Member(str(master_public_key)) if master_public_key else DummyMember(cid)
+                        master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
                         cls, args, kargs = self._auto_load_communities[classification]
-                        community = cls.load_community(master, *args, **kargs)
+                        community = cls.load_community(self, master, *args, **kargs)
                         assert master.mid in self._communities
                         return community
 
@@ -1591,7 +1653,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # all except for the CANDIDATE
             if not other == candidate:
                 if __debug__: dprint("removing ", other, " in favor of ", candidate, force=True)
-                candidate.merge(other)
+                candidate.merge(self, other)
                 del self._candidates[other.sock_addr]
                 self.wan_address_unvote(other)
 
@@ -3003,6 +3065,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         packets = [str(packet) for packet, in self._database.execute(u"SELECT packet FROM malicious_proof WHERE community = ? AND member = ?",
                                                                      (community.database_id, member.database_id))]
+        if __debug__: dprint("found ", len(packets), " malicious proof packets, sending to ", candidate)
+
         if packets:
             self._statistics.dict_inc(self._statistics.outgoing, u"-malicious-proof", len(packets))
             self._endpoint.send([candidate], packets)
@@ -3198,7 +3262,6 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             assert isinstance(community, Community)
             assert isinstance(candidate, Candidate)
             assert isinstance(dummy_member, DummyMember)
-            assert not dummy_member.public_key
             assert response_func is None or callable(response_func)
             assert isinstance(response_args, tuple)
             assert isinstance(timeout, float)
@@ -3650,7 +3713,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         >>> # Authorize Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member(bob_public_key)
+        >>> bob = dispersy.get_member(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_authorize(community, [(bob, msg, u'permit')])
 
@@ -3750,7 +3813,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         >>> # Revoke the right of Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = Member(bob_public_key)
+        >>> bob = dispersy.get_member(bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_revoke(community, [(bob, msg, u'permit')])
 
@@ -4455,8 +4518,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
     def _watchdog(self):
         """
-        Periodically called to flush changes to disk, most importantly, it will catch the
-        GeneratorExit exception when it is thrown to properly shutdown the database.
+        Periodically called to commit database changes to disk.
         """
         while True:
             try:
@@ -4470,39 +4532,88 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # OperationalError: database is locked
                 dprint(exception=True, level="error")
 
-            except GeneratorExit:
-                if __debug__: dprint("shutdown")
-                # unload all communities
-                try:
-                    while True:
-                        next(self._communities.itervalues()).unload_community()
-                except StopIteration:
-                    pass
-                # commit database
-                # unload all communities
-                try:
-                    while True:
-                        next(self._communities.itervalues()).unload_community()
-                except StopIteration:
-                    pass
-                # commit database
-                self._database.commit(exiting = True)
-                break
-
     def _commit_now(self):
         """
         Flush changes to disk.
         """
         self._database.commit()
 
-    def stop(self, timeout=2.0):
+    def start(self):
         """
-        Stop the callback thread and clean all caches.
-        """
-        self._callback.stop(timeout=timeout)
+        Starts Dispersy.
 
-        cleanup_members()
-        cleanup_singletons()
+        This method is thread safe.
+
+        1. starts callback
+        2. opens database
+        3. opens endpoint
+        """
+
+        assert not self._callback.is_running, "Must be called before callback.start()"
+
+        def start():
+            assert self._callback.is_current_thread, "Must be called from the callback thread"
+            self._database.open()
+            self._endpoint.open(self)
+            self._endpoint_ready()
+
+        # start
+        self._callback.start()
+        self._callback.call(start)
+        return True
+
+    def stop(self, timeout=10.0):
+        """
+        Stops Dispersy.
+
+        This method is thread safe.
+
+        1. unload all communities
+        2. closes endpoint
+        3. closes database
+        4. stops callback
+        """
+        assert self._callback.is_running, "Must be called before the callback.stop()"
+        assert isinstance(timeout, float), type(timeout)
+        assert 0.0 <= timeout, timeout
+
+        def stop():
+            # unload all communities
+            try:
+                while True:
+                    next(self._communities.itervalues()).unload_community()
+            except StopIteration:
+                pass
+
+            # stop endpoint
+            self._endpoint.close(timeout)
+
+            # Murphy tells us that endpoint just added tasks that caused new communities to load
+            while self._batch_cache or self._communities:
+                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=True)
+
+                # because this task has a very low priority, yielding 0.0 will wait until other
+                # tasks have finished
+                if timeout > 0.0:
+                    yield 0.0
+
+                # force remove incoming messages
+                for task_identifier, _, _ in self._batch_cache.itervalues():
+                    self._callback.unregister(task_identifier)
+                self._batch_cache.clear()
+
+                # unload all communities
+                try:
+                    while True:
+                        next(self._communities.itervalues()).unload_community()
+                except StopIteration:
+                    pass
+
+            # stop the database
+            self._database.close()
+
+        self._callback.call(stop, priority=-512)
+        return self._callback.stop(timeout)
 
     def _candidate_walker(self):
         """

@@ -134,8 +134,10 @@ class WalkCandidate(Candidate):
         assert is_address(wan_address), wan_address
         return self._lan_address if wan_address[0] == self._wan_address[0] else self._wan_address
 
-    def merge(self, other):
-        assert isinstance(other, WalkCandidate), other
+    def merge(self, dispersy, other):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
         
         for cid, timestamps in other._timestamps.iteritems():
@@ -145,8 +147,6 @@ class WalkCandidate(Candidate):
                 self._timestamps[cid] = timestamps
                 
                 #TODO: this should be improved
-                from .dispersy import Dispersy
-                dispersy = Dispersy.get_instance()
                 community = dispersy._communities.get(cid, None)
                 community.add_candidate(self)
                 

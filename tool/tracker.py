@@ -47,7 +47,6 @@ from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
 from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
-from ..member import DummyMember, Member
 from ..message import Message, DropMessage
 
 if sys.platform == 'win32':
@@ -215,11 +214,6 @@ class TrackerCommunity(Community):
                 yield result
 
 class TrackerDispersy(Dispersy):
-    @classmethod
-    def get_instance(cls, *args, **kargs):
-        kargs["singleton_placeholder"] = Dispersy
-        return super(TrackerDispersy, cls).get_instance(*args, **kargs)
-
     def __init__(self, callback, working_directory, silent = False):
         super(TrackerDispersy, self).__init__(callback, working_directory, u":memory:")
 
@@ -231,7 +225,7 @@ class TrackerDispersy(Dispersy):
 
         # generate a new my-member
         ec = ec_generate_key(u"very-low")
-        self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
@@ -251,7 +245,7 @@ class TrackerDispersy(Dispersy):
         try:
             return super(TrackerDispersy, self).get_community(cid, True, True)
         except KeyError:
-            self._communities[cid] = TrackerCommunity.join_community(DummyMember(cid), self._my_member)
+            self._communities[cid] = TrackerCommunity.join_community(self, self.get_temporary_member_from_id(cid), self._my_member)
             return self._communities[cid]
 
     def _load_persistent_storage(self):
@@ -371,17 +365,15 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), bool(opt.silent))
-    dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
-    dispersy.endpoint.start()
+    dispersy = TrackerDispersy(Callback(), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
+    dispersy.start()
 
     def signal_handler(sig, frame):
         print "Received signal '", sig, "' in", frame, "(shutting down)"
-        dispersy.callback.stop(wait=False)
+        dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
 
     # wait forever
     dispersy.callback.loop()
-    dispersy.endpoint.stop()

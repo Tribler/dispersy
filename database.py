@@ -7,12 +7,9 @@ This module provides basic database functionalty and simple version control.
 """
 
 from os import environ
-
-import hashlib
-import sqlite3
+from sqlite3 import Connection, Error
 
 from .dprint import dprint
-from .singleton import Singleton
 
 if __debug__:
     import thread
@@ -41,7 +38,7 @@ class IgnoreCommits(Exception):
     def __init__(self):
         super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
 
-class Database(Singleton):
+class Database(object):
     def __init__(self, file_path):
         """
         Initialize a new Database instance.
@@ -49,13 +46,14 @@ class Database(Singleton):
         @param file_path: the path to the database file.
         @type file_path: unicode
         """
-        if __debug__:
-            assert isinstance(file_path, unicode)
-            dprint(file_path)
-            self._debug_thread_ident = thread.get_ident()
+        assert isinstance(file_path, unicode)
+        if __debug__: dprint(file_path)
         self._file_path = file_path
 
-        self._connect(file_path)
+        # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
+        self._connection = None
+        self._cursor = None
+        self._database_version = 0
 
         # _commit_callbacks contains a list with functions that are called on each database commit
         self._commit_callbacks = []
@@ -64,11 +62,32 @@ class Database(Singleton):
         # when _pending_commits > 0.  A commit is required when _pending_commits > 1.
         self._pending_commits = 0
 
+        if __debug__:
+            self._debug_thread_ident = 0
+
+    def open(self):
+        if __debug__:
+            self._debug_thread_ident = thread.get_ident()
+        self._connect()
+        self._initial_statements()
+        self._prepare_version()
+
+    def close(self, commit=True):
+        if commit:
+            self.commit(exiting=True)
+        self._cursor.close()
+        self._connection.close()
+
+    def _connect(self):
+        self._connection = Connection(self._file_path)
+        # self._connection.setrollbackhook(self._on_rollback)
+        self._cursor = self._connection.cursor()
+
+    def _initial_statements(self):
         # collect current database configuration
         page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
         journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
         synchronous = unicode(next(self._cursor.execute(u"PRAGMA synchronous"))[0]).upper()
-        temp_store = unicode(next(self._cursor.execute(u"PRAGMA temp_store"))[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -102,16 +121,8 @@ class Database(Singleton):
         if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
         if not synchronous in (u"NORMAL", u"1"):
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
-        
-        #
-        # PRAGMA temp_store = 0 | DEFAULT | 1 | FILE | 2 | MEMORY;
-        # http://www.sqlite.org/pragma.html#pragma_temp_store
-        #
-#DISABLED temp_store memory        
-#        if __debug__: dprint("PRAGMA temp_store = MEMORY (previously: ", temp_store, ")")    
-#        if not temp_store in (u"MEMORY", u"2"):
-#            self._cursor.execute(u"PRAGMA temp_store = MEMORY")
 
+    def _prepare_version(self):
         # check is the database contains an 'option' table
         try:
             count, = next(self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'"))
@@ -128,19 +139,9 @@ class Database(Singleton):
         else:
             # the 'option' table probably hasn't been created yet
             version = u"0"
-            
-        self._init_database()
 
         self._database_version = self.check_database(version)
         assert isinstance(self._database_version, (int, long)), type(self._database_version)
-        
-    def _connect(self, file_path):
-        self._connection = sqlite3.Connection(file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
-        self._cursor = self._connection.cursor()
-
-    def _init_database(self):
-        pass
 
     @property
     def database_version(self):
@@ -151,12 +152,6 @@ class Database(Singleton):
         The database filename including path.
         """
         return self._file_path
-
-    def close(self, commit=True):
-        if commit:
-            self.commit()
-        self._cursor.close()
-        self._connection.close()
 
     def __enter__(self):
         """
@@ -271,7 +266,7 @@ class Database(Singleton):
                 
             return result
 
-        except sqlite3.Error:
+        except Error:
             dprint(exception=True, level="warning")
             dprint("Filename: ", self._file_path, level="warning")
             dprint(statement, level="warning")
@@ -296,7 +291,7 @@ class Database(Singleton):
                 
             return result
 
-        except sqlite3.Error:
+        except Error:
             dprint(exception=True, level="warning")
             dprint("Filename: ", self._file_path, level="warning")
             dprint(statements, level="warning")
@@ -358,7 +353,7 @@ class Database(Singleton):
             
             return result
 
-        except sqlite3.Error:
+        except Error:
             dprint(exception=True)
             dprint("Filename: ", self._file_path)
             dprint(statement)
@@ -423,14 +418,15 @@ class Database(Singleton):
     def detach_commit_callback(self, func):
         assert func in self._commit_callbacks
         self._commit_callbacks.remove(func)
-        
+
 class APSWDatabase(Database):
-    def _connect(self, file_path):
+    def _connect(self):
         import apsw
-        self._connection = apsw.Connection(file_path)
+        self._connection = apsw.Connection(self._file_path)
         self._cursor = self._connection.cursor()
 
-    def _init_database(self):
+    def _initial_statements(self):
+        super(APSWDatabase, self)._initial_statements()
         self.execute("BEGIN")
 
     def execute(self, statement, bindings=()):
@@ -499,14 +495,15 @@ class APSWDatabase(Database):
         assert self._debug_thread_ident == thread.get_ident()
         return self._connection.totalchanges()
 
-    def commit(self):
+    def commit(self, exiting = False):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
+        assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if __debug__: dprint("COMMIT")
         result = self.execute("COMMIT;BEGIN")
         for callback in self._commit_callbacks:
             try:
-                callback()
+                callback(exiting = exiting)
             except Exception:
                 #TODO: DPRINT This statement had the stack=True arg.
                 if __debug__: dprint(exception=True)

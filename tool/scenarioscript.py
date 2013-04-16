@@ -21,7 +21,6 @@ from shutil import copyfile
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersydatabase import DispersyDatabase
 from ..dprint import dprint
-from ..member import Member
 from ..script import ScriptBase
 from .ldecoder import Parser, NextFile
 
@@ -233,19 +232,18 @@ class ScenarioScript(ScriptBase):
             # HACK: close the old database, copy the original database file, and open the new file
             self._dispersy._database.close()
             self._dispersy._database = None
-            DispersyDatabase.del_instance()
             copyfile(origional_database_filename, database_filename)
-            self._dispersy._database = DispersyDatabase.get_instance(database_filename)
+            self._dispersy._database = DispersyDatabase(database_filename)
 
             ec = ec_generate_key(self.my_member_security)
-            self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-            self._master_member = Member(self.master_member_public_key)
+            self._my_member = self._dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+            self._master_member = self._dispersy.get_member(self.master_member_public_key)
             self._is_joined = True
 
             self._dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ? AND classification = ?",
                                             (self._my_member.database_id, self._master_member.database_id, self.community_class.get_classification()))
             assert self._dispersy.database.changes == 1
-            community = self.community_class.load_community(self._master_member, *self.community_args, **self.community_kargs)
+            community = self.community_class.load_community(self._dispersy, self._master_member, *self.community_args, **self.community_kargs)
             community.auto_load = False
             community.create_dispersy_identity()
             community.unload_community()
@@ -253,8 +251,8 @@ class ScenarioScript(ScriptBase):
 
         else:
             ec = ec_generate_key(self.my_member_security)
-            self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-            self._master_member = Member(self.master_member_public_key)
+            self._my_member = self._dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+            self._master_member = self._dispersy.get_member(self.master_member_public_key)
 
         self.log("scenario-start", my_member=self._my_member.mid, master_member=self._master_member.mid, classification=self.community_class.get_classification())
 
@@ -283,11 +281,11 @@ class ScenarioScript(ScriptBase):
                 self.log("scenario-churn", state="online", duration=duration)
 
                 if self._is_joined:
-                    self.community_class.load_community(self._master_member, *self.community_args, **self.community_kargs)
+                    self.community_class.load_community(self._dispersy, self._master_member, *self.community_args, **self.community_kargs)
 
                 else:
                     if __debug__: dprint("join community ", self._master_member.mid.encode("HEX"), " as ", self._my_member.mid.encode("HEX"))
-                    community = self.community_class.join_community(self._master_member, self._my_member, *self.community_args, **self.community_kargs)
+                    community = self.community_class.join_community(self._dispersy, self._master_member, self._my_member, *self.community_args, **self.community_kargs)
                     community.auto_load = False
                     self._is_joined = True
 

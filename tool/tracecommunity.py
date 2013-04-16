@@ -31,12 +31,12 @@ def main():
     
     print >> sys.stderr, "Using %s as statedir, and %s as db_filename"%(state_dir, db_filename)
     
-    dispersy = Dispersy.get_instance(Callback(), unicode(state_dir), unicode(db_filename))
-    dispersy._database.commit = lambda: True
+    dispersy = Dispersy(Callback(), unicode(state_dir), unicode(db_filename))
+    dispersy.database.commit = lambda: True
     dispersy.define_auto_load(ChannelCommunity, kargs = {'integrate_with_tribler':False})
     
     community = dispersy.get_community(cid, True)
-    packets = [str(packet) for packet, in dispersy._database.execute(u'SELECT packet FROM sync WHERE community = %d'%community._database_id)]
+    packets = [str(packet) for packet, in dispersy.database.execute(u'SELECT packet FROM sync WHERE community = %d'%community._database_id)]
     
     if profile:
         cProfile.runctx('do_trace(dispersy, community, packets)', globals(), {'dispersy':dispersy, 'community':community, 'packets':packets})
