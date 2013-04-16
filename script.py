@@ -112,12 +112,12 @@ class ScenarioScriptBase(ScriptBase):
         self._timestep = float(kargs.get('timestep', 1.0))
         self._stepcount = 0
         self._logfile = logfile
-        
+
         self._my_name = None
         self._my_address = None
-        
+
         self._nr_peers = self.__get_nr_peers()
-        
+
         if 'starting_timestamp' in kargs:
             self._starting_timestamp = int(kargs['starting_timestamp'])
             log(self._logfile, "Using %d as starting timestamp, will wait for %d seconds"%(self._starting_timestamp, self._starting_timestamp - int(time())))
@@ -131,19 +131,19 @@ class ScenarioScriptBase(ScriptBase):
 
     def get_peer_ip_port(self, peer_id):
         assert isinstance(peer_id, int), type(peer_id)
-        
+
         line_nr = 1
         for line in open('data/peers'):
             if line_nr == peer_id:
                 ip, port = line.split()
                 return ip, int(port)
             line_nr += 1
-            
+
     def __get_nr_peers(self):
         line_nr = 0
         for line in open('data/peers'):
             line_nr +=1
-            
+
         return line_nr
 
     def set_online(self):
@@ -168,7 +168,7 @@ class ScenarioScriptBase(ScriptBase):
             return
         def dummy_send(*params):
             return False
-        
+
         log(self._logfile, "Going offline")
         self._dispersy.on_socket_endpoint = dummy_on_socket
         self._dispersy.endpoint.send = dummy_send
@@ -209,7 +209,7 @@ class ScenarioScriptBase(ScriptBase):
         #when should we start the next step?
         expected_time = self._starting_timestamp + (self._timestep * (self._stepcount + 1))
         diff = expected_time - time()
-        
+
         delay = max(0.0, diff)
         return delay
 
@@ -285,7 +285,7 @@ class ScenarioScriptBase(ScriptBase):
             # online
             if availability_cmds != -1 and 'start' in availability_cmds:
                 self.set_online()
-                
+
             # if there are barter_cmds then execute them
             if scenario_cmds != -1:
                 self.execute_scenario_cmds(scenario_cmds)
@@ -299,7 +299,7 @@ class ScenarioScriptBase(ScriptBase):
                 self.log_desync(1.0 - sleep)
             yield sleep
             self._stepcount += 1
-            
+
     def do_log(self):
         def print_on_change(name, prev_dict, cur_dict):
             new_values = {}
@@ -308,7 +308,7 @@ class ScenarioScriptBase(ScriptBase):
                 for key, value in cur_dict.iteritems():
                     if not isinstance(key, (basestring, int, long)):
                         key = str(key)
-                        
+
                     key = make_valid_key(key)
                     new_values[key] = value
                     if prev_dict.get(key, None) != value:
@@ -318,7 +318,7 @@ class ScenarioScriptBase(ScriptBase):
                 log("dispersy.log", name, **changed_values)
                 return new_values
             return prev_dict
-        
+
         prev_statistics = {}
         prev_total_received = {}
         prev_total_dropped = {}
@@ -329,15 +329,15 @@ class ScenarioScriptBase(ScriptBase):
         prev_endpoint_send = {}
         prev_created_messages = {}
         prev_bootstrap_candidates = {}
-        
+
         while True:
             #print statistics
             self._dispersy.statistics.update()
-            
+
             bl_reuse = sum(c.sync_bloom_reuse for c in self._dispersy.statistics.communities)
             candidates = [(c.classification, len(c.candidates) if c.candidates else 0) for c in self._dispersy.statistics.communities]
             statistics_dict= {'received_count': self._dispersy.statistics.received_count, 'total_up': self._dispersy.statistics.total_up, 'total_down': self._dispersy.statistics.total_down, 'drop_count': self._dispersy.statistics.drop_count, 'total_send': self._dispersy.statistics.total_send, 'cur_sendqueue': self._dispersy.statistics.cur_sendqueue, 'delay_count': self._dispersy.statistics.delay_count, 'delay_success': self._dispersy.statistics.delay_success, 'delay_timeout': self._dispersy.statistics.delay_timeout, 'walk_attempt': self._dispersy.statistics.walk_attempt, 'walk_success': self._dispersy.statistics.walk_success, 'walk_reset': self._dispersy.statistics.walk_reset, 'conn_type': self._dispersy.statistics.connection_type, 'bl_reuse': bl_reuse, 'candidates': candidates}
-            
+
             prev_statistics = print_on_change("statistics", prev_statistics, statistics_dict)
             prev_total_received = print_on_change("statistics-successful-messages", prev_total_received ,self._dispersy.statistics.success)
             prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped ,self._dispersy.statistics.drop)
@@ -348,7 +348,7 @@ class ScenarioScriptBase(ScriptBase):
             prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send ,self._dispersy.statistics.endpoint_send)
             prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages ,self._dispersy.statistics.created)
             prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates ,self._dispersy.statistics.bootstrap_candidates)
-            
+
 #            def callback_cmp(a, b):
 #                return cmp(self._dispersy.callback._statistics[a][0], self._dispersy.callback._statistics[b][0])
 #            keys = self._dispersy.callback._statistics.keys()
@@ -374,7 +374,7 @@ class ScenarioScriptBase(ScriptBase):
 #                if key.startswith("decode") and not key == "decode-message" and total:
 #                    nice_total[make_valid_key(key)] = "%7.2fs ~%5.1f%%" % (value, 100.0 * value / total)
 #            log("dispersy.log", "statistics-decode", **nice_total)
-            
+
             yield 1.0
 
 class DispersyClassificationScript(ScriptBase):
@@ -549,7 +549,7 @@ class DispersyClassificationScript(ScriptBase):
                             dprint(type(obj))
                             try:
                                 lines, lineno = inspect.getsourcelines(obj)
-                                dprint([line.rstrip() for line in lines], lines=1)
+                                dprint('\n'.join([line.rstrip() for line in lines]))
                             except TypeError:
                                 dprint("TypeError")
                                 pass
@@ -1022,7 +1022,7 @@ class DispersyTimelineScript(ScriptBase):
 
         permission_triplet = (message.authentication.member, community.get_meta_message(u"protected-full-sync-text"), u"permit")
         dprint((permission_triplet[0].database_id, permission_triplet[1].name, permission_triplet[2]))
-        dprint([(x.database_id, y.name, z) for x, y, z in authorize.payload.permission_triplets], lines=1)
+        dprint('\n'.join([(x.database_id, y.name, z) for x, y, z in authorize.payload.permission_triplets]))
         assert_(permission_triplet in authorize.payload.permission_triplets)
 
         # cleanup
@@ -1382,7 +1382,7 @@ class DispersyBatchScript(ScriptBase):
 
         end = time()
         self._results.append("%2.2f seconds for max_batch_size(%d, %d)" % (end - begin, length, max_size))
-        dprint(self._results, lines=1)
+        dprint('\n'.join(self._results))
 
         count, = self._dispersy_database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
         assert_(count == len(messages), count, len(messages))
@@ -1412,7 +1412,7 @@ class DispersyBatchScript(ScriptBase):
         node.give_messages(messages)
         end = time()
         self._results.append("%2.2f seconds for one_big_batch(%d)" % (end - begin, length))
-        dprint(self._results, lines=1)
+        dprint('\n'.join(self._results))
 
         meta = community.get_meta_message(u"full-sync-text")
         count, = self._dispersy_database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
@@ -1444,7 +1444,7 @@ class DispersyBatchScript(ScriptBase):
             node.give_message(message)
         end = time()
         self._results.append("%2.2f seconds for many_small_batches(%d)" % (end - begin, length))
-        dprint(self._results, lines=1)
+        dprint('\n'.join(self._results))
         # assert_(self._big_batch_took < self._small_batches_took * 1.1, [self._big_batch_took, self._small_batches_took])
 
         meta = community.get_meta_message(u"full-sync-text")
@@ -3559,4 +3559,3 @@ class DispersyBootstrapServersStresstest(ScriptBase):
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
-
