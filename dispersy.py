@@ -4731,6 +4731,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     for category, candidates in categories.iteritems():
                         for candidate in candidates:
                             #TODO: DPRINT Manually update this one
+                            pass
                             #dprint("%4ds " % min(candidate.age(now), 9999),
                             #       "A " if candidate.is_any_active(now) else " I",
                             #       "O" if candidate.is_all_obsolete(now) else " ",
