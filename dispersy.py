@@ -48,8 +48,7 @@ except ImportError:
 
 from collections import defaultdict
 from hashlib import sha1
-from itertools import groupby, islice, count, cycle
-from random import random, shuffle
+from itertools import groupby, islice, count
 from socket import inet_aton, error as socket_error
 from time import time
 
@@ -966,8 +965,6 @@ class Dispersy(object):
                         return community
 
                     else:
-                        import sys
-                        print >> sys.stderr, "unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]"
                         if __debug__: dprint("unable to auto load, '", classification, "' is an undefined classification [", cid.encode("HEX"), "]", level="warning")
 
                 else:
@@ -4586,13 +4583,16 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             self._endpoint.close(timeout)
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
-            while self._batch_cache or self._communities:
-                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=True)
-
+            while True:
                 # because this task has a very low priority, yielding 0.0 will wait until other
                 # tasks have finished
                 if timeout > 0.0:
                     yield 0.0
+
+                if not (self._batch_cache or self._communities):
+                    break
+
+                if __debug__: dprint("Murphy was right!  There are ", len(self._batch_cache), " batches left.  There are ", len(self._communities), " communities left", box=True)
 
                 # force remove incoming messages
                 for task_identifier, _, _ in self._batch_cache.itervalues():
