@@ -48,8 +48,7 @@ except ImportError:
 
 from collections import defaultdict
 from hashlib import sha1
-from itertools import groupby, islice, count, cycle
-from random import random, shuffle
+from itertools import groupby, islice, count
 from socket import inet_aton, error as socket_error
 from time import time
 
