@@ -7,15 +7,10 @@ A callback thread running Dispersy.
 
 from heapq import heappush, heappop
 from thread import get_ident
-from threading import Thread, Lock, Event, currentThread
+from threading import Thread, Lock, Event
 from time import sleep, time
 from types import GeneratorType, TupleType
 from sys import exc_info
-
-try:
-    import prctl
-except ImportError:
-    prctl = None
 
 from .decorator import attach_profiler
 from .dprint import dprint
@@ -44,7 +39,12 @@ class Callback(object):
             else:
                 return str(call)
 
-    def __init__(self):
+    def __init__(self, name="Generic-Callback"):
+        assert isinstance(name, str), type(name)
+
+        # _name will be given to the thread when it is started
+        self._name = name
+
         # _event is used to wakeup the thread when new actions arrive
         self._event = Event()
         self._event_set = self._event.set
@@ -104,7 +104,6 @@ class Callback(object):
             def must_close(callback):
                 assert callback.is_finished
             atexit_register(must_close, self)
-            self._debug_thread_name = ""
             self._debug_call_name = None
 
     @property
@@ -450,23 +449,20 @@ class Callback(object):
             else:
                 return container[0]
 
-    def start(self, name="Generic-Callback", wait=True):
+    def start(self, wait=True):
         """
         Start the asynchronous thread.
 
         Creates a new thread and calls the _loop() method.
         """
         assert self._state == "STATE_INIT", "Already (done) running"
-        assert isinstance(name, str)
         assert isinstance(wait, bool), "WAIT has invalid type: %s" % type(wait)
-        if __debug__: dprint()
+        if __debug__: dprint(stack=True)
         with self._lock:
             self._state = "STATE_PLEASE_RUN"
-            if __debug__:
-                dprint("STATE_PLEASE_RUN")
-                self._debug_thread_name = name
+            if __debug__: dprint("STATE_PLEASE_RUN")
 
-        thread = Thread(target=self._loop, name=name)
+        thread = Thread(target=self._loop, name=self._name)
         thread.daemon = True
         thread.start()
 
@@ -477,15 +473,17 @@ class Callback(object):
 
         return self.is_running
 
-    def stop(self, timeout=10.0, wait=True, exception=None):
+    def stop(self, timeout=10.0, exception=None):
         """
         Stop the asynchronous thread.
 
-        When called with wait=True on the same thread we will return immediately.
+        When called from the same thread this method will return immediately.  When called from a
+        different thread the method will wait at most TIMEOUT seconds before returning.
+
+        Returns True when the callback thread is finished, otherwise returns False.
         """
         assert isinstance(timeout, float)
-        assert isinstance(wait, bool)
-        if __debug__: dprint()
+        if __debug__: dprint(stack=True)
         if self._state == "STATE_RUNNING":
             with self._lock:
                 if exception:
@@ -497,14 +495,16 @@ class Callback(object):
                 # wakeup if sleeping
                 self._event.set()
 
-            if wait and not self._thread_ident == get_ident():
-                while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
-                    sleep(0.01)
-                    timeout -= 0.01
+        # 05/04/13 Boudewijn: we must also wait when self._state != RUNNING.  This can occur when
+        # stop() has already been called from SELF._THREAD_IDENT, changing the state to PLEASE_STOP.
+        if not self._thread_ident == get_ident():
+            while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
+                sleep(0.01)
+                timeout -= 0.01
 
-                if __debug__:
-                    if timeout <= 0.0:
-                        dprint("timeout.  perhaps callback.stop() was called on the same thread?")
+            if __debug__:
+                if not self.is_finished:
+                    dprint("unable to stop the callback within the allowed time")
 
         return self.is_finished
 
@@ -524,9 +524,6 @@ class Callback(object):
         if __debug__:
             dprint()
             time_since_expired = 0
-
-        if prctl:
-            prctl.set_name("Tribler" + currentThread().getName())
 
         # put some often used methods and object in the local namespace
         actual_time = 0
@@ -596,7 +593,7 @@ class Callback(object):
 
             else:
                 if __debug__:
-                    dprint(self._debug_thread_name, "] calling ", self._debug_call_name, " (prio:", priority, ", id:", root_id, ")")
+                    dprint(self._name, "] calling ", self._debug_call_name, " (prio:", priority, ", id:", root_id, ")")
                     debug_call_start = time()
 
                 # call can be either:
@@ -629,7 +626,7 @@ class Callback(object):
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
-                except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError), exception:
+                except (SystemExit, KeyboardInterrupt, GeneratorExit), exception:
                     dprint("attempting proper shutdown", exception=True, level="error")
                     with lock:
                         self._state = "STATE_EXCEPTION"
@@ -641,16 +638,8 @@ class Callback(object):
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    if __debug__:
-                        dprint("__debug__ only shutdown", exception=True, level="error")
-                        with lock:
-                            self._state = "STATE_EXCEPTION"
-                            self._exception = exception
-                            self._exception_traceback = exc_info()[2]
-                        self._call_exception_handlers(exception, True)
-                    else:
-                        dprint(exception=True, level="error")
-                        self._call_exception_handlers(exception, False)
+                    dprint("keep running regardless of exception", exception=True, level="error")
+                    self._call_exception_handlers(exception, False)
 
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
@@ -665,7 +654,7 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        if __debug__: dprint(self._debug_thread_name, "] there are ", len(expired), " expired tasks")
+        if __debug__: dprint(self._name, "] there are ", len(expired), " expired tasks")
         while expired:
             _, _, _, _, call, callback = heappop(expired)
             if isinstance(call, TupleType):

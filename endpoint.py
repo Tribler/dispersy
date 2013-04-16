@@ -11,9 +11,7 @@ import sys
 import threading
 
 from .candidate import Candidate
-
-if __debug__:
-    from .dprint import dprint
+from .dprint import dprint
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -25,6 +23,7 @@ DEBUG = False
 
 class Endpoint(object):
     def __init__(self):
+        self._dispersy = None
         self._total_up = 0
         self._total_down = 0
         self._total_send = 0
@@ -58,47 +57,54 @@ class Endpoint(object):
     def send(self, candidates, packets):
         raise NotImplementedError()
 
-class DummyEndpoint(Endpoint):
-    """
-    A dummy socket class.
+    def open(self, dispersy):
+        self._dispersy = dispersy
 
-    When Dispersy starts it does not yet have an endpoint object, however, it may (under certain
-    conditions) start sending packets anyway.
-
-    To avoid problems we initialize the Dispersy socket to this dummy object that will do nothing
-    but throw away all packets it is supposed to sent.
-    """
-    def get_address(self):
-        return ("0.0.0.0", 0)
-
-    def send(self, candidates, packets):
-        if __debug__: dprint("Thrown away ", sum(len(data) for data in packets), " bytes worth of outgoing data to ", ",".join(str(candidate) for candidate in candidates), level="warning")
+    def close(self, timeout=0.0):
+        assert self._dispersy, "Should not be called before open(...)"
+        assert isinstance(timeout, float), type(timeout)
 
 class RawserverEndpoint(Endpoint):
-    def __init__(self, rawserver, dispersy, port, ip="0.0.0.0"):
+    def __init__(self, rawserver, port, ip="0.0.0.0"):
         super(RawserverEndpoint, self).__init__()
 
-        while True:
-            try:
-                self._socket = rawserver.create_udpsocket(port, ip)
-                if __debug__: dprint("Listening at ", port)
-            except socket.error:
-                port += 1
-                continue
-            break
-
         self._rawserver = rawserver
-        self._rawserver.start_listening_udp(self._socket, self)
+        self._port = port
+        self._ip = ip
         self._add_task = self._rawserver.add_task
-        self._dispersy = dispersy
-        
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
+        # _DISPERSY and _SOCKET are set during open(...)
+        self._socket = None
+
+    def open(self, dispersy):
+        super(RawserverEndpoint, self).open(dispersy)
+
+        while True:
+            try:
+                self._socket = self._rawserver.create_udpsocket(self._port, self._ip)
+                if __debug__: dprint("Listening at ", self._port)
+            except socket.error:
+                self._port += 1
+                continue
+            break
+        self._rawserver.start_listening_udp(self._socket, self)
+
+    def close(self, timeout=0.0):
+        try:
+            self._socket.close()
+        except socket.error:
+            dprint("IGNORE", exception=True, error=True)
+
+        super(RawserverEndpoint, self).close(timeout)
+
     def get_address(self):
+        assert self._dispersy, "Should not be called before open(...)"
         return self._socket.getsockname()
 
     def data_came_in(self, packets):
+        assert self._dispersy, "Should not be called before open(...)"
         # called on the Tribler rawserver
 
         # the rawserver SUCKS.  every now and then exceptions are not shown and apparently we are
@@ -118,6 +124,7 @@ class RawserverEndpoint(Endpoint):
             self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
 
     def dispersythread_data_came_in(self, packets, timestamp):
+        assert self._dispersy, "Should not be called before open(...)"
         # iterator = ((self._dispersy.get_candidate(sock_addr), data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
         # self._dispersy.on_incoming_packets([(candidate if candidate else self._dispersy.create_candidate(WalkCandidate, sock_addr, tunnel), data[4:] if tunnel else data)
         #                                     for candidate, tunnel, sock_addr, data
@@ -132,6 +139,7 @@ class RawserverEndpoint(Endpoint):
                                            timestamp)
 
     def send(self, candidates, packets):
+        assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
         assert all(isinstance(candidate, Candidate) for candidate in candidates)
         assert isinstance(packets, (tuple, list, set)), type(packets)
@@ -162,6 +170,7 @@ class RawserverEndpoint(Endpoint):
         return False 
 
     def _process_sendqueue(self):
+        assert self._dispersy, "Should not be called before start(...)"
         with self._sendqueue_lock:
             if self._sendqueue:
                 index = 0
@@ -202,38 +211,49 @@ class RawserverEndpoint(Endpoint):
                 self._cur_sendqueue = len(self._sendqueue)
                 
 class StandaloneEndpoint(RawserverEndpoint):
-    def __init__(self, dispersy, port, ip="0.0.0.0"):
+    def __init__(self, port, ip="0.0.0.0"):
+        # do NOT call RawserverEndpoint.__init__!
         Endpoint.__init__(self)
-        
-        self._running = True
-        self._dispersy = dispersy
-        self._thread = threading.Thread(name="StandaloneEndpoint", target=self._loop, args=(port, ip))
-        self._thread.daemon = True
+
+        self._port = port
+        self._ip = ip
+        self._running = False
+        self._add_task = lambda task, delay = 0.0, id = "": None
+        self._sendqueue_lock = threading.RLock()
+        self._sendqueue = []
+
+        # _DISPERSY and _THREAD are set during open(...)
+        self._thread = None
+
+    def open(self, dispersy):
+        # do NOT call RawserverEndpoint.open!
+        Endpoint.open(self, dispersy)
 
         while True:
             try:
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
-                self._socket.bind((ip, port))
+                self._socket.bind((self._ip, self._port))
                 self._socket.setblocking(0)
-                if __debug__: dprint("Listening at ", port)
+                if __debug__: dprint("Listening at ", self._port)
             except socket.error:
-                port += 1
+                self._port += 1
                 continue
             break
-        
-        self._add_task = lambda task, delay = 0.0, id = "": None 
-        self._sendqueue_lock = threading.RLock()
-        self._sendqueue = []
 
-    def start(self):
+        self._running = True
+        self._thread = threading.Thread(name="StandaloneEndpoint", target=self._loop)
+        self._thread.daemon = True
         self._thread.start()
 
-    def stop(self, timeout=10.0):
+    def close(self, timeout=10.0):
+        super(StandaloneEndpoint, self).close(timeout)
         self._running = False
-        self._thread.join(timeout)
+        if timeout > 0.0:
+            self._thread.join(timeout)
 
-    def _loop(self, port, ip):
+    def _loop(self):
+        assert self._dispersy, "Should not be called before open(...)"
         recvfrom = self._socket.recvfrom
         socket_list = [self._socket.fileno()]
         
@@ -269,10 +289,9 @@ class StandaloneEndpoint(RawserverEndpoint):
                         self.data_came_in(packets)
 
 class TunnelEndpoint(Endpoint):
-    def __init__(self, swift_process, dispersy):
+    def __init__(self, swift_process):
         super(TunnelEndpoint, self).__init__()
         self._swift = swift_process
-        self._dispersy = dispersy
         self._session = "ffffffff".decode("HEX")
 
     def get_def(self):
@@ -287,6 +306,7 @@ class TunnelEndpoint(Endpoint):
         return ("0.0.0.0", self._swift.listenport)
 
     def send(self, candidates, packets):
+        assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
         assert all(isinstance(candidate, Candidate) for candidate in candidates)
         assert isinstance(packets, (tuple, list, set)), type(packets)
@@ -322,6 +342,7 @@ class TunnelEndpoint(Endpoint):
             self._swift.splock.release()
 
     def i2ithread_data_came_in(self, session, sock_addr, data):
+        assert self._dispersy, "Should not be called before open(...)"
         # assert session == self._session, [session, self._session]
         if DEBUG:
             try:
@@ -336,5 +357,6 @@ class TunnelEndpoint(Endpoint):
         self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
 
     def dispersythread_data_came_in(self, sock_addr, data, timestamp):
+        assert self._dispersy, "Should not be called before open(...)"
         # candidate = self._dispersy.get_candidate(sock_addr) or self._dispersy.create_candidate(WalkCandidate, sock_addr, True)
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, True), data)], True, timestamp)

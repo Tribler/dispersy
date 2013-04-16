@@ -1,12 +1,6 @@
-from ..script import ScriptBase
+from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
-class DispersyCallbackScript(ScriptBase):
-    def run(self):
-        self.add_testcase(self.previous_performance_profile)
-        self.add_testcase(self.register)
-        self.add_testcase(self.register_delay)
-        self.add_testcase(self.generator)
-
+class TestCallback(DispersyTestClass):
     def previous_performance_profile(self):
         """
 Run on MASAQ Dell laptop 23/04/12
@@ -65,7 +59,8 @@ YAPPI:          5x       0.000s /home/boudewijn/svn.tribler.org/abc/branches/mai
 """
         pass
 
-    def register(self):
+    @call_on_dispersy_thread
+    def test_register(self):
         def register_func():
             container[0] += 1
 
@@ -78,7 +73,8 @@ YAPPI:          5x       0.000s /home/boudewijn/svn.tribler.org/abc/branches/mai
         while container[0] < 100000:
             yield 1.0
 
-    def register_delay(self):
+    @call_on_dispersy_thread
+    def test_register_delay(self):
         def register_delay_func():
             container[0] += 1
 
@@ -91,7 +87,8 @@ YAPPI:          5x       0.000s /home/boudewijn/svn.tribler.org/abc/branches/mai
         while container[0] < 100000:
             yield 1.0
 
-    def generator(self):
+    @call_on_dispersy_thread
+    def test_generator(self):
         def generator_func():
             for _ in xrange(10):
                 yield 0.1

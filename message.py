@@ -1,4 +1,3 @@
-from .member import DummyMember
 from .meta import MetaObject
 
 if __debug__:
@@ -38,7 +37,7 @@ class DelayPacketByMissingMember(DelayPacket):
         self._missing_member_id = missing_member_id
 
     def create_request(self, candidate, delayed):
-        return self._community.dispersy.create_missing_identity(self._community, candidate, DummyMember(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+        return self._community.dispersy.create_missing_identity(self._community, candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
 
 class DelayPacketByMissingLastMessage(DelayPacket):
     def __init__(self, community, member, message, count):

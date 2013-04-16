@@ -6,40 +6,19 @@ try:
 except ImportError:
     from .python27_ordereddict import OrderedDict
 
-from .dispersydatabase import DispersyDatabase
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
 
 if __debug__:
     from .dprint import dprint
     from .crypto import ec_check_public_bin, ec_check_private_bin
 
-def cleanup():
-    """
-    Removes all member caches.
-
-    - Clears _cache from all DummyMember subclasses
-    - Clears _mid_cache from all DummyMember subclasses
-    - Clears _did_cache from all DummyMember subclasses
-    """
-    def clear(cls):
-        if hasattr(cls, "_cache"):
-            cls._cache.clear()
-        if hasattr(cls, "_mid_cache"):
-            cls._mid_cache.clear()
-        if hasattr(cls, "_did_cache"):
-            cls._did_cache.clear()
-        
-        for subcls in cls.__subclasses__():
-            clear(subcls)
-    
-    clear(DummyMember)
-
 class DummyMember(object):
-    def __init__(self, mid):
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-        database = DispersyDatabase.get_instance()
+    def __init__(self, dispersy, mid):
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(mid, str), type(mid)
+        assert len(mid) == 20, len(mid)
+        database = dispersy.database
 
         try:
             database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
@@ -128,71 +107,63 @@ class DummyMember(object):
     def __str__(self):
         return "<%s 0 %s>" % (self.__class__.__name__, self._mid.encode("HEX"))
 
-class MemberBase(DummyMember):
-    def __init__(self, public_key, private_key=""):
+class Member(DummyMember):
+    def __init__(self, dispersy, public_key, private_key=""):
         """
         Create a new Member instance.
         """
+        if __debug__: from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), public_key.encode("HEX")
         assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
 
-        if hasattr(self, "_public_key"):
-            # already have an instance.  however, it is possible that we did not yet have PRIVATE_KEY
-            if private_key and not self._private_key:
-                self._private_key = private_key
-                self._ec = ec_from_private_bin(private_key)
-                DispersyDatabase.get_instance().execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+        database = dispersy.database
 
-        else:
-            # create a new instance
-            assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-            database = DispersyDatabase.get_instance()
+        try:
+            database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
 
+        except StopIteration:
+            mid = sha1(public_key).digest()
+            private_key_from_db = None
             try:
-                database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
+                database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
 
             except StopIteration:
-                mid = sha1(public_key).digest()
-                private_key_from_db = None
-                try:
-                    database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
-
-                except StopIteration:
-                    database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-                    database_id = database.last_insert_rowid
-                    tags = u""
-
-                else:
-                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
+                database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
+                database_id = database.last_insert_rowid
+                tags = u""
 
             else:
-                mid = str(mid)
-                private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
-                assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+                database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
 
-            if private_key_from_db:
-                private_key = private_key_from_db
-            elif private_key:
-                database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
+        else:
+            mid = str(mid)
+            private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
+            assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
-            self._database = database
-            self._database_id = database_id
-            self._mid = mid
-            self._public_key = public_key
-            self._private_key = private_key
-            self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
-            self._signature_length = ec_signature_length(self._ec)
-            self._tags = [tag for tag in tags.split(",") if tag]
-            self._has_identity = set()
+        if private_key_from_db:
+            private_key = private_key_from_db
+        elif private_key:
+            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
 
-            if __debug__:
-                assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
-                for tag in self._tags:
-                    assert tag in (u"store", u"ignore", u"blacklist"), tag
+        self._database = database
+        self._database_id = database_id
+        self._mid = mid
+        self._public_key = public_key
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
+        self._signature_length = ec_signature_length(self._ec)
+        self._tags = [tag for tag in tags.split(",") if tag]
+        self._has_identity = set()
 
-            if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
+        if __debug__:
+            assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
+            for tag in self._tags:
+                assert tag in (u"store", u"ignore", u"blacklist"), tag
+
+        if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
 
     @property
     def public_key(self):
@@ -221,6 +192,13 @@ class MemberBase(DummyMember):
         The length, in bytes, of a signature.
         """
         return self._signature_length
+
+    def set_private_key(self, private_key):
+        assert isinstance(private_key, str)
+        assert self._private_key == ""
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key)
+        self._database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
 
     def has_identity(self, community):
         """
@@ -346,72 +324,3 @@ class MemberBase(DummyMember):
         Returns a human readable string representing the member.
         """
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
-
-class Member(MemberBase):
-    _cache_length = 1024
-    _cache = OrderedDict()
-    _mid_cache = {}
-    _did_cache = {}
-
-    def __new__(cls, public_key, private_key=""):
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-
-        # retrieve Member from cache (based on public_key)
-        return cls._cache.get(public_key) or object.__new__(cls)
-
-    def __init__(self, public_key, private_key=""):
-        super(Member, self).__init__(public_key, private_key)
-
-        assert hasattr(self, "_public_key"), self
-        assert hasattr(self, "_mid"), self
-        
-        assert self._cache.get(public_key, self) == self 
-        assert self._mid_cache.get(self._mid, self) == self
-        assert self._did_cache.get(self._database_id, self) == self
-
-        # store Member in cache
-        self._cache[public_key] = self
-        self._mid_cache[self._mid] = self
-        self._did_cache[self._database_id] = self
-        
-        if len(self._cache) > self._cache_length:
-            replaced_member = self._cache.popitem(False)
-            if replaced_member:
-                replaced_member = replaced_member[1]
-                del self._mid_cache[replaced_member._mid]
-                del self._did_cache[replaced_member._database_id]
-                
-        assert len(self._cache) == len(self._mid_cache) and len(self._mid_cache) == len(self._did_cache), "Cache sizes are not synchronized after inserting (%s-%s) (%d,%d,%d)"%(type(self), str(self), len(self._cache), len(self._mid_cache), len(self._did_cache))
-
-class MemberFromId(Member):
-    def __new__(cls, mid):
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        
-        # retrieve Member from cache (based on mid)
-        if mid in cls._mid_cache:
-            return cls._mid_cache[mid]
-        
-        # prevent __init__ and hence caching this instance
-        raise LookupError(mid)
-
-class MemberFromDatabaseId(Member):
-    def __new__(cls, database_id):
-        assert isinstance(database_id, (int, long)), type(database_id)
-        
-        if database_id in cls._did_cache:
-            return cls._did_cache[database_id]
-
-        # prevent __init__ and hence caching this instance
-        raise LookupError(database_id)
-
-class MemberWithoutCheck(Member):
-    def __new__(cls, public_key, private_key=""):
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-        return object.__new__(cls)
