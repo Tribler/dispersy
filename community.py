@@ -545,7 +545,7 @@ class Community(object):
         return self._dispersy_claim_sync_bloom_filter_largest
 
     @property
-    def dispersy_sync_skip_enable():
+    def dispersy_sync_skip_enable(self):
         return self._dispersy_sync_skip_enable
 
     def dispersy_store(self, messages):
