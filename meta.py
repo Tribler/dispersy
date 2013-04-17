@@ -1,6 +1,9 @@
-import inspect
+#!/usr/bin/env/python
 
-from .dprint import dprint
+import logging
+logger = logging.getLogger(__name__)
+
+import inspect
 
 class MetaObject(object):
     class Implementation(object):
@@ -24,9 +27,9 @@ class MetaObject(object):
             try:
                 return cls(self, *args, **kargs)
             except TypeError:
-                dprint("TypeError in ", self.__class__.__name__, ".", self.Implementation.__name__, level="error")
-                dprint("self.Implementation takes: ", inspect.getargspec(self.Implementation.__init__), level="error")
-                dprint("self.Implementation got: ", args, " ", kargs, level="error")
+                logger.error("TypeError in %s.%s", self.__class__.__name__, self.Implementation.__name__)
+                logger.error("self.Implementation takes: %s", inspect.getargspec(self.Implementation.__init__))
+                logger.error("self.Implementation got: %s %s", args, kargs)
                 raise
 
         else:

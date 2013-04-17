@@ -1,3 +1,8 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from time import time
 
 class Statistics():
@@ -21,16 +26,16 @@ class DispersyStatistics(Statistics):
         self.database_version = dispersy.database.database_version
         self.lan_address = None
         self.start = self.timestamp = time()
-        
+
         # nr packets received
         self.received_count = 0
-        
+
         # nr messages successfully handled
         self.success_count = 0
-        
+
         # nr messages which were received, but dropped
         self.drop_count = 0
-        
+
         # nr messages which were received, but delayed
         self.delay_count = 0
         # nr delay success and timeout (success + timeout) != count, as some messages are in between
@@ -38,32 +43,32 @@ class DispersyStatistics(Statistics):
         self.delay_timeout = 0
         # nr delay messages being send
         self.delay_send = 0
-        
+
         # nr sync messages created by this peer send using _send method
         self.created_count = 0
-        
-        # nr of bytes up/down and packets send as reported by endpoint 
+
+        # nr of bytes up/down and packets send as reported by endpoint
         self.total_down = 0
         self.total_up = 0
         self.total_send = 0
-        
+
         # size of the sendqueue
         self.cur_sendqueue = 0
-        
+
         # nr of candidates introduced/stumbled upon
         self.total_candidates_discovered = 0
         # nr of times a candidate was known in another community
         self.total_candidates_overlapped = 0
-        
+
         self.walk_attempt = 0
         self.walk_success = 0
         self.walk_bootstrap_attempt = 0
         self.walk_bootstrap_success = 0
         self.walk_reset = 0
-        
+
         self.wan_address = None
         self.update()
-        
+
         self.enable_debug_statistics(__debug__)
 
     def enable_debug_statistics(self, enable):
@@ -96,7 +101,7 @@ class DispersyStatistics(Statistics):
                 self.bootstrap_candidates = None
                 self.overlapping_stumble_candidates = None
                 self.overlapping_intro_candidates = None
-                
+
     def are_debug_statistics_enabled(self):
         return getattr(self, 'drop', None) != None
 
@@ -105,12 +110,12 @@ class DispersyStatistics(Statistics):
         self.connection_type = self._dispersy.connection_type
         self.lan_address = self._dispersy.lan_address
         self.wan_address = self._dispersy.wan_address
-        
+
         self.total_down = self._dispersy.endpoint.total_down
         self.total_up = self._dispersy.endpoint.total_up
         self.total_send = self._dispersy.endpoint.total_send
         self.cur_sendqueue = self._dispersy.endpoint.cur_sendqueue
-        
+
         self.communities = [community.statistics for community in self._dispersy.get_communities()]
         for community in self.communities:
             community.update(database=database)

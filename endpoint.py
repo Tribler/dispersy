@@ -1,5 +1,10 @@
+#!/usr/bin/env/python
+
 # Python 2.5 features
 from __future__ import with_statement
+
+import logging
+logger = logging.getLogger(__name__)
 
 from itertools import product
 from select import select
@@ -10,8 +15,11 @@ import socket
 import sys
 import threading
 
+import logging
+logger = logging.getLogger("endpoint")
+
+
 from .candidate import Candidate
-from .dprint import dprint
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -36,11 +44,11 @@ class Endpoint(object):
     @property
     def total_down(self):
         return self._total_down
-    
+
     @property
     def total_send(self):
         return self._total_send
-    
+
     @property
     def cur_sendqueue(self):
         return self._cur_sendqueue
@@ -84,7 +92,7 @@ class RawserverEndpoint(Endpoint):
         while True:
             try:
                 self._socket = self._rawserver.create_udpsocket(self._port, self._ip)
-                if __debug__: dprint("Listening at ", self._port)
+                logger.debug("Listening at %s", self._port)
             except socket.error:
                 self._port += 1
                 continue
@@ -95,7 +103,7 @@ class RawserverEndpoint(Endpoint):
         try:
             self._socket.close()
         except socket.error:
-            dprint("IGNORE", exception=True, error=True)
+            logger.debug("IGNORE%s%s", exc_info=True, error=True)
 
         super(RawserverEndpoint, self).close(timeout)
 
@@ -120,7 +128,7 @@ class RawserverEndpoint(Endpoint):
                         name = "???"
                     print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
                     self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
-                    
+
             self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
 
     def dispersythread_data_came_in(self, packets, timestamp):
@@ -148,7 +156,7 @@ class RawserverEndpoint(Endpoint):
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
-        
+
         wan_address = self._dispersy.wan_address
 
         with self._sendqueue_lock:
@@ -159,15 +167,15 @@ class RawserverEndpoint(Endpoint):
             if len(batch) > 0:
                 did_have_senqueue = bool(self._sendqueue)
                 self._sendqueue.extend(batch)
-                
+
                 # If we did not already a sendqueue, then we need to call process_sendqueue in order send these messages
-                if not did_have_senqueue:    
+                if not did_have_senqueue:
                     self._process_sendqueue()
-            
+
                 # return True when something has been send
                 return True
-            
-        return False 
+
+        return False
 
     def _process_sendqueue(self):
         assert self._dispersy, "Should not be called before start(...)"
@@ -177,7 +185,7 @@ class RawserverEndpoint(Endpoint):
                 NUM_PACKETS = min(max(50, len(self._sendqueue) / 10), len(self._sendqueue))
                 if DEBUG:
                     print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue, trying to send", NUM_PACKETS
-                
+
                 for i in xrange(NUM_PACKETS):
                     sock_addr, data = self._sendqueue[i]
                     try:
@@ -189,27 +197,27 @@ class RawserverEndpoint(Endpoint):
                                 name = "???"
                             print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
                             self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
-                            
+
                         index += 1
-    
+
                     except socket.error, e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
                             if DEBUG:
                                 print >> sys.stderr, long(time()), "endpoint: could not send", len(data), "to", sock_addr, len(self._sendqueue)
                                 print_exc()
-                                
+
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, u"socket-error")
                         break
-    
+
                 self._sendqueue = self._sendqueue[index:]
                 if self._sendqueue:
                     # And schedule a new attempt
                     self._add_task(self._process_sendqueue, 0.1, "process_sendqueue")
                     if DEBUG:
                         print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue"
-                
+
                 self._cur_sendqueue = len(self._sendqueue)
-                
+
 class StandaloneEndpoint(RawserverEndpoint):
     def __init__(self, port, ip="0.0.0.0"):
         # do NOT call RawserverEndpoint.__init__!
@@ -235,7 +243,7 @@ class StandaloneEndpoint(RawserverEndpoint):
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
                 self._socket.bind((self._ip, self._port))
                 self._socket.setblocking(0)
-                if __debug__: dprint("Listening at ", self._port)
+                logger.debug("Listening at %s", self._port)
             except socket.error:
                 self._port += 1
                 continue
@@ -256,7 +264,7 @@ class StandaloneEndpoint(RawserverEndpoint):
         assert self._dispersy, "Should not be called before open(...)"
         recvfrom = self._socket.recvfrom
         socket_list = [self._socket.fileno()]
-        
+
         prev_sendqueue = 0
         while self._running:
             # This is a tricky, if we are running on the DAS4 whenever a socket is ready for writing all processes of
@@ -265,12 +273,12 @@ class StandaloneEndpoint(RawserverEndpoint):
                 read_list, write_list, _ = select(socket_list, socket_list, [], 0.1)
             else:
                 read_list, write_list, _ = select(socket_list, [], [], 0.1)
-            
+
             # Furthermore, if we are allowed to send, process sendqueue immediately
             if write_list:
                 self._process_sendqueue()
                 prev_sendqueue = time()
-                
+
             if read_list:
                 packets = []
                 try:
@@ -280,10 +288,10 @@ class StandaloneEndpoint(RawserverEndpoint):
                             packets.append((sock_addr, data))
                         else:
                             break
-                        
+
                 except socket.error, e:
                     self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'"%str(e))
-                        
+
                 finally:
                     if packets:
                         self.data_came_in(packets)
@@ -314,7 +322,7 @@ class TunnelEndpoint(Endpoint):
         assert all(len(packet) > 0 for packet in packets)
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
-        self._total_send += (len(packets) * len(candidates)) 
+        self._total_send += (len(packets) * len(candidates))
         wan_address = self._dispersy.wan_address
 
         self._swift.splock.acquire()
@@ -329,10 +337,10 @@ class TunnelEndpoint(Endpoint):
                             name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                         except:
                             name = "???"
-                            
+
                         print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
-                        
+
                     self._swift.send_tunnel(self._session, sock_addr, data)
 
             # return True when something has been send
@@ -349,10 +357,10 @@ class TunnelEndpoint(Endpoint):
                 name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
             except:
                 name = "???"
-            
+
             print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
             self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
-            
+
         self._total_down += len(data)
         self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
 

@@ -1,7 +1,11 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 import gc
 import inspect
 
-from ..dprint import dprint
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
@@ -164,15 +168,14 @@ class TestClassification(DispersyTestClass):
                     for obj in gc.get_referrers(x):
                         j += 1
                         if verbose:
-                            dprint(type(obj))
+                            logger.debug(type(obj))
                             try:
                                 lines, lineno = inspect.getsourcelines(obj)
-                                dprint([line.rstrip() for line in lines], lines=1)
+                                logger.debug("Check %d %s", j, [line.rstrip() for line in lines])
                             except TypeError:
-                                dprint("TypeError")
-                                pass
+                                logger.debug("TypeError")
 
-            dprint(j, " referrers")
+            logger.debug("%d referrers", j)
             return i
 
         community = ClassificationUnloadingCommunity.create_community(self._dispersy, self._my_member)
@@ -194,7 +197,7 @@ class TestClassification(DispersyTestClass):
         wait = 10
         for i in range(wait):
             gc.collect()
-            dprint("waiting... ", wait - i)
+            logger.debug("waiting... %s", wait-i)
             if check() == 0:
                 break
             else:
@@ -233,19 +236,19 @@ class TestClassification(DispersyTestClass):
         node.init_my_member(candidate=False)
         yield 0.555
 
-        dprint("verify auto-load is enabled (default)")
+        logger.debug("verify auto-load is enabled (default)")
         self.assertTrue(community.dispersy_auto_load)
         yield 0.555
 
-        dprint("define auto load")
+        logger.debug("define auto load")
         self._dispersy.define_auto_load(DebugCommunity)
         yield 0.555
 
-        dprint("create wake-up message")
+        logger.debug("create wake-up message")
         global_time = 10
         wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
-        dprint("unload community")
+        logger.debug("unload community")
         community.unload_community()
         community = None
         node.set_community(None)
@@ -256,11 +259,11 @@ class TestClassification(DispersyTestClass):
             pass
         yield 0.555
 
-        dprint("send community message")
+        logger.debug("send community message")
         node.give_packet(wakeup)
         yield 0.555
 
-        dprint("verify that the community got auto-loaded")
+        logger.debug("verify that the community got auto-loaded")
         try:
             community = self._dispersy.get_community(cid)
         except KeyError:
@@ -270,11 +273,11 @@ class TestClassification(DispersyTestClass):
         self.assertIn(global_time, times)
         yield 0.555
 
-        dprint("undefine auto load")
+        logger.debug("undefine auto load")
         self._dispersy.undefine_auto_load(DebugCommunity)
         yield 0.555
 
-        dprint("cleanup")
+        logger.debug("cleanup")
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
@@ -306,17 +309,17 @@ class TestClassification(DispersyTestClass):
         node.init_socket()
         node.init_my_member(candidate=False)
 
-        dprint("verify auto-load is enabled (default)")
+        logger.debug("verify auto-load is enabled (default)")
         self.assertTrue(community.dispersy_auto_load)
 
-        dprint("define auto load")
+        logger.debug("define auto load")
         self._dispersy.define_auto_load(DebugCommunity)
 
-        dprint("create wake-up message")
+        logger.debug("create wake-up message")
         global_time = 10
         wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
-        dprint("unload community")
+        logger.debug("unload community")
         community.unload_community()
         community = None
         node.set_community(None)
@@ -326,10 +329,10 @@ class TestClassification(DispersyTestClass):
         except KeyError:
             pass
 
-        dprint("send community message")
+        logger.debug("send community message")
         node.give_packet(wakeup)
 
-        dprint("verify that the community got auto-loaded")
+        logger.debug("verify that the community got auto-loaded")
         try:
             community = self._dispersy.get_community(cid)
         except KeyError:
@@ -338,16 +341,16 @@ class TestClassification(DispersyTestClass):
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertIn(global_time, times)
 
-        dprint("disable auto-load")
+        logger.debug("disable auto-load")
         community.dispersy_auto_load = False
         self.assertFalse(community.dispersy_auto_load)
 
-        dprint("create wake-up message")
+        logger.debug("create wake-up message")
         node.set_community(community)
         global_time = 11
         wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
-        dprint("unload community")
+        logger.debug("unload community")
         community.unload_community()
         community = None
         node.set_community(None)
@@ -357,10 +360,10 @@ class TestClassification(DispersyTestClass):
         except KeyError:
             pass
 
-        dprint("send community message")
+        logger.debug("send community message")
         node.give_packet(wakeup)
 
-        dprint("verify that the community did not get auto-loaded")
+        logger.debug("verify that the community did not get auto-loaded")
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
@@ -370,10 +373,10 @@ class TestClassification(DispersyTestClass):
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community_database_id, node.my_member.database_id, message.database_id))]
         self.assertNotIn(global_time, times)
 
-        dprint("undefine auto load")
+        logger.debug("undefine auto load")
         self._dispersy.undefine_auto_load(DebugCommunity)
 
-        dprint("cleanup")
+        logger.debug("cleanup")
         community = DebugCommunity.load_community(self._dispersy, master_member)
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

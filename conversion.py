@@ -1,3 +1,8 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from hashlib import sha1
 from math import ceil
 from socket import inet_ntoa, inet_aton
@@ -17,7 +22,6 @@ if __debug__:
     from .candidate import Candidate
     from .destination import Destination
     from .distribution import Distribution
-    from .dprint import dprint
     from .resolution import Resolution
 
 class Conversion(object):
@@ -224,7 +228,7 @@ class BinaryConversion(Conversion):
 
         if __debug__:
             if debug_non_available:
-                dprint("unable to define non-available messages , ", "\n".join(debug_non_available), level="warning")
+                logger.warning("unable to define non-available messages , \n%s", ''.join(debug_non_available))
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -1082,7 +1086,7 @@ class BinaryConversion(Conversion):
 
         if __debug__:
             if len(packet) > 1500 - 60 - 8:
-                dprint("Packet size for ", message.name, " exceeds MTU - IP header - UDP header (", len(packet), " bytes)", level="warning")
+                logger.warning("Packet size for %s exceeds MTU - IP header - UDP header (%s bytes)", message.name, len(packet))
 
         # dprint(message.packet.encode("HEX"))
         return packet
@@ -1363,7 +1367,7 @@ class BinaryConversion(Conversion):
         # payload
         placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, placeholder.data[:placeholder.first_signature_offset])
         if placeholder.offset != placeholder.first_signature_offset:
-            if __debug__: dprint("invalid packet size for ", placeholder.meta.name, " data:", placeholder.first_signature_offset, "; offset:", placeholder.offset, level="warning")
+            logger.warning("invalid packet size for %s data:%s; offset:%s", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
         if __debug__:

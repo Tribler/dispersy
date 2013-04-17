@@ -1,10 +1,14 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from ...authentication import DoubleMemberAuthentication, MemberAuthentication
 from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import MemberDestination, CommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
-from ...dprint import dprint
 from ...message import Message, DelayMessageByProof
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
 
@@ -93,7 +97,7 @@ class DebugCommunity(Community):
         """
         Received a request to sign MESSAGE.
         """
-        dprint(message, " \"", message.payload.text, "\"")
+        logger.debug("%s \"%s\"", message, message.payload.text)
         assert message.payload.text in ("Allow=True", "Allow=False")
         return message.payload.text == "Allow=True"
 
@@ -154,7 +158,7 @@ class DebugCommunity(Community):
         """
         for message in messages:
             if not "Dprint=False" in message.payload.text:
-                dprint(message, " \"", message.payload.text, "\" @", message.distribution.global_time)
+                logger.debug("%s \"%s\" @%s", message, message.payload.text, message.distribution.global_time)
 
     def undo_text(self, descriptors):
         """
@@ -162,7 +166,7 @@ class DebugCommunity(Community):
         """
         for member, global_time, packet in descriptors:
             message = packet.load_message()
-            dprint("undo \"", message.payload.text, "\" @", global_time)
+            logger.debug("undo \"%s\" @%s", message.payload.text, global_time)
 
     def dispersy_cleanup_community(self, message):
         if message.payload.is_soft_kill:

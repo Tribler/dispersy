@@ -1,6 +1,10 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from time import time
 
-from ..dprint import dprint
 from ..message import Message, BatchConfiguration
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -42,7 +46,7 @@ class TestBatch(DispersyTestClass):
         node.init_socket()
         node.init_my_member()
 
-        dprint("START BIG BATCH (with max batch size)")
+        logger.debug("START BIG BATCH (with max batch size)")
         messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()
@@ -54,7 +58,7 @@ class TestBatch(DispersyTestClass):
             yield 0.1
 
         end = time()
-        dprint("%2.2f seconds for max_batch_size(%d, %d)" % (end - begin, length, max_size))
+        pass #TODO: DPRINT Manual fix required #dprint("%2.2f seconds for max_batch_size(%d, %d)" % (end - begin, length, max_size))
 
         count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
         self.assertEqual(count, len(messages))
@@ -205,7 +209,7 @@ class TestBatch(DispersyTestClass):
         node.init_socket()
         node.init_my_member()
 
-        dprint("START BIG BATCH")
+        logger.debug("START BIG BATCH")
         messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()
@@ -238,7 +242,7 @@ class TestBatch(DispersyTestClass):
         node.init_socket()
         node.init_my_member()
 
-        dprint("START SMALL BATCHES")
+        logger.debug("START SMALL BATCHES")
         messages = [node.create_full_sync_text("Dprint=False, small batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()

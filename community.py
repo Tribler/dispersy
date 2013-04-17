@@ -1,3 +1,5 @@
+#!/usr/bin/env/python
+
 """
 the community module provides the Community base class that should be used when a new Community is
 implemented.  It provides a simplified interface between the Dispersy instance and a running
@@ -7,6 +9,9 @@ Community instance.
 @organization: Technical University Delft
 @contact: dispersy@frayja.com
 """
+
+import logging
+logger = logging.getLogger(__name__)
 
 from hashlib import sha1
 from itertools import islice
@@ -26,7 +31,6 @@ from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution
-from .dprint import dprint
 from .member import DummyMember, Member
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
@@ -184,7 +188,7 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        if __debug__: dprint("joining ", cls.get_classification(), " ", master.mid.encode("HEX"))
+        logger.debug("joining %s %s", cls.get_classification(), master.mid.encode("HEX"))
 
         dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
                                   (master.database_id, my_member.database_id, cls.get_classification()))
@@ -212,7 +216,7 @@ class Community(object):
     @classmethod
     def get_master_members(cls, dispersy):
         assert isinstance(dispersy, Dispersy), type(dispersy)
-        if __debug__: dprint("retrieving all master members owning ", cls.get_classification(), " communities")
+        logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
         return [dispersy.get_member(str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
                 for mid, public_key,
@@ -234,7 +238,7 @@ class Community(object):
         """
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
-        if __debug__: dprint("loading ", cls.get_classification(), " ", master.mid.encode("HEX"))
+        logger.debug("loading %s %s", cls.get_classification(), master.mid.encode("HEX"))
         community = cls(dispersy, master, *args, **kargs)
 
         # tell dispersy that there is a new community
@@ -258,7 +262,7 @@ class Community(object):
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
         if __debug__:
-            dprint("initializing:  ", self.get_classification())
+            logger.debug("initializing:  %s", self.get_classification())
             #TODO: DPRINT Fix this one manually
             #dprint("master member: ", master.mid.encode("HEX"), "" if isinstance(master, Member) else " (using DummyMember)")
 
@@ -274,12 +278,12 @@ class Community(object):
             self._database_id, member_public_key, self._database_version = self._dispersy.database.execute(u"SELECT community.id, member.public_key, database_version FROM community JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
         except StopIteration:
             raise ValueError(u"Community not found in database [" + master.mid.encode("HEX") + "]")
-        if __debug__: dprint("database id:   ", self._database_id)
+        logger.debug("database id:   %s", self._database_id)
 
         self._cid = master.mid
         self._master_member = master
         self._my_member = self._dispersy.get_member(str(member_public_key))
-        if __debug__: dprint("my member:     ", self._my_member.mid.encode("HEX"))
+        logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
@@ -310,7 +314,7 @@ class Community(object):
         assert isinstance(self._global_time, (int, long))
         self._acceptable_global_time_cache = self._global_time
         self._acceptable_global_time_deadline = 0.0
-        if __debug__: dprint("global time:   ", self._global_time)
+        logger.debug("global time:   %s", self._global_time)
 
         # sync range bloom filters
         self._sync_cache = None
@@ -318,7 +322,7 @@ class Community(object):
         self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
-            dprint("sync bloom:    size: ", int(ceil(b.size // 8)), ";  capacity: ", b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), ";  error-rate: ", self.dispersy_sync_bloom_filter_error_rate)
+            logger.debug("sync bloom:    size: %s;  capacity: %s;  error-rate: %s", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
 
         # initial timeline.  the timeline will keep track of member permissions
         self._timeline = Timeline(self)
@@ -327,7 +331,7 @@ class Community(object):
         # random seed, used for sync range
         self._random = Random(self._cid)
         self._nrsyncpackets = 0
-        
+
         #Initialize all the candidate iterators
         self._candidates = OrderedDict()
         self._walked_candidates = self._iter_category(u'walk')
@@ -339,7 +343,7 @@ class Community(object):
 
         # statistics...
         self._statistics = CommunityStatistics(self)
-        
+
     @property
     def statistics(self):
         """
@@ -349,11 +353,11 @@ class Community(object):
 
     def _download_master_member_identity(self):
         assert not self._master_member.public_key
-        if __debug__: dprint("using dummy master member")
+        logger.debug("using dummy master member")
 
         def on_dispersy_identity(message):
             if message and not self._master_member:
-                if __debug__: dprint(self._cid.encode("HEX"), " received master member")
+                logger.debug("%s received master member", self._cid.encode("HEX"))
                 assert message.authentication.member.mid == self._master_member.mid
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
@@ -366,14 +370,14 @@ class Community(object):
                 pass
             else:
                 if public_key:
-                    if __debug__: dprint(self._cid.encode("HEX"), " found master member")
+                    logger.debug("%s found master member", self._cid.encode("HEX"))
                     self._master_member = self._dispersy.get_member(self._dispersy, str(public_key))
                     assert self._master_member.public_key
                     break
 
             for candidate in islice(self.dispersy_yield_random_candidates(), 1):
                 if candidate:
-                    if __debug__: dprint(self._cid.encode("HEX"), " asking for master member from ", candidate)
+                    logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
                     self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
 
             yield delay
@@ -397,7 +401,7 @@ class Community(object):
             sync_interval = 5.0
             for meta_message in self._meta_messages.itervalues():
                 if isinstance(meta_message.distribution, SyncDistribution) and meta_message.batch.max_window >= sync_interval:
-                    dprint("when sync is enabled the interval should be greater than the walking frequency.  otherwise you are likely to receive duplicate packets [", meta_message.name, "]", level="warning")
+                    logger.warning("when sync is enabled the interval should be greater than the walking frequency.  otherwise you are likely to receive duplicate packets [%s]", meta_message.name)
 
     def _initialize_timeline(self):
         mapping = {}
@@ -405,7 +409,7 @@ class Community(object):
             try:
                 meta = self.get_meta_message(name)
             except KeyError:
-                if __debug__: dprint("unable to load permissions from database [could not obtain '", name, "']", level="warning")
+                logger.warning("unable to load permissions from database [could not obtain , name, ]", )
             else:
                 mapping[meta.database_id] = meta.handle_callback
 
@@ -414,14 +418,14 @@ class Community(object):
                                                                 mapping.keys())):
                 message = self._dispersy.convert_packet_to_message(str(packet), self, verify=False)
                 if message:
-                    if __debug__: dprint("processing ", message.name)
+                    logger.debug("processing %s", message.name)
                     mapping[message.database_id]([message], initializing=True)
                 else:
                     # TODO: when a packet conversion fails we must drop something, and preferably check
                     # all messages in the database again...
                     if __debug__:
-                        dprint("invalid message in database [", self.get_classification(), "; ", self.cid.encode("HEX"), "]", level="error")
-                        dprint(str(packet).encode("HEX"), level="error")
+                        logger.error("invalid message in database [%s; %s]", self.get_classification(), self.cid.encode("HEX"))
+                        logger.error(str(packet).encode("HEX"))
 
     # @property
     def __get_dispersy_auto_load(self):
@@ -575,7 +579,7 @@ class Community(object):
 
         if __debug__:
             if cached:
-                dprint(self._cid.encode("HEX"), "] ", cached, " out of ", len(messages), " were part of the cached bloomfilter")
+                logger.debug("%s] %s out of %s were part of the cached bloomfilter", self._cid.encode("HEX"), cached, len(messages))
 
     def dispersy_claim_sync_bloom_filter(self, request_cache):
         """
@@ -595,19 +599,19 @@ class Community(object):
                     cache.responses_received = 0
                     cache.candidate = request_cache.helper_candidate
 
-                    if __debug__: dprint(self._cid.encode("HEX"), " reuse #", cache.times_used, " (packets received: ", cache.responses_received, "; ", hex(cache.bloom_filter._filter), ")")
+                    logger.debug("%s reuse #%s (packets received: %s; %s)", self._cid.encode("HEX"), cache.times_used, cache.responses_received, hex(cache.bloom_filter._filter))
                     return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
 
             elif self._sync_cache.times_used == 0:
                     # Still no updates, gradually increment the skipping probability one notch
-                    dprint("skip:", self._sync_cache_skip_count , "->", min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS), "received:", self._sync_cache.responses_received)
+                    logger.debug("skip:%s->%sreceived:%s", self._sync_cache_skip_count, min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS), self._sync_cache.responses_received)
                     self._sync_cache_skip_count  = min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS)
 
         if (self.dispersy_sync_skip_enable and
             self._sync_cache_skip_count and
             random() < self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1]):
                 # Lets skip this one
-                dprint("skip: random() was <", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1])
+                logger.debug("skip: random() was <%s", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count-1])
                 self._statistics.sync_bloom_skip += 1
                 self._sync_cache = None
                 return None
@@ -618,7 +622,7 @@ class Community(object):
             self._sync_cache.candidate = request_cache.helper_candidate
             self._statistics.sync_bloom_new += 1
             self._statistics.sync_bloom_send += 1
-            if __debug__: dprint(self._cid.encode("HEX"), " new sync bloom (", self._statistics.sync_bloom_reuse, "/", self._statistics.sync_bloom_new, "~", round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2), ")")
+            logger.debug("%s new sync bloom (%s/%s~%s)", self._cid.encode("HEX"), self._statistics.sync_bloom_reuse, self._statistics.sync_bloom_new, round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2))
 
         return sync
 
@@ -820,7 +824,7 @@ class Community(object):
                         data = rightdata
 
                     if __debug__:
-                        dprint(self.cid.encode("HEX"), " bloomfilterrange left", left, " right", right, "left" if left_range > right_range else "right")
+                        logger.debug("%s bloomfilterrange left%s right%sleftright%s", self.cid.encode("HEX"), left, right, ifleft_range>right_rangeelse)
                 else:
                     bloomfilter_range = right
                     data = rightdata
@@ -845,16 +849,16 @@ class Community(object):
                 bloom.add_keys(str(packet) for _, packet in data)
 
                 if __debug__:
-                    dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d, pivot = %d"%(bloomfilter_range[0], bloomfilter_range[1], len(data), capacity, data[0][0], data[-1][0], from_gbtime))
-                    dprint(self.cid.encode("HEX"), " took %f (fakejoin %f, rangeselect %f, dataselect %f, bloomfill, %f"%(time()-t1, t2-t1, t3-t2, t4-t3, time()-t4))
+                    pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d, pivot = %d"%(bloomfilter_range[0], bloomfilter_range[1], len(data), capacity, data[0][0], data[-1][0], from_gbtime))
+                    pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " took %f (fakejoin %f, rangeselect %f, dataselect %f, bloomfill, %f"%(time()-t1, t2-t1, t3-t2, t4-t3, time()-t4))
 
                 return (min(bloomfilter_range[0], acceptable_global_time), min(bloomfilter_range[1], acceptable_global_time), 1, 0, bloom)
 
             if __debug__:
-                dprint(self.cid.encode("HEX"), " no messages to sync")
+                logger.debug("%s no messages to sync", self.cid.encode("HEX"))
 
         elif __debug__:
-            dprint(self.cid.encode("HEX"), " NOT syncing no syncable messages")
+            logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
         return (1, acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
     #instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
@@ -874,16 +878,16 @@ class Community(object):
                 offset = 0
                 modulo = 1
                 packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0" % syncable_messages))
-            
+
             bloom.add_keys(packets)
 
             if __debug__:
-                dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d"%(modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets))
+                pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d"%(modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets))
 
             return (1, self.acceptable_global_time, modulo, offset, bloom)
 
         elif __debug__:
-            dprint(self.cid.encode("HEX"), " NOT syncing no syncable messages")
+            logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
         return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
     def _select_and_fix(self, syncable_messages, global_time, to_select, higher = True):
@@ -1125,7 +1129,7 @@ class Community(object):
         @rtype: int or long
         """
         now = time()
-        
+
         def acceptable_global_time_helper():
             options = sorted(global_time for global_time in (candidate.get_global_time(self) for candidate in self._dispersy.candidates if candidate.in_community(self, now) and candidate.is_any_active(now)) if global_time > 0)
 
@@ -1164,7 +1168,7 @@ class Community(object):
         @rtype: int or long
         """
         self._global_time += 1
-        if __debug__: dprint(self._global_time)
+        logger.debug(self._global_time)
         return self._global_time
 
     def update_global_time(self, global_time):
@@ -1203,7 +1207,7 @@ class Community(object):
         @todo: Since this method returns Members that are not specifically bound to any community,
          this method should be moved to Dispersy
         """
-        if __debug__: dprint("deprecated.  please use Dispersy.get_member", level="warning")
+        logger.warning("deprecated.  please use Dispersy.get_member")
         return self._dispersy.get_member(public_key)
 
     def get_members_from_id(self, mid):
@@ -1231,7 +1235,7 @@ class Community(object):
         @todo: Since this method returns Members that are not specifically bound to any community,
          this method should be moved to Dispersy
         """
-        if __debug__: dprint("deprecated.  please use Dispersy.get_members_from_id", level="warning")
+        logger.warning("deprecated.  please use Dispersy.get_members_from_id")
         return self._dispersy.get_members_from_id(mid)
 
     def get_conversion(self, prefix=None):
@@ -1399,19 +1403,19 @@ class Community(object):
     def _iter_bootstrap(self, once = False):
         while True:
             no_result = True
-            
+
             bootstrap_candidates = list(self._dispersy.bootstrap_candidates)
             for candidate in bootstrap_candidates:
                 if candidate.in_community(self, time()) and candidate.is_eligible_for_walk(self, time()):
                     no_result = False
                     yield candidate
-                    
+
             if no_result:
                 yield None
-                
+
             if once:
                 break
-                    
+
     def _iter_a_or_b(self, a, b, prev_result = None):
         r = random()
         result = a.next() if r <= .5 else b.next()
@@ -1446,14 +1450,14 @@ class Community(object):
         prev_result = None
         while True:
             result = self._iter_a_or_b(self._walked_candidates, self._stumbled_candidates, prev_result)
-            
+
             if prev_result == result:
                 yield None
             else:
                 prev_result = result
                 if result == candidate:
                     continue
-                
+
                 yield result
 
     def dispersy_yield_walk_candidates(self):
@@ -1467,7 +1471,7 @@ class Community(object):
         # 13/02/12 Boudewijn: normal peers can not be visited multiple times within 30 seconds,
         # bootstrap peers can not be visited multiple times within 55 seconds.  this is handled by
         # the Candidate.is_eligible_for_walk(...) method
-        
+
         now = time()
         categories = {u"walk":[], u"stumble":[], u"intro":[], u"none":[]}
         for candidate in self._candidates.itervalues():
@@ -1484,7 +1488,7 @@ class Community(object):
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
             if r <= .4975: # ~50%
                 if walks:
-                    if __debug__: dprint("yield [%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros)), walks[0])
+                    pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros)), walks[0])
                     yield walks.pop(0)
 
             elif r <= .995: # ~50%
@@ -1492,32 +1496,32 @@ class Community(object):
                     while True:
                         if random() <= .5:
                             if stumbles:
-                                if __debug__: dprint("yield [%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros)), stumbles[0])
+                                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros)), stumbles[0])
                                 yield stumbles.pop(0)
                                 break
 
                         else:
                             if intros:
-                                if __debug__: dprint("yield [%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros)), intros[0])
+                                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros)), intros[0])
                                 yield intros.pop(0)
                                 break
 
             else: # ~.5%
                 candidate = self._bootstrap_candidates.next()
                 if candidate:
-                    if __debug__: dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+                    pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
                     yield candidate
-        
+
         bootstrap_candidates = list(self._iter_bootstrap(once = True))
         shuffle(bootstrap_candidates)
-        
+
         for candidate in bootstrap_candidates:
             if candidate:
-                if __debug__: dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
             yield candidate
-            
-        if __debug__: dprint("no candidates or bootstrap candidates available")
-    
+
+        logger.debug("no candidates or bootstrap candidates available")
+
     def create_candidate(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
         """
         Creates and returns a new WalkCandidate instance.
@@ -1526,21 +1530,21 @@ class Community(object):
         assert isinstance(tunnel, bool)
         candidate = WalkCandidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
         self.add_candidate(candidate)
-        
-        if __debug__: dprint(candidate)
+
+        logger.debug(candidate)
         return candidate
-    
+
     def add_candidate(self, candidate):
         assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
-        
+
         if candidate.sock_addr not in self._candidates:
             self._candidates[candidate.sock_addr] = candidate
-            
+
             self._dispersy.statistics.total_candidates_discovered += 1
             if len(candidate._timestamps) > 1:
                 self._dispersy.statistics.total_candidates_overlapped += 1
                 self._dispersy.statistics.dict_inc(self._dispersy.statistics.overlapping_stumble_candidates, str(self))
-    
+
     def get_candidate_mid(self, mid):
         members = self._dispersy.get_members_from_id(mid)
         if members:
@@ -1617,7 +1621,7 @@ class Community(object):
         assert isinstance(name, unicode)
         if __debug__:
             if not name in self._meta_messages:
-                dprint("this community does not support the ", name, " message")
+                logger.debug("this community does not support the %s message", name)
         return self._meta_messages[name]
 
     def get_meta_messages(self):
@@ -1666,7 +1670,7 @@ class HardKilledCommunity(Community):
         try:
             packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? LIMIT 1", (destroy_message_id,)).next()
         except StopIteration:
-            if __debug__: dprint("unable to locate the dispersy-destroy-community message", level="error")
+            logger.error("unable to locate the dispersy-destroy-community message")
             self._destroy_community_packet = ""
         else:
             self._destroy_community_packet = str(packet)

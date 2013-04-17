@@ -1,4 +1,8 @@
-from ..dprint import dprint
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from ..resolution import PublicResolution, LinearResolution
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -157,7 +161,7 @@ class TestDynamicSettings(DispersyTestClass):
             self.fail("must accept the message")
         self.assertEqual(undone, 0, "must accept the message")
 
-        dprint("-- apply linear")
+        logger.debug("-- apply linear")
 
         # process the policy change
         node.give_message(policy_linear)
@@ -178,7 +182,7 @@ class TestDynamicSettings(DispersyTestClass):
             self.fail("the message must be in the database with undone > 0")
         self.assertGreater(undone, 0)
 
-        dprint("-- apply public")
+        logger.debug("-- apply public")
 
         # process the policy change
         node.give_message(policy_public)

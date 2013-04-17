@@ -1,6 +1,10 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from random import shuffle
 
-from ..dprint import dprint
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
@@ -34,7 +38,7 @@ class TestMissingMessage(DispersyTestClass):
             _, response = node.receive_message(message_names=[message.name])
             self.assertEqual(response.distribution.global_time, message.distribution.global_time)
             self.assertEqual(response.payload.text, message.payload.text)
-            dprint("ok @", response.distribution.global_time)
+            logger.debug("ok @%s", response.distribution.global_time)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
@@ -69,7 +73,7 @@ class TestMissingMessage(DispersyTestClass):
             _, response = node.receive_message(message_names=[message.name])
             self.assertEqual(response.distribution.global_time, message.distribution.global_time)
             self.assertEqual(response.payload.text, message.payload.text)
-            dprint("ok @", response.distribution.global_time)
+            logger.debug("ok @%s", response.distribution.global_time)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
@@ -110,7 +114,7 @@ class TestMissingMessage(DispersyTestClass):
         responses.append(response)
 
         self.assertEqual(sorted(response.distribution.global_time for response in responses), global_times)
-        dprint("ok @", global_times)
+        logger.debug("ok @%s", global_times)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

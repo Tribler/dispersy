@@ -1,8 +1,11 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 import sys
 if __debug__:
     from time import time, sleep
-
-from .dprint import dprint
 
 class Constructor(object):
     """
@@ -77,7 +80,7 @@ def runtime_duration_warning(threshold):
                 finally:
                     end = time()
                     if end - start >= threshold:
-                        dprint("%.2fs " % (end - start), func, level="warning")
+                        pass #TODO: DPRINT Manual fix required #dprint("%.2fs " % (end - start), func)
             runtime_duration_warning_helper.__name__ = func.__name__ + "_RDWH"
             return runtime_duration_warning_helper
         else:
@@ -91,14 +94,14 @@ def attach_profiler(func):
         if filename in profiled_threads:
             raise RuntimeError("Can not attach profiler on the same thread twice")
 
-        dprint("running with profiler [", filename, "]")
+        logger.debug("running with profiler [%s]", filename)
         profiled_threads.add(filename)
         profiler = Profile()
 
         try:
             return profiler.runcall(func, *args, **kargs)
         finally:
-            dprint("profiler results [", filename, "]")
+            logger.debug("profiler results [%s]", filename)
             profiler.dump_stats(filename)
 
     #Niels 21-06-2012: argv seems to be missing if python is not started as a script

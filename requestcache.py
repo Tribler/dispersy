@@ -1,9 +1,13 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from random import random
 
 if __debug__:
     def identifier_to_string(identifier):
         return identifier.encode("HEX") if isinstance(identifier, str) else identifier
-    from .dprint import dprint
 
 class Cache(object):
     timeout_delay = 10.0
@@ -11,7 +15,7 @@ class Cache(object):
 
     def on_timeout(self):
         raise NotImplementedError()
-    
+
     def on_cleanup(self):
         pass
 
@@ -27,12 +31,12 @@ class RequestCache(object):
         while True:
             identifier = int(random() * 2**16)
             if not identifier in self._identifiers:
-                if __debug__: dprint("claiming on ", identifier_to_string(identifier))
+                logger.debug("claiming on %s", identifier_to_string(identifier))
                 return identifier
 
     def claim(self, cache):
         identifier = self.generate_identifier()
-        if __debug__: dprint("claiming on ", identifier_to_string(identifier), " for ", cache)
+        logger.debug("claiming on %s for %s", identifier_to_string(identifier), cache)
         self.set(identifier, cache)
         return identifier
 
@@ -43,11 +47,11 @@ class RequestCache(object):
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
 
-        if __debug__: dprint("set ", identifier_to_string(identifier), " for ", cache, " (", cache.timeout_delay, "s timeout)")
+        logger.debug("set %s for %s (%ss timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
         self._callback.register(self._on_timeout, (identifier,), id_="requestcache-%s" % identifier, delay=cache.timeout_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
-        
+
     def replace(self, identifier, cache):
         assert isinstance(identifier, (int, long, str)), type(identifier)
         assert identifier in self._identifiers, identifier
@@ -55,7 +59,7 @@ class RequestCache(object):
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
 
-        if __debug__: dprint("replace ", identifier_to_string(identifier), " for ", cache, " (", cache.timeout_delay, "s timeout)")
+        logger.debug("replace %s for %s (%ss timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
         self._callback.replace_register("requestcache-%s" % identifier, self._on_timeout, (identifier,), delay=cache.cleanup_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
@@ -64,7 +68,7 @@ class RequestCache(object):
         assert isinstance(identifier, (int, long, str)), type(identifier)
         assert issubclass(cls, Cache), cls
 
-        if __debug__: dprint("cache contains ", identifier_to_string(identifier), "? ", identifier in self._identifiers)
+        logger.debug("cache contains %s? %s", identifier_to_string(identifier), identifier in self._identifiers)
         return isinstance(self._identifiers.get(identifier), cls)
 
     def get(self, identifier, cls):
@@ -83,11 +87,11 @@ class RequestCache(object):
         if cache and isinstance(cache, cls):
             assert isinstance(cache.cleanup_delay, float)
             assert cache.cleanup_delay >= 0.0
-            if __debug__: dprint("canceling timeout on ", identifier_to_string(identifier), " for ", cache)
+            logger.debug("canceling timeout on %s for %s", identifier_to_string(identifier), cache)
 
             if cache.cleanup_delay:
                 self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
-            
+
             elif identifier in self._identifiers:
                 self._callback.unregister("requestcache-%s" % identifier)
                 del self._identifiers[identifier]
@@ -97,20 +101,20 @@ class RequestCache(object):
     def _on_timeout(self, identifier):
         assert identifier in self._identifiers, identifier
         cache = self._identifiers[identifier]
-        if __debug__: dprint("timeout on ", identifier_to_string(identifier), " for ", cache)
+        logger.debug("timeout on %s for %s", identifier_to_string(identifier), cache)
         cache.on_timeout()
-        
+
         if cache.cleanup_delay:
             self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
-        
+
         elif identifier in self._identifiers:
             del self._identifiers[identifier]
 
     def _on_cleanup(self, identifier):
         assert identifier in self._identifiers
         cache = self._identifiers[identifier]
-        if __debug__: dprint("cleanup on ", identifier_to_string(identifier), " for ", cache)
+        logger.debug("cleanup on %s for %s", identifier_to_string(identifier), cache)
         cache.on_cleanup()
-        
+
         if identifier in self._identifiers:
             del self._identifiers[identifier]

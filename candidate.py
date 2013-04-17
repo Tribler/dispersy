@@ -1,5 +1,9 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 if __debug__:
-    from .dprint import dprint
     from .member import Member
 
     def is_address(address):
@@ -11,6 +15,7 @@ if __debug__:
         assert isinstance(address[1], int), type(address[1])
         assert address[1] >= 0, address[1]
         return True
+
 
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
 # seconds.  However, taking into account round trip time and processing delay we to use smaller
@@ -115,7 +120,7 @@ class WalkCandidate(Candidate):
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
                 #TODO: DPRINT This statement had the stack=True arg.
-                dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error")
+                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
                 assert False
 
     @property
@@ -139,20 +144,20 @@ class WalkCandidate(Candidate):
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
-        
+
         for cid, timestamps in other._timestamps.iteritems():
             if cid in self._timestamps:
                 self._timestamps[cid].merge(timestamps)
             else:
                 self._timestamps[cid] = timestamps
-                
+
                 #TODO: this should be improved
                 community = dispersy._communities.get(cid, None)
                 community.add_candidate(self)
-                
+
         for cid, global_time in self._global_times.iteritems():
             self._global_times[cid] = max(self._global_times.get(cid, 0), global_time)
-        
+
     def set_global_time(self, community, global_time):
         self._global_times[community.cid] = max(self._global_times.get(community.cid, 0), global_time)
 
@@ -328,10 +333,10 @@ class WalkCandidate(Candidate):
         if timestamps:
             if timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
                 return u"walk"
-    
+
             if now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME:
                 return u"stumble"
-    
+
             if now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME:
                 return u"intro"
 
@@ -344,7 +349,7 @@ class WalkCandidate(Candidate):
         timestamps = self._get_or_create_timestamps(community)
         timestamps.timeout_adjustment = timeout_adjustment
         timestamps.last_walk = now
-        
+
         if not isinstance(self, BootstrapCandidate):
             community.add_candidate(self)
 
@@ -359,7 +364,7 @@ class WalkCandidate(Candidate):
         Called when we receive an introduction-request from this candidate.
         """
         self._get_or_create_timestamps(community).last_stumble = now
-        
+
         if not isinstance(self, BootstrapCandidate):
             community.add_candidate(self)
 
@@ -368,7 +373,7 @@ class WalkCandidate(Candidate):
         Called when we receive an introduction-response introducing this candidate.
         """
         self._get_or_create_timestamps(community).last_intro = now
-        
+
         if not isinstance(self, BootstrapCandidate):
             community.add_candidate(self)
 
@@ -390,7 +395,7 @@ class WalkCandidate(Candidate):
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
                 #TODO: DPRINT This statement had the stack=True arg.
-                dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error")
+                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:

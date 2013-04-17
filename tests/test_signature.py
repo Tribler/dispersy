@@ -1,6 +1,11 @@
-from ..dprint import dprint
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
+
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestSignature(DispersyTestClass):
@@ -19,7 +24,7 @@ class TestSignature(DispersyTestClass):
         node.init_my_member()
         yield 0.555
 
-        dprint("SELF requests NODE to double sign")
+        logger.debug("SELF requests NODE to double sign")
         def on_response(request, response, modified):
             self.assertIsNone(response)
             container["timeout"] += 1
@@ -28,18 +33,18 @@ class TestSignature(DispersyTestClass):
         community.create_double_signed_text("Accept=<does not reach this point>", self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
         yield 0.11
 
-        dprint("NODE receives dispersy-signature-request message")
+        logger.debug("NODE receives dispersy-signature-request message")
         _, message = node.receive_message(message_names=[u"dispersy-signature-request"])
         # do not send a response
 
         # should timeout
         wait = 4
         for counter in range(wait):
-            dprint("waiting... ", wait - counter)
+            logger.debug("waiting... %s", wait-counter)
             yield 1.0
         yield 0.11
 
-        dprint("SELF must have timed out by now")
+        logger.debug("SELF must have timed out by now")
         self.assertEqual(container["timeout"], 1)
 
         # cleanup
@@ -60,7 +65,7 @@ class TestSignature(DispersyTestClass):
         node.init_socket()
         node.init_my_member()
 
-        dprint("SELF requests NODE to double sign")
+        logger.debug("SELF requests NODE to double sign")
         def on_response(request, response, modified):
             self.assertEqual(container["response"], 0)
             self.assertTrue(response.authentication.is_signed)
@@ -70,7 +75,7 @@ class TestSignature(DispersyTestClass):
         community.create_double_signed_text("Accept=<does not matter>", self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
         yield 0.11
 
-        dprint("NODE receives dispersy-signature-request message from SELF")
+        logger.debug("NODE receives dispersy-signature-request message from SELF")
         candidate, message = node.receive_message(message_names=[u"dispersy-signature-request"])
         submsg = message.payload.message
         second_signature_offset = len(submsg.packet) - community.my_member.signature_length
@@ -79,7 +84,7 @@ class TestSignature(DispersyTestClass):
         signature = node.my_member.sign(submsg.packet, length=first_signature_offset)
         submsg.authentication.set_signature(node.my_member, signature)
 
-        dprint("NODE sends dispersy-signature-response message to SELF")
+        logger.debug("NODE sends dispersy-signature-response message to SELF")
         identifier = message.payload.identifier
         global_time = community.global_time
         node.give_message(node.create_dispersy_signature_response(identifier, submsg, global_time, candidate))

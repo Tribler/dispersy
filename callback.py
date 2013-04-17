@@ -4,6 +4,8 @@ from __future__ import with_statement
 """
 A callback thread running Dispersy.
 """
+import logging
+logger = logging.getLogger(__name__)
 
 from heapq import heappush, heappop
 from thread import get_ident
@@ -13,7 +15,6 @@ from types import GeneratorType, TupleType
 from sys import exc_info
 
 from .decorator import attach_profiler
-from .dprint import dprint
 
 if __debug__:
     from atexit import register as atexit_register
@@ -66,7 +67,7 @@ class Callback(object):
         #                                 --------------> stop() -> PLEASE_STOP -> STATE_FINISHED
         #
         self._state = "STATE_INIT"
-        if __debug__: dprint("STATE_INIT")
+        logger.debug("STATE_INIT")
 
         # _exception is set to SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError when
         # any of the registered callbacks raises any of these exceptions.  in this case _state will
@@ -102,7 +103,7 @@ class Callback(object):
 
         if __debug__:
             def must_close(callback):
-                assert callback.is_finished
+                assert(callback.is_finished)
             atexit_register(must_close, self)
             self._debug_call_name = None
 
@@ -139,7 +140,7 @@ class Callback(object):
         raises either SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError.
         """
         return self._exception
-    
+
     @property
     def exception_traceback(self):
         """
@@ -180,7 +181,7 @@ class Callback(object):
             try:
                 exception_handler(exception, fatal)
             except Exception:
-                dprint(exception=True, level="error")
+                logger.error(exc_info=True)
                 assert False, "the exception handler should not cause an exception"
 
     def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", callback=None, callback_args=(), callback_kargs=None, include_id=False):
@@ -240,7 +241,7 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        if __debug__: dprint("register ", call, " after ", delay, " seconds")
+        logger.debug("register %s after %s seconds", call, delay)
 
         with self._lock:
             if not id_:
@@ -295,7 +296,7 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        if __debug__: dprint("persistent register ", call, " after ", delay, " seconds")
+        logger.debug("persistent register %s after %s seconds", call, delay)
 
         with self._lock:
             for tup in self._requests:
@@ -351,18 +352,18 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        if __debug__: dprint("replace register ", call, " after ", delay, " seconds")
+        logger.debug("replace register %s after %s seconds", call, delay)
         with self._lock:
             # un-register
             for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
                     self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    if __debug__: dprint("in _requests: ", id_)
+                    logger.debug("in _requests: %s", id_)
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
                     self._expired_mirror[index] = (tup[0], tup[1], id_, tup[3], None, None)
-                    if __debug__: dprint("in _expired: ", id_)
+                    logger.debug("in _expired: %s", id_)
 
             # register
             if delay <= 0.0:
@@ -393,18 +394,18 @@ class Callback(object):
         """
         assert isinstance(id_, (basestring, int)), "ROOT_ID has invalid type: %s" % type(id_)
         assert id_, "ID_ may not be zero or an empty (unicode)string"
-        if __debug__: dprint(id_)
+        logger.debug(id_)
         with self._lock:
             # un-register
             for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
                     self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    if __debug__: dprint("in _requests: ", id_)
+                    logger.debug("in _requests: %s", id_)
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
                     self._expired_mirror[index] = (tup[0], tup[1], id_, tup[2], None, None)
-                    if __debug__: dprint("in _expired: ", id_)
+                    logger.debug("in _expired: %s", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", include_id=False, timeout=0.0, default=None):
         """
@@ -457,10 +458,9 @@ class Callback(object):
         """
         assert self._state == "STATE_INIT", "Already (done) running"
         assert isinstance(wait, bool), "WAIT has invalid type: %s" % type(wait)
-        if __debug__: dprint(stack=True)
         with self._lock:
             self._state = "STATE_PLEASE_RUN"
-            if __debug__: dprint("STATE_PLEASE_RUN")
+            logger.debug("STATE_PLEASE_RUN")
 
         thread = Thread(target=self._loop, name=self._name)
         thread.daemon = True
@@ -483,14 +483,13 @@ class Callback(object):
         Returns True when the callback thread is finished, otherwise returns False.
         """
         assert isinstance(timeout, float)
-        if __debug__: dprint(stack=True)
         if self._state == "STATE_RUNNING":
             with self._lock:
                 if exception:
                     self._exception = exception
                     self._exception_traceback = exc_info()[2]
                 self._state = "STATE_PLEASE_STOP"
-                if __debug__: dprint("STATE_PLEASE_STOP")
+                logger.debug("STATE_PLEASE_STOP")
 
                 # wakeup if sleeping
                 self._event.set()
@@ -504,7 +503,7 @@ class Callback(object):
 
             if __debug__:
                 if not self.is_finished:
-                    dprint("unable to stop the callback within the allowed time")
+                    logger.debug("unable to stop the callback within the allowed time")
 
         return self.is_finished
 
@@ -512,17 +511,16 @@ class Callback(object):
         """
         Use the calling thread for this Callback instance.
         """
-        if __debug__: dprint()
+
         with self._lock:
             self._state = "STATE_PLEASE_RUN"
-            if __debug__: dprint("STATE_PLEASE_RUN")
+            logger.debug("STATE_PLEASE_RUN")
 
         self._loop()
 
     @attach_profiler
     def _loop(self):
         if __debug__:
-            dprint()
             time_since_expired = 0
 
         # put some often used methods and object in the local namespace
@@ -540,7 +538,7 @@ class Callback(object):
         with lock:
             if self._state == "STATE_PLEASE_RUN":
                 self._state = "STATE_RUNNING"
-                if __debug__: dprint("STATE_RUNNING")
+                logger.debug("STATE_RUNNING")
 
         while 1:
             actual_time = get_timestamp()
@@ -577,23 +575,23 @@ class Callback(object):
                     # there is nothing to handle
                     wait = requests[0][0] - actual_time if requests else 300.0
                     if __debug__:
-                        dprint("nothing to handle, wait ", wait, " seconds")
+                        logger.debug("nothing to handle, wait %f seconds", wait)
                         if time_since_expired:
                             diff = actual_time - time_since_expired
                             if diff > 1.0:
-                                dprint("took ", round(diff, 2), " to process expired queue", level="warning")
+                                logger.warning("took %f to process expired queue", round(diff, 2))
                             time_since_expired = 0
 
                 if event_is_set():
                     event_clear()
 
             if wait:
-                if __debug__: dprint("%d wait at most %.3fs before next call, still have %d calls in queue" % (time(), wait, len(requests)))
+                pass #TODO: DPRINT Manual fix required #dprint("%d wait at most %.3fs before next call, still have %d calls in queue" % (time(), wait, len(requests)))
                 event_wait(wait)
 
             else:
                 if __debug__:
-                    dprint(self._name, "] calling ", self._debug_call_name, " (prio:", priority, ", id:", root_id, ")")
+                    logger.debug("%s] calling %s (prio:%s, id:%s)", self._name, self._debug_call_name, priority, root_id)
                     debug_call_start = time()
 
                 # call can be either:
@@ -627,7 +625,7 @@ class Callback(object):
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
                 except (SystemExit, KeyboardInterrupt, GeneratorExit), exception:
-                    dprint("attempting proper shutdown", exception=True, level="error")
+                    logger.error("attempting proper shutdown", exc_info=True)
                     with lock:
                         self._state = "STATE_EXCEPTION"
                         self._exception = exception
@@ -638,13 +636,13 @@ class Callback(object):
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    dprint("keep running regardless of exception", exception=True, level="error")
+                    logger.error("keep running regardless of exception", exc_info=True)
                     self._call_exception_handlers(exception, False)
 
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
                     if debug_call_duration > 1.0:
-                        dprint(round(debug_call_duration, 2), "s call to ", self._debug_call_name, level="warning")
+                        logger.warning("%d call to %s", round(debug_call_duration, 2), self._debug_call_name)
 
         with lock:
             # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still
@@ -654,14 +652,14 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        if __debug__: dprint(self._name, "] there are ", len(expired), " expired tasks")
+        logger.debug("%s] there are %d expired tasks", self._name, len(expired))
         while expired:
             _, _, _, _, call, callback = heappop(expired)
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
                 except:
-                    dprint(exception=True, level="error")
+                    logger.error(exc_info=True)
                 else:
                     if isinstance(result, GeneratorType):
                         # we only received the generator, no actual call has been made to the
@@ -672,29 +670,29 @@ class Callback(object):
                         try:
                             callback[0](result, *callback[1], **callback[2])
                         except:
-                            dprint(exception=True, level="error")
+                            logger.error(exc_info=True)
 
             if isinstance(call, GeneratorType):
-                if __debug__: dprint("raise Shutdown in ", call)
+                logger.debug("raise Shutdown in %s", call)
                 try:
                     call.close()
                 except:
-                    dprint(exception=True, level="error")
+                    logger.error(exc_info=True)
 
         # send GeneratorExit exceptions to scheduled generators
-        if __debug__: dprint("there are ", len(requests), " scheduled tasks")
+        logger.debug("there are %s scheduled tasks", len(requests))
         while requests:
             _, _, _, call, _ = heappop(requests)
             if isinstance(call, GeneratorType):
-                if __debug__: dprint("raise Shutdown in ", call)
+                logger.debug("raise Shutdown in %s", call)
                 try:
                     call.close()
                 except:
-                    dprint(exception=True, level="error")
+                    logger.error(exc_info=True)
 
         # set state to finished
         with lock:
-            if __debug__: dprint("STATE_FINISHED")
+            logger.debug("STATE_FINISHED")
             self._state = "STATE_FINISHED"
 
 if __debug__:
@@ -705,10 +703,10 @@ if __debug__:
         d.start()
 
         def call1():
-            dprint(time())
+            logger.debug(time())
 
         sleep(2)
-        dprint(time())
+        logger.debug(time())
         c.register(call1, delay=1.0)
 
         sleep(2)
@@ -717,7 +715,7 @@ if __debug__:
         def call2():
             delay = 3.0
             for i in range(10):
-                dprint(time(), " ", i)
+                logger.debug("%f %d", time(), i)
                 sleep(delay)
                 if delay > 0.0:
                     delay -= 1.0
@@ -729,7 +727,7 @@ if __debug__:
         def call3():
             delay = 3.0
             for i in range(10):
-                dprint(time(), " ", i)
+                logger.debug("%f %d", time(), i)
                 yield Switch(d)
                 # perform code on Callback d
                 sleep(delay)
@@ -747,37 +745,37 @@ if __debug__:
             for _ in xrange(10):
                 sleep(2.0)
                 desync = (yield 1.0)
-                dprint("desync... ", desync)
+                logger.debug("desync... %s", desync)
                 while desync > 0.1:
-                    dprint("backing off... ", desync)
+                    logger.debug("backing off... %s", desync)
                     desync = (yield desync)
-                    dprint("next try... ", desync)
+                    logger.debug("next try... %s", desync)
         logger.debug('\n')
 
         def call5_bussy():
             for _ in xrange(10):
                 desync = yield 0.0
-                dprint("on bussy (", desync, ")")
+                logger.debug("on bussy (%s)", desync)
                 sleep(0.4)
         def call5_idle():
             for _ in xrange(10):
                 desync = yield Idle()
-                dprint("on idle (", desync, ")")
+                logger.debug("on idle (%s)", desync)
         c.register(call5_bussy)
         c.register(call5_idle)
         logger.debug('\n')
 
         def call6():
-            dprint("before")
+            logger.debug("before")
             yield Idle(5.0)
-            dprint("after")
+            logger.debug("after")
         c.register(call6)
 
         def call7():
-            dprint("init")
+            logger.debug("init")
             while True:
                 yield 1.0
-                dprint("-")
+                logger.debug("-")
                 c.unregister(task_id)
         task_id = c.register(call7)
         c.unregister(task_id)

@@ -212,7 +212,7 @@ def _parse(handle, interests, raise_exceptions = True):
             if not stream[offset] == "s":
                 raise ValueError("Expected a string encoded message")
             offset, message = _decode_str(offset+1, stream)
-        
+
             if not interests or message in interests:
                 stamp = float(stream[:17])
                 kargs = {}
@@ -269,16 +269,16 @@ def parselast(filename, interests = (), raise_exceptions = True, chars = 2048):
     assert isinstance(filename, (str, unicode))
     assert isinstance(interests, (tuple, list, set))
     assert all(isinstance(interest, str) for interest in interests)
-    
+
     #From http://stackoverflow.com/a/260352
     f = open(filename, "r")
     f.seek(0, 2)           # Seek @ EOF
     fsize = f.tell()        # Get Size
     f.seek(max (fsize-chars, 0), 0) # Set pos @ last n chars
-    
+
     #skip broken line
     f.readline()
-    
+
     lines = f.readlines()
     lines.reverse()
     return _parse(lines, set(interests), raise_exceptions)

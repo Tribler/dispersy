@@ -1,12 +1,16 @@
+#!/usr/bin/env/python
+
 # Python 2.5 features
 from __future__ import with_statement
+
+import logging
+logger = logging.getLogger(__name__)
 
 from time import time
 
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
-from .dprint import dprint
 from .member import Member
 from .tool.lencoder import log, make_valid_key
 
@@ -35,26 +39,26 @@ class ScriptBase(object):
 
     def next_testcase(self, result=None):
         if isinstance(result, Exception):
-            dprint("exception! shutdown", level="error")
+            logger.error("exception! shutdown")
             self._dispersy.callback.stop(timeout=0.0, exception=result)
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
-            dprint("\nstart ", call, force=True)
+            logger.warn("\nstart %s", call)
             if args:
-                dprint("arguments ", args, force=True)
+                logger.warn("arguments %s", args)
             if call.__doc__:
-                dprint(call.__doc__, force=True)
+                logger.warn(call.__doc__)
             self._dispersy.callback.register(call, args, callback=self.next_testcase)
 
         else:
-            dprint("shutdown")
+            logger.debug("shutdown")
             self._dispersy.callback.stop(timeout=0.0)
 
     def caller(self, run, args=()):
         assert callable(run)
         assert isinstance(args, tuple)
-        dprint("depricated: use add_testcase instead", level="warning")
+        logger.warning("depricated: use add_testcase instead")
         return self.add_testcase(run, args)
 
     def run(self):
@@ -211,14 +215,14 @@ class ScenarioScriptBase(ScriptBase):
         # create my member
         ec = ec_generate_key(u"low")
         my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        dprint("-my member- ", my_member.database_id, " ", id(my_member), " ", my_member.mid.encode("HEX"), force=True)
+        logger.warn("-my member- %s %s %s", my_member.database_id, id(my_member), my_member.mid.encode("HEX"))
 
         self.original_on_incoming_packets = self._dispersy.on_incoming_packets
         self.original_send = self._dispersy.endpoint.send
 
         # join the community with the newly created member
         self._community = self.join_community(my_member)
-        dprint("Joined community ", self._community._my_member)
+        logger.debug("Joined community %s", self._community._my_member)
 
         log("dispersy.log", "joined-community", time = time(), timestep = self._timestep, sync_response_limit = self._community.dispersy_sync_response_limit, starting_timestamp = self._starting_timestamp)
 
