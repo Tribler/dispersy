@@ -1,8 +1,8 @@
 import socket
 
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
 from ..dprint import dprint
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestSync(DispersyTestClass):
@@ -16,9 +16,8 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # SELF creates messages
@@ -31,7 +30,7 @@ class TestSync(DispersyTestClass):
 
                 sync = (1, 0, modulo, offset, [])
                 node.drop_packets()
-                node.give_message(node.create_dispersy_introduction_request_message(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, 110))
+                node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, 110))
 
                 received = []
                 while True:
@@ -54,9 +53,8 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"ASC-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -66,10 +64,10 @@ class TestSync(DispersyTestClass):
         # create some data
         global_times = range(10, 15)
         for global_time in global_times:
-            node.give_message(node.create_in_order_text_message("Message #%d" % global_time, global_time))
+            node.give_message(node.create_in_order_text("Message #%d" % global_time, global_time))
 
         # send an empty sync message to obtain all messages ASC
-        node.give_message(node.create_dispersy_introduction_request_message(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
+        node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
         yield 0.1
 
         for global_time in global_times:
@@ -86,9 +84,8 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"DESC-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -98,10 +95,10 @@ class TestSync(DispersyTestClass):
         # create some data
         global_times = range(10, 15)
         for global_time in global_times:
-            node.give_message(node.create_out_order_text_message("Message #%d" % global_time, global_time))
+            node.give_message(node.create_out_order_text("Message #%d" % global_time, global_time))
 
         # send an empty sync message to obtain all messages DESC
-        node.give_message(node.create_dispersy_introduction_request_message(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
+        node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
         yield 0.1
 
         for global_time in reversed(global_times):
@@ -120,9 +117,8 @@ class TestSync(DispersyTestClass):
         # random_order_message = community.get_meta_message(u"random-order-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -136,10 +132,10 @@ class TestSync(DispersyTestClass):
         # random_order_times = []
         for global_time in global_times:
             in_order_times.append(global_time)
-            node.give_message(node.create_in_order_text_message("Message #%d" % global_time, global_time))
+            node.give_message(node.create_in_order_text("Message #%d" % global_time, global_time))
             global_time += 1
             out_order_times.append(global_time)
-            node.give_message(node.create_out_order_text_message("Message #%d" % global_time, global_time))
+            node.give_message(node.create_out_order_text("Message #%d" % global_time, global_time))
             # global_time += 1
             # random_order_times.append(global_time)
             # node.give_message(node.create_random_order_text_message("Message #%d" % global_time, global_time))
@@ -158,7 +154,7 @@ class TestSync(DispersyTestClass):
         # lists = []
         for _ in range(5):
             # send an empty sync message to obtain all messages in random-order
-            node.give_message(node.create_dispersy_introduction_request_message(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
+            node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
             yield 0.1
 
             received_times = get_messages_back()
@@ -192,9 +188,8 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"last-1-test")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -203,18 +198,18 @@ class TestSync(DispersyTestClass):
 
         # send a message
         global_time = 10
-        node.give_message(node.create_last_1_test_message("should be accepted (1)", global_time))
+        node.give_message(node.create_last_1_test("should be accepted (1)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
         # send a message
         global_time = 11
-        node.give_message(node.create_last_1_test_message("should be accepted (2)", global_time))
+        node.give_message(node.create_last_1_test("should be accepted (2)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
         # send a message (older: should be dropped)
-        node.give_message(node.create_last_1_test_message("should be dropped (1)", global_time - 1))
+        node.give_message(node.create_last_1_test("should be dropped (1)", global_time - 1))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
@@ -224,13 +219,13 @@ class TestSync(DispersyTestClass):
         self.assertEqual(message.distribution.global_time, global_time)
 
         # send a message (duplicate: should be dropped)
-        node.give_message(node.create_last_1_test_message("should be dropped (2)", global_time))
+        node.give_message(node.create_last_1_test("should be dropped (2)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
         # send a message
         global_time = 12
-        node.give_message(node.create_last_1_test_message("should be accepted (3)", global_time))
+        node.give_message(node.create_last_1_test("should be accepted (3)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
@@ -244,9 +239,8 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"last-9-test")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -257,7 +251,7 @@ class TestSync(DispersyTestClass):
         messages_so_far = []
         for global_time in all_messages:
             # send a message
-            message = node.create_last_9_test_message(str(global_time), global_time)
+            message = node.create_last_9_test(str(global_time), global_time)
             messages_so_far.append(global_time)
             node.give_message(message)
             try:
@@ -272,14 +266,14 @@ class TestSync(DispersyTestClass):
         dprint("Older: should be dropped")
         for global_time in [11, 12, 13, 19, 18, 17]:
             # send a message (older: should be dropped)
-            node.give_message(node.create_last_9_test_message(str(global_time), global_time))
+            node.give_message(node.create_last_9_test(str(global_time), global_time))
             times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             self.assertEqual(sorted(times), sorted(messages_so_far))
 
         dprint("Duplicate: should be dropped")
         for global_time in all_messages:
             # send a message (duplicate: should be dropped)
-            message = node.create_last_9_test_message("wrong content!", global_time)
+            message = node.create_last_9_test("wrong content!", global_time)
             node.give_message(message)
             try:
                 packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, global_time, message.database_id)).next()
@@ -293,7 +287,7 @@ class TestSync(DispersyTestClass):
         match_times = sorted(times[:])
         for global_time in [30, 35, 37, 31, 32, 34, 33, 36, 38, 45, 44, 43, 42, 41, 40, 39]:
             # send a message (should be added and old one removed)
-            message = node.create_last_9_test_message(str(global_time), global_time)
+            message = node.create_last_9_test(str(global_time), global_time)
             node.give_message(message)
             match_times.pop(0)
             match_times.append(global_time)
@@ -333,21 +327,18 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"last-1-doublemember-text")
 
         # create node and ensure that SELF knows the node address
-        nodeA = DebugNode()
+        nodeA = DebugNode(community)
         nodeA.init_socket()
-        nodeA.set_community(community)
         nodeA.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeB = DebugNode()
+        nodeB = DebugNode(community)
         nodeB.init_socket()
-        nodeB.set_community(community)
         nodeB.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeC = DebugNode()
+        nodeC = DebugNode(community)
         nodeC.init_socket()
-        nodeC.set_community(community)
         nodeC.init_my_member()
 
         # # dump some junk data, TODO: should not use this btw in actual test...
@@ -365,8 +356,8 @@ class TestSync(DispersyTestClass):
         global_time = 10
         other_global_time = global_time + 1
         messages = []
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeB.my_member, "should be accepted (1)", global_time))
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeC.my_member, "should be accepted (1)", other_global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (1)", global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (1)", other_global_time))
         nodeA.give_messages(messages)
         entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
         self.assertEqual(len(entries), 2)
@@ -377,8 +368,8 @@ class TestSync(DispersyTestClass):
         global_time = 20
         other_global_time = global_time + 1
         messages = []
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeB.my_member, "should be accepted (2) @%d" % global_time, global_time))
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeC.my_member, "should be accepted (2) @%d" % other_global_time, other_global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (2) @%d" % global_time, global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (2) @%d" % other_global_time, other_global_time))
         nodeA.give_messages(messages)
         entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
         self.assertEqual(len(entries), 2)
@@ -388,8 +379,8 @@ class TestSync(DispersyTestClass):
         # send a message (older: should be dropped)
         old_global_time = 8
         messages = []
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeB.my_member, "should be dropped (1)", old_global_time))
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeC.my_member, "should be dropped (1)", old_global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be dropped (1)", old_global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be dropped (1)", old_global_time))
         nodeA.give_messages(messages)
         entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
         self.assertEqual(len(entries), 2)
@@ -402,8 +393,8 @@ class TestSync(DispersyTestClass):
         # send a message (older: should be dropped)
         old_global_time = 8
         messages = []
-        messages.append(nodeB.create_last_1_doublemember_text_message(nodeA.my_member, "should be dropped (1)", old_global_time))
-        messages.append(nodeC.create_last_1_doublemember_text_message(nodeA.my_member, "should be dropped (1)", old_global_time))
+        messages.append(nodeB.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (1)", old_global_time))
+        messages.append(nodeC.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (1)", old_global_time))
         nodeA.give_messages(messages)
         entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
         self.assertEqual(len(entries), 2)
@@ -422,8 +413,8 @@ class TestSync(DispersyTestClass):
         # send a message (older + different member combination: should be dropped)
         old_global_time = 9
         messages = []
-        messages.append(nodeB.create_last_1_doublemember_text_message(nodeA.my_member, "should be dropped (2)", old_global_time))
-        messages.append(nodeC.create_last_1_doublemember_text_message(nodeA.my_member, "should be dropped (2)", old_global_time))
+        messages.append(nodeB.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (2)", old_global_time))
+        messages.append(nodeC.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (2)", old_global_time))
         nodeA.give_messages(messages)
         entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
         self.assertEqual(len(entries), 2)
@@ -444,28 +435,25 @@ class TestSync(DispersyTestClass):
         message = community.get_meta_message(u"last-1-doublemember-text")
 
         # create node and ensure that SELF knows the node address
-        nodeA = DebugNode()
+        nodeA = DebugNode(community)
         nodeA.init_socket()
-        nodeA.set_community(community)
         nodeA.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeB = DebugNode()
+        nodeB = DebugNode(community)
         nodeB.init_socket()
-        nodeB.set_community(community)
         nodeB.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeC = DebugNode()
+        nodeC = DebugNode(community)
         nodeC.init_socket()
-        nodeC.set_community(community)
         nodeC.init_my_member()
 
         # send two messages
         global_time = 10
         messages = []
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeB.my_member, "should be accepted (1.1)", global_time))
-        messages.append(nodeA.create_last_1_doublemember_text_message(nodeC.my_member, "should be accepted (1.2)", global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (1.1)", global_time))
+        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (1.2)", global_time))
 
         # we NEED the messages to be handled in one batch.  using the socket may change this
         nodeA.give_messages(messages)

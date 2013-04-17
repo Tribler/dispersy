@@ -1,10 +1,10 @@
 import gc
 import inspect
 
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 from ..dprint import dprint
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
+from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestClassification(DispersyTestClass):
     @call_on_dispersy_thread
@@ -228,9 +228,8 @@ class TestClassification(DispersyTestClass):
         message = community.get_meta_message(u"full-sync-text")
 
         # create node
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member(candidate=False)
         yield 0.555
 
@@ -244,7 +243,7 @@ class TestClassification(DispersyTestClass):
 
         dprint("create wake-up message")
         global_time = 10
-        wakeup = node.encode_message(node.create_full_sync_text_message("Should auto-load", global_time))
+        wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
         dprint("unload community")
         community.unload_community()
@@ -303,9 +302,8 @@ class TestClassification(DispersyTestClass):
         message = community.get_meta_message(u"full-sync-text")
 
         # create node
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member(candidate=False)
 
         dprint("verify auto-load is enabled (default)")
@@ -316,7 +314,7 @@ class TestClassification(DispersyTestClass):
 
         dprint("create wake-up message")
         global_time = 10
-        wakeup = node.encode_message(node.create_full_sync_text_message("Should auto-load", global_time))
+        wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
         dprint("unload community")
         community.unload_community()
@@ -347,7 +345,7 @@ class TestClassification(DispersyTestClass):
         dprint("create wake-up message")
         node.set_community(community)
         global_time = 11
-        wakeup = node.encode_message(node.create_full_sync_text_message("Should auto-load", global_time))
+        wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
         dprint("unload community")
         community.unload_community()

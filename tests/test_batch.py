@@ -1,9 +1,9 @@
 from time import time
 
-from ..message import Message, BatchConfiguration
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
 from ..dprint import dprint
+from ..message import Message, BatchConfiguration
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBatch(DispersyTestClass):
@@ -38,13 +38,12 @@ class TestBatch(DispersyTestClass):
         community = MaxBatchSizeCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         dprint("START BIG BATCH (with max batch size)")
-        messages = [node.create_full_sync_text_message("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
+        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()
         node.give_messages(messages, cache=True)
@@ -73,13 +72,12 @@ class TestBatch(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         global_time = 10
-        message = node.create_full_sync_text_message("duplicates", global_time)
+        message = node.create_full_sync_text("duplicates", global_time)
         node.give_packets([message.packet for _ in xrange(10)])
 
         # only one message may be in the database
@@ -102,14 +100,13 @@ class TestBatch(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         global_time = 10
         # first batch
-        message = node.create_full_sync_text_message("duplicates", global_time)
+        message = node.create_full_sync_text("duplicates", global_time)
         node.give_packets([message.packet for _ in xrange(10)])
 
         # only one message may be in the database
@@ -140,13 +137,12 @@ class TestBatch(DispersyTestClass):
         meta = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         global_time = 10
-        node.give_messages([node.create_full_sync_text_message("duplicates (%d)" % index, global_time) for index in xrange(10)])
+        node.give_messages([node.create_full_sync_text("duplicates (%d)" % index, global_time) for index in xrange(10)])
 
         # only one message may be in the database
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, meta.database_id))]
@@ -172,21 +168,20 @@ class TestBatch(DispersyTestClass):
         meta = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         global_time = 10
         # first batch
-        node.give_messages([node.create_full_sync_text_message("duplicates (%d)" % index, global_time) for index in xrange(10)])
+        node.give_messages([node.create_full_sync_text("duplicates (%d)" % index, global_time) for index in xrange(10)])
 
         # only one message may be in the database
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, meta.database_id))]
         self.assertEqual(times, [global_time])
 
         # second batch
-        node.give_messages([node.create_full_sync_text_message("duplicates (%d)" % index, global_time) for index in xrange(10)])
+        node.give_messages([node.create_full_sync_text("duplicates (%d)" % index, global_time) for index in xrange(10)])
 
         # only one message may be in the database
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, meta.database_id))]
@@ -206,13 +201,12 @@ class TestBatch(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         dprint("START BIG BATCH")
-        messages = [node.create_full_sync_text_message("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
+        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()
         node.give_messages(messages)
@@ -240,13 +234,12 @@ class TestBatch(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         dprint("START SMALL BATCHES")
-        messages = [node.create_full_sync_text_message("Dprint=False, small batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
+        messages = [node.create_full_sync_text("Dprint=False, small batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
         begin = time()
         for message in messages:
