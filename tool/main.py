@@ -5,15 +5,10 @@ Run Dispersy in standalone mode.
 import optparse
 import signal
 
-from ..callback import Callback
 from ..dispersy import Dispersy
 from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
-from threading import currentThread
-
-class MainThreadCallback(Callback):
-    def start(self, *args, **kargs):
-        return True
+from .mainthreadcallback import MainThreadCallback
 
 def watchdog(dispersy):
     try:
@@ -72,11 +67,9 @@ def main_real(setup=None):
         exit(1)
 
     # setup
-    currentThread().setName('Dispersy')
-    callback = MainThreadCallback()
-    dispersy = Dispersy(callback, unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(MainThreadCallback("Dispersy-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
-    
+
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
     #     sesslock = threading.Lock()
@@ -85,12 +78,10 @@ def main_real(setup=None):
     #     dispersy.endpoint = TunnelEndpoint(swift_process, dispersy)
     #     swift_process.add_download(dispersy.endpoint)
     # else:
-    dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
-    dispersy.endpoint.start()
 
     # register tasks
-    callback.register(watchdog, (dispersy,))
-    callback.register(start_script, (dispersy, opt))
+    dispersy.callback.register(watchdog, (dispersy,))
+    dispersy.callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
         print "Received", sig, "signal in", frame
@@ -98,8 +89,8 @@ def main_real(setup=None):
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
-    callback.loop()
-    return callback
+    dispersy.callback.loop()
+    return dispersy.callback
 
 def main(setup=None):
     callback = main_real(setup)
