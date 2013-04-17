@@ -3361,6 +3361,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         # the members that need to sign
         members = [member for signature, member in message.authentication.signed_members if not (signature or member.private_key)]
+        assert len(members) == 1
 
         # temporary cache object
         cache = SignatureRequestCache(members, response_func, response_args, timeout)
