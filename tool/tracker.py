@@ -39,7 +39,6 @@ import optparse
 import signal
 import sys
 
-from ..callback import Callback
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
@@ -48,6 +47,7 @@ from ..dispersy import Dispersy
 from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from ..message import Message, DropMessage
+from .mainthreadcallback import MainThreadCallback
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
@@ -214,8 +214,8 @@ class TrackerCommunity(Community):
                 yield result
 
 class TrackerDispersy(Dispersy):
-    def __init__(self, callback, working_directory, silent = False):
-        super(TrackerDispersy, self).__init__(callback, working_directory, u":memory:")
+    def __init__(self, callback, endpoint, working_directory, silent = False):
+        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:")
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -223,19 +223,22 @@ class TrackerDispersy(Dispersy):
         # leaseweb machines, some are running boosters, they never unload a community
         self._non_autoload.update(["95.211.105.65", "95.211.105.67", "95.211.105.69", "95.211.105.71", "95.211.105.73", "95.211.105.75", "95.211.105.77", "95.211.105.79", "95.211.105.81", "85.17.81.36"])
 
-        # generate a new my-member
-        ec = ec_generate_key(u"very-low")
-        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
         self._silent = silent
+        self._my_member = None
 
+        callback.register(self._create_my_member)
         callback.register(self._load_persistent_storage)
         callback.register(self._unload_communities)
 
         if not self._silent:
             callback.register(self._report_statistics)
+
+    def _create_my_member(self):
+        # generate a new my-member
+        ec = ec_generate_key(u"very-low")
+        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
     @property
     def persistent_storage_filename(self):
@@ -352,6 +355,10 @@ class TrackerDispersy(Dispersy):
                 print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
+def setup_dispersy(dispersy):
+    dispersy.define_auto_load(TrackerCommunity)
+    dispersy.define_auto_load(TrackerHardKilledCommunity)
+
 def main():
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
@@ -365,9 +372,8 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy(Callback(), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
+    dispersy = TrackerDispersy(MainThreadCallback("Bootstrap-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
+    dispersy.callback.register(setup_dispersy, (dispersy,))
     dispersy.start()
 
     def signal_handler(sig, frame):
