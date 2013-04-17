@@ -1,7 +1,7 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
 from ..dprint import dprint
 from ..message import DelayMessageByProof
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestTimeline(DispersyTestClass):
@@ -110,16 +110,14 @@ class TestTimeline(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node1 = DebugNode()
+        node1 = DebugNode(community)
         node1.init_socket()
-        node1.set_community(community)
         node1.init_my_member()
         yield 0.555
 
         # create node and ensure that SELF knows the node address
-        node2 = DebugNode()
+        node2 = DebugNode(community)
         node2.init_socket()
-        node2.set_community(community)
         node2.init_my_member()
         yield 0.555
 
@@ -131,7 +129,7 @@ class TestTimeline(DispersyTestClass):
         # NODE2 created message @20
         dprint("NODE2 creates protected-full-sync-text, should be delayed for missing proof")
         global_time = 20
-        message = node2.create_protected_full_sync_text_message("Protected message", global_time)
+        message = node2.create_protected_full_sync_text("Protected message", global_time)
         node2.give_message(message)
         yield 0.555
 
@@ -184,9 +182,8 @@ class TestTimeline(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
         yield 0.555
 
@@ -197,7 +194,7 @@ class TestTimeline(DispersyTestClass):
         node.drop_packets()
 
         # NODE pretends to receive the protected message and requests the proof
-        node.give_message(node.create_dispersy_missing_proof_message(message.authentication.member, message.distribution.global_time))
+        node.give_message(node.create_dispersy_missing_proof(message.authentication.member, message.distribution.global_time))
         yield 0.555
 
         # SELF sends dispersy-authorize to NODE
@@ -227,16 +224,14 @@ class TestTimeline(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node1 = DebugNode()
+        node1 = DebugNode(community)
         node1.init_socket()
-        node1.set_community(community)
         node1.init_my_member()
         yield 0.555
 
         # create node and ensure that SELF knows the node address
-        node2 = DebugNode()
+        node2 = DebugNode(community)
         node2.init_socket()
-        node2.set_community(community)
         node2.init_my_member()
         yield 0.555
 
@@ -256,7 +251,7 @@ class TestTimeline(DispersyTestClass):
 
         # NODE2 wants the proof that OWNER is allowed to grant authorization to NODE1
         dprint("NODE2 asks for proof that NODE1 is allowed to authorize")
-        node2.give_message(node2.create_dispersy_missing_proof_message(message.authentication.member, message.distribution.global_time))
+        node2.give_message(node2.create_dispersy_missing_proof(message.authentication.member, message.distribution.global_time))
         yield 0.555
 
         dprint("===")

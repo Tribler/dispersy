@@ -1,11 +1,5 @@
 from hashlib import sha1
 
-try:
-    # python 2.7 only...
-    from collections import OrderedDict
-except ImportError:
-    from .python27_ordereddict import OrderedDict
-
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
 
 if __debug__:

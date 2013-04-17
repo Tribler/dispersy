@@ -2949,10 +2949,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         else:
             raise NotImplementedError(meta.destination)
-        
-        if __debug__ and not result:
-            candidates = list(islice(meta.community.dispersy_yield_random_candidates(), meta.destination.node_count))
-            dprint("_forward failed, did not send %d %s messages destinationtype %s nr candidates %d"%(len(messages), meta.name, type(meta.destination), len(candidates)), level="warning")
+
         return result
     
     def _send(self, candidates, messages, debug = False):
@@ -3364,6 +3361,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
         # the members that need to sign
         members = [member for signature, member in message.authentication.signed_members if not (signature or member.private_key)]
+        assert len(members) == 1
 
         # temporary cache object
         cache = SignatureRequestCache(members, response_func, response_args, timeout)

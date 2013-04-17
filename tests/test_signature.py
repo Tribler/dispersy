@@ -1,6 +1,6 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
 from ..dprint import dprint
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestSignature(DispersyTestClass):
@@ -14,9 +14,8 @@ class TestSignature(DispersyTestClass):
         container = {"timeout":0}
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
         yield 0.555
 
@@ -57,9 +56,8 @@ class TestSignature(DispersyTestClass):
         container = {"response":0}
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         dprint("SELF requests NODE to double sign")
@@ -84,7 +82,7 @@ class TestSignature(DispersyTestClass):
         dprint("NODE sends dispersy-signature-response message to SELF")
         identifier = message.payload.identifier
         global_time = community.global_time
-        node.give_message(node.create_dispersy_signature_response_message(identifier, submsg, global_time, candidate))
+        node.give_message(node.create_dispersy_signature_response(identifier, submsg, global_time, candidate))
         yield 1.11
         self.assertEqual(container["response"], 1)
 

@@ -1,8 +1,8 @@
 from random import shuffle
 
 from ..dprint import dprint
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestMissingMessage(DispersyTestClass):
@@ -13,9 +13,8 @@ class TestMissingMessage(DispersyTestClass):
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # create messages
@@ -28,7 +27,7 @@ class TestMissingMessage(DispersyTestClass):
 
         for message in messages:
             # request messages
-            node.give_message(node.create_dispersy_missing_message_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
+            node.give_message(node.create_dispersy_missing_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
             yield 0.11
 
             # receive response
@@ -48,9 +47,8 @@ class TestMissingMessage(DispersyTestClass):
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # create messages
@@ -64,7 +62,7 @@ class TestMissingMessage(DispersyTestClass):
         shuffle(messages)
         for message in messages:
             # request messages
-            node.give_message(node.create_dispersy_missing_message_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
+            node.give_message(node.create_dispersy_missing_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
             yield 0.11
 
             # receive response
@@ -84,9 +82,8 @@ class TestMissingMessage(DispersyTestClass):
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # create messages
@@ -100,7 +97,7 @@ class TestMissingMessage(DispersyTestClass):
 
         # request messages
         global_times = [messages[index].distribution.global_time for index in [2, 4, 6]]
-        node.give_message(node.create_dispersy_missing_message_message(community.my_member, global_times, 25, community.my_candidate))
+        node.give_message(node.create_dispersy_missing_message(community.my_member, global_times, 25, community.my_candidate))
         yield 0.11
 
         # receive response

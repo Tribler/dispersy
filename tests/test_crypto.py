@@ -1,5 +1,5 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestCrypto(DispersyTestClass):
@@ -10,14 +10,13 @@ class TestCrypto(DispersyTestClass):
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member(candidate=False, identity=False)
 
         # create dispersy-identity message
         global_time = 10
-        message = node.create_dispersy_identity_message(global_time)
+        message = node.create_dispersy_identity(global_time)
 
         # replace the valid public-key with an invalid one
         public_key = node.my_member.public_key
