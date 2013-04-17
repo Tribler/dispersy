@@ -1,5 +1,5 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestNeighborhood(DispersyTestClass):
@@ -24,11 +24,10 @@ class TestNeighborhood(DispersyTestClass):
         # check configuration
         self.assertEqual(meta.destination.node_count, 10)
 
-        # provide SELF with a neighborhood
-        nodes = [DebugNode() for _ in xrange(node_count)]
+        # provide SELF with a neighbourhood
+        nodes = [DebugNode(community) for _ in xrange(node_count)]
         for node in nodes:
             node.init_socket()
-            node.set_community(community)
             node.init_my_member()
 
         # SELF creates a message
@@ -39,9 +38,9 @@ class TestNeighborhood(DispersyTestClass):
         forwarded_node_count = 0
         for node in nodes:
             forwarded = [m for _, m in node.receive_messages(message_names=[u"full-sync-text"])]
-            self.assertIn(len(forwarded), (0, 1), "should only receive one or none")
+            self.assertIn(len(forwarded), (0, 1))
             if len(forwarded) == 1:
-                self.assertEqual(forwarded[0].packet, message.packet, "did not receive the correct message")
+                self.assertEqual(forwarded[0].packet, message.packet)
                 forwarded_node_count += 1
 
         self.assertEqual(forwarded_node_count, min(node_count, meta.destination.node_count))

@@ -1,5 +1,5 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestIdenticalPayload(DispersyTestClass):
@@ -14,17 +14,16 @@ class TestIdenticalPayload(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
         yield 0.555
 
         # create messages
         global_time = 10
         messages = []
-        messages.append(node.create_full_sync_text_message("Identical payload message", global_time))
-        messages.append(node.create_full_sync_text_message("Identical payload message", global_time))
+        messages.append(node.create_full_sync_text("Identical payload message", global_time))
+        messages.append(node.create_full_sync_text("Identical payload message", global_time))
         self.assertNotEqual(messages[0].packet, messages[1].packet, "the signature must make the messages unique")
 
         # sort.  we now know that the first message must be dropped
@@ -70,17 +69,16 @@ class TestIdenticalPayload(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
         yield 0.555
 
         # create messages
         global_time = 10
         messages = []
-        messages.append(node.create_full_sync_text_message("Identical payload message", global_time))
-        messages.append(node.create_full_sync_text_message("Identical payload message", global_time))
+        messages.append(node.create_full_sync_text("Identical payload message", global_time))
+        messages.append(node.create_full_sync_text("Identical payload message", global_time))
         self.assertNotEqual(messages[0].packet, messages[1].packet, "the signature must make the messages unique")
 
         # sort.  we now know that the first message must be dropped

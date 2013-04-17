@@ -4,7 +4,7 @@ from __future__ import with_statement
 from time import time
 
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from .debugcommunity import DebugCommunity
+from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
 from .dprint import dprint
 from .member import Member

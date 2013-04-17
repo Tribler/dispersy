@@ -1,7 +1,7 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
 from ..dprint import dprint
 from ..resolution import PublicResolution, LinearResolution
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestDynamicSettings(DispersyTestClass):
@@ -13,9 +13,8 @@ class TestDynamicSettings(DispersyTestClass):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
         meta = community.get_meta_message(u"dynamic-resolution-text")
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # check default policy
@@ -25,7 +24,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow, because the default policy is PublicResolution)
         global_time = 10
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, policy.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, policy.implement()))
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
@@ -48,9 +47,8 @@ class TestDynamicSettings(DispersyTestClass):
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # check default policy
@@ -66,7 +64,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow)
         global_time = message.distribution.global_time
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public_policy.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public_policy.implement()))
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                      (community.database_id, node.my_member.database_id, message.distribution.global_time)).next()
@@ -76,7 +74,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should drop)
         global_time += 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, linear_policy.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, linear_policy.implement()))
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                      (community.database_id, node.my_member.database_id, message.distribution.global_time)).next()
@@ -93,7 +91,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should drop)
         global_time = message.distribution.global_time
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public_policy.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public_policy.implement()))
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                      (community.database_id, node.my_member.database_id, message.distribution.global_time)).next()
@@ -104,7 +102,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow)
         global_time += 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public_policy.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public_policy.implement()))
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                      (community.database_id, node.my_member.database_id, message.distribution.global_time)).next()
@@ -127,9 +125,8 @@ class TestDynamicSettings(DispersyTestClass):
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # create policy change, but do not yet process
@@ -143,9 +140,6 @@ class TestDynamicSettings(DispersyTestClass):
         policy_public = community.create_dispersy_dynamic_settings([(meta, public)], store=False, update=False, forward=False)
         self.assertEqual(policy_public.distribution.global_time, 21) # hence the policy starts at 22
 
-# TODO remove
-# community._global_time = global_time
-
         # because above policy changes were not applied (i.e. update=False) everything is still
         # PublicResolution without any proof
         for global_time in range(1, 32):
@@ -155,7 +149,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow)
         global_time = 25
-        text_message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public.implement()))
+        text_message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public.implement()))
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                      (community.database_id, node.my_member.database_id, text_message.distribution.global_time)).next()
@@ -175,7 +169,7 @@ class TestDynamicSettings(DispersyTestClass):
         for global_time in range(12, 32):
             policy, proof = community.timeline.get_resolution_policy(meta, global_time)
             self.assertIsInstance(policy, LinearResolution)
-            self.assertEqual([message.packet for message in proof], [policy_linear.packet])
+            self.assertEqual([message.packet.encode("HEX") for message in proof], [policy_linear.packet.encode("HEX")])
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
@@ -226,9 +220,8 @@ class TestDynamicSettings(DispersyTestClass):
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # set linear policy
@@ -239,7 +232,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow, linear resolution and we have permission)
         global_time = community.global_time + 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, linear.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, linear.implement()))
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
@@ -251,7 +244,7 @@ class TestDynamicSettings(DispersyTestClass):
         # NODE creates a message (should drop because we use public resolution while linear is
         # currently configured)
         global_time = community.global_time + 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public.implement()))
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
@@ -266,7 +259,7 @@ class TestDynamicSettings(DispersyTestClass):
 
         # NODE creates a message (should allow, we use public resolution and that is the active policy)
         global_time = community.global_time + 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, public.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, public.implement()))
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
@@ -278,7 +271,7 @@ class TestDynamicSettings(DispersyTestClass):
         # NODE creates a message (should drop because we use linear resolution while public is
         # currently configured)
         global_time = community.global_time + 1
-        message = node.give_message(node.create_dynamic_resolution_text_message("Dprint=True", global_time, linear.implement()))
+        message = node.give_message(node.create_dynamic_resolution_text("Dprint=True", global_time, linear.implement()))
 
         try:
             undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
