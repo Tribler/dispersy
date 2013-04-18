@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     from scipy.stats import poisson, expon
 except ImportError:
@@ -261,10 +264,7 @@ class ScenarioScript(ScriptBase):
         return "END"
 
     def scenario_print(self, *args):
-        #TODO: DPRINT fix this one manually
-        pass
-        #dprint(*args, glue=" ", force=True)
-
+        logger.info("%s", " ".join(str(arg) for arg in args))
 
     def scenario_churn(self, state, duration=None):
         assert isinstance(state, str), type(state)

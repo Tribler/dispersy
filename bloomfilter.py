@@ -46,13 +46,13 @@ class BloomFilter(Constructor):
         self._filter = filter_
 
         if __debug__:
+            hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
             logger.debug("m size:      %s    ~%s bytes", m_size, m_size/8)
             logger.debug("k functions: %s", k_functions)
             logger.debug("prefix:      %s", prefix.encode("HEX"))
             logger.debug("filter:      %s", filter_)
-            hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
-            pass #TODO: DPRINT Manual fix required #dprint("hypothetical error rate: ", " | ".join("%.4f" % hypothetical_error_rate for hypothetical_error_rate in hypothetical_error_rates))
-            pass #TODO: DPRINT Manual fix required #dprint("hypothetical capacity:   ", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate) for hypothetical_error_rate in hypothetical_error_rates))
+            logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate for hypothetical_error_rate in hypothetical_error_rates))
+            logger.debug("hypothetical capacity:   %s", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate) for hypothetical_error_rate in hypothetical_error_rates))
 
         # determine hash function
         if m_size >= (1 << 31):
@@ -458,8 +458,7 @@ if __debug__:
             b = BloomFilter(1, 32)
             b.add(x)
             logger.debug(x)
-            #TODO: DPRINT  this statement had binary=1
-            logger.debug(b._bytes.tostring())
+            logger.debug(b._bytes.tostring().encode("HEX"))
 
         bob = ["cake", "lemonade", "beer", "pubs"]
 
@@ -468,26 +467,22 @@ if __debug__:
             b = BloomFilter(1, 32)
             b.add(x)
             logger.debug(x)
-            #TODO: DPRINT  this statement had binary=1
-            logger.debug(b._bytes.tostring())
+            logger.debug(b._bytes.tostring().encode("HEX"))
 
         a = BloomFilter(1, 32)
         map(a.add, alice)
         logger.debug(alice)
-        #TODO: DPRINT  this statement had binary=1
-        logger.debug(a._bytes.tostring())
+        logger.debug(a._bytes.tostring().encode("HEX"))
 
         b = BloomFilter(1, 32)
         map(b.add, bob)
         logger.debug(bob)
-        #TODO: DPRINT  this statement had binary=1
-        logger.debug(b._bytes.tostring())
+        logger.debug(b._bytes.tostring().encode("HEX"))
 
         c = BloomFilter(1, 32)
         map(c.add, carol)
         logger.debug(carol)
-        #TODO: DPRINT  this statement had binary=1
-        logger.debug(c._bytes.tostring())
+        logger.debug(c._bytes.tostring().encode("HEX"))
 
         logger.debug("Alice bic Bob: %s", a.bic_occurrence(b))
         logger.debug("Alice bic Carol: %s", a.bic_occurrence(c))
@@ -520,10 +515,8 @@ if __debug__:
         b.add("b1")
         b.add("b2")
 
-        #TODO: DPRINT  this statement had binary=1
-        logger.debug(a._bytes.tostring())
-        #TODO: DPRINT  this statement had binary=1
-        logger.debug(b._bytes.tostring())
+        logger.debug(a._bytes.tostring().encode("HEX"))
+        logger.debug(b._bytes.tostring().encode("HEX"))
 
         assert a.and_occurrence(b) == 1
         assert a.xor_occurrence(b) == 3

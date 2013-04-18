@@ -35,7 +35,7 @@ class Timeline(object):
             for global_time, dic in self._policies:
                 logger.debug("policy @%s", global_time)
                 for key, (policy, proofs) in dic.iteritems():
-                    pass #TODO: DPRINT Manual fix required #dprint("policy ", "%50s" % key, "  ", policy, " based on ", len(proofs), " proofs")
+                    logger.debug("policy %50s  %s based on %d proofs", key, policy, len(proofs))
 
             for member, lst in self._members.iteritems():
                 logger.debug("member %s %s", member.database_id, member.mid.encode("HEX"))
@@ -44,10 +44,10 @@ class Timeline(object):
                     for key, (allowed, proofs) in sorted(dic.iteritems()):
                         if allowed:
                             assert all(proof.name == u"dispersy-authorize" for proof in proofs)
-                            pass #TODO: DPRINT Manual fix required #dprint("member ", member.database_id, " ", "%50s" % key, "  granted by ", ", ".join("%d@%d" % (proof.authentication.member.database_id, proof.distribution.global_time) for proof in proofs))
+                            logger.debug("member %d %50s  granted by %s", member.database_id, key, ", ".join("%d@%d" % (proof.authentication.member.database_id, proof.distribution.global_time) for proof in proofs))
                         else:
                             assert all(proof.name == u"dispersy-revoke" for proof in proofs)
-                            pass #TODO: DPRINT Manual fix required #dprint("member ", member.database_id, " ", "%50s" % key, "  revoked by ", ", ".join("%d@%d" % (proof.authentication.member.database_id, proof.distribution.global_time) for proof in proofs))
+                            logger.debug("member %d %50s  revoked by %s", member.database_id, key, ", ".join("%d@%d" % (proof.authentication.member.database_id, proof.distribution.global_time) for proof in proofs))
 
     def check(self, message, permission=u"permit"):
         """

@@ -1072,8 +1072,6 @@ class Dispersy(object):
             votes[address] = set()
         votes[address].add(voter.sock_addr)
 
-        pass #TODO: DPRINT Manual fix required #dprint('\n'.join(["%5d %15s:%-d [%s]" % (len(voters), vote[0], vote[1], ", ".join("%s:%d" % key for key in voters)) for vote, voters in votes.iteritems()]))
-
         # change when new vote count equal or higher than old address vote count
         if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
             if len(votes) > 1:
@@ -1584,7 +1582,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         """
         # use existing (bootstrap) candidate
         candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
-        pass #TODO: DPRINT Manual fix required #dprint("%s:%d" % sock_addr, " -> ", candidate)
+        logger.debug("%s:%d -> %s", sock_addr[0], sock_addr[1], candidate)
 
         if candidate is None:
             # find matching candidate with the same host but a different port (symmetric NAT)
@@ -2036,9 +2034,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # tell what happened
             if __debug__:
                 debug_end = time()
-                #TODO: DPRINT manually fix this dprint statement
-                #level = "warning" if (debug_end - debug_begin) > 1.0 else "normal"
-                #dprint("handled ", len(messages), "/", debug_count, " %.2fs" % (debug_end - debug_begin), " ", meta.name, " messages (with ", meta.batch.max_window, "s cache window)", level=level)
+                if debug_end - debug_begin > 1.0:
+                    logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
+                else:
+                    logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
 
             # return the number of messages that were correctly handled (non delay, duplictes, etc)
             return len(messages)
@@ -2434,7 +2433,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         if __debug__:
             if sync:
                 time_low, time_high, modulo, offset, _ = sync
-                pass #TODO: DPRINT Manual fix required #dprint(community.cid.encode("HEX"), " ", type(community), " sending introduction request to ", destination, " [", time_low, ":", time_high, "] %", modulo, "+", offset)
+                logger.debug("%s %s sending introduction request to %s [%d:%d] %%%d+%d", community.cid.encode("HEX"), type(community), destination, time_low, time_high, modulo, offset)
             else:
                 logger.debug("%s %s sending introduction request to %s", community.cid.encode("HEX"), type(community), destination)
 
@@ -2613,8 +2612,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                         break
 
                 if packets:
-                    if __debug__:
-                        pass #TODO: DPRINT Manual fix required #dprint("syncing ", len(packets), " packets (", sum(len(packet) for packet in packets), " bytes) over [", time_low, ":", time_high, "] selecting (%", message.payload.modulo, "+", message.payload.offset, ") to " , message.candidate)
+                    logger.debug("syncing %d packets (%d bytes) over [%d:%d] %%%d+%d to %s", len(packets), sum(len(packet) for packet in packets), time_low, time_high, modulo, offset, message.candidate)
                     self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
                     self._endpoint.send([message.candidate], packets)
 
@@ -2883,9 +2881,10 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 return False
             if __debug__:
                 end = time()
-                #TODO: DPRINT fix this dprint statement
-                #level = "warning" if (end - begin) > 1.0 else "normal"
-                #dprint("handler for ", messages[0].name, " took ", end - begin, " seconds", level=level)
+                if end - begin > 1.0:
+                    logger.warning("handler for %s took %.2f seconds", messages[0].name, end - begin)
+                else:
+                    logger.debug("handler for %s took %.2f seconds", messages[0].name, end - begin)
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
@@ -3646,8 +3645,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                     assert msg
                     assert min(requests[(msg.authentication.member.database_id, msg.database_id)]) <= msg.distribution.sequence_number, ["giving back a seq-number that is smaller than the lowest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
                     assert msg.distribution.sequence_number <= max(requests[(msg.authentication.member.database_id, msg.database_id)]), ["giving back a seq-number that is larger than the highest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
-                    #TODO: DPRINT
-                    #dprint("Syncing ", len(packet), " member:", msg.authentication.member.database_id, " message:", msg.database_id, " sequence:", msg.distribution.sequence_number, " explicit:", "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", " to ", candidate)
+                    logger.debug("syncing %d bytes, member:%d message:%d sequence:%d explicit:%s to %s", len(packet), msg.authentication.member.database_id, msg.database_id, msg.distribution.sequence_number, "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", candidate)
 
             self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-", len(packets))
             self._endpoint.send([candidate], packets)
@@ -3692,8 +3690,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 msg = self.convert_packet_to_message(packet, community, verify=False)
                 allowed, proofs = community.timeline.check(msg)
                 if allowed and proofs:
-                    if __debug__:
-                        pass #TODO: DPRINT Manual fix required #dprint(message.candidate, " found ", len(proofs), " [",", ".join("%s %d@%d" % (proof.name, proof.authentication.member.database_id, proof.distribution.global_time) for proof in proofs), "] for message ", msg.name, " ", message.payload.member.database_id, "@", message.payload.global_time)
+                    logger.debug("we found %d packets containing proof for %s", len(proofs), message.candidate)
                     self._statistics.dict_inc(self._statistics.outgoing, u"-proof-", len(proofs))
                     self._endpoint.send([message.candidate], [proof.packet for proof in proofs])
 
@@ -4659,7 +4656,8 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 OPTIMALSTEPS = (NOW - START) / optimaldelay
                 STEPDIFF = NOW - community.__MOST_RECENT_WALK
                 community.__MOST_RECENT_WALK = NOW
-                pass #TODO: DPRINT Manual fix required #dprint(community.cid.encode("HEX"), " taking step every ", "%.2f" % DELAY, " sec in ", len(walker_communities), " communities.  steps: ", STEPS, "/", int(OPTIMALSTEPS), " ~ %.2f." % (-1.0 if OPTIMALSTEPS == 0.0 else (STEPS / OPTIMALSTEPS)), "  diff: %.1f" % STEPDIFF, ".  resets: ", RESETS)
+                logger.debug("%s taking step every %.2fs in %d communities.  steps: %d/%d ~%.2f.  diff: %.1f.  resets: %d",
+                             community.cid.encode("HEX"), DELAY, len(walker_communities), steps, int(OPTIMALSTEPS), (-1.0 if OPTIMALSTEPS == 0.0 else (STEPS / OPTIMALSTEPS)), STEPDIFF, RESETS)
                 STEPS += 1
 
             # walk
@@ -4707,19 +4705,21 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             while True:
                 yield 10.0
                 now = time()
-                pass #TODO: DPRINT Manual fix required #dprint("--- %s:%d" % self._lan_address, " (%s:%d) " % self._wan_address, self._connection_type)
+                logger.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
                 for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                     if community.get_classification() == u"PreviewChannelCommunity":
                         continue
 
                     candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
-                    pass #TODO: DPRINT Manual fix required #dprint(" ", community.cid.encode("HEX"), " ", "%20s" % community.get_classification(), " with ", len(candidates), "" if community.dispersy_enable_candidate_walker else "*", " candidates[:5] ", ", ".join(str(candidate) for candidate in candidates[:5]))
+                    logger.debug(" %s %20s with %d%s candidates[:5] %s",
+                                 community.cid.encode("HEX"), community.get_classification(), len(candidates),
+                                 "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
 
         def _stats_detailed_candidates(self):
             while True:
                 yield 10.0
                 now = time()
-                pass #TODO: DPRINT Manual fix required #dprint("--- %s:%d" % self._lan_address, " (%s:%d) " % self._wan_address, self._connection_type)
+                logger.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
                 for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                     if community.get_classification() == u"PreviewChannelCommunity":
                         continue
@@ -4730,17 +4730,16 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                             categories[candidate.get_category(community, now)].append(candidate)
 
                     logger.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                    pass #TODO: DPRINT Manual fix required #dprint("--- [%2d:%2d:%2d:%2d]" % (len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates)))
+                    logger.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                     for category, candidates in categories.iteritems():
                         for candidate in candidates:
-                            #TODO: DPRINT Manually update this one
-                            pass
-                            #dprint("%4ds " % min(candidate.age(now), 9999),
-                            #       "A " if candidate.is_any_active(now) else " I",
-                            #       "O" if candidate.is_all_obsolete(now) else " ",
-                            #       "E" if candidate.is_eligible_for_walk(community, now) else " ",
-                            #       "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                            #       " %-7s" % category,
-                            #       " %-13s" % candidate.connection_type,
-                            #       " ", candidate)
+                            logger.debug("%4ds %s%s%s%s %-7s %-13s %s",
+                                         min(candidate.age(now), 9999),
+                                         "A " if candidate.is_any_active(now) else " I",
+                                         "O" if candidate.is_all_obsolete(now) else " ",
+                                         "E" if candidate.is_eligible_for_walk(community, now) else " ",
+                                         "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                         category,
+                                         candidate.connection_type,
+                                         candidate)

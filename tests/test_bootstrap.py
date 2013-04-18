@@ -80,7 +80,14 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        pass #TODO: DPRINT Manual fix required #dprint(self._identifiers[sock_addr].encode("HEX"), " %15s:%-5d %-30s " % (sock_addr[0], sock_addr[1], self._hostname[sock_addr]), len(rtts), "x  ", round(sum(rtts) / len(rtts), 1), " avg  [", ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]), "]")
+                        logger.debug("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                     self._identifiers[sock_addr].encode("HEX"),
+                                     sock_addr[0],
+                                     sock_addr[1],
+                                     self._hostname[sock_addr],
+                                     len(rtts),
+                                     sum(rtts) / len(rtts),
+                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
                         logger.warn("%s:%s  missing", sock_addr[0], sock_addr[1])
 
@@ -203,7 +210,14 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        pass #TODO: DPRINT Manual fix required #dprint(self._identifiers[sock_addr].encode("HEX"), " %15s:%-5d %-30s " % (sock_addr[0], sock_addr[1], self._hostname[sock_addr]), len(rtts), "x  ", round(sum(rtts) / len(rtts), 1), " avg  [", ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]), "]")
+                        logger.debug("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                     self._identifiers[sock_addr].encode("HEX"),
+                                     sock_addr[0],
+                                     sock_addr[1],
+                                     self._hostname[sock_addr],
+                                     len(rtts),
+                                     sum(rtts) / len(rtts),
+                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
                         logger.warn("%s:%s  missing", sock_addr[0], sock_addr[1])
 
