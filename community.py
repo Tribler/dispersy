@@ -277,7 +277,7 @@ class Community(object):
             self._database_id, member_public_key, self._database_version = self._dispersy.database.execute(u"SELECT community.id, member.public_key, database_version FROM community JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
         except StopIteration:
             raise ValueError(u"Community not found in database [" + master.mid.encode("HEX") + "]")
-        logger.debug("database id:   %s", self._database_id)
+        logger.debug("database id:   %d", self._database_id)
 
         self._cid = master.mid
         self._master_member = master
@@ -313,7 +313,7 @@ class Community(object):
         assert isinstance(self._global_time, (int, long))
         self._acceptable_global_time_cache = self._global_time
         self._acceptable_global_time_deadline = 0.0
-        logger.debug("global time:   %s", self._global_time)
+        logger.debug("global time:   %d", self._global_time)
 
         # sync range bloom filters
         self._sync_cache = None
@@ -321,7 +321,7 @@ class Community(object):
         self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
-            logger.debug("sync bloom:    size: %s;  capacity: %s;  error-rate: %s", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
+            logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
 
         # initial timeline.  the timeline will keep track of member permissions
         self._timeline = Timeline(self)
@@ -408,7 +408,7 @@ class Community(object):
             try:
                 meta = self.get_meta_message(name)
             except KeyError:
-                logger.warning("unable to load permissions from database [could not obtain , name, ]", )
+                logger.warning("unable to load permissions from database [could not obtain %s]", name)
             else:
                 mapping[meta.database_id] = meta.handle_callback
 
@@ -422,9 +422,7 @@ class Community(object):
                 else:
                     # TODO: when a packet conversion fails we must drop something, and preferably check
                     # all messages in the database again...
-                    if __debug__:
-                        logger.error("invalid message in database [%s; %s]", self.get_classification(), self.cid.encode("HEX"))
-                        logger.error(str(packet).encode("HEX"))
+                    logger.error("invalid message in database [%s; %s]\n%s", self.get_classification(), self.cid.encode("HEX"), str(packet).encode("HEX"))
 
     # @property
     def __get_dispersy_auto_load(self):
@@ -578,7 +576,7 @@ class Community(object):
 
         if __debug__:
             if cached:
-                logger.debug("%s] %s out of %s were part of the cached bloomfilter", self._cid.encode("HEX"), cached, len(messages))
+                logger.debug("%s] %d out of %d were part of the cached bloomfilter", self._cid.encode("HEX"), cached, len(messages))
 
     def dispersy_claim_sync_bloom_filter(self, request_cache):
         """
@@ -598,19 +596,19 @@ class Community(object):
                     cache.responses_received = 0
                     cache.candidate = request_cache.helper_candidate
 
-                    logger.debug("%s reuse #%s (packets received: %s; %s)", self._cid.encode("HEX"), cache.times_used, cache.responses_received, hex(cache.bloom_filter._filter))
+                    logger.debug("%s reuse #%d (packets received: %d; %s)", self._cid.encode("HEX"), cache.times_used, cache.responses_received, hex(cache.bloom_filter._filter))
                     return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
 
             elif self._sync_cache.times_used == 0:
-                    # Still no updates, gradually increment the skipping probability one notch
-                    logger.debug("skip:%s->%sreceived:%s", self._sync_cache_skip_count, min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS), self._sync_cache.responses_received)
-                    self._sync_cache_skip_count  = min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS)
+                # Still no updates, gradually increment the skipping probability one notch
+                logger.debug("skip:%d -> %d  received:%d", self._sync_cache_skip_count, min(self._sync_cache_skip_count + 1, self._SKIP_STEPS), self._sync_cache.responses_received)
+                self._sync_cache_skip_count  = min(self._sync_cache_skip_count  + 1, self._SKIP_STEPS)
 
         if (self.dispersy_sync_skip_enable and
             self._sync_cache_skip_count and
             random() < self._SKIP_CURVE_STEPS[self._sync_cache_skip_count -1]):
                 # Lets skip this one
-                logger.debug("skip: random() was <%s", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count-1])
+                logger.debug("skip: random() was <%f", self._SKIP_CURVE_STEPS[self._sync_cache_skip_count-1])
                 self._statistics.sync_bloom_skip += 1
                 self._sync_cache = None
                 return None
@@ -621,7 +619,7 @@ class Community(object):
             self._sync_cache.candidate = request_cache.helper_candidate
             self._statistics.sync_bloom_new += 1
             self._statistics.sync_bloom_send += 1
-            logger.debug("%s new sync bloom (%s/%s~%s)", self._cid.encode("HEX"), self._statistics.sync_bloom_reuse, self._statistics.sync_bloom_new, round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2))
+            logger.debug("%s new sync bloom (%d/%d~%.2f)", self._cid.encode("HEX"), self._statistics.sync_bloom_reuse, self._statistics.sync_bloom_new, round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2))
 
         return sync
 
@@ -822,8 +820,6 @@ class Community(object):
                         bloomfilter_range = right
                         data = rightdata
 
-                    if __debug__:
-                        logger.debug("%s bloomfilterrange left%s right%sleftright%s", self.cid.encode("HEX"), left, right, ifleft_range>right_rangeelse)
                 else:
                     bloomfilter_range = right
                     data = rightdata
@@ -887,7 +883,7 @@ class Community(object):
 
             return (1, self.acceptable_global_time, modulo, offset, bloom)
 
-        elif __debug__:
+        else:
             logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
         return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
@@ -1169,20 +1165,19 @@ class Community(object):
         @rtype: int or long
         """
         self._global_time += 1
-        logger.debug(self._global_time)
+        logger.debug("claiming a new global time value @%d", self._global_time)
         return self._global_time
 
     def update_global_time(self, global_time):
         """
         Increase the local global time if the given GLOBAL_TIME is larger.
         """
-        if __debug__:
-            previous = self._global_time
-            new = max(self._global_time, global_time)
-            if new - previous >= 100:
-                logger.warning("%d -> %d", previous, new)
-            else:
-                logger.debug("%d -> %d", previous, new)
+        previous = self._global_time
+        new = max(self._global_time, global_time)
+        if new - previous >= 100:
+            logger.warning("updating global time %d -> %d", previous, new)
+        else:
+            logger.debug("updating global time %d -> %d", previous, new)
         self._global_time = max(self._global_time, global_time)
 
     def dispersy_check_database(self):
@@ -1532,8 +1527,6 @@ class Community(object):
         assert isinstance(tunnel, bool)
         candidate = WalkCandidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
         self.add_candidate(candidate)
-
-        logger.debug(candidate)
         return candidate
 
     def add_candidate(self, candidate):
@@ -1621,9 +1614,8 @@ class Community(object):
         @raise KeyError: When there is no meta message by that name.
         """
         assert isinstance(name, unicode)
-        if __debug__:
-            if not name in self._meta_messages:
-                logger.debug("this community does not support the %s message", name)
+        if not name in self._meta_messages:
+            logger.warning("this community does not support the %s message", name)
         return self._meta_messages[name]
 
     def get_meta_messages(self):
