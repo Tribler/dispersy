@@ -1,7 +1,7 @@
 from time import time
 
-from ..debugcommunity import DebugCommunity
 from ..tool.tracker import TrackerCommunity
+from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestCandidates(DispersyTestClass):

@@ -5,7 +5,7 @@ from socket import getfqdn
 from ..candidate import BootstrapCandidate
 from ..message import Message, DropMessage
 from ..dprint import dprint
-from ..debugcommunity import DebugCommunity
+from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):

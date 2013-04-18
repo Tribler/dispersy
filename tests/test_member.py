@@ -1,5 +1,5 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestMemberTag(DispersyTestClass):
@@ -15,9 +15,8 @@ class TestMemberTag(DispersyTestClass):
         meta = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -26,7 +25,7 @@ class TestMemberTag(DispersyTestClass):
         # send a message
         global_time = 10
         messages = []
-        messages.append(node.give_message(node.create_full_sync_text_message("should be accepted (1)", global_time)))
+        messages.append(node.give_message(node.create_full_sync_text("should be accepted (1)", global_time)))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # we now tag the member as ignore
@@ -38,7 +37,7 @@ class TestMemberTag(DispersyTestClass):
         # send a message and ensure it is in the database (ignore still means it must be stored in
         # the database)
         global_time = 20
-        messages.append(node.give_message(node.create_full_sync_text_message("should be accepted (2)", global_time)))
+        messages.append(node.give_message(node.create_full_sync_text("should be accepted (2)", global_time)))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # we now tag the member not to ignore
@@ -46,7 +45,7 @@ class TestMemberTag(DispersyTestClass):
 
         # send a message
         global_time = 30
-        messages.append(node.give_message(node.create_full_sync_text_message("should be accepted (3)", global_time)))
+        messages.append(node.give_message(node.create_full_sync_text("should be accepted (3)", global_time)))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # cleanup
@@ -65,9 +64,8 @@ class TestMemberTag(DispersyTestClass):
         meta = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # should be no messages from NODE yet
@@ -76,7 +74,7 @@ class TestMemberTag(DispersyTestClass):
         # send a message
         global_time = 10
         messages = []
-        messages.append(node.give_message(node.create_full_sync_text_message("should be accepted (1)", global_time)))
+        messages.append(node.give_message(node.create_full_sync_text("should be accepted (1)", global_time)))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # we now tag the member as blacklist
@@ -87,7 +85,7 @@ class TestMemberTag(DispersyTestClass):
 
         # send a message and ensure it is not in the database
         global_time = 20
-        node.give_message(node.create_full_sync_text_message("should NOT be accepted (2)", global_time))
+        node.give_message(node.create_full_sync_text("should NOT be accepted (2)", global_time))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # we now tag the member not to blacklist
@@ -95,7 +93,7 @@ class TestMemberTag(DispersyTestClass):
 
         # send a message
         global_time = 30
-        messages.append(node.give_message(node.create_full_sync_text_message("should be accepted (3)", global_time)))
+        messages.append(node.give_message(node.create_full_sync_text("should be accepted (3)", global_time)))
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # cleanup

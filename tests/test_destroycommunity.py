@@ -1,5 +1,5 @@
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestDestroyCommunity(DispersyTestClass):
@@ -12,9 +12,8 @@ class TestDestroyCommunity(DispersyTestClass):
         message = community.get_meta_message(u"full-sync-text")
 
         # create node and ensure that SELF knows the node address
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
         yield 0.555
 
@@ -24,7 +23,7 @@ class TestDestroyCommunity(DispersyTestClass):
 
         # send a message
         global_time = 10
-        node.give_message(node.create_full_sync_text_message("should be accepted (1)", global_time))
+        node.give_message(node.create_full_sync_text("should be accepted (1)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(len(times), 1)
         self.assertIn(global_time, times)

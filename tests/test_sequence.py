@@ -1,7 +1,7 @@
 from collections import defaultdict
 
-from ..debugcommunity import DebugCommunity
-from ..debugcommunity import DebugNode
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestSequence(DispersyTestClass):
@@ -20,16 +20,15 @@ class TestSequence(DispersyTestClass):
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
         meta = community.get_meta_message(u"sequence-text")
-        node = DebugNode()
+        node = DebugNode(community)
         node.init_socket()
-        node.set_community(community)
         node.init_my_member()
 
         # MSGS[GLOBAL-TIME][SEQUENCE-NUMBER]
         msgs = defaultdict(dict)
         for i in xrange(1, 10):
             for j in xrange(1, 10):
-                msgs[i][j] = node.create_sequence_test_message("M@%d#%d" % (i, j), i, j)
+                msgs[i][j] = node.create_sequence_test("M@%d#%d" % (i, j), i, j)
 
         community.delete_messages(meta.name)
         # SELF must accept M@6#1
@@ -150,10 +149,9 @@ class TestSequence(DispersyTestClass):
         SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
         self._community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        self._nodes = [DebugNode() for _ in xrange(node_count)]
+        self._nodes = [DebugNode(self._community) for _ in xrange(node_count)]
         for node in self._nodes:
             node.init_socket()
-            node.set_community(self._community)
             node.init_my_member()
 
         # create messages
@@ -190,7 +188,7 @@ class TestSequence(DispersyTestClass):
         for low, high in pairs:
             sequence_numbers.update(xrange(low, high + 1))
             for node in nodes:
-                node.give_message(node.create_dispersy_missing_sequence_message(community.my_member, meta, low, high, community.global_time, community.my_candidate), cache=True)
+                node.give_message(node.create_dispersy_missing_sequence(community.my_member, meta, low, high, community.global_time, community.my_candidate), cache=True)
             # one additional yield.  Dispersy should batch these requests together
             yield 0.001
 
