@@ -76,8 +76,8 @@ class ScriptBase(object):
 
 class ScenarioScriptBase(ScriptBase):
     #TODO: all bartercast references should be converted to some universal style
-    def __init__(self, logfile, **kargs):
-        ScriptBase.__init__(self, **kargs)
+    def __init__(self, dispersy, logfile, **kargs):
+        ScriptBase.__init__(self, dispersy, **kargs)
 
         self._timestep = float(kargs.get('timestep', 1.0))
         self._stepcount = 0
