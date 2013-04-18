@@ -237,7 +237,7 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        logger.debug("register %s after %s seconds", call, delay)
+        logger.debug("register %s after %.2f seconds", call, delay)
 
         with self._lock:
             if not id_:
@@ -292,7 +292,7 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        logger.debug("persistent register %s after %s seconds", call, delay)
+        logger.debug("persistent register %s after %.2f seconds", call, delay)
 
         with self._lock:
             for tup in self._requests:
@@ -348,7 +348,8 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        logger.debug("replace register %s after %s seconds", call, delay)
+        logger.debug("replace register %s after %.2f seconds", call, delay)
+
         with self._lock:
             # un-register
             for index, tup in enumerate(self._requests_mirror):
@@ -390,7 +391,8 @@ class Callback(object):
         """
         assert isinstance(id_, (basestring, int)), "ROOT_ID has invalid type: %s" % type(id_)
         assert id_, "ID_ may not be zero or an empty (unicode)string"
-        logger.debug(id_)
+        logger.debug("unregister %s", id_)
+
         with self._lock:
             # un-register
             for index, tup in enumerate(self._requests_mirror):
@@ -497,9 +499,8 @@ class Callback(object):
                 sleep(0.01)
                 timeout -= 0.01
 
-            if __debug__:
-                if not self.is_finished:
-                    logger.debug("unable to stop the callback within the allowed time")
+            if not self.is_finished:
+                logger.warning("unable to stop the callback within the allowed time")
 
         return self.is_finished
 
@@ -571,11 +572,11 @@ class Callback(object):
                     # there is nothing to handle
                     wait = requests[0][0] - actual_time if requests else 300.0
                     if __debug__:
-                        logger.debug("nothing to handle, wait %f seconds", wait)
+                        logger.debug("nothing to handle, wait %.2f seconds", wait)
                         if time_since_expired:
                             diff = actual_time - time_since_expired
                             if diff > 1.0:
-                                logger.warning("took %f to process expired queue", round(diff, 2))
+                                logger.warning("took %.2f to process expired queue", diff)
                             time_since_expired = 0
 
                 if event_is_set():
@@ -587,7 +588,7 @@ class Callback(object):
 
             else:
                 if __debug__:
-                    logger.debug("calling %s (prio:%s, id:%s)", self._debug_call_name, priority, root_id)
+                    logger.debug("calling %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
                     debug_call_start = time()
 
                 # call can be either:
@@ -638,7 +639,7 @@ class Callback(object):
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
                     if debug_call_duration > 1.0:
-                        logger.warning("%d call to %s", round(debug_call_duration, 2), self._debug_call_name)
+                        logger.warning("%.2f call to %s", debug_call_duration, self._debug_call_name)
 
         with lock:
             # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still
@@ -676,7 +677,7 @@ class Callback(object):
                     logger.error(exc_info=True)
 
         # send GeneratorExit exceptions to scheduled generators
-        logger.debug("there are %s scheduled tasks", len(requests))
+        logger.debug("there are %d scheduled tasks", len(requests))
         while requests:
             _, _, _, call, _ = heappop(requests)
             if isinstance(call, GeneratorType):
@@ -690,138 +691,3 @@ class Callback(object):
         with lock:
             logger.debug("STATE_FINISHED")
             self._state = "STATE_FINISHED"
-
-if __debug__:
-    def main():
-        c = Callback()
-        c.start()
-        d = Callback()
-        d.start()
-
-        def call1():
-            logger.debug(time())
-
-        sleep(2)
-        logger.debug(time())
-        c.register(call1, delay=1.0)
-
-        sleep(2)
-        logger.debug('\n')
-
-        def call2():
-            delay = 3.0
-            for i in range(10):
-                logger.debug("%f %d", time(), i)
-                sleep(delay)
-                if delay > 0.0:
-                    delay -= 1.0
-                yield 1.0
-        c.register(call2)
-        sleep(11)
-        logger.debug('\n')
-
-        def call3():
-            delay = 3.0
-            for i in range(10):
-                logger.debug("%f %d", time(), i)
-                yield Switch(d)
-                # perform code on Callback d
-                sleep(delay)
-                if delay > 0.0:
-                    delay -= 1.0
-
-                yield Switch(c)
-                # perform code on Callback c
-        c.register(call3)
-        sleep(11.0)
-        logger.debug('\n')
-
-        # CPU intensive call... should 'back off'
-        def call4():
-            for _ in xrange(10):
-                sleep(2.0)
-                desync = (yield 1.0)
-                logger.debug("desync... %s", desync)
-                while desync > 0.1:
-                    logger.debug("backing off... %s", desync)
-                    desync = (yield desync)
-                    logger.debug("next try... %s", desync)
-        logger.debug('\n')
-
-        def call5_bussy():
-            for _ in xrange(10):
-                desync = yield 0.0
-                logger.debug("on bussy (%s)", desync)
-                sleep(0.4)
-        def call5_idle():
-            for _ in xrange(10):
-                desync = yield Idle()
-                logger.debug("on idle (%s)", desync)
-        c.register(call5_bussy)
-        c.register(call5_idle)
-        logger.debug('\n')
-
-        def call6():
-            logger.debug("before")
-            yield Idle(5.0)
-            logger.debug("after")
-        c.register(call6)
-
-        def call7():
-            logger.debug("init")
-            while True:
-                yield 1.0
-                logger.debug("-")
-                c.unregister(task_id)
-        task_id = c.register(call7)
-        c.unregister(task_id)
-
-        sleep(21.0)
-        logger.debug('\n')
-
-        def call8(index):
-            container1[index] += 1
-        def call9(index):
-            container2[index] += 1
-        def call10():
-            indexes = range(len(container1))
-            random.shuffle(indexes)
-            for index in indexes:
-                c.register(call8, (index,))
-
-            for index in indexes:
-                c.register(call8, (index,), id_="debug-test-%s" % index)
-            for index in xrange(len(container1)):
-                c.unregister("debug-test-%s" % index)
-
-            for index in indexes:
-                c.register(call8, (index,), delay=60.0, id_="debug-test-2-%s" % index)
-            for index in xrange(len(container1)):
-                c.unregister("debug-test-2-%s" % index)
-
-            for index in indexes:
-                c.register(call8, (index,), id_="debug-test-3-%s" % index)
-            for index in xrange(len(container1)):
-                c.replace_register("debug-test-3-%s" % index, call9, (index,))
-
-            for index in indexes:
-                c.register(call8, (index,), delay=60.0, id_="debug-test-4-%s" % index)
-            for index in xrange(len(container1)):
-                c.replace_register("debug-test-4-%s" % index, call9, (index,))
-
-            for index in indexes:
-                c.register(call8, (index,), delay=1.0)
-
-        import random
-        container1 = [0] * 1000
-        container2 = [0] * len(container1)
-        c.register(call10)
-        sleep(10.0)
-        assert all(value == 2 for value in container1), container1
-        assert all(value == 2 for value in container2), container2
-
-        d.stop()
-        c.stop()
-
-    if __name__ == "__main__":
-        main()

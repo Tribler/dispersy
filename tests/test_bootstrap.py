@@ -80,16 +80,16 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        logger.debug("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                     self._identifiers[sock_addr].encode("HEX"),
-                                     sock_addr[0],
-                                     sock_addr[1],
-                                     self._hostname[sock_addr],
-                                     len(rtts),
-                                     sum(rtts) / len(rtts),
-                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                    self._identifiers[sock_addr].encode("HEX"),
+                                    sock_addr[0],
+                                    sock_addr[1],
+                                    self._hostname[sock_addr],
+                                    len(rtts),
+                                    sum(rtts) / len(rtts),
+                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        logger.warn("%s:%s  missing", sock_addr[0], sock_addr[1])
+                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
             def finish(self, request_count, min_response_count, max_rtt):
                 for sock_addr, rtts in self._summary.iteritems():
@@ -210,22 +210,22 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        logger.debug("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                     self._identifiers[sock_addr].encode("HEX"),
-                                     sock_addr[0],
-                                     sock_addr[1],
-                                     self._hostname[sock_addr],
-                                     len(rtts),
-                                     sum(rtts) / len(rtts),
-                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                    self._identifiers[sock_addr].encode("HEX"),
+                                    sock_addr[0],
+                                    sock_addr[1],
+                                    self._hostname[sock_addr],
+                                    len(rtts),
+                                    sum(rtts) / len(rtts),
+                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        logger.warn("%s:%s  missing", sock_addr[0], sock_addr[1])
+                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
         MEMBERS = 10000 # must be a multiple of 100
         COMMUNITIES = 1
         ROUNDS = 10
 
-        logger.debug("prepare communities, members, etc%s", force=1)
+        logger.info("prepare communities, members, etc")
         with self._dispersy.database:
             candidates = [BootstrapCandidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates) for _ in xrange(COMMUNITIES)]
@@ -235,7 +235,7 @@ class TestBootstrapServers(DispersyTestClass):
                 for member in members:
                     community.create_dispersy_identity(member=member)
 
-        logger.debug("prepare request messages%s", force=1)
+        logger.info("prepare request messages")
         for _ in xrange(ROUNDS):
             for community in communities:
                 for member in members:
@@ -244,7 +244,7 @@ class TestBootstrapServers(DispersyTestClass):
             yield 5.0
         yield 15.0
 
-        logger.debug("ping-ping%s", force=1)
+        logger.info("ping-ping")
         BEGIN = time()
         for _ in xrange(ROUNDS):
             for community in communities:
@@ -257,8 +257,8 @@ class TestBootstrapServers(DispersyTestClass):
         END = time()
 
         yield 10.0
-        logger.debug("--- did %s requests per community%s", ROUNDS*MEMBERS, force=1)
-        logger.debug("--- spread over %s seconds%s", round(END - BEGIN, 1), force=1)
+        logger.info("--- did %d requests per community", ROUNDS*MEMBERS)
+        logger.info("--- spread over %.2f seconds", END - BEGIN)
         for community in communities:
             community.summary()
 

@@ -53,7 +53,7 @@ class Database(object):
         @type file_path: unicode
         """
         assert isinstance(file_path, unicode)
-        logger.debug(file_path)
+        logger.debug("loading database [%s]", file_path)
         self._file_path = file_path
 
         # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
@@ -182,7 +182,7 @@ class Database(object):
         if exc_type is None:
             logger.debug("enabling Database.commit()")
             if pending_commits > 1:
-                logger.debug("performing %s pending commits", pending_commits-1)
+                logger.debug("performing %d pending commits", pending_commits-1)
                 self.commit()
             return True
 

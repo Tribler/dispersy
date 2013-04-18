@@ -208,7 +208,7 @@ class ScenarioScript(ScriptBase):
         scenario.sort()
 
         for deadline, _, func, args in scenario:
-            logger.debug("scenario: @%ss %s", int(deadline - origin["@"]), func.__name__)
+            logger.debug("scenario: @%.2fs %s", int(deadline - origin["@"]), func.__name__)
             self.log("scenario-schedule", deadline=int(deadline - origin["@"]), func=func.__name__, args=args)
 
         return scenario
@@ -264,7 +264,7 @@ class ScenarioScript(ScriptBase):
         return "END"
 
     def scenario_print(self, *args):
-        logger.info("%s", " ".join(str(arg) for arg in args))
+        logger.info(" ".join(str(arg) for arg in args))
 
     def scenario_churn(self, state, duration=None):
         assert isinstance(state, str), type(state)
@@ -276,7 +276,7 @@ class ScenarioScript(ScriptBase):
 
         if state == "online":
             if community is None:
-                logger.debug("online for the next %s seconds", duration)
+                logger.debug("online for the next %.2f seconds", duration)
                 self.log("scenario-churn", state="online", duration=duration)
 
                 if self._is_joined:
@@ -289,7 +289,7 @@ class ScenarioScript(ScriptBase):
                     self._is_joined = True
 
             else:
-                logger.debug("online for the next %s seconds (we are already online)", duration)
+                logger.debug("online for the next %.2f seconds (we are already online)", duration)
                 self.log("scenario-churn", state="stay-online", duration=duration)
 
         elif state == "offline":

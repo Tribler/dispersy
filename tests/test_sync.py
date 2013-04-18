@@ -144,7 +144,7 @@ class TestSync(DispersyTestClass):
             # random_order_times.append(global_time)
             # node.give_message(node.create_random_order_text_message("Message #%d" % global_time, global_time))
         out_order_times.sort(reverse=True)
-        logger.debug("Total ASC:%s; DESC:", len(in_order_times))
+        logger.debug("Total ASC:%d; DESC:", len(in_order_times))
 
         def get_messages_back():
             received_times = []

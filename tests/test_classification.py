@@ -168,7 +168,7 @@ class TestClassification(DispersyTestClass):
                     for obj in gc.get_referrers(x):
                         j += 1
                         if verbose:
-                            logger.debug(type(obj))
+                            logger.debug("%s", str(type(obj)))
                             try:
                                 lines, lineno = inspect.getsourcelines(obj)
                                 logger.debug("Check %d %s", j, [line.rstrip() for line in lines])
@@ -197,7 +197,7 @@ class TestClassification(DispersyTestClass):
         wait = 10
         for i in range(wait):
             gc.collect()
-            logger.debug("waiting... %s", wait-i)
+            logger.debug("waiting... %d", wait-i)
             if check() == 0:
                 break
             else:

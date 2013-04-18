@@ -158,7 +158,7 @@ class DebugCommunity(Community):
         """
         for message in messages:
             if not "Dprint=False" in message.payload.text:
-                logger.debug("%s \"%s\" @%s", message, message.payload.text, message.distribution.global_time)
+                logger.debug("%s \"%s\" @%d", message, message.payload.text, message.distribution.global_time)
 
     def undo_text(self, descriptors):
         """
@@ -166,7 +166,7 @@ class DebugCommunity(Community):
         """
         for member, global_time, packet in descriptors:
             message = packet.load_message()
-            logger.debug("undo \"%s\" @%s", message.payload.text, global_time)
+            logger.debug("undo \"%s\" @%d", message.payload.text, global_time)
 
     def dispersy_cleanup_community(self, message):
         if message.payload.is_soft_kill:

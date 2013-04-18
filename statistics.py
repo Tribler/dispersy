@@ -1,8 +1,5 @@
 #!/usr/bin/env/python
 
-import logging
-logger = logging.getLogger(__name__)
-
 from time import time
 
 class Statistics():

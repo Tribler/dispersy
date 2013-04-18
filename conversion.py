@@ -228,7 +228,7 @@ class BinaryConversion(Conversion):
 
         if __debug__:
             if debug_non_available:
-                logger.warning("unable to define non-available messages , \n%s", ''.join(debug_non_available))
+                logger.debug("unable to define non-available messages %s", debug_non_available)
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -1084,9 +1084,8 @@ class BinaryConversion(Conversion):
         # sign
         packet = encode_functions.signature(container, message, sign)
 
-        if __debug__:
-            if len(packet) > 1500 - 60 - 8:
-                logger.warning("Packet size for %s exceeds MTU - IP header - UDP header (%s bytes)", message.name, len(packet))
+        if len(packet) > 1500 - 60 - 8:
+            logger.warning("Packet size for %s exceeds MTU - IP header - UDP header (%d bytes)", message.name, len(packet))
 
         return packet
 
@@ -1366,7 +1365,7 @@ class BinaryConversion(Conversion):
         # payload
         placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, placeholder.data[:placeholder.first_signature_offset])
         if placeholder.offset != placeholder.first_signature_offset:
-            logger.warning("invalid packet size for %s data:%s; offset:%s", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
+            logger.warning("invalid packet size for %s data:%d; offset:%d", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
         if __debug__:

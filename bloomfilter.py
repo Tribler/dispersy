@@ -47,8 +47,8 @@ class BloomFilter(Constructor):
 
         if __debug__:
             hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
-            logger.debug("m size:      %s    ~%s bytes", m_size, m_size/8)
-            logger.debug("k functions: %s", k_functions)
+            logger.debug("m size:      %d    ~%d bytes", m_size, m_size/8)
+            logger.debug("k functions: %d", k_functions)
             logger.debug("prefix:      %s", prefix.encode("HEX"))
             logger.debug("filter:      %s", filter_)
             logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate for hypothetical_error_rate in hypothetical_error_rates))
@@ -84,7 +84,7 @@ class BloomFilter(Constructor):
     def _init_bytes_k_(self, bytes_, k_functions, prefix=""):
         assert isinstance(bytes_, str)
         assert 0 < len(bytes_)
-        logger.debug("constructing bloom filter based on %s bytes and k_functions %s", len(bytes_), k_functions)
+        logger.debug("constructing bloom filter based on %d bytes and k_functions %d", len(bytes_), k_functions)
 
         filter = long(hexlify(bytes_[::-1]), 16)
         self._init_(len(bytes_) * 8, k_functions, prefix, filter)
@@ -99,7 +99,7 @@ class BloomFilter(Constructor):
         # calculate others
         # self._n = int(m * ((log(2) ** 2) / abs(log(f))))
         # self._k = int(ceil(log(2) * (m / self._n)))
-        logger.debug("constructing bloom filter based on m_size %s bits and f_error_rate %s", m_size, f_error_rate)
+        logger.debug("constructing bloom filter based on m_size %d bits and f_error_rate %f", m_size, f_error_rate)
         self._init_(m_size, self._get_k_functions(m_size, self._get_n_capacity(m_size, f_error_rate)), prefix, 0L)
 
     @constructor(float, int)
@@ -110,7 +110,7 @@ class BloomFilter(Constructor):
         assert 0 < n_capacity
         m_size = abs((n_capacity * log(f_error_rate)) / (log(2) ** 2))
         m_size = int(ceil(m_size / 8.0) * 8)
-        logger.debug("constructing bloom filter based on f_error_rate %s and %s capacity", f_error_rate, n_capacity)
+        logger.debug("constructing bloom filter based on f_error_rate %d and %d capacity", f_error_rate, n_capacity)
         self._init_(m_size, self._get_k_functions(m_size, n_capacity), prefix, 0L)
 
     def add(self, key):
