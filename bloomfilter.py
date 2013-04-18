@@ -488,15 +488,6 @@ if __debug__:
         logger.debug("Alice bic Carol: %s", a.bic_occurrence(c))
         logger.debug("Bob bic Carol: %s", b.bic_occurrence(c))
 
-        # b2 = BloomFilter(10, 0.8)
-        # map(b2.add, t2)
-
-        # dprint(t1)
-        # dprint(str(b1), binary=1)
-
-        # dprint(t2)
-        # dprint(str(b2), binary=1)
-
     def _test_occurrence():
         a = BloomFilter(1, 16)
         b = BloomFilter(1, 16)

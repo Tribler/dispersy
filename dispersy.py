@@ -1891,27 +1891,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
          3. All remaining messages are passed to on_message_batch.
         """
-        # 21/03/12 Boudewijn: we can not filter all packets this way.  i.e. when multiple people
-        # send us missing-identity messages some of them will be dropped
-        #
-        # def unique(batch):
-        #     unique = set()
-        #     for candidate, packet, conversion in batch:
-        #         assert isinstance(packet, str)
-        #         if packet in unique:
-        #             if __debug__:
-        #                 dprint("drop a ", len(packet), " byte packet (duplicate in batch) from ", candidate, level="warning")
-        #                 self._statistics.drop("_convert_packets_into_batch:duplicate in batch", len(packet))
-        #         else:
-        #             unique.add(packet)
-        #             yield candidate, packet, conversion
-
-        # # remove duplicated
-        # # todo: make _convert_batch_into_messages accept iterator instead of list to avoid conversion
-        # batch = list(unique(batch))
-
-        # BEGIN = time()
-
         # convert binary packets into Message.Implementation instances
         messages = list(self._convert_batch_into_messages(batch))
         assert all(isinstance(message, Message.Implementation) for message in messages), "_convert_batch_into_messages must return only Message.Implementation instances"
@@ -1921,9 +1900,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # handle the incoming messages
         if messages:
             self.on_message_batch(messages)
-
-        # END = time()
-        # dprint("%4.2f" % (END-BEGIN), " seconds for %2d" % len(batch), " ", meta.name, " messages", force=True)
 
     def on_messages(self, messages):
         batches = dict()
@@ -4647,7 +4623,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
             actualtime = time()
             allow_sync = actualtime - community.__most_recent_sync > 4.5
-            # dprint("previous sync was ", round(actualtime - community.__most_recent_sync, 1), " seconds ago", "" if allow_sync else " (no sync this cycle)", force=True)
+            logger.debug("previous sync was %.1f seconds ago", actualtime - community.__most_recent_sync, "" if allow_sync else " (no sync this cycle)")
             if allow_sync:
                 community.__most_recent_sync = actualtime
 

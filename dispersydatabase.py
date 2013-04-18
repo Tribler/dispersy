@@ -355,10 +355,10 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             # upgrade from version 16 to version 17
             if database_version < 17:
                 # there is no version 17 yet...
-                # dprint("upgrade database ", database_version, " -> ", 17)
+                # logger.debug("upgrade database %d -> %d", database_version, 17)
                 # self.executescript(u"""UPDATE option SET value = '17' WHERE key = 'database_version';""")
                 # self.commit()
-                # dprint("upgrade database ", database_version, " -> ", 17, " (done)")
+                # logger.debug("upgrade database %d -> %d (done)", database_version, 17)
                 pass
 
         return LATEST_VERSION

@@ -266,10 +266,6 @@ class Timeline(object):
                 logger.debug("-- the author is... master member? %s; my member? %s", author==self._community.master_member, author==self._community.my_member)
             return (False, authorize_proofs)
 
-        # for member, message, permission in permission_triplets:
-        #     key = permission + "^" + message.name
-        #     dprint(key)
-
         for member, message, permission in permission_triplets:
             if isinstance(message.resolution, (PublicResolution, LinearResolution, DynamicResolution)):
                 if not member in self._members:

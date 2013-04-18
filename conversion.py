@@ -1088,7 +1088,6 @@ class BinaryConversion(Conversion):
             if len(packet) > 1500 - 60 - 8:
                 logger.warning("Packet size for %s exceeds MTU - IP header - UDP header (%s bytes)", message.name, len(packet))
 
-        # dprint(message.packet.encode("HEX"))
         return packet
 
     #

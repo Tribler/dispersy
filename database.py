@@ -86,7 +86,6 @@ class Database(object):
 
     def _connect(self):
         self._connection = Connection(self._file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
 
     def _initial_statements(self):
@@ -393,10 +392,6 @@ class Database(object):
                 f.close()
 
             return result
-
-    # def _on_rollback(self):
-    #     dprint("ROLLBACK", level="warning")
-    #     raise DatabaseRollbackException(1)
 
     def check_database(self, database_version):
         """
