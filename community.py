@@ -366,7 +366,7 @@ class Community(object):
             else:
                 if public_key:
                     if __debug__: dprint(self._cid.encode("HEX"), " found master member")
-                    self._master_member = self._dispersy.get_member(self._dispersy, str(public_key))
+                    self._master_member = self._dispersy.get_member(str(public_key))
                     assert self._master_member.public_key
                     break
 
