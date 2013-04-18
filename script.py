@@ -3,11 +3,9 @@ from __future__ import with_statement
 
 from time import time
 
-from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
 from .dprint import dprint
-from .member import Member
 from .tool.lencoder import log, make_valid_key
 
 def assert_(value, *args):
@@ -65,9 +63,8 @@ class ScriptBase(object):
         return True
 
     def wait_for_wan_address(self):
-        ec = ec_generate_key(u"low")
-        my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        community = DebugCommunity.create_community(my_member)
+        my_member = self._dispersy.get_new_member(u"low")
+        community = DebugCommunity.create_community(self._dispersy, my_member)
 
         while self._dispersy.wan_address[0] == "0.0.0.0":
             yield 0.1
@@ -209,8 +206,7 @@ class ScenarioScriptBase(ScriptBase):
         log(self._logfile, "Read config done", my_name = self._my_name, my_address = self._my_address)
 
         # create my member
-        ec = ec_generate_key(u"low")
-        my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        my_member = self._dispersy.get_new_member(u"low")
         dprint("-my member- ", my_member.database_id, " ", id(my_member), " ", my_member.mid.encode("HEX"), force=1)
 
         self.original_on_incoming_packets = self._dispersy.on_incoming_packets
