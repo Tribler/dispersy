@@ -586,12 +586,12 @@ class Callback(object):
                     event_clear()
 
             if wait:
-                pass #TODO: DPRINT Manual fix required #dprint("%d wait at most %.3fs before next call, still have %d calls in queue" % (time(), wait, len(requests)))
+                logger.debug("wait at most %.3fs before next call, still have %d calls in queue", wait, len(requests))
                 event_wait(wait)
 
             else:
                 if __debug__:
-                    logger.debug("%s] calling %s (prio:%s, id:%s)", self._name, self._debug_call_name, priority, root_id)
+                    logger.debug("calling %s (prio:%s, id:%s)", self._debug_call_name, priority, root_id)
                     debug_call_start = time()
 
                 # call can be either:
@@ -652,7 +652,7 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        logger.debug("%s] there are %d expired tasks", self._name, len(expired))
+        logger.debug("there are %d expired tasks", len(expired))
         while expired:
             _, _, _, _, call, callback = heappop(expired)
             if isinstance(call, TupleType):

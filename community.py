@@ -263,8 +263,7 @@ class Community(object):
         assert isinstance(master, DummyMember), type(master)
         if __debug__:
             logger.debug("initializing:  %s", self.get_classification())
-            #TODO: DPRINT Fix this one manually
-            #dprint("master member: ", master.mid.encode("HEX"), "" if isinstance(master, Member) else " (using DummyMember)")
+            logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
 
         # Dispersy
         self._dispersy = dispersy
@@ -849,8 +848,10 @@ class Community(object):
                 bloom.add_keys(str(packet) for _, packet in data)
 
                 if __debug__:
-                    pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d, pivot = %d"%(bloomfilter_range[0], bloomfilter_range[1], len(data), capacity, data[0][0], data[-1][0], from_gbtime))
-                    pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " took %f (fakejoin %f, rangeselect %f, dataselect %f, bloomfill, %f"%(time()-t1, t2-t1, t3-t2, t4-t3, time()-t4))
+                    logger.debug("%s syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d, pivot = %d",
+                                 self.cid.encode("HEX"), bloomfilter_range[0], bloomfilter_range[1], len(data), capacity, data[0][0], data[-1][0], from_gbtime)
+                    logger.debug("%s took %f (fakejoin %f, rangeselect %f, dataselect %f, bloomfill, %f",
+                                 self.cid.encode("HEX"), time() - t1, t2 - t1, t3 - t2, t4 - t3, time() - t4)
 
                 return (min(bloomfilter_range[0], acceptable_global_time), min(bloomfilter_range[1], acceptable_global_time), 1, 0, bloom)
 
@@ -881,8 +882,8 @@ class Community(object):
 
             bloom.add_keys(packets)
 
-            if __debug__:
-                pass #TODO: DPRINT Manual fix required #dprint(self.cid.encode("HEX"), " syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d"%(modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets))
+            logger.debug("%s syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d",
+                         self.cid.encode("HEX"), modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets)
 
             return (1, self.acceptable_global_time, modulo, offset, bloom)
 
@@ -1178,9 +1179,10 @@ class Community(object):
         if __debug__:
             previous = self._global_time
             new = max(self._global_time, global_time)
-            #TODO: DPRINT manually migrate this dprint statement
-            #level = "warning" if new - previous >= 100 else "normal"
-            #dprint(previous, " -> ", new, level=level)
+            if new - previous >= 100:
+                logger.warning("%d -> %d", previous, new)
+            else:
+                logger.debug("%d -> %d", previous, new)
         self._global_time = max(self._global_time, global_time)
 
     def dispersy_check_database(self):
@@ -1488,7 +1490,7 @@ class Community(object):
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
             if r <= .4975: # ~50%
                 if walks:
-                    pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d walk   ] " % (len(walks), len(stumbles), len(intros)), walks[0])
+                    logger.debug("yield [%2d:%2d:%2d walk   ] %s", len(walks), len(stumbles), len(intros), walks[0])
                     yield walks.pop(0)
 
             elif r <= .995: # ~50%
@@ -1496,20 +1498,20 @@ class Community(object):
                     while True:
                         if random() <= .5:
                             if stumbles:
-                                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d stumble] " % (len(walks), len(stumbles), len(intros)), stumbles[0])
+                                logger.debug("yield [%2d:%2d:%2d stumble] %s", len(walks), len(stumbles), len(intros), stumbles[0])
                                 yield stumbles.pop(0)
                                 break
 
                         else:
                             if intros:
-                                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d intro  ] " % (len(walks), len(stumbles), len(intros)), intros[0])
+                                logger.debug("yield [%2d:%2d:%2d intro  ] %s", len(walks), len(stumbles), len(intros), intros[0])
                                 yield intros.pop(0)
                                 break
 
             else: # ~.5%
                 candidate = self._bootstrap_candidates.next()
                 if candidate:
-                    pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+                    logger.debug("yield [%2d:%2d:%2d bootstr] %s", len(walks), len(stumbles), len(intros), candidate)
                     yield candidate
 
         bootstrap_candidates = list(self._iter_bootstrap(once = True))
@@ -1517,7 +1519,7 @@ class Community(object):
 
         for candidate in bootstrap_candidates:
             if candidate:
-                pass #TODO: DPRINT Manual fix required #dprint("yield [%2d:%2d:%2d bootstr] " % (len(walks), len(stumbles), len(intros)), candidate)
+                logger.debug("yield [%2d:%2d:%2d bootstr] %s", len(walks), len(stumbles), len(intros), candidate)
             yield candidate
 
         logger.debug("no candidates or bootstrap candidates available")

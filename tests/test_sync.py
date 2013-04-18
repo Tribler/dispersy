@@ -45,7 +45,7 @@ class TestSync(DispersyTestClass):
                         break
 
                 self.assertEqual(sorted(global_times), sorted(received))
-                pass #TODO: DPRINT Manual fix required #dprint("%", modulo, "+", offset, ": ", sorted(global_times), " -> OK")
+                logger.debug("%%%d+%d: %s -> OK", modulo, offset, sorted(global_times))
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

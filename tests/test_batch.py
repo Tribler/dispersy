@@ -58,7 +58,7 @@ class TestBatch(DispersyTestClass):
             yield 0.1
 
         end = time()
-        pass #TODO: DPRINT Manual fix required #dprint("%2.2f seconds for max_batch_size(%d, %d)" % (end - begin, length, max_size))
+        logger.debug("%2.2f seconds for _max_batch_size(%d, %d)", end - begin, length, max_size)
 
         count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
         self.assertEqual(count, len(messages))

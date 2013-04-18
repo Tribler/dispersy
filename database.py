@@ -386,7 +386,6 @@ class Database(object):
                 try:
                     callback(exiting = exiting)
                 except Exception:
-                    #TODO: DPRINT This statement had the stack=True arg.
                     logger.debug(exc_info=True)
 
             if __DEBUG_QUERIES__:
@@ -511,6 +510,5 @@ class APSWDatabase(Database):
             try:
                 callback(exiting = exiting)
             except Exception:
-                #TODO: DPRINT This statement had the stack=True arg.
                 logger.debug(exc_info=True)
         return result

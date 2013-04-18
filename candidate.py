@@ -119,7 +119,6 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                #TODO: DPRINT This statement had the stack=True arg.
                 logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
                 assert False
 
@@ -394,7 +393,6 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                #TODO: DPRINT This statement had the stack=True arg.
                 logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
 
     def __str__(self):

@@ -80,7 +80,7 @@ def runtime_duration_warning(threshold):
                 finally:
                     end = time()
                     if end - start >= threshold:
-                        pass #TODO: DPRINT Manual fix required #dprint("%.2fs " % (end - start), func)
+                        logger.warning("%.2fs %s", end - start, func)
             runtime_duration_warning_helper.__name__ = func.__name__ + "_RDWH"
             return runtime_duration_warning_helper
         else:
