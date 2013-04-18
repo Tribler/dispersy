@@ -172,6 +172,7 @@ class CommunityStatistics(Statistics):
         self.sync_bloom_new = 0
         self.sync_bloom_reuse = 0
         self.sync_bloom_send = 0
+        self.sync_bloom_skip = 0
         self.update()
 
     def update(self, database=False):
