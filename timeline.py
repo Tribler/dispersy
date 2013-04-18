@@ -33,14 +33,14 @@ class Timeline(object):
     if __debug__:
         def printer(self):
             for global_time, dic in self._policies:
-                logger.debug("policy @%s", global_time)
+                logger.debug("policy @%d", global_time)
                 for key, (policy, proofs) in dic.iteritems():
                     logger.debug("policy %50s  %s based on %d proofs", key, policy, len(proofs))
 
             for member, lst in self._members.iteritems():
-                logger.debug("member %s %s", member.database_id, member.mid.encode("HEX"))
+                logger.debug("member %d %s", member.database_id, member.mid.encode("HEX"))
                 for global_time, dic in lst:
-                    logger.debug("member %s @%s", member.database_id, global_time)
+                    logger.debug("member %d @%d", member.database_id, global_time)
                     for key, (allowed, proofs) in sorted(dic.iteritems()):
                         if allowed:
                             assert all(proof.name == u"dispersy-authorize" for proof in proofs)
@@ -70,7 +70,7 @@ class Timeline(object):
                 assert isinstance(message.resolution, PublicResolution.Implementation), message
                 if __debug__:
                     logger.debug("collecting proof for container message %s", message.name)
-                    logger.debug("master-member: %s; my-member: %s", message.community.master_member.database_id, message.community.my_member.database_id)
+                    logger.debug("master-member: %d; my-member: %d", message.community.master_member.database_id, message.community.my_member.database_id)
                     self.printer()
 
                 # if one or more of the contained permission_triplets are allowed, we will allow the
@@ -89,7 +89,9 @@ class Timeline(object):
                     allowed, proofs = self._check(message.authentication.member, message.distribution.global_time, sub_message.resolution, permission_pairs)
                     all_allowed.append(allowed)
                     all_proofs.update(proofs)
-                logger.debug("is one or more permission triplets allowed? %s.  based on %s proofs", any(all_allowed), len(all_proofs))
+
+                if __debug__:
+                    logger.debug("is one or more permission triplets allowed? %s.  based on %d proofs", any(all_allowed), len(all_proofs))
 
                 return any(all_allowed), [proof for proof in all_proofs]
 
@@ -97,9 +99,9 @@ class Timeline(object):
                 assert isinstance(message.resolution, LinearResolution.Implementation), message
                 if __debug__:
                     logger.debug("collecting proof for container message dispersy-undo-other")
-                    logger.debug("master-member: %s; my-member: %s", message.community.master_member.database_id, message.community.my_member.database_id)
-                    logger.debug("dispersy-undo-other created by %s@%s", message.authentication.member.database_id, message.distribution.global_time)
-                    logger.debug("            undoing message by %s@%s (%s, %s)", message.payload.member.database_id, message.payload.global_time, message.payload.packet.name, message.payload.packet.resolution)
+                    logger.debug("master-member: %d; my-member: %d", message.community.master_member.database_id, message.community.my_member.database_id)
+                    logger.debug("dispersy-undo-other created by %d@%d", message.authentication.member.database_id, message.distribution.global_time)
+                    logger.debug("            undoing message by %d@%d (%s, %s)", message.payload.member.database_id, message.payload.global_time, message.payload.packet.name, message.payload.packet.resolution)
                     self.printer()
 
                 return self._check(message.authentication.member, message.distribution.global_time, message.resolution, [(message.payload.packet.meta, u"undo")])
@@ -162,7 +164,7 @@ class Timeline(object):
         for message, permission in permission_pairs:
             # the master member can do anything
             if member == self._community.master_member:
-                logger.debug("ACCEPT time:%s user:%s -> %s^%s (master member)", global_time, member.database_id, permission, message.name)
+                logger.debug("ACCEPT time:%d user:%d -> %s^%s (master member)", global_time, member.database_id, permission, message.name)
 
             else:
                 # dynamically set the resolution policy
@@ -177,15 +179,15 @@ class Timeline(object):
                     all_proofs.extend(proofs)
 
                     if not resolution.policy.meta == local_resolution:
-                        logger.debug("FAIL time:%s user:%s (conflicting resolution policy, %s, %s)", global_time, member.database_id, resolution.policy.meta, local_resolution)
+                        logger.debug("FAIL time:%d user:%d (conflicting resolution policy %s %s)", global_time, member.database_id, resolution.policy.meta, local_resolution)
                         return (False, all_proofs)
 
                     resolution = resolution.policy
-                    logger.debug("APPLY time:%s resolution^%s -> %s", global_time, message.name, resolution.__class__.__name__)
+                    logger.debug("APPLY time:%d resolution^%s -> %s", global_time, message.name, resolution.__class__.__name__)
 
                 # everyone is allowed PublicResolution
                 if isinstance(resolution, (PublicResolution, PublicResolution.Implementation)):
-                    logger.debug("ACCEPT time:%s user:%s -> %s^%s (public resolution)", global_time, member.database_id, permission, message.name)
+                    logger.debug("ACCEPT time:%d user:%d -> %s^%s (public resolution)", global_time, member.database_id, permission, message.name)
 
                 # allowed LinearResolution is stored in Timeline
                 elif isinstance(resolution, (LinearResolution, LinearResolution.Implementation)):
@@ -208,24 +210,24 @@ class Timeline(object):
                                     assert isinstance(permissions[key][0], bool)
                                     assert isinstance(permissions[key][1], list)
                                     assert len(permissions[key][1]) > 0
-                                    assert not filter(lambda x: not isinstance(x, Message.Implementation), permissions[key][1])
+                                    assert all(isinstance(x, Message.Implementation) for x in permissions[key][1])
                                     allowed, proofs = permissions[key]
 
                                     if allowed:
-                                        logger.debug("ACCEPT time:%s user:%s -> %s (authorized)", global_time, member.database_id, key)
+                                        logger.debug("ACCEPT time:%d user:%d -> %s (authorized)", global_time, member.database_id, key)
                                         all_proofs.extend(proofs)
                                         break
                                     else:
-                                        logger.warning("DENIED time:%s user:%s -> %s (revoked)", global_time, member.database_id, key)
+                                        logger.warning("DENIED time:%d user:%d -> %s (revoked)", global_time, member.database_id, key)
                                         return (False, [proofs])
 
                                 time, permissions = iterator.next()
 
                         except StopIteration:
-                            logger.warning("FAIL time:%s user:%s -> %s (not authorized)", global_time, member.database_id, key)
+                            logger.warning("FAIL time:%d user:%d -> %s (not authorized)", global_time, member.database_id, key)
                             return (False, [])
                     else:
-                        logger.warning("FAIL time:%s user:%s -> %s (no authorization)", global_time, member.database_id, key)
+                        logger.warning("FAIL time:%d user:%d -> %s (no authorization)", global_time, member.database_id, key)
                         return (False, [])
 
                     # accept with proof
@@ -261,9 +263,8 @@ class Timeline(object):
         # check that AUTHOR is allowed to perform these authorizations
         authorize_allowed, authorize_proofs = self._check(author, global_time, LinearResolution(), [(message, u"authorize") for _, message, __ in permission_triplets])
         if not authorize_allowed:
-            if __debug__:
-                logger.debug("the author is NOT allowed to perform authorizations for one or more of the given permission triplets")
-                logger.debug("-- the author is... master member? %s; my member? %s", author==self._community.master_member, author==self._community.my_member)
+            logger.debug("the author is NOT allowed to perform authorisations for one or more of the given permission triplets")
+            logger.debug("-- the author is... the master member? %s;  my member? %s", author==self._community.master_member, author==self._community.my_member)
             return (False, authorize_proofs)
 
         for member, message, permission in permission_triplets:
@@ -280,25 +281,25 @@ class Timeline(object):
                             allowed, proofs = permissions[key]
                             if allowed:
                                 # multiple proofs for the same permissions at this exact time
-                                logger.debug("AUTHORIZE time:%s user:%s -> %s (extending duplicate)", global_time, member.database_id, key)
+                                logger.debug("AUTHORISE time:%d user:%d -> %s (extending duplicate)", global_time, member.database_id, key)
                                 proofs.append(proof)
 
                             else:
-                                # TODO: when two authorize contradict each other on the same global
+                                # TODO: when two authorise contradict each other on the same global
                                 # time, the ordering of the packet will decide the outcome.  we need
                                 # those packets!  [SELECT packet FROM sync WHERE ...]
                                 raise NotImplementedError("Requires ordering by packet to resolve permission conflict")
 
                         else:
                             # no earlier proof on this global time
-                            logger.debug("AUTHORIZE time:%s user:%s -> %s (extending)", global_time, member.database_id, key)
+                            logger.debug("AUTHORISE time:%d user:%d -> %s (extending)", global_time, member.database_id, key)
                             permissions[key] = (True, [proof])
                         break
 
                     # insert when time > global_time
                     elif time > global_time:
                         # TODO: ensure that INDEX is correct!
-                        logger.debug("AUTHORIZE time:%s user:%s -> %s (inserting)", global_time, member.database_id, key)
+                        logger.debug("AUTHORISE time:%d user:%d -> %s (inserting)", global_time, member.database_id, key)
                         self._members[member].insert(index, (global_time, {key:(True, [proof])}))
                         break
 
@@ -306,7 +307,7 @@ class Timeline(object):
 
                 else:
                     # we have reached the end without a BREAK: append the permission
-                    logger.debug("AUTHORIZE time:%s user:%s -> %s (appending)", global_time, member.database_id, key)
+                    logger.debug("AUTHORISE time:%d user:%d -> %s (appending)", global_time, member.database_id, key)
                     self._members[member].append((global_time, {key:(True, [proof])}))
 
             else:
@@ -340,6 +341,7 @@ class Timeline(object):
         revoke_allowed, revoke_proofs = self._check(author, global_time, LinearResolution(), [(message, u"revoke") for _, message, __ in permission_triplets])
         if not revoke_allowed:
             logger.debug("the author is NOT allowed to perform authorizations for one or more of the given permission triplets")
+            logger.debug("-- the author is... the master member? %s;  my member? %s", author==self._community.master_member, author==self._community.my_member)
             return (False, revoke_proofs)
 
         for member, message, permission in permission_triplets:
@@ -362,19 +364,19 @@ class Timeline(object):
 
                             else:
                                 # multiple proofs for the same permissions at this exact time
-                                logger.debug("REVOKE time:%s user:%s -> %s (extending duplicate)", global_time, member.database_id, key)
+                                logger.debug("REVOKE time:%d user:%d -> %s (extending duplicate)", global_time, member.database_id, key)
                                 proofs.append(proof)
 
                         else:
                             # no earlier proof on this global time
-                            logger.debug("REVOKE time:%s user:%s -> %s (extending)", global_time, member.database_id, key)
+                            logger.debug("REVOKE time:%d user:%d -> %s (extending)", global_time, member.database_id, key)
                             permissions[key] = (False, [proof])
                         break
 
                     # insert when time > global_time
                     elif time > global_time:
                         # TODO: ensure that INDEX is correct!
-                        logger.debug("REVOKE time:%s user:%s -> %s (inserting)", global_time, member.database_id, key)
+                        logger.debug("REVOKE time:%d user:%d -> %s (inserting)", global_time, member.database_id, key)
                         self._members[member].insert(index, (global_time, {key:(False, [proof])}))
                         break
 
@@ -382,7 +384,7 @@ class Timeline(object):
 
                 else:
                     # we have reached the end without a BREAK: append the permission
-                    logger.debug("REVOKE time:%s user:%s -> %s (appending)", global_time, member.database_id, key)
+                    logger.debug("REVOKE time:%d user:%d -> %s (appending)", global_time, member.database_id, key)
                     self._members[member].append((global_time, {key:(False, [proof])}))
 
             else:
@@ -403,10 +405,10 @@ class Timeline(object):
         key = u"resolution^" + message.name
         for policy_time, policies in reversed(self._policies):
             if policy_time < global_time and key in policies:
-                logger.debug("using %s for time %s (configured at %s)", policies[key][0].__class__.__name__, global_time, policy_time)
+                logger.debug("using %s for time %d (configured at %s)", policies[key][0].__class__.__name__, global_time, policy_time)
                 return policies[key]
 
-        logger.debug("using %s for time %s (default)", message.resolution.default.__class__.__name__, global_time)
+        logger.debug("using %s for time %d (default)", message.resolution.default.__class__.__name__, global_time)
         return message.resolution.default, []
 
     def change_resolution_policy(self, message, global_time, policy, proof):
@@ -419,14 +421,12 @@ class Timeline(object):
 
         for policy_time, policies in reversed(self._policies):
             if policy_time == global_time:
-                logger.debug("extending")
                 break
         else:
-            logger.debug("creating")
             policies = {}
             self._policies.append((global_time, policies))
             self._policies.sort()
 
         # TODO it is possible that different members set different policies at the same time
         policies[u"resolution^" + message.name] = (policy, [proof])
-        logger.debug('\n'.join([ str(item) for item in self._policies]))
+
