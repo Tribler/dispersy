@@ -45,6 +45,7 @@ def main_real(setup=None):
     command_line_parser.add_option("--script", action="store", type="string", help="Script to execute, i.e. module.module.class", default="")
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
+    command_line_parser.add_option("--strict", action="store_true", help="Exit on any exception", default=False)
     # # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
@@ -62,6 +63,13 @@ def main_real(setup=None):
     # setup
     dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
+
+    if opt.strict:
+        def exception_handler(exception, fatal):
+            print "An exception occurred.  Quitting because we are running with --strict enabled."
+            # return fatal=True
+            return True
+        dispersy.callback.attach_exception_handler(exception_handler)
 
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
@@ -81,6 +89,7 @@ def main_real(setup=None):
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
+    dispersy.start()
     dispersy.callback.loop()
     return dispersy.callback
 
