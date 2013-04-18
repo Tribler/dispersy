@@ -178,10 +178,12 @@ class Callback(object):
             exception_handlers = self._exception_handlers[:]
         for exception_handler in exception_handlers:
             try:
-                exception_handler(exception, fatal)
+                if exception_handler(exception, fatal):
+                    fatal = True
             except Exception:
                 dprint(exception=True, level="error")
                 assert False, "the exception handler should not cause an exception"
+        return fatal
 
     def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", callback=None, callback_args=(), callback_kargs=None, include_id=False):
         """
@@ -639,7 +641,14 @@ class Callback(object):
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
                     dprint("keep running regardless of exception", exception=True, level="error")
-                    self._call_exception_handlers(exception, False)
+                    if self._call_exception_handlers(exception, False):
+                        # one or more of the exception handlers returned True, we will consider this
+                        # exception to be fatal and quit
+                        dprint("reassessing as fatal exception, attempting proper shutdown", exception=True, level="error")
+                        with lock:
+                            self._state = "STATE_EXCEPTION"
+                            self._exception = exception
+                            self._exception_traceback = exc_info()[2]
 
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
