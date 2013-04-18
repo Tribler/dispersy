@@ -10,13 +10,6 @@ from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from .mainthreadcallback import MainThreadCallback
 
-def watchdog(dispersy):
-    try:
-        while True:
-            yield 300.0
-    except GeneratorExit:
-        dispersy.endpoint.stop()
-
 def start_script(dispersy, opt):
     try:
         module, class_ = opt.script.strip().rsplit(".", 1)
@@ -80,7 +73,6 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(watchdog, (dispersy,))
     dispersy.callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
