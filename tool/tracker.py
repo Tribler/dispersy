@@ -372,7 +372,7 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy(MainThreadCallback("Bootstrap-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
+    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
     dispersy.callback.register(setup_dispersy, (dispersy,))
     dispersy.start()
 

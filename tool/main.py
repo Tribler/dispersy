@@ -67,7 +67,7 @@ def main_real(setup=None):
         exit(1)
 
     # setup
-    dispersy = Dispersy(MainThreadCallback("Dispersy-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
 
     # if opt.swiftproc:
