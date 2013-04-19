@@ -16,10 +16,6 @@ from .decorator import attach_profiler
 if __debug__:
     from atexit import register as atexit_register
     from inspect import getsourcefile, getsourcelines
-    # dprint warning when registered call, or generator call, takes more than N seconds
-    CALL_DELAY_FOR_WARNING = 0.5
-    # dprint warning when registered call, or generator call, should have run N seconds ago
-    QUEUE_DELAY_FOR_WARNING = 1.0
 
 class Callback(object):
     if __debug__:
@@ -646,11 +642,11 @@ class Callback(object):
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    dprint("keep running regardless of exception", exception=True, level="error")
+                    logger.error("keep running regardless of exception", exc_info=True)
                     if self._call_exception_handlers(exception, False):
                         # one or more of the exception handlers returned True, we will consider this
                         # exception to be fatal and quit
-                        dprint("reassessing as fatal exception, attempting proper shutdown", exception=True, level="error")
+                        logger.error("reassessing as fatal exception, attempting proper shutdown")
                         with lock:
                             self._state = "STATE_EXCEPTION"
                             self._exception = exception
