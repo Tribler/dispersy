@@ -15,6 +15,9 @@ Ippolito <bob@redivi.com>.  Simplified, and optimized to use just python code.
 @contact: dispersy@frayja.com
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 from hashlib import sha1, sha256, sha384, sha512, md5
 from math import ceil, log
 from struct import Struct
@@ -24,7 +27,6 @@ from .decorator import Constructor, constructor
 
 if __debug__:
     from time import time
-    from .dprint import dprint
     from .decorator import attach_profiler
 
 class BloomFilter(Constructor):
@@ -44,13 +46,13 @@ class BloomFilter(Constructor):
         self._filter = filter_
 
         if __debug__:
-            dprint("m size:      ", m_size, "    ~", m_size / 8, " bytes")
-            dprint("k functions: ", k_functions)
-            dprint("prefix:      ", prefix.encode("HEX"))
-            dprint("filter:      ", filter_)
             hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
-            dprint("hypothetical error rate: ", " | ".join("%.4f" % hypothetical_error_rate for hypothetical_error_rate in hypothetical_error_rates))
-            dprint("hypothetical capacity:   ", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate) for hypothetical_error_rate in hypothetical_error_rates))
+            logger.debug("m size:      %d    ~%d bytes", m_size, m_size/8)
+            logger.debug("k functions: %d", k_functions)
+            logger.debug("prefix:      %s", prefix.encode("HEX"))
+            logger.debug("filter:      %s", filter_)
+            logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate for hypothetical_error_rate in hypothetical_error_rates))
+            logger.debug("hypothetical capacity:   %s", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate) for hypothetical_error_rate in hypothetical_error_rates))
 
         # determine hash function
         if m_size >= (1 << 31):
@@ -82,7 +84,7 @@ class BloomFilter(Constructor):
     def _init_bytes_k_(self, bytes_, k_functions, prefix=""):
         assert isinstance(bytes_, str)
         assert 0 < len(bytes_)
-        if __debug__: dprint("constructing bloom filter based on ", len(bytes_), " bytes and k_functions ", k_functions)
+        logger.debug("constructing bloom filter based on %d bytes and k_functions %d", len(bytes_), k_functions)
 
         filter = long(hexlify(bytes_[::-1]), 16)
         self._init_(len(bytes_) * 8, k_functions, prefix, filter)
@@ -97,7 +99,7 @@ class BloomFilter(Constructor):
         # calculate others
         # self._n = int(m * ((log(2) ** 2) / abs(log(f))))
         # self._k = int(ceil(log(2) * (m / self._n)))
-        if __debug__: dprint("constructing bloom filter based on m_size ", m_size, " bits and f_error_rate ", f_error_rate)
+        logger.debug("constructing bloom filter based on m_size %d bits and f_error_rate %f", m_size, f_error_rate)
         self._init_(m_size, self._get_k_functions(m_size, self._get_n_capacity(m_size, f_error_rate)), prefix, 0L)
 
     @constructor(float, int)
@@ -108,7 +110,7 @@ class BloomFilter(Constructor):
         assert 0 < n_capacity
         m_size = abs((n_capacity * log(f_error_rate)) / (log(2) ** 2))
         m_size = int(ceil(m_size / 8.0) * 8)
-        if __debug__: dprint("constructing bloom filter based on f_error_rate ", f_error_rate, " and ", n_capacity, " capacity")
+        logger.debug("constructing bloom filter based on f_error_rate %d and %d capacity", f_error_rate, n_capacity)
         self._init_(m_size, self._get_k_functions(m_size, n_capacity), prefix, 0L)
 
     def add(self, key):
@@ -455,8 +457,8 @@ if __debug__:
         for x in alice:
             b = BloomFilter(1, 32)
             b.add(x)
-            dprint(x)
-            dprint(b._bytes.tostring(), binary=1)
+            logger.debug(x)
+            logger.debug(b._bytes.tostring().encode("HEX"))
 
         bob = ["cake", "lemonade", "beer", "pubs"]
 
@@ -464,36 +466,27 @@ if __debug__:
         for x in carol:
             b = BloomFilter(1, 32)
             b.add(x)
-            dprint(x)
-            dprint(b._bytes.tostring(), binary=1)
+            logger.debug(x)
+            logger.debug(b._bytes.tostring().encode("HEX"))
 
         a = BloomFilter(1, 32)
         map(a.add, alice)
-        dprint(alice)
-        dprint(a._bytes.tostring(), binary=1)
+        logger.debug(alice)
+        logger.debug(a._bytes.tostring().encode("HEX"))
 
         b = BloomFilter(1, 32)
         map(b.add, bob)
-        dprint(bob)
-        dprint(b._bytes.tostring(), binary=1)
+        logger.debug(bob)
+        logger.debug(b._bytes.tostring().encode("HEX"))
 
         c = BloomFilter(1, 32)
         map(c.add, carol)
-        dprint(carol)
-        dprint(c._bytes.tostring(), binary=1)
+        logger.debug(carol)
+        logger.debug(c._bytes.tostring().encode("HEX"))
 
-        dprint("Alice bic Bob: ", a.bic_occurrence(b))
-        dprint("Alice bic Carol: ", a.bic_occurrence(c))
-        dprint("Bob bic Carol: ", b.bic_occurrence(c))
-
-        # b2 = BloomFilter(10, 0.8)
-        # map(b2.add, t2)
-
-        # dprint(t1)
-        # dprint(str(b1), binary=1)
-
-        # dprint(t2)
-        # dprint(str(b2), binary=1)
+        logger.debug("Alice bic Bob: %s", a.bic_occurrence(b))
+        logger.debug("Alice bic Carol: %s", a.bic_occurrence(c))
+        logger.debug("Bob bic Carol: %s", b.bic_occurrence(c))
 
     def _test_occurrence():
         a = BloomFilter(1, 16)
@@ -513,8 +506,8 @@ if __debug__:
         b.add("b1")
         b.add("b2")
 
-        dprint(a._bytes.tostring(), binary=1)
-        dprint(b._bytes.tostring(), binary=1)
+        logger.debug(a._bytes.tostring().encode("HEX"))
+        logger.debug(b._bytes.tostring().encode("HEX"))
 
         assert a.and_occurrence(b) == 1
         assert a.xor_occurrence(b) == 3

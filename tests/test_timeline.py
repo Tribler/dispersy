@@ -1,4 +1,8 @@
-from ..dprint import dprint
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from ..message import DelayMessageByProof
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -19,8 +23,8 @@ class TestTimeline(DispersyTestClass):
         # the master member must have given my_member all permissions for dispersy-destroy-community
         yield 0.555
 
-        dprint("master_member: ", community.master_member.database_id, ", ", community.master_member.mid.encode("HEX"))
-        dprint("    my_member: ", community.my_member.database_id, ", ", community.my_member.mid.encode("HEX"))
+        logger.debug("master_member: %s, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
+        logger.debug("    my_member: %s, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
 
         # check if we are still allowed to send the message
         message = community.create_dispersy_destroy_community(u"hard-kill", store=False, update=False, forward=False)
@@ -46,8 +50,8 @@ class TestTimeline(DispersyTestClass):
         # the master member must have given my_member all permissions for dispersy-destroy-community
         yield 0.555
 
-        dprint("master_member: ", community.master_member.database_id, ", ", community.master_member.mid.encode("HEX"))
-        dprint("    my_member: ", community.my_member.database_id, ", ", community.my_member.mid.encode("HEX"))
+        logger.debug("master_member: %d, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
+        logger.debug("    my_member: %d, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
 
         # remove the right to hard-kill
         community.create_dispersy_revoke([(community.my_member, community.get_meta_message(u"dispersy-destroy-community"), u"permit")], sign_with_master=True, store=False, forward=False)
@@ -77,10 +81,10 @@ class TestTimeline(DispersyTestClass):
         community = LoadingCommunityTestCommunity.create_community(self._dispersy, self._my_member)
         cid = community.cid
 
-        dprint("master_member: ", community.master_member.database_id, ", ", community.master_member.mid.encode("HEX"))
-        dprint("    my_member: ", community.my_member.database_id, ", ", community.my_member.mid.encode("HEX"))
+        logger.debug("master_member: %d, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
+        logger.debug("    my_member: %d, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
 
-        dprint("unload community")
+        logger.debug("unload community")
         community.unload_community()
         community = None
         yield 0.555
@@ -122,12 +126,12 @@ class TestTimeline(DispersyTestClass):
         yield 0.555
 
         # permit NODE1
-        dprint("SELF creates dispersy-authorize for NODE1")
+        logger.debug("SELF creates dispersy-authorize for NODE1")
         community.create_dispersy_authorize([(node1.my_member, community.get_meta_message(u"protected-full-sync-text"), u"permit"),
                                              (node1.my_member, community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
 
         # NODE2 created message @20
-        dprint("NODE2 creates protected-full-sync-text, should be delayed for missing proof")
+        logger.debug("NODE2 creates protected-full-sync-text, should be delayed for missing proof")
         global_time = 20
         message = node2.create_protected_full_sync_text("Protected message", global_time)
         node2.give_message(message)
@@ -144,26 +148,26 @@ class TestTimeline(DispersyTestClass):
             self.fail("should not have stored, did not have permission")
 
         # SELF sends dispersy-missing-proof to NODE2
-        dprint("NODE2 receives dispersy-missing-proof")
+        logger.debug("NODE2 receives dispersy-missing-proof")
         _, message = node2.receive_message(message_names=[u"dispersy-missing-proof"])
         self.assertEqual(message.payload.member.public_key, node2.my_member.public_key)
         self.assertEqual(message.payload.global_time, global_time)
 
-        dprint("=====")
-        dprint("node1: ", node1.my_member.database_id)
-        dprint("node2: ", node2.my_member.database_id)
+        logger.debug("=====")
+        logger.debug("node1: %d", node1.my_member.database_id)
+        logger.debug("node2: %d", node2.my_member.database_id)
 
         # NODE1 provides proof
-        dprint("NODE1 creates and provides missing proof")
+        logger.debug("NODE1 creates and provides missing proof")
         sequence_number = 1
         proof_global_time = 10
         node2.give_message(node1.create_dispersy_authorize([(node2.my_member, community.get_meta_message(u"protected-full-sync-text"), u"permit")], sequence_number, proof_global_time))
         yield 0.555
 
-        dprint("=====")
+        logger.debug("=====")
 
         # must have been stored in the database
-        dprint("SELF must have processed both the proof and the protected-full-sync-text message")
+        logger.debug("SELF must have processed both the proof and the protected-full-sync-text message")
         try:
             packet, =  self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                        (community.database_id, node2.my_member.database_id, global_time)).next()
@@ -236,33 +240,33 @@ class TestTimeline(DispersyTestClass):
         yield 0.555
 
         # permit NODE1
-        dprint("SELF creates dispersy-authorize for NODE1")
+        logger.debug("SELF creates dispersy-authorize for NODE1")
         message = community.create_dispersy_authorize([(node1.my_member, community.get_meta_message(u"protected-full-sync-text"), u"permit"),
                                                        (node1.my_member, community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
 
         # flush incoming socket buffer
         node2.drop_packets()
 
-        dprint("===")
-        dprint("master: ", community.master_member.database_id)
-        dprint("member: ", community.my_member.database_id)
-        dprint("node1:  ", node1.my_member.database_id)
-        dprint("node2:  ", node2.my_member.database_id)
+        logger.debug("===")
+        logger.debug("master: %d", community.master_member.database_id)
+        logger.debug("member: %d", community.my_member.database_id)
+        logger.debug("node1:  %d", node1.my_member.database_id)
+        logger.debug("node2:  %d", node2.my_member.database_id)
 
         # NODE2 wants the proof that OWNER is allowed to grant authorization to NODE1
-        dprint("NODE2 asks for proof that NODE1 is allowed to authorize")
+        logger.debug("NODE2 asks for proof that NODE1 is allowed to authorize")
         node2.give_message(node2.create_dispersy_missing_proof(message.authentication.member, message.distribution.global_time))
         yield 0.555
 
-        dprint("===")
+        logger.debug("===")
 
         # SELF sends dispersy-authorize containing authorize(MASTER, OWNER) to NODE
-        dprint("NODE2 receives the proof from SELF")
+        logger.debug("NODE2 receives the proof from SELF")
         _, authorize = node2.receive_message(message_names=[u"dispersy-authorize"])
 
         permission_triplet = (message.authentication.member, community.get_meta_message(u"protected-full-sync-text"), u"permit")
-        dprint((permission_triplet[0].database_id, permission_triplet[1].name, permission_triplet[2]))
-        dprint([(x.database_id, y.name, z) for x, y, z in authorize.payload.permission_triplets], lines=1)
+        logger.debug("%s", (permission_triplet[0].database_id, permission_triplet[1].name, permission_triplet[2]))
+        logger.debug("%s", [(x.database_id, y.name, z) for x, y, z in authorize.payload.permission_triplets])
         self.assertIn(permission_triplet, authorize.payload.permission_triplets)
 
         # cleanup

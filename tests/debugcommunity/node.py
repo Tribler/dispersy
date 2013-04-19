@@ -1,3 +1,8 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 import socket
 from time import time, sleep
 
@@ -5,7 +10,6 @@ from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...community import Community
 from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from ...dprint import dprint
 from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
@@ -112,7 +116,7 @@ class DebugNode(object):
         type(self)._socket_counter += 1
 
         if port in self._socket_pool:
-            if __debug__: dprint("reuse socket ", port, level="warning")
+            logger.warning("reuse socket %d", port)
 
         else:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -129,7 +133,7 @@ class DebugNode(object):
                 break
 
             self._socket_pool[port] = s
-            if __debug__: dprint("create socket ", port)
+            logger.debug("create socket %d", port)
 
         self._socket = self._socket_pool[port]
 
@@ -199,7 +203,7 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
-        if verbose: dprint("giving ", len(packet), " bytes")
+        if verbose: logger.debug("giving %d bytes", len(packet))
         candidate = Candidate(self.lan_address, tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet)], cache=cache, timestamp=time())
         return packet
@@ -214,7 +218,7 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
-        if verbose: dprint("giving ", sum(len(packet) for packet in packets), " bytes")
+        if verbose: logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
         candidate = Candidate(self.lan_address, tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
@@ -229,7 +233,7 @@ class DebugNode(object):
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
         packet = message.packet if message.packet else self.encode_message(message)
-        if verbose: dprint("giving ", message.name, " (", len(packet), " bytes)")
+        if verbose: logger.debug("giving %s (%d bytes)", message.name, len(packet))
         self.give_packet(packet, verbose=verbose, cache=cache, tunnel=tunnel)
         return message
 
@@ -244,7 +248,7 @@ class DebugNode(object):
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
-        if verbose: dprint("giving ", len(messages), " messages (", sum(len(packet) for packet in packets), " bytes)")
+        if verbose: logger.debug("giving %d messages (%d bytes)", len(messages),  sum(len(packet) for packet in packets))
         self.give_packets(packets, verbose=verbose, cache=cache, tunnel=tunnel)
         return messages
 
@@ -256,7 +260,7 @@ class DebugNode(object):
         assert isinstance(packet, str)
         assert isinstance(address, tuple)
         assert isinstance(verbose, bool)
-        if verbose: dprint(len(packet), " bytes to ", address[0], ":", address[1])
+        if verbose: logger.debug( "%d bytes to %s:%d", len(packet), address[0], address[1])
         self._socket.sendto(packet, address)
         return packet
 
@@ -269,7 +273,7 @@ class DebugNode(object):
         assert isinstance(address, tuple)
         assert isinstance(verbose, bool)
         self.encode_message(message)
-        if verbose: dprint(message.name, " (", len(message.packet), " bytes) to ", address[0], ":", address[1])
+        if verbose: logger.debug("%s (%d bytes) to %s:%d", message.name, len(message.packet), address[0], address[1])
         self.send_packet(message.packet, address)
         return message
 
@@ -283,7 +287,7 @@ class DebugNode(object):
             except:
                 break
 
-            if verbose: dprint("droped ", len(packet), " bytes from ", address[0], ":", address[1])
+            if verbose: logger.debug("dropped %d bytes from %s:%d", len(packet), address[0], address[1])
 
     def receive_packet(self, timeout=None, addresses=None, packets=None):
         """
@@ -309,15 +313,15 @@ class DebugNode(object):
             try:
                 packet, address = self._socket.recvfrom(10240)
             except:
-                dprint("No more packets")
+                logger.debug("No more packets")
                 raise
 
             if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
-                dprint("Ignored ", len(packet), " bytes from ", address[0], ":", address[1])
+                logger.debug("Ignored %d bytes from %s:%d", len(packet), address[0], address[1])
                 continue
 
             if not (packets is None or packet in packets):
-                dprint("Ignored ", len(packet), " bytes from ", address[0], ":", address[1])
+                logger.debug("Ignored %d bytes from %s:%d", len(packet), address[0], address[1])
                 continue
 
             if packet.startswith("ffffffff".decode("HEX")):
@@ -327,7 +331,7 @@ class DebugNode(object):
                 tunnel = False
 
             candidate = Candidate(address, tunnel)
-            dprint(len(packet), " bytes from ", candidate)
+            logger.debug("%d bytes from %s", len(packet), candidate)
             return candidate, packet
 
     def receive_packets(self, timeout=None, addresses=None, packets=None):
@@ -383,14 +387,14 @@ class DebugNode(object):
             try:
                 message = self._community.get_conversion(packet[:22]).decode_message(candidate, packet)
             except KeyError:
-                dprint("Ignored", exception=1)
+                logger.debug("Ignored", exc_info=True)
                 continue
 
             if not (message_names is None or message.name in message_names):
-                dprint("Ignored ", message.name, " (", len(packet), " bytes) from ", candidate)
+                logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
                 continue
 
-            dprint(message.name, " (", len(packet), " bytes) from ", candidate)
+            logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             return candidate, message
 
     def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):

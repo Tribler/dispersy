@@ -1,3 +1,5 @@
+#!/usr/bin/env/python
+
 """
 This module provides basic database functionalty and simple version control.
 
@@ -6,10 +8,14 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 from os import environ
 from sqlite3 import Connection, Error
 
-from .dprint import dprint
+import logging
+logger = logging.getLogger("database")
 
 if __debug__:
     import thread
@@ -47,7 +53,7 @@ class Database(object):
         @type file_path: unicode
         """
         assert isinstance(file_path, unicode)
-        if __debug__: dprint(file_path)
+        logger.debug("loading database [%s]", file_path)
         self._file_path = file_path
 
         # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
@@ -80,7 +86,6 @@ class Database(object):
 
     def _connect(self):
         self._connection = Connection(self._file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
 
     def _initial_statements(self):
@@ -96,7 +101,7 @@ class Database(object):
         # directly by VACUUM.  Since we do not want the cost of VACUUM every time we load a
         # database, existing databases must be upgraded.
         #
-        if __debug__: dprint("PRAGMA page_size = 8192 (previously: ", page_size, ")")
+        logger.debug("PRAGMA page_size = 8192 (previously: %s)", page_size)
         if page_size < 8192:
             # it is not possible to change page_size when WAL is enabled
             if journal_mode == u"WAL":
@@ -110,7 +115,7 @@ class Database(object):
         # PRAGMA journal_mode = DELETE | TRUNCATE | PERSIST | MEMORY | WAL | OFF
         # http://www.sqlite.org/pragma.html#pragma_page_size
         #
-        if __debug__: dprint("PRAGMA journal_mode = WAL (previously: ", journal_mode, ")")
+        logger.debug("PRAGMA journal_mode = WAL (previously: %s)", journal_mode)
         if not journal_mode == u"WAL":
             self._cursor.execute(u"PRAGMA journal_mode = WAL")
 
@@ -118,7 +123,7 @@ class Database(object):
         # PRAGMA synchronous = 0 | OFF | 1 | NORMAL | 2 | FULL;
         # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
-        if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
+        logger.debug("PRAGMA synchronous = NORMAL (previously: %s)", synchronous)
         if not synchronous in (u"NORMAL", u"1"):
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
 
@@ -161,7 +166,7 @@ class Database(object):
         """
         assert self._debug_thread_ident == thread.get_ident()
 
-        if __debug__: dprint("disabling Database.commit()")
+        logger.debug("disabling Database.commit()")
         self._pending_commits = max(1, self._pending_commits)
         return self
 
@@ -175,16 +180,16 @@ class Database(object):
         self._pending_commits, pending_commits = 0, self._pending_commits
 
         if exc_type is None:
-            if __debug__: dprint("enabling Database.commit()")
+            logger.debug("enabling Database.commit()")
             if pending_commits > 1:
-                if __debug__: dprint("performing ", pending_commits - 1, " pending commits")
+                logger.debug("performing %d pending commits", pending_commits-1)
                 self.commit()
             return True
-        
+
         elif isinstance(exc_value, IgnoreCommits):
-            if __debug__: dprint("enabling Database.commit() without committing now")
+            logger.debug("enabling Database.commit() without committing now")
             return True
-        
+
         else:
             #Niels 23-01-2013, an exception happened from within the with database block
             #returning False to let Python reraise the exception.
@@ -240,7 +245,7 @@ class Database(object):
         assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
 
         try:
-            if __debug__: dprint(statement, " <-- ", bindings)
+            logger.debug("%s <-- %s", statement, bindings)
 
             if __DEBUG_QUERIES__:
                 f = open(DB_DEBUG_FILE, 'a')
@@ -253,23 +258,23 @@ class Database(object):
                         except:
                             pass
                         debug_bindings[i] = binding
-                    
+
                 f.write('QueryDebug: (%f) %s %s\n' % (time(), statement, str(debug_bindings)))
                 for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, bindings).fetchall():
                     f.write('%s %s %s\t%s\n' % row)
-                
+
             result = self._cursor.execute(statement, bindings)
-            
+
             if __DEBUG_QUERIES__:
                 f.write('QueryDebug: (%f) END\n' % time())
                 f.close()
-                
+
             return result
 
         except Error:
-            dprint(exception=True, level="warning")
-            dprint("Filename: ", self._file_path, level="warning")
-            dprint(statement, level="warning")
+            logger.warning(exc_info=True)
+            logger.warning("Filename: %s", self._file_path)
+            logger.warning(statement)
             raise
 
     def executescript(self, statements):
@@ -277,24 +282,24 @@ class Database(object):
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
 
         try:
-            if __debug__: dprint(statements)
-            
+            logger.debug(statements)
+
             if __DEBUG_QUERIES__:
                 f = open(DB_DEBUG_FILE, 'a')
                 f.write('QueryDebug-script: (%f) %s\n' % (time(), statements))
 
             result = self._cursor.executescript(statements)
-        
+
             if __DEBUG_QUERIES__:
                 f.write('QueryDebug-script: (%f) END\n' % time())
                 f.close()
-                
+
             return result
 
         except Error:
-            dprint(exception=True, level="warning")
-            dprint("Filename: ", self._file_path, level="warning")
-            dprint(statements, level="warning")
+            logger.warning(exc_info=True)
+            logger.warning("Filename: %s", self._file_path)
+            logger.warning(statements)
             raise
 
     def executemany(self, statement, sequenceofbindings):
@@ -335,28 +340,28 @@ class Database(object):
         assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
 
         try:
-            if __debug__: dprint(statement)
-            
-                        
+            logger.debug(statement)
+
+
             if __DEBUG_QUERIES__:
                 f = open(DB_DEBUG_FILE, 'a')
-                                    
+
                 f.write('QueryDebug-executemany: (%f) %s %s %d times\n' % (time(), statement, len(sequenceofbindings)))
                 for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, sequenceofbindings[0]).fetchall():
                     f.write('%s %s %s\t%s\n' % row)
-            
-            result =  self._cursor.executemany(statement, sequenceofbindings)        
-                    
+
+            result =  self._cursor.executemany(statement, sequenceofbindings)
+
             if __DEBUG_QUERIES__:
                 f.write('QueryDebug-executemany: (%f) END\n' % time())
                 f.close()
-            
+
             return result
 
         except Error:
-            dprint(exception=True)
-            dprint("Filename: ", self._file_path)
-            dprint(statement)
+            logger.debug(exc_info=True)
+            logger.debug("Filename: %s", self._file_path)
+            logger.debug(statement)
             raise
 
     def commit(self, exiting = False):
@@ -364,33 +369,29 @@ class Database(object):
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:
-            if __debug__: dprint("defer COMMIT")
+            logger.debug("defer COMMIT")
             self._pending_commits += 1
             return False
 
         else:
-            if __debug__: dprint("COMMIT")
-            
+            logger.debug("COMMIT")
+
             if __DEBUG_QUERIES__:
                 f = open(DB_DEBUG_FILE, 'a')
                 f.write('QueryDebug-commit: (%f)\n' % time())
-            
+
             result = self._connection.commit()
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting = exiting)
                 except Exception:
-                    if __debug__: dprint(exception=True, stack=True)
-            
-            if __DEBUG_QUERIES__:     
+                    logger.debug(exc_info=True)
+
+            if __DEBUG_QUERIES__:
                 f.write('QueryDebug-commit: (%f) END\n' % time())
                 f.close()
-            
-            return result
 
-    # def _on_rollback(self):
-    #     if __debug__: dprint("ROLLBACK", level="warning")
-    #     raise DatabaseRollbackException(1)
+            return result
 
     def check_database(self, database_version):
         """
@@ -436,15 +437,15 @@ class APSWDatabase(Database):
         assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
 
         try:
-            if __debug__: dprint(statement, " <-- ", bindings)
+            logger.debug("%s <-- %s", statement, bindings)
             return self._cursor.execute(statement, bindings)
 
         except apsw.Error:
             if __debug__:
-                dprint(exception=True, level="warning")
-                dprint("Filename: ", self._file_path, level="warning")
-                dprint(statement, level="warning")
-                dprint(bindings, level="warning")
+                logger.warning(exc_info=True)
+                logger.warning("Filename: %s", self._file_path)
+                logger.warning(statement)
+                logger.warning(bindings)
             raise
 
     def executescript(self, statements):
@@ -465,14 +466,14 @@ class APSWDatabase(Database):
         assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
 
         try:
-            if __debug__: dprint(statement)
+            logger.debug(statement)
             return self._cursor.executemany(statement, sequenceofbindings)
 
         except apsw.Error:
             if __debug__:
-                dprint(exception=True)
-                dprint("Filename: ", self._file_path)
-                dprint(statement)
+                logger.debug(exc_info=True)
+                logger.debug("Filename: %s", self._file_path)
+                logger.debug(statement)
             raise
 
     @property
@@ -498,12 +499,11 @@ class APSWDatabase(Database):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
-        if __debug__: dprint("COMMIT")
+        logger.debug("COMMIT")
         result = self.execute("COMMIT;BEGIN")
         for callback in self._commit_callbacks:
             try:
                 callback(exiting = exiting)
             except Exception:
-                if __debug__: dprint(exception=True, stack=True)
+                logger.debug(exc_info=True)
         return result
-

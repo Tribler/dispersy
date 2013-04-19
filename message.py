@@ -1,7 +1,9 @@
-from .meta import MetaObject
+#!/usr/bin/env/python
 
-if __debug__:
-    from .dprint import dprint
+import logging
+logger = logging.getLogger(__name__)
+
+from .meta import MetaObject
 
 #
 # Exceptions
@@ -109,7 +111,7 @@ class DelayMessage(Exception):
 
     def _process_delayed_message(self, response):
         if response:
-            if __debug__: dprint("resume ", self._delayed, " (received ", response, ")")
+            logger.debug("resume %s (received %s)", self._delayed, response)
 
             # inform the delayed message of the reason why it is resumed
             self._delayed.resume = response
@@ -119,7 +121,7 @@ class DelayMessage(Exception):
             self._delayed.community.dispersy.statistics.delay_success += 1
         else:
             # timeout, do nothing
-            if __debug__: dprint("ignore ", self._delayed, " (no response was received)")
+            logger.debug("ignore %s (no response was received)", self._delayed)
             self._delayed.community.dispersy.statistics.delay_timeout += 1
 
 class DelayMessageByProof(DelayMessage):
@@ -527,12 +529,12 @@ class Message(MetaObject):
                 destination_impl = self._destination.Implementation(self._destination, *destination)
                 payload_impl = self._payload.Implementation(self._payload, *payload)
             except TypeError:
-                dprint("message name:   ", self._name, level="error")
-                dprint("authentication: ", self._authentication.__class__.__name__, ".Implementation", level="error")
-                dprint("resolution:     ", self._resolution.__class__.__name__, ".Implementation", level="error")
-                dprint("distribution:   ", self._distribution.__class__.__name__, ".Implementation", level="error")
-                dprint("destination:    ", self._destination.__class__.__name__, ".Implementation", level="error")
-                dprint("payload:        ", self._payload.__class__.__name__, ".Implementation", level="error")
+                logger.error("message name:   %s", self._name)
+                logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
+                logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
+                logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
+                logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
+                logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
                 raise
             else:
                 return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)

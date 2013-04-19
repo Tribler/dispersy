@@ -18,6 +18,9 @@ Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DEST
 whenever a introduction request is received for a destroyed overlay.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
     # http://www.python.org/dev/peps/pep-0328/
@@ -42,7 +45,6 @@ from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
-from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
@@ -201,14 +203,14 @@ class TrackerCommunity(Community):
         while True:
             result = self._walked_stumbled_candidates.next()
             if prev_result == result:
-                if __debug__: dprint("yielding random ", None)
+                logger.debug("yielding None")
                 yield None
 
             else:
                 prev_result = result
                 if result == candidate:
                     continue
-                if __debug__: dprint("yielding random ", result)
+                logger.debug("yielding random %s", result)
                 yield result
 
 class TrackerDispersy(Dispersy):
@@ -261,7 +263,7 @@ class TrackerDispersy(Dispersy):
                 try:
                     self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
                 except:
-                    dprint("Error while loading from persistent-destroy-community.data", exception=True, level="error")
+                    logger.error("Error while loading from persistent-destroy-community.data", exc_info=True)
 
     def _convert_packets_into_batch(self, packets):
         """
@@ -274,7 +276,7 @@ class TrackerDispersy(Dispersy):
 
                 if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
-                        dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=1)
+                        logger.warn("drop a %d byte packet (received from non-autoload node) from %s", len(packet), candidate)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
                     continue
 
@@ -305,7 +307,7 @@ class TrackerDispersy(Dispersy):
             yield 180.0
             now = time()
             inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-            if __debug__: dprint("cleaning ", len(inactive), "/", len(self._communities), " communities")
+            logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
             for community in inactive:
                 community.unload_community()
 

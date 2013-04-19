@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     from scipy.stats import poisson, expon
 except ImportError:
@@ -20,7 +23,6 @@ from shutil import copyfile
 
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersydatabase import DispersyDatabase
-from ..dprint import dprint
 from ..script import ScriptBase
 from .ldecoder import Parser, NextFile
 
@@ -51,7 +53,7 @@ class ScenarioScript(ScriptBase):
     def _run_scenario(self):
         for deadline, _, call, args in self.parse_scenario():
             yield max(0.0, deadline - time())
-            if __debug__: dprint(call.__name__)
+            logger.debug(call.__name__)
             if call(*args) == "END":
                 return
 
@@ -206,7 +208,7 @@ class ScenarioScript(ScriptBase):
         scenario.sort()
 
         for deadline, _, func, args in scenario:
-            if __debug__: dprint("scenario: @", int(deadline - origin["@"]), "s ", func.__name__)
+            logger.debug("scenario: @%.2fs %s", int(deadline - origin["@"]), func.__name__)
             self.log("scenario-schedule", deadline=int(deadline - origin["@"]), func=func.__name__, args=args)
 
         return scenario
@@ -257,12 +259,12 @@ class ScenarioScript(ScriptBase):
         self.log("scenario-start", my_member=self._my_member.mid, master_member=self._master_member.mid, classification=self.community_class.get_classification())
 
     def scenario_end(self):
-        if __debug__: dprint("END")
+        logger.debug("END")
         self.log("scenario-end")
         return "END"
 
     def scenario_print(self, *args):
-        dprint(*args, glue=" ", force=True)
+        logger.info(" ".join(str(arg) for arg in args))
 
     def scenario_churn(self, state, duration=None):
         assert isinstance(state, str), type(state)
@@ -274,29 +276,29 @@ class ScenarioScript(ScriptBase):
 
         if state == "online":
             if community is None:
-                if __debug__: dprint("online for the next ", duration, " seconds")
+                logger.debug("online for the next %.2f seconds", duration)
                 self.log("scenario-churn", state="online", duration=duration)
 
                 if self._is_joined:
                     self.community_class.load_community(self._dispersy, self._master_member, *self.community_args, **self.community_kargs)
 
                 else:
-                    if __debug__: dprint("join community ", self._master_member.mid.encode("HEX"), " as ", self._my_member.mid.encode("HEX"))
+                    logger.debug("join community %s as %s", self._master_member.mid.encode("HEX"), self._my_member.mid.encode("HEX"))
                     community = self.community_class.join_community(self._dispersy, self._master_member, self._my_member, *self.community_args, **self.community_kargs)
                     community.auto_load = False
                     self._is_joined = True
 
             else:
-                if __debug__: dprint("online for the next ", duration, " seconds (we are already online)")
+                logger.debug("online for the next %.2f seconds (we are already online)", duration)
                 self.log("scenario-churn", state="stay-online", duration=duration)
 
         elif state == "offline":
             if community is None:
-                if __debug__: dprint("offline (we are already offline)")
+                logger.debug("offline (we are already offline)")
                 self.log("scenario-churn", state="stay-offline")
 
             else:
-                if __debug__: dprint("offline")
+                logger.debug("offline")
                 self.log("scenario-churn", state="offline")
                 community.unload_community()
 

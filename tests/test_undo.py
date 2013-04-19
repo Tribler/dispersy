@@ -1,4 +1,8 @@
-from ..dprint import dprint
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from ..message import Message
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -258,8 +262,8 @@ class TestUndo(DispersyTestClass):
                                                        (community.database_id, node.my_member.database_id)))
         self.assertEqual(packets, [])
 
-        dprint(line=True)
         node2 = DebugNode(community)
+
         node2.init_socket()
         node2.init_my_member()
 
@@ -268,7 +272,7 @@ class TestUndo(DispersyTestClass):
         node2.drop_packets()
 
         # propagate a message from the malicious member
-        dprint("giving faulty message ", message)
+        logger.debug("giving faulty message %s", message)
         node2.give_message(message)
         yield 0.1
 
@@ -448,4 +452,3 @@ class TestUndo(DispersyTestClass):
         self.assertIsInstance(actual_undone, int)
         self.assertGreaterEqual(actual_undone, 0)
         self.assertTrue((undone == "done" and actual_undone == 0) or undone == "undone" and 0 < actual_undone,)
-

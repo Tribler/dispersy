@@ -1,9 +1,13 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from hashlib import sha1
 
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
 
 if __debug__:
-    from .dprint import dprint
     from .crypto import ec_check_public_bin, ec_check_private_bin
 
 class DummyMember(object):
@@ -154,7 +158,7 @@ class Member(DummyMember):
             for tag in self._tags:
                 assert tag in (u"store", u"ignore", u"blacklist"), tag
 
-        if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
+        logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
 
     @property
     def public_key(self):
@@ -216,7 +220,7 @@ class Member(DummyMember):
         assert isinstance(tag, unicode)
         assert tag in [u"store", u"ignore", u"blacklist"]
         assert isinstance(value, bool)
-        if __debug__: dprint(tag, " -> ", value)
+        logger.debug("mid:%d set tag %s -> %s", self._mid.encode("HEX"), tag, value)
         if value:
             if tag in self._tags:
                 # the tag is already set

@@ -1,6 +1,10 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 import socket
 
-from ..dprint import dprint
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
@@ -41,7 +45,7 @@ class TestSync(DispersyTestClass):
                         break
 
                 self.assertEqual(sorted(global_times), sorted(received))
-                dprint("%", modulo, "+", offset, ": ", sorted(global_times), " -> OK")
+                logger.debug("%%%d+%d: %s -> OK", modulo, offset, sorted(global_times))
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
@@ -140,7 +144,7 @@ class TestSync(DispersyTestClass):
             # random_order_times.append(global_time)
             # node.give_message(node.create_random_order_text_message("Message #%d" % global_time, global_time))
         out_order_times.sort(reverse=True)
-        dprint("Total ASC:", len(in_order_times), "; DESC:", len(out_order_times))#, "; rand:", len(random_order_times))
+        logger.debug("Total ASC:%d; DESC:", len(in_order_times))
 
         def get_messages_back():
             received_times = []
@@ -166,17 +170,6 @@ class TestSync(DispersyTestClass):
             # the first items must be ASC
             received_in_times = received_times[len(out_order_times):len(in_order_times) + len(out_order_times)]
             self.assertEqual(in_order_times, received_in_times)
-
-            # # followed by random-order
-            # received_random_times = received_times[len(in_order_times) + len(out_order_times):]
-            # for global_time in received_random_times:
-            #     self.assert(global_time in random_order_times)
-
-            # if not received_times in lists:
-            #     lists.append(received_times)
-
-        # dprint(lists, lines=True)
-        # self.assert(len(lists) > 1)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
@@ -263,14 +256,14 @@ class TestSync(DispersyTestClass):
             self.assertEqual(sorted(times), sorted(messages_so_far))
         self.assertEqual(sorted(all_messages), sorted(messages_so_far))
 
-        dprint("Older: should be dropped")
+        logger.debug("Older: should be dropped")
         for global_time in [11, 12, 13, 19, 18, 17]:
             # send a message (older: should be dropped)
             node.give_message(node.create_last_9_test(str(global_time), global_time))
             times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             self.assertEqual(sorted(times), sorted(messages_so_far))
 
-        dprint("Duplicate: should be dropped")
+        logger.debug("Duplicate: should be dropped")
         for global_time in all_messages:
             # send a message (duplicate: should be dropped)
             message = node.create_last_9_test("wrong content!", global_time)
@@ -283,7 +276,7 @@ class TestSync(DispersyTestClass):
             times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             self.assertEqual(sorted(times), sorted(messages_so_far))
 
-        dprint("Should be added and old one removed")
+        logger.debug("Should be added and old one removed")
         match_times = sorted(times[:])
         for global_time in [30, 35, 37, 31, 32, 34, 33, 36, 38, 45, 44, 43, 42, 41, 40, 39]:
             # send a message (should be added and old one removed)

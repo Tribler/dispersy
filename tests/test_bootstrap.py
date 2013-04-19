@@ -1,11 +1,16 @@
+#!/usr/bin/env/python
+
+import logging
+logger = logging.getLogger(__name__)
+
 from unittest import skip
 from time import time
 from socket import getfqdn
 
 from ..candidate import BootstrapCandidate
 from ..message import Message, DropMessage
-from ..dprint import dprint
 from .debugcommunity.community import DebugCommunity
+
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):
@@ -57,7 +62,7 @@ class TestBootstrapServers(DispersyTestClass):
 
             def on_introduction_response(self, messages):
                 now = time()
-                dprint("PONG")
+                logger.debug("PONG")
                 for message in messages:
                     candidate = message.candidate
                     if candidate.sock_addr in self._request:
@@ -67,7 +72,7 @@ class TestBootstrapServers(DispersyTestClass):
                 return self._original_on_introduction_response(messages)
 
             def ping(self, now):
-                dprint("PING", line=1)
+                logger.debug("PING")
                 for candidate in self._pcandidates:
                     request = self._dispersy.create_introduction_request(self, candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
@@ -75,9 +80,16 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        dprint(self._identifiers[sock_addr].encode("HEX"), " %15s:%-5d %-30s " % (sock_addr[0], sock_addr[1], self._hostname[sock_addr]), len(rtts), "x  ", round(sum(rtts) / len(rtts), 1), " avg  [", ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]), "]", force=True)
+                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                    self._identifiers[sock_addr].encode("HEX"),
+                                    sock_addr[0],
+                                    sock_addr[1],
+                                    self._hostname[sock_addr],
+                                    len(rtts),
+                                    sum(rtts) / len(rtts),
+                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        dprint(sock_addr[0], ":", sock_addr[1], "  missing", force=True)
+                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
             def finish(self, request_count, min_response_count, max_rtt):
                 for sock_addr, rtts in self._summary.iteritems():
@@ -166,7 +178,7 @@ class TestBootstrapServers(DispersyTestClass):
                             self._summary[candidate.sock_addr].append(now - request_stamp)
                             self._identifiers[candidate.sock_addr] = message.authentication.member.mid
                         else:
-                            dprint("identifier clash ", message.payload.identifier, level="warning")
+                            logger.warning("identifier clash %s", message.payload.identifier)
 
                     yield DropMessage(message, "not doing anything in this script")
 
@@ -198,15 +210,22 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        dprint(self._identifiers[sock_addr].encode("HEX"), " %15s:%-5d %-30s " % (sock_addr[0], sock_addr[1], self._hostname[sock_addr]), len(rtts), "x  ", round(sum(rtts) / len(rtts), 1), " avg  [", ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]), "]", force=True)
+                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                    self._identifiers[sock_addr].encode("HEX"),
+                                    sock_addr[0],
+                                    sock_addr[1],
+                                    self._hostname[sock_addr],
+                                    len(rtts),
+                                    sum(rtts) / len(rtts),
+                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        dprint(sock_addr[0], ":", sock_addr[1], "  missing", force=True)
+                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
         MEMBERS = 10000 # must be a multiple of 100
         COMMUNITIES = 1
         ROUNDS = 10
 
-        dprint("prepare communities, members, etc", force=1)
+        logger.info("prepare communities, members, etc")
         with self._dispersy.database:
             candidates = [BootstrapCandidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates) for _ in xrange(COMMUNITIES)]
@@ -216,7 +235,7 @@ class TestBootstrapServers(DispersyTestClass):
                 for member in members:
                     community.create_dispersy_identity(member=member)
 
-        dprint("prepare request messages", force=1)
+        logger.info("prepare request messages")
         for _ in xrange(ROUNDS):
             for community in communities:
                 for member in members:
@@ -225,7 +244,7 @@ class TestBootstrapServers(DispersyTestClass):
             yield 5.0
         yield 15.0
 
-        dprint("ping-ping", force=1)
+        logger.info("ping-ping")
         BEGIN = time()
         for _ in xrange(ROUNDS):
             for community in communities:
@@ -238,8 +257,8 @@ class TestBootstrapServers(DispersyTestClass):
         END = time()
 
         yield 10.0
-        dprint("--- did ", ROUNDS * MEMBERS, " requests per community", force=1)
-        dprint("--- spread over ", round(END - BEGIN, 1), " seconds", force=1)
+        logger.info("--- did %d requests per community", ROUNDS*MEMBERS)
+        logger.info("--- spread over %.2f seconds", END - BEGIN)
         for community in communities:
             community.summary()
 

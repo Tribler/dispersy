@@ -2,12 +2,14 @@
 Run Dispersy in standalone mode.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 # optparse is deprecated since python 2.7
 import optparse
 import signal
 
 from ..dispersy import Dispersy
-from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
 from .mainthreadcallback import MainThreadCallback
 
@@ -16,7 +18,7 @@ def start_script(dispersy, opt):
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
     except Exception as exception:
-        dprint(str(exception), exception=True, level="error")
+        logger.error(exc_info=True)
         raise SystemExit(str(exception), "Invalid --script", opt.script)
 
     try:
@@ -97,4 +99,3 @@ def main_real(setup=None):
 def main(setup=None):
     callback = main_real(setup)
     exit(1 if callback.exception else 0)
-
