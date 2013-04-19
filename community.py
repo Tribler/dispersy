@@ -422,8 +422,8 @@ class Community(object):
                         dprint("invalid message in database [", self.get_classification(), "; ", self.cid.encode("HEX"), "]", level="error")
                         dprint(str(packet).encode("HEX"), level="error")
 
-    # @property
-    def __get_dispersy_auto_load(self):
+    @property
+    def dispersy_auto_load(self):
         """
         When True, this community will automatically be loaded when a packet is received.
         """
@@ -431,16 +431,14 @@ class Community(object):
         return bool(self._dispersy.database.execute(u"SELECT auto_load FROM community WHERE master = ?",
                                                     (self._master_member.database_id,)).next()[0])
 
-    # @dispersu_auto_load.setter
-    def __set_dispersy_auto_load(self, auto_load):
+    @dispersy_auto_load.setter
+    def dispersy_auto_load(self, auto_load):
         """
         Sets the auto_load flag for this community.
         """
         assert isinstance(auto_load, bool)
         self._dispersy.database.execute(u"UPDATE community SET auto_load = ? WHERE master = ?",
                                         (1 if auto_load else 0, self._master_member.database_id))
-    # .setter was introduced in Python 2.6
-    dispersy_auto_load = property(__get_dispersy_auto_load, __set_dispersy_auto_load)
 
     @property
     def dispersy_auto_download_master_member(self):

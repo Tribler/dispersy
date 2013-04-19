@@ -1,6 +1,3 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 from time import time
 
 from .tests.debugcommunity.community import DebugCommunity

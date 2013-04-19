@@ -1,6 +1,3 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 """
 Run Dispersy in standalone tracker mode.
 
@@ -35,6 +32,7 @@ if __name__ == "__main__":
 from time import time
 import os
 import errno
+# optparse is deprecated since python 2.7
 import optparse
 import signal
 import sys
