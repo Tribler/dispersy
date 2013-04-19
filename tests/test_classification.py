@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 
 import gc
 import inspect
+import unittest
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -148,6 +149,7 @@ class TestClassification(DispersyTestClass):
         communities[0].unload_community()
         communities[1].unload_community()
 
+    @unittest.skip("nosetests uses BufferingHandler to capture output.  This handler keeps references to the community, breaking this test.  Run nosetests --nologcapture --no-skip")
     @call_on_dispersy_thread
     def test_unloading_community(self):
         """
