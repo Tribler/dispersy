@@ -38,7 +38,7 @@ class TestMissingMessage(DispersyTestClass):
             _, response = node.receive_message(message_names=[message.name])
             self.assertEqual(response.distribution.global_time, message.distribution.global_time)
             self.assertEqual(response.payload.text, message.payload.text)
-            logger.debug("ok @%s", response.distribution.global_time)
+            logger.debug("ok @%d", response.distribution.global_time)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")
@@ -73,7 +73,7 @@ class TestMissingMessage(DispersyTestClass):
             _, response = node.receive_message(message_names=[message.name])
             self.assertEqual(response.distribution.global_time, message.distribution.global_time)
             self.assertEqual(response.payload.text, message.payload.text)
-            logger.debug("ok @%s", response.distribution.global_time)
+            logger.debug("ok @%d", response.distribution.global_time)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

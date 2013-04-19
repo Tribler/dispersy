@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 
 import gc
 import inspect
+import unittest
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -148,6 +149,7 @@ class TestClassification(DispersyTestClass):
         communities[0].unload_community()
         communities[1].unload_community()
 
+    @unittest.skip("nosetests uses BufferingHandler to capture output.  This handler keeps references to the community, breaking this test.  Run nosetests --nologcapture --no-skip")
     @call_on_dispersy_thread
     def test_unloading_community(self):
         """
@@ -168,7 +170,7 @@ class TestClassification(DispersyTestClass):
                     for obj in gc.get_referrers(x):
                         j += 1
                         if verbose:
-                            logger.debug(type(obj))
+                            logger.debug("%s", str(type(obj)))
                             try:
                                 lines, lineno = inspect.getsourcelines(obj)
                                 logger.debug("Check %d %s", j, [line.rstrip() for line in lines])
@@ -197,7 +199,7 @@ class TestClassification(DispersyTestClass):
         wait = 10
         for i in range(wait):
             gc.collect()
-            logger.debug("waiting... %s", wait-i)
+            logger.debug("waiting... %d", wait-i)
             if check() == 0:
                 break
             else:

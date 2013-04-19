@@ -2,6 +2,9 @@
 Run Dispersy in standalone mode.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 import optparse
 import signal
 
@@ -21,7 +24,7 @@ def start_script(dispersy, opt):
         module, class_ = opt.script.strip().rsplit(".", 1)
         cls = getattr(__import__(module, fromlist=[class_]), class_)
     except Exception as exception:
-        logger.error("%s%s", str(exception), exc_info=True)
+        logger.error(exc_info=True)
         raise SystemExit(str(exception), "Invalid --script", opt.script)
 
     try:

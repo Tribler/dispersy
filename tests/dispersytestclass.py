@@ -1,7 +1,3 @@
-
-import logging
-logger = logging.getLogger(__name__)
-
 from unittest import TestCase
 
 from ..callback import Callback

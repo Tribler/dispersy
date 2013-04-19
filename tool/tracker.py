@@ -205,7 +205,7 @@ class TrackerCommunity(Community):
         while True:
             result = self._walked_stumbled_candidates.next()
             if prev_result == result:
-                logger.debug("yielding random %s", None)
+                logger.debug("yielding None")
                 yield None
 
             else:
@@ -265,7 +265,7 @@ class TrackerDispersy(Dispersy):
                 try:
                     self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
                 except:
-                    logger.error("Error while loading from persistent-destroy-community.data%s", exc_info=True)
+                    logger.error("Error while loading from persistent-destroy-community.data", exc_info=True)
 
     def _convert_packets_into_batch(self, packets):
         """
@@ -278,7 +278,7 @@ class TrackerDispersy(Dispersy):
 
                 if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
-                        logger.warn("drop a %s byte packet (received from non-autoload node) from %s", len(packet), candidate)
+                        logger.warn("drop a %d byte packet (received from non-autoload node) from %s", len(packet), candidate)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
                     continue
 
@@ -309,7 +309,7 @@ class TrackerDispersy(Dispersy):
             yield 180.0
             now = time()
             inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-            logger.debug("cleaning %s/%s communities", len(inactive), len(self._communities))
+            logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
             for community in inactive:
                 community.unload_community()
 

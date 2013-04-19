@@ -144,7 +144,7 @@ class TestSync(DispersyTestClass):
             # random_order_times.append(global_time)
             # node.give_message(node.create_random_order_text_message("Message #%d" % global_time, global_time))
         out_order_times.sort(reverse=True)
-        logger.debug("Total ASC:%s; DESC:", len(in_order_times))
+        logger.debug("Total ASC:%d; DESC:", len(in_order_times))
 
         def get_messages_back():
             received_times = []
@@ -170,17 +170,6 @@ class TestSync(DispersyTestClass):
             # the first items must be ASC
             received_in_times = received_times[len(out_order_times):len(in_order_times) + len(out_order_times)]
             self.assertEqual(in_order_times, received_in_times)
-
-            # # followed by random-order
-            # received_random_times = received_times[len(in_order_times) + len(out_order_times):]
-            # for global_time in received_random_times:
-            #     self.assert(global_time in random_order_times)
-
-            # if not received_times in lists:
-            #     lists.append(received_times)
-
-        # dprint(lists, lines=True)
-        # self.assert(len(lists) > 1)
 
         # cleanup
         community.create_dispersy_destroy_community(u"hard-kill")

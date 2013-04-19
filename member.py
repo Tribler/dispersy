@@ -161,7 +161,7 @@ class Member(DummyMember):
             for tag in self._tags:
                 assert tag in (u"store", u"ignore", u"blacklist"), tag
 
-        logger.debug("mid:%s db:%s public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
+        logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
 
     @property
     def public_key(self):
@@ -223,7 +223,7 @@ class Member(DummyMember):
         assert isinstance(tag, unicode)
         assert tag in [u"store", u"ignore", u"blacklist"]
         assert isinstance(value, bool)
-        logger.debug("%s -> %s", tag, value)
+        logger.debug("mid:%d set tag %s -> %s", self._mid.encode("HEX"), tag, value)
         if value:
             if tag in self._tags:
                 # the tag is already set

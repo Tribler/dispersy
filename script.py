@@ -44,11 +44,11 @@ class ScriptBase(object):
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
-            logger.warn("\nstart %s", call)
+            logger.info("start %s", call)
             if args:
-                logger.warn("arguments %s", args)
+                logger.info("arguments %s", args)
             if call.__doc__:
-                logger.warn(call.__doc__)
+                logger.info(call.__doc__)
             self._dispersy.callback.register(call, args, callback=self.next_testcase)
 
         else:
@@ -215,7 +215,7 @@ class ScenarioScriptBase(ScriptBase):
         # create my member
         ec = ec_generate_key(u"low")
         my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-        logger.warn("-my member- %s %s %s", my_member.database_id, id(my_member), my_member.mid.encode("HEX"))
+        logger.info("-my member- %d %d %s", my_member.database_id, id(my_member), my_member.mid.encode("HEX"))
 
         self.original_on_incoming_packets = self._dispersy.on_incoming_packets
         self.original_send = self._dispersy.endpoint.send

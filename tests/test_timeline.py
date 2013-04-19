@@ -50,8 +50,8 @@ class TestTimeline(DispersyTestClass):
         # the master member must have given my_member all permissions for dispersy-destroy-community
         yield 0.555
 
-        logger.debug("master_member: %s, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
-        logger.debug("    my_member: %s, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
+        logger.debug("master_member: %d, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
+        logger.debug("    my_member: %d, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
 
         # remove the right to hard-kill
         community.create_dispersy_revoke([(community.my_member, community.get_meta_message(u"dispersy-destroy-community"), u"permit")], sign_with_master=True, store=False, forward=False)
@@ -81,8 +81,8 @@ class TestTimeline(DispersyTestClass):
         community = LoadingCommunityTestCommunity.create_community(self._dispersy, self._my_member)
         cid = community.cid
 
-        logger.debug("master_member: %s, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
-        logger.debug("    my_member: %s, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
+        logger.debug("master_member: %d, %s", community.master_member.database_id, community.master_member.mid.encode("HEX"))
+        logger.debug("    my_member: %d, %s", community.my_member.database_id, community.my_member.mid.encode("HEX"))
 
         logger.debug("unload community")
         community.unload_community()
@@ -131,7 +131,7 @@ class TestTimeline(DispersyTestClass):
                                              (node1.my_member, community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
 
         # NODE2 created message @20
-        logger.debug("NODE2 creates protected-full-sync-text, should be delayed for missing proof", )
+        logger.debug("NODE2 creates protected-full-sync-text, should be delayed for missing proof")
         global_time = 20
         message = node2.create_protected_full_sync_text("Protected message", global_time)
         node2.give_message(message)
@@ -154,8 +154,8 @@ class TestTimeline(DispersyTestClass):
         self.assertEqual(message.payload.global_time, global_time)
 
         logger.debug("=====")
-        logger.debug("node1: %s", node1.my_member.database_id)
-        logger.debug("node2: %s", node2.my_member.database_id)
+        logger.debug("node1: %d", node1.my_member.database_id)
+        logger.debug("node2: %d", node2.my_member.database_id)
 
         # NODE1 provides proof
         logger.debug("NODE1 creates and provides missing proof")
@@ -248,10 +248,10 @@ class TestTimeline(DispersyTestClass):
         node2.drop_packets()
 
         logger.debug("===")
-        logger.debug("master: %s", community.master_member.database_id)
-        logger.debug("member: %s", community.my_member.database_id)
-        logger.debug("node1:  %s", node1.my_member.database_id)
-        logger.debug("node2:  %s", node2.my_member.database_id)
+        logger.debug("master: %d", community.master_member.database_id)
+        logger.debug("member: %d", community.my_member.database_id)
+        logger.debug("node1:  %d", node1.my_member.database_id)
+        logger.debug("node2:  %d", node2.my_member.database_id)
 
         # NODE2 wants the proof that OWNER is allowed to grant authorization to NODE1
         logger.debug("NODE2 asks for proof that NODE1 is allowed to authorize")

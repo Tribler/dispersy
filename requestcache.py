@@ -47,7 +47,7 @@ class RequestCache(object):
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
 
-        logger.debug("set %s for %s (%ss timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
+        logger.debug("set %s for %s (%fs timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
         self._callback.register(self._on_timeout, (identifier,), id_="requestcache-%s" % identifier, delay=cache.timeout_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
@@ -59,7 +59,7 @@ class RequestCache(object):
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
 
-        logger.debug("replace %s for %s (%ss timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
+        logger.debug("replace %s for %s (%fs timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
         self._callback.replace_register("requestcache-%s" % identifier, self._on_timeout, (identifier,), delay=cache.cleanup_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier

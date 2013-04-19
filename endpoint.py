@@ -92,7 +92,7 @@ class RawserverEndpoint(Endpoint):
         while True:
             try:
                 self._socket = self._rawserver.create_udpsocket(self._port, self._ip)
-                logger.debug("Listening at %s", self._port)
+                logger.debug("Listening at %d", self._port)
             except socket.error:
                 self._port += 1
                 continue
@@ -103,7 +103,7 @@ class RawserverEndpoint(Endpoint):
         try:
             self._socket.close()
         except socket.error:
-            logger.debug("IGNORE%s%s", exc_info=True, error=True)
+            logger.error(exc_info=True)
 
         super(RawserverEndpoint, self).close(timeout)
 
@@ -243,7 +243,7 @@ class StandaloneEndpoint(RawserverEndpoint):
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
                 self._socket.bind((self._ip, self._port))
                 self._socket.setblocking(0)
-                logger.debug("Listening at %s", self._port)
+                logger.debug("Listening at %d", self._port)
             except socket.error:
                 self._port += 1
                 continue

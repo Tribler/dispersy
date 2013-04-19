@@ -53,7 +53,7 @@ class Database(object):
         @type file_path: unicode
         """
         assert isinstance(file_path, unicode)
-        logger.debug(file_path)
+        logger.debug("loading database [%s]", file_path)
         self._file_path = file_path
 
         # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
@@ -86,7 +86,6 @@ class Database(object):
 
     def _connect(self):
         self._connection = Connection(self._file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
         self._cursor = self._connection.cursor()
 
     def _initial_statements(self):
@@ -183,7 +182,7 @@ class Database(object):
         if exc_type is None:
             logger.debug("enabling Database.commit()")
             if pending_commits > 1:
-                logger.debug("performing %s pending commits", pending_commits-1)
+                logger.debug("performing %d pending commits", pending_commits-1)
                 self.commit()
             return True
 
@@ -393,10 +392,6 @@ class Database(object):
                 f.close()
 
             return result
-
-    # def _on_rollback(self):
-    #     dprint("ROLLBACK", level="warning")
-    #     raise DatabaseRollbackException(1)
 
     def check_database(self, database_version):
         """

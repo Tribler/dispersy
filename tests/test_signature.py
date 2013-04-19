@@ -40,7 +40,7 @@ class TestSignature(DispersyTestClass):
         # should timeout
         wait = 4
         for counter in range(wait):
-            logger.debug("waiting... %s", wait-counter)
+            logger.debug("waiting... %d", wait-counter)
             yield 1.0
         yield 0.11
 
