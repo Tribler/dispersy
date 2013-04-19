@@ -1,6 +1,3 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 from itertools import product
 from select import select
 from time import time

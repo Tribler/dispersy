@@ -298,15 +298,14 @@ class Packet(MetaObject.Implementation):
     def packet(self):
         return self._packet
 
-    # @property
-    def __get_packet_id(self):
+    @property
+    def packet_id(self):
         return self._packet_id
-    # @packet_id.setter
-    def __set_packet_id(self, packet_id):
+
+    @packet_id.setter
+    def packet_id(self, packet_id):
         assert isinstance(packet_id, (int, long))
         self._packet_id = packet_id
-    # .setter was introduced in Python 2.6
-    packet_id = property(__get_packet_id, __set_packet_id)
 
     def load_message(self):
         message = self._meta.community.dispersy.convert_packet_to_message(self._packet, self._meta.community, verify=False)
@@ -323,7 +322,6 @@ class Message(MetaObject):
     class Implementation(Packet):
         def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
             if __debug__:
-                from .payload import Payload
                 from .conversion import Conversion
                 from .candidate import Candidate
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
@@ -393,15 +391,14 @@ class Message(MetaObject):
         def candidate(self):
             return self._candidate
 
-        # @property
-        def __get_resume(self):
+        @property
+        def resume(self):
             return self._resume
-        # @resume.setter
-        def __set_resume(self, message):
+
+        @resume.setter
+        def resume(self, message):
             assert isinstance(message, Message.Implementation), type(message)
             self._resume = message
-        # .setter was introduced in Python 2.6
-        resume = property(__get_resume, __set_resume)
 
         def load_message(self):
             return self

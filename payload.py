@@ -402,17 +402,16 @@ class UndoPayload(Payload):
         def global_time(self):
             return self._global_time
 
-        # @property
-        def __get_packet(self):
+        @property
+        def packet(self):
             return self._packet
-        # @packet.setter
-        def __set_packet(self, packet):
+
+        @packet.setter
+        def packet(self, packet):
             if __debug__:
                 from .message import Packet
             assert isinstance(packet, Packet), type(packet)
             self._packet = packet
-        # .setter was introduced in Python 2.6
-        packet = property(__get_packet, __set_packet)
 
 class MissingSequencePayload(Payload):
     class Implementation(Payload.Implementation):

@@ -1,6 +1,3 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 """
 A callback thread running Dispersy.
 """
@@ -18,7 +15,6 @@ from .dprint import dprint
 if __debug__:
     from atexit import register as atexit_register
     from inspect import getsourcefile, getsourcelines
-    from types import LambdaType
     # dprint warning when registered call, or generator call, takes more than N seconds
     CALL_DELAY_FOR_WARNING = 0.5
     # dprint warning when registered call, or generator call, should have run N seconds ago
@@ -28,16 +24,27 @@ class Callback(object):
     if __debug__:
         @staticmethod
         def _debug_call_to_string(call):
-            # 10/02/12 Boudewijn: in python 2.5 generators do not have .__name__
             if isinstance(call, TupleType):
-                if isinstance(call[0], LambdaType):
-                    return "lambda@%s:%d" % (getsourcefile(call[0])[-25:], getsourcelines(call[0])[1])
-                else:
-                    return call[0].__name__
+                call = call[0]
+
             elif isinstance(call, GeneratorType):
-                return call.__name__
+                pass
+
             else:
+                assert call is None, type(call)
                 return str(call)
+
+            try:
+                source_file = getsourcefile(call)[-25:]
+            except TypeError:
+                source_file = "<unknown>"
+
+            try:
+                line_number = getsourcelines(call)[1]
+            except (TypeError, IOError):
+                line_number = -1
+
+            return "%s@%s:%d" % (call.__name__, source_file, line_number)
 
     def __init__(self, name="Generic-Callback"):
         assert isinstance(name, str), type(name)

@@ -2,6 +2,7 @@
 Run Dispersy in standalone mode.
 """
 
+# optparse is deprecated since python 2.7
 import optparse
 import signal
 

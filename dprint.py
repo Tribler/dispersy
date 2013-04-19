@@ -10,7 +10,7 @@ report bugs in other modules.
 
 # from pickle import dumps
 from os.path import dirname, basename, expanduser, isfile, join
-from sys import stdout, stderr, exc_info
+from sys import stdout, stderr, exc_info, maxsize
 # from threading import current_thread, Thread, Lock
 from time import time, strftime
 from traceback import extract_stack, print_exception, print_stack, format_list
@@ -19,12 +19,6 @@ import re
 # import socket
 # from os import getcwd
 from pprint import pformat
-
-# maxsize is introduced in Python 2.6
-try:
-    from sys import maxsize
-except ImportError:
-    from sys import maxint as maxsize
 
 LEVEL_DEBUG = 0
 LEVEL_NORMAL = 128
