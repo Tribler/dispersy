@@ -57,32 +57,29 @@ class DummyMember(object):
     def has_identity(self, community):
         return False
 
-    # @property
-    def __get_must_store(self):
+    @property
+    def must_store(self):
         return False
-    # @must_store.setter
-    def __set_must_store(self, value):
-        pass
-    # .setter was introduced in Python 2.6
-    must_store = property(__get_must_store, __set_must_store)
 
-    # @property
-    def __get_must_ignore(self):
-        return False
-    # @must_ignore.setter
-    def __set_must_ignore(self, value):
+    @must_store.setter
+    def must_store(self, value):
         pass
-    # .setter was introduced in Python 2.6
-    must_ignore = property(__get_must_ignore, __set_must_ignore)
 
-    # @property
-    def __get_must_blacklist(self):
+    @property
+    def must_ignore(self):
         return False
-    # @must_blacklist.setter
-    def __set_must_blacklist(self, value):
+
+    @must_ignore.setter
+    def must_ignore(self, value):
         pass
-    # .setter was introduced in Python 2.6
-    must_blacklist = property(__get_must_blacklist, __set_must_blacklist)
+
+    @property
+    def must_blacklist(self):
+        return False
+
+    @must_blacklist.setter
+    def must_blacklist(self, value):
+        pass
 
     def verify(self, data, signature, offset=0, length=0):
         return False
@@ -239,32 +236,29 @@ class Member(DummyMember):
         self._database.execute(u"UPDATE member SET tags = ? WHERE id = ?", (u",".join(sorted(self._tags)), self._database_id))
         return True
 
-    # @property
-    def __get_must_store(self):
+    @property
+    def must_store(self):
         return u"store" in self._tags
-    # @must_store.setter
-    def __set_must_store(self, value):
+
+    @must_store.setter
+    def must_store(self, value):
         return self._set_tag(u"store", value)
-    # .setter was introduced in Python 2.6
-    must_store = property(__get_must_store, __set_must_store)
 
-    # @property
-    def __get_must_ignore(self):
+    @property
+    def must_ignore(self):
         return u"ignore" in self._tags
-    # @must_ignore.setter
-    def __set_must_ignore(self, value):
-        return self._set_tag(u"ignore", value)
-    # .setter was introduced in Python 2.6
-    must_ignore = property(__get_must_ignore, __set_must_ignore)
 
-    # @property
-    def __get_must_blacklist(self):
+    @must_ignore.setter
+    def must_ignore(self, value):
+        return self._set_tag(u"ignore", value)
+
+    @property
+    def must_blacklist(self):
         return u"blacklist" in self._tags
-    # @must_blacklist.setter
-    def __set_must_blacklist(self, value):
+
+    @must_blacklist.setter
+    def must_blacklist(self, value):
         return self._set_tag(u"blacklist", value)
-    # .setter was introduced in Python 2.6
-    must_blacklist = property(__get_must_blacklist, __set_must_blacklist)
 
     def verify(self, data, signature, offset=0, length=0):
         """

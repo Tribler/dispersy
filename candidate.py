@@ -41,14 +41,13 @@ class Candidate(object):
         self._sock_addr = sock_addr
         self._tunnel = tunnel
 
-    # @property
-    def __get_sock_addr(self):
+    @property
+    def sock_addr(self):
         return self._sock_addr
-    # @sock_addr.setter
-    def __set_sock_addr(self, sock_addr):
+
+    @sock_addr.setter
+    def sock_addr(self, sock_addr):
         self._sock_addr = sock_addr
-    # .setter was introduced in Python 2.6
-    sock_addr = property(__get_sock_addr, __set_sock_addr)
 
     @property
     def tunnel(self):

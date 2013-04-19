@@ -1,6 +1,3 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 """
 Run Dispersy in standalone tracker mode.
 
@@ -38,6 +35,7 @@ if __name__ == "__main__":
 from time import time
 import os
 import errno
+# optparse is deprecated since python 2.7
 import optparse
 import signal
 import sys
@@ -374,7 +372,7 @@ def main():
     opt, _ = command_line_parser.parse_args()
 
     # start Dispersy
-    dispersy = TrackerDispersy(MainThreadCallback("Bootstrap-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
+    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
     dispersy.callback.register(setup_dispersy, (dispersy,))
     dispersy.start()
 

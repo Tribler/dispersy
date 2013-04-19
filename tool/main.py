@@ -5,19 +5,13 @@ Run Dispersy in standalone mode.
 import logging
 logger = logging.getLogger(__name__)
 
+# optparse is deprecated since python 2.7
 import optparse
 import signal
 
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from .mainthreadcallback import MainThreadCallback
-
-def watchdog(dispersy):
-    try:
-        while True:
-            yield 300.0
-    except GeneratorExit:
-        dispersy.endpoint.stop()
 
 def start_script(dispersy, opt):
     try:
@@ -54,6 +48,7 @@ def main_real(setup=None):
     command_line_parser.add_option("--script", action="store", type="string", help="Script to execute, i.e. module.module.class", default="")
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
+    command_line_parser.add_option("--strict", action="store_true", help="Exit on any exception", default=False)
     # # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
@@ -69,8 +64,15 @@ def main_real(setup=None):
         exit(1)
 
     # setup
-    dispersy = Dispersy(MainThreadCallback("Dispersy-Thread"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
+
+    if opt.strict:
+        def exception_handler(exception, fatal):
+            print "An exception occurred.  Quitting because we are running with --strict enabled."
+            # return fatal=True
+            return True
+        dispersy.callback.attach_exception_handler(exception_handler)
 
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
@@ -82,7 +84,6 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(watchdog, (dispersy,))
     dispersy.callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
@@ -91,6 +92,7 @@ def main_real(setup=None):
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
+    dispersy.start()
     dispersy.callback.loop()
     return dispersy.callback
 

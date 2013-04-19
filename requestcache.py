@@ -47,8 +47,12 @@ class RequestCache(object):
         assert isinstance(cache.timeout_delay, float)
         assert cache.timeout_delay > 0.0
 
+        # TODO we are slowly making all Dispersy identifiers unicode strings.  currently the request
+        # cache using stings instead, hence the conversion to HEX before giving them to _CALLBACK.
+        # once the request cache identifiers are also unicode, this HEX conversion should be removed
+
         logger.debug("set %s for %s (%fs timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
-        self._callback.register(self._on_timeout, (identifier,), id_="requestcache-%s" % identifier, delay=cache.timeout_delay)
+        self._callback.register(self._on_timeout, (identifier,), id_=u"requestcache-%s" % str(identifier).encode("HEX"), delay=cache.timeout_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
 
@@ -60,7 +64,7 @@ class RequestCache(object):
         assert cache.timeout_delay > 0.0
 
         logger.debug("replace %s for %s (%fs timeout)", identifier_to_string(identifier), cache, cache.timeout_delay)
-        self._callback.replace_register("requestcache-%s" % identifier, self._on_timeout, (identifier,), delay=cache.cleanup_delay)
+        self._callback.replace_register(u"requestcache-%s" % str(identifier).encode("HEX"), self._on_timeout, (identifier,), delay=cache.cleanup_delay)
         self._identifiers[identifier] = cache
         cache.identifier = identifier
 
@@ -90,10 +94,10 @@ class RequestCache(object):
             logger.debug("canceling timeout on %s for %s", identifier_to_string(identifier), cache)
 
             if cache.cleanup_delay:
-                self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
+                self._callback.replace_register(u"requestcache-%s" % str(identifier).encode("HEX"), self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
 
             elif identifier in self._identifiers:
-                self._callback.unregister("requestcache-%s" % identifier)
+                self._callback.unregister(u"requestcache-%s" % str(identifier).encode("HEX"))
                 del self._identifiers[identifier]
 
             return cache
@@ -105,7 +109,7 @@ class RequestCache(object):
         cache.on_timeout()
 
         if cache.cleanup_delay:
-            self._callback.replace_register("requestcache-%s" % identifier, self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
+            self._callback.replace_register(u"requestcache-%s" % str(identifier).encode("HEX"), self._on_cleanup, (identifier,), delay=cache.cleanup_delay)
 
         elif identifier in self._identifiers:
             del self._identifiers[identifier]
