@@ -81,7 +81,7 @@ class Callback(object):
         self._exception_handlers = []
 
         # _id contains a running counter to ensure that every scheduled callback has its own unique
-        # identifier.  it is protected by _lock
+        # identifier.  it is protected by _lock.  tasks will get u"dispersy-#<ID>" assigned
         self._id = 0
 
         # _requests are ordered by deadline and moved to -expired- when they need to be handled
@@ -185,7 +185,7 @@ class Callback(object):
                 assert False, "the exception handler should not cause an exception"
         return fatal
 
-    def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", callback=None, callback_args=(), callback_kargs=None, include_id=False):
+    def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", callback=None, callback_args=(), callback_kargs=None, include_id=False):
         """
         Register CALL to be called.
 
@@ -204,20 +204,20 @@ class Callback(object):
         a lower PRIORITY.  PRIORITY must be an integer.  The default PRIORITY is 0.  The order will
         be undefined for calls with the same PRIORITY.
 
-        Each call is identified with an ID_.  A unique numerical identifier will be assigned when no
-        ID_ is specified.  And specified id's must be (unicode)strings.  Registering multiple calls
-        with the same ID_ is allowed, all calls will be handled normally, however, all these calls
-        will be removed if the associated ID_ is unregistered.
+        Each call is identified with an ID_.  A unique unicode identifier, based on an auto
+        increment counter, will be assigned when no ID_ is specified.  Specified id's must be
+        unicode strings.  Registering multiple calls with the same ID_ is allowed, all calls will be
+        handled normally, however, all these calls will be removed if the associated ID_ is
+        unregistered.
 
         Once the call is performed the optional CALLBACK is registered to be called immediately.
         The first parameter of the CALLBACK will always be either the returned value or the raised
         exception.  If CALLBACK_ARGS is given it will be appended to the first argument.  If
         CALLBACK_KARGS is given it is added to the callback as keyword arguments.
 
-        When INCLUDE_ID is True then ID_ or the generated identifier is given as the first argument
-        to CALL.
+        When INCLUDE_ID is True then the assigned identifier is given as the first argument to CALL.
 
-        Returns ID_ if specified or a uniquely generated numerical identifier
+        Returns the assigned identifier.
 
         Example:
          > callback.register(my_func, delay=10.0)
@@ -237,7 +237,7 @@ class Callback(object):
         assert kargs is None or isinstance(kargs, dict), "KARGS has invalid type: %s" % type(kargs)
         assert isinstance(delay, float), "DELAY has invalid type: %s" % type(delay)
         assert isinstance(priority, int), "PRIORITY has invalid type: %s" % type(priority)
-        assert isinstance(id_, basestring), "ID_ has invalid type: %s" % type(id_)
+        assert isinstance(id_, unicode), "ID_ has invalid type: %s" % type(id_)
         assert callback is None or callable(callback), "CALLBACK must be None or callable"
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
@@ -247,7 +247,7 @@ class Callback(object):
         with self._lock:
             if not id_:
                 self._id += 1
-                id_ = self._id
+                id_ = u"dispersy-#%d" % self._id
 
             if delay <= 0.0:
                 heappush(self._expired,
@@ -277,17 +277,17 @@ class Callback(object):
         Aside from the different behavior of ID_, all parameters behave as in register(...).
 
         Example:
-         > callback.persistent_register("my-id", my_func, ("first",), delay=60.0)
-         > callback.persistent_register("my-id", my_func, ("second",))
+         > callback.persistent_register(u"my-id", my_func, ("first",), delay=60.0)
+         > callback.persistent_register(u"my-id", my_func, ("second",))
          > -> my_func("first") will be called after 60 seconds, my_func("second") will not be called at all
 
         Example:
-         > callback.register(my_func, ("first",), delay=60.0, id_="my-id")
-         > callback.persistent_register("my-id", my_func, ("second",))
+         > callback.register(my_func, ("first",), delay=60.0, id_=u"my-id")
+         > callback.persistent_register(u"my-id", my_func, ("second",))
          > -> my_func("first") will be called after 60 seconds, my_func("second") will not be called at all
         """
-        assert isinstance(id_, basestring), "ID_ has invalid type: %s" % type(id_)
-        assert id_, "ID_ may not be an empty (unicode)string"
+        assert isinstance(id_, unicode), "ID_ has invalid type: %s" % type(id_)
+        assert id_, "ID_ may not be empty"
         assert callable(call), "CALL must be callable"
         assert isinstance(args, tuple), "ARGS has invalid type: %s" % type(args)
         assert kargs is None or isinstance(kargs, dict), "KARGS has invalid type: %s" % type(kargs)
@@ -342,8 +342,8 @@ class Callback(object):
         This is a faster way to handle an unregister and register call.  All parameters behave as in
         register(...).
         """
-        assert isinstance(id_, (basestring, int)), "ID_ has invalid type: %s" % type(id_)
-        assert id_, "ID_ may not be zero or an empty (unicode)string"
+        assert isinstance(id_, unicode), "ID_ has invalid type: %s" % type(id_)
+        assert id_, "ID_ may not be empty"
         assert callable(call), "CALL must be callable"
         assert isinstance(args, tuple), "ARGS has invalid type: %s" % type(args)
         assert kargs is None or isinstance(kargs, dict), "KARGS has invalid type: %s" % type(kargs)
@@ -393,8 +393,8 @@ class Callback(object):
         """
         Unregister a callback using the ID_ obtained from the register(...) method
         """
-        assert isinstance(id_, (basestring, int)), "ROOT_ID has invalid type: %s" % type(id_)
-        assert id_, "ID_ may not be zero or an empty (unicode)string"
+        assert isinstance(id_, unicode), "ROOT_ID has invalid type: %s" % type(id_)
+        assert id_, "ID_ may not be empty"
         if __debug__: dprint(id_)
         with self._lock:
             # un-register
@@ -408,7 +408,7 @@ class Callback(object):
                     self._expired_mirror[index] = (tup[0], tup[1], id_, tup[2], None, None)
                     if __debug__: dprint("in _expired: ", id_)
 
-    def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", include_id=False, timeout=0.0, default=None):
+    def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", include_id=False, timeout=0.0, default=None):
         """
         Register a blocking CALL to be made, waits for the call to finish, and returns or raises the
         result.
@@ -805,22 +805,22 @@ if __debug__:
                 c.register(call8, (index,))
 
             for index in indexes:
-                c.register(call8, (index,), id_="debug-test-%s" % index)
+                c.register(call8, (index,), id_=u"debug-test-%s" % index)
             for index in xrange(len(container1)):
                 c.unregister("debug-test-%s" % index)
 
             for index in indexes:
-                c.register(call8, (index,), delay=60.0, id_="debug-test-2-%s" % index)
+                c.register(call8, (index,), delay=60.0, id_=u"debug-test-2-%s" % index)
             for index in xrange(len(container1)):
                 c.unregister("debug-test-2-%s" % index)
 
             for index in indexes:
-                c.register(call8, (index,), id_="debug-test-3-%s" % index)
+                c.register(call8, (index,), id_=u"debug-test-3-%s" % index)
             for index in xrange(len(container1)):
                 c.replace_register("debug-test-3-%s" % index, call9, (index,))
 
             for index in indexes:
-                c.register(call8, (index,), delay=60.0, id_="debug-test-4-%s" % index)
+                c.register(call8, (index,), delay=60.0, id_=u"debug-test-4-%s" % index)
             for index in xrange(len(container1)):
                 c.replace_register("debug-test-4-%s" % index, call9, (index,))
 

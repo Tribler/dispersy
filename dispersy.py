@@ -82,7 +82,7 @@ if __debug__:
     from .endpoint import Endpoint
 
 # the callback identifier for the task that periodically takes a step
-CANDIDATE_WALKER_CALLBACK_ID = "dispersy-candidate-walker"
+CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
 
 class SignatureRequestCache(Cache):
     cleanup_delay = 0.0
