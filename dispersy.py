@@ -950,29 +950,30 @@ class Dispersy(object):
             return self._communities[cid]
 
         except KeyError:
-            try:
-                # have we joined this community
-                classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
-                                                                                           (buffer(cid),)).next()
+            if load or auto_load:
+                try:
+                    # have we joined this community
+                    classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
+                                                                                               (buffer(cid),)).next()
 
-            except StopIteration:
-                pass
-
-            else:
-                if load or (auto_load and auto_load_flag):
-
-                    if classification in self._auto_load_communities:
-                        master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
-                        cls, args, kargs = self._auto_load_communities[classification]
-                        community = cls.load_community(self, master, *args, **kargs)
-                        assert master.mid in self._communities
-                        return community
-
-                    else:
-                        logger.warning("unable to auto load %s is an undefined classification [%s]", cid.encode("HEX"), classification)
+                except StopIteration:
+                    pass
 
                 else:
-                    logger.debug("not allowed to load [%s]", classification)
+                    if load or (auto_load and auto_load_flag):
+
+                        if classification in self._auto_load_communities:
+                            master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
+                            cls, args, kargs = self._auto_load_communities[classification]
+                            community = cls.load_community(self, master, *args, **kargs)
+                            assert master.mid in self._communities
+                            return community
+
+                        else:
+                            logger.warning("unable to auto load %s is an undefined classification [%s]", cid.encode("HEX"), classification)
+
+                    else:
+                        logger.debug("not allowed to load [%s]", classification)
 
         raise KeyError(cid)
 
