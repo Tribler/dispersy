@@ -402,8 +402,8 @@ class Callback(object):
         """
         Unregister a callback using the ID_ obtained from the register(...) method
         """
-        assert isinstance(id_, (basestring, int)), "ROOT_ID has invalid type: %s" % type(id_)
-        assert id_, "ID_ may not be zero or an empty (unicode)string"
+        assert isinstance(id_, unicode), "ROOT_ID has invalid type: %s" % type(id_)
+        assert id_, "ID_ may not be empty"
         logger.debug("unregister %s", id_)
 
         with self._lock:
