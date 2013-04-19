@@ -102,72 +102,130 @@ class TestSequence(DispersyTestClass):
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
-    def test_missing_sequence(self):
-        # set up
-        self.requests_setup(3, 10)
+    def test_requests_1_1(self): self.requests(1, [1], (1, 1))
+    def test_requests_1_2(self): self.requests(1, [10], (10, 10))
+    def test_requests_1_3(self): self.requests(1, [1,2,3,4,5,6,7,8,9,10], (1, 10))
+    def test_requests_1_4(self): self.requests(1, [3,4,5,6,7,8,9,10], (3, 10))
+    def test_requests_1_5(self): self.requests(1, [1,2,3,4,5,6,7], (1, 7))
+    def test_requests_1_6(self): self.requests(1, [3,4,5,6,7], (3, 7))
 
-        for node_count in [1, 2, 3]:
-            self.requests(node_count, [1], (1, 1))
-            self.requests(node_count, [10], (10, 10))
-            self.requests(node_count, [1,2,3,4,5,6,7,8,9,10], (1, 10))
-            self.requests(node_count, [3,4,5,6,7,8,9,10], (3, 10))
-            self.requests(node_count, [1,2,3,4,5,6,7], (1, 7))
-            self.requests(node_count, [3,4,5,6,7], (3, 7))
+    def test_requests_2_1(self): self.requests(2, [1], (1, 1))
+    def test_requests_2_2(self): self.requests(2, [10], (10, 10))
+    def test_requests_2_3(self): self.requests(2, [1,2,3,4,5,6,7,8,9,10], (1, 10))
+    def test_requests_2_4(self): self.requests(2, [3,4,5,6,7,8,9,10], (3, 10))
+    def test_requests_2_5(self): self.requests(2, [1,2,3,4,5,6,7], (1, 7))
+    def test_requests_2_6(self): self.requests(2, [3,4,5,6,7], (3, 7))
+
+    def test_requests_3_1(self): self.requests(3, [1], (1, 1))
+    def test_requests_3_2(self): self.requests(3, [10], (10, 10))
+    def test_requests_3_3(self): self.requests(3, [1,2,3,4,5,6,7,8,9,10], (1, 10))
+    def test_requests_3_4(self): self.requests(3, [3,4,5,6,7,8,9,10], (3, 10))
+    def test_requests_3_5(self): self.requests(3, [1,2,3,4,5,6,7], (1, 7))
+    def test_requests_3_6(self): self.requests(3, [3,4,5,6,7], (3, 7))
 
             # multi-range requests
-            self.requests(node_count, [1], (1,1), (1,1), (1,1))
-            self.requests(node_count, [1,2,3,4,5], (1,4), (2,5))
-            self.requests(node_count, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
-            self.requests(node_count, [1,2,3,4,5], (1,1), (5,5))
-            self.requests(node_count, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
-            self.requests(node_count, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
+    def test_requests_1_7(self): self.requests(1, [1], (1,1), (1,1), (1,1))
+    def test_requests_1_8(self): self.requests(1, [1,2,3,4,5], (1,4), (2,5))
+    def test_requests_1_9(self): self.requests(1, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
+    def test_requests_1_10(self): self.requests(1, [1,2,3,4,5], (1,1), (5,5))
+    def test_requests_1_11(self): self.requests(1, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
+    def test_requests_1_12(self): self.requests(1, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
 
-            # multi-range requests, in different orders
-            self.requests(node_count, [1], (1,1), (1,1), (1,1))
-            self.requests(node_count, [1,2,3,4,5], (2,5), (1,4))
-            self.requests(node_count, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
-            self.requests(node_count, [1,2,3,4,5], (5,5), (1,1))
-            self.requests(node_count, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
-            self.requests(node_count, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
+    def test_requests_2_7(self): self.requests(2, [1], (1,1), (1,1), (1,1))
+    def test_requests_2_8(self): self.requests(2, [1,2,3,4,5], (1,4), (2,5))
+    def test_requests_2_9(self): self.requests(2, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
+    def test_requests_2_10(self): self.requests(2, [1,2,3,4,5], (1,1), (5,5))
+    def test_requests_2_11(self): self.requests(2, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
+    def test_requests_2_12(self): self.requests(2, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
 
-            # single range requests, invalid requests
-            self.requests(node_count, [10], (10, 11))
-            self.requests(node_count, [], (11, 11))
-            self.requests(node_count, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
-            self.requests(node_count, [], (1111, 11112))
+    def test_requests_3_7(self): self.requests(3, [1], (1,1), (1,1), (1,1))
+    def test_requests_3_8(self): self.requests(3, [1,2,3,4,5], (1,4), (2,5))
+    def test_requests_3_9(self): self.requests(3, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
+    def test_requests_3_10(self): self.requests(3, [1,2,3,4,5], (1,1), (5,5))
+    def test_requests_3_11(self): self.requests(3, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
+    def test_requests_3_12(self): self.requests(3, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
 
-            # multi-range requests, invalid requests
-            self.requests(node_count, [10], (10, 11), (10, 100), (50, 75))
-            self.requests(node_count, [], (11, 11), (11, 50), (100, 200))
+    # multi-range requests, in different orders
+    def test_requests_1_13(self): self.requests(1, [1], (1,1), (1,1), (1,1))
+    def test_requests_1_14(self): self.requests(1, [1,2,3,4,5], (2,5), (1,4))
+    def test_requests_1_15(self): self.requests(1, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
+    def test_requests_1_16(self): self.requests(1, [1,2,3,4,5], (5,5), (1,1))
+    def test_requests_1_17(self): self.requests(1, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
+    def test_requests_1_18(self): self.requests(1, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
 
-        # tear down
-        self.requests_teardown()
+    def test_requests_2_13(self): self.requests(2, [1], (1,1), (1,1), (1,1))
+    def test_requests_2_14(self): self.requests(2, [1,2,3,4,5], (2,5), (1,4))
+    def test_requests_2_15(self): self.requests(2, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
+    def test_requests_2_16(self): self.requests(2, [1,2,3,4,5], (5,5), (1,1))
+    def test_requests_2_17(self): self.requests(2, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
+    def test_requests_2_18(self): self.requests(2, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
 
-    @call_on_dispersy_thread
-    def requests_setup(self, node_count, message_count):
+    def test_requests_3_13(self): self.requests(3, [1], (1,1), (1,1), (1,1))
+    def test_requests_3_14(self): self.requests(3, [1,2,3,4,5], (2,5), (1,4))
+    def test_requests_3_15(self): self.requests(3, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
+    def test_requests_3_16(self): self.requests(3, [1,2,3,4,5], (5,5), (1,1))
+    def test_requests_3_17(self): self.requests(3, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
+    def test_requests_3_18(self): self.requests(3, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
+
+    # single range requests, invalid requests
+    def test_requests_1_19(self): self.requests(1, [10], (10, 11))
+    def test_requests_1_20(self): self.requests(1, [], (11, 11))
+    def test_requests_1_21(self): self.requests(1, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
+    def test_requests_1_22(self): self.requests(1, [], (1111, 11112))
+
+    def test_requests_2_19(self): self.requests(2, [10], (10, 11))
+    def test_requests_2_20(self): self.requests(2, [], (11, 11))
+    def test_requests_2_21(self): self.requests(2, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
+    def test_requests_2_22(self): self.requests(2, [], (1111, 11112))
+
+    def test_requests_3_19(self): self.requests(3, [10], (10, 11))
+    def test_requests_3_20(self): self.requests(3, [], (11, 11))
+    def test_requests_3_21(self): self.requests(3, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
+    def test_requests_3_22(self): self.requests(3, [], (1111, 11112))
+
+    # multi-range requests, invalid requests
+    def test_requests_1_23(self): self.requests(1, [10], (10, 11), (10, 100), (50, 75))
+    def test_requests_1_24(self): self.requests(1, [], (11, 11), (11, 50), (100, 200))
+
+    def test_requests_2_23(self): self.requests(2, [10], (10, 11), (10, 100), (50, 75))
+    def test_requests_2_24(self): self.requests(2, [], (11, 11), (11, 50), (100, 200))
+
+    def test_requests_3_23(self): self.requests(3, [10], (10, 11), (10, 100), (50, 75))
+    def test_requests_3_24(self): self.requests(3, [], (11, 11), (11, 50), (100, 200))
+
+    @classmethod
+    def setUpClass(cls):
         """
         SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
-        self._community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        self._nodes = [DebugNode(self._community) for _ in xrange(node_count)]
-        for node in self._nodes:
-            node.init_socket()
-            node.init_my_member()
+        def on_dispersy_thread():
+            cls._community = DebugCommunity.create_community(cls._dispersy, cls._my_member)
+            cls._nodes = [DebugNode(cls._community) for _ in xrange(3)]
+            for node in cls._nodes:
+                node.init_socket()
+                node.init_my_member()
 
-        # create messages
-        self._messages = []
-        for i in xrange(1, message_count + 1):
-            message = self._community.create_sequence_text("Sequence message #%d" % i)
-            self.assertEqual(message.distribution.sequence_number, i)
-            self._messages.append(message)
+            # create messages
+            cls._messages = []
+            for i in xrange(1, 11):
+                message = cls._community.create_sequence_text("Sequence message #%d" % i)
+                assert message.distribution.sequence_number == i
+                cls._messages.append(message)
 
-    @call_on_dispersy_thread
-    def requests_teardown(self):
+        super(TestSequence, cls).setUpClass()
+        cls._dispersy.callback.call(on_dispersy_thread)
+
+    @classmethod
+    def tearDownClass(cls):
         """
         Cleanup.
         """
-        self._community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(self._community.cid).unload_community()
+        def on_dispersy_thread():
+            cls._community.create_dispersy_destroy_community(u"hard-kill")
+            cls._dispersy.get_community(cls._community.cid).unload_community()
+
+        cls._dispersy.callback.call(on_dispersy_thread)
+        super(TestSequence, cls).tearDownClass()
 
     @call_on_dispersy_thread
     def requests(self, node_count, responses, *pairs):
