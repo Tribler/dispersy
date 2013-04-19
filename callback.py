@@ -110,7 +110,7 @@ class Callback(object):
 
         if __debug__:
             def must_close(callback):
-                assert(callback.is_finished)
+                assert callback.is_finished
             atexit_register(must_close, self)
             self._debug_call_name = None
 
