@@ -16,10 +16,6 @@ from .decorator import attach_profiler
 if __debug__:
     from atexit import register as atexit_register
     from inspect import getsourcefile, getsourcelines
-    # dprint warning when registered call, or generator call, takes more than N seconds
-    CALL_DELAY_FOR_WARNING = 0.5
-    # dprint warning when registered call, or generator call, should have run N seconds ago
-    QUEUE_DELAY_FOR_WARNING = 1.0
 
 class Callback(object):
     if __debug__:
