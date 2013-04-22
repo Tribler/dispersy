@@ -636,8 +636,8 @@ class Dispersy(object):
                     try:
                         community_cls.load_community(self, master, *args, **kargs)
                         assert master.mid in self._communities
-                    except Exception:
-                        logger.error(exc_info=True)
+                    except Exception as exception:
+                        logger.exception("attempting to load %s", community_cls)
 
     def undefine_auto_load(self, community):
         """
@@ -821,7 +821,7 @@ class Dispersy(object):
                 try:
                     self.sanity_check(community)
                 except ValueError:
-                    logger.error(exc_info=True)
+                    logger.exception("sanity check fail for %s", community)
                     assert False, "One or more exceptions occurred during sanity check"
 
     def detach_community(self, community):
@@ -1980,7 +1980,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         try:
             messages = list(meta.check_callback(messages))
         except:
-            logger.error("exception during check_callback for %s", meta.name, exc_info=True)
+            logger.exception("exception during check_callback for %s", meta.name)
             return 0
         assert len(messages) >= 0 # may return zero messages
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
@@ -2355,7 +2355,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                         logger.error("time_low:  %d", time_low)
                         logger.error("time_high: %d", time_high)
                         logger.error("2**63 - 1: %d", 2**63-1)
-                        logger.error("the sqlite3 python module can not handle values 2**63 or larger.  limit time_low and time_high to 2**63-1", exc_info=True)
+                        logger.exception("the sqlite3 python module can not handle values 2**63 or larger.  limit time_low and time_high to 2**63-1")
                         assert False
 
                     # BLOOM_FILTER must be the same after transmission
@@ -2825,7 +2825,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
                 raise
             except:
-                logger.error("exception during handle_callback for %s", messages[0].name, exc_info=True)
+                logger.exception("exception during handle_callback for %s", messages[0].name)
                 return False
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
@@ -4459,9 +4459,9 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 # flush changes to disk every 1 minutes
                 self._database.commit()
 
-            except Exception:
+            except Exception as exception:
                 # OperationalError: database is locked
-                logger.error(exc_info=True)
+                logger.exception("%s", exception)
 
     def _commit_now(self):
         """
@@ -4600,7 +4600,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 community.dispersy_take_step(allow_sync)
                 steps += 1
             except Exception:
-                logger.error("%s causes an exception during dispersy_take_step%s", community.cid.encode("HEX"), exc_info=True)
+                logger.exception("%s causes an exception during dispersy_take_step", community.cid.encode("HEX"))
 
             optimaltime = start + steps * optimaldelay
             actualtime = time()

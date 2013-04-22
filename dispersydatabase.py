@@ -427,8 +427,8 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                             try:
                                 # try to redo the message... this may not always be possible now...
                                 msg.undo_callback([(msg.authentication.member, msg.distribution.global_time, msg)], redo=True)
-                            except:
-                                logger.warning(exc_info=True)
+                            except Exception as exception:
+                                logger.exception("%s", exception)
 
                 progress += 1
                 for handler in progress_handlers:
