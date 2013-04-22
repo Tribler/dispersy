@@ -27,7 +27,6 @@ except ImportError:
 
 from .bloomfilter import BloomFilter
 from .conversion import BinaryConversion, DefaultConversion
-from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution
@@ -91,8 +90,8 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        ec = ec_generate_key(u"high")
-        master = dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        assert dispersy.callback.is_current_thread
+        master = dispersy.get_new_member(u"high")
 
         dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES(?, ?, ?)", (master.database_id, my_member.database_id, cls.get_classification()))
         community_database_id = dispersy.database.last_insert_rowid
