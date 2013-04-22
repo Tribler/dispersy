@@ -263,7 +263,7 @@ class TrackerDispersy(Dispersy):
                 try:
                     self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
                 except:
-                    logger.error("Error while loading from persistent-destroy-community.data", exc_info=True)
+                    logger.exception("Error while loading from persistent-destroy-community.data")
 
     def _convert_packets_into_batch(self, packets):
         """
