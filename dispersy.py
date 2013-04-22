@@ -4579,7 +4579,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
 
             actualtime = time()
             allow_sync = actualtime - community.__most_recent_sync > 4.5
-            logger.debug("previous sync was %.1f seconds ago", actualtime - community.__most_recent_sync, "" if allow_sync else " (no sync this cycle)")
+            logger.debug("previous sync was %.1f seconds ago %s", actualtime - community.__most_recent_sync, "" if allow_sync else "(no sync this cycle)")
             if allow_sync:
                 community.__most_recent_sync = actualtime
 
