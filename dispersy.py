@@ -615,6 +615,8 @@ class Dispersy(object):
         using COMMUNITY_CLS.load_community(self, master, *ARGS, **KARGS).
 
         When LOAD is True all available communities of this type will be immediately loaded.
+
+        Returns a list with loaded communities.
         """
         if __debug__:
             from .community import Community
@@ -629,15 +631,17 @@ class Dispersy(object):
             kargs = {}
         self._auto_load_communities[community_cls.get_classification()] = (community_cls, args, kargs)
 
+        communities = []
         if load:
             for master in community_cls.get_master_members(self):
                 if not master.mid in self._communities:
                     logger.debug("Loading %s at start", community_cls.get_classification())
-                    try:
-                        community_cls.load_community(self, master, *args, **kargs)
-                        assert master.mid in self._communities
-                    except Exception as exception:
-                        logger.exception("attempting to load %s", community_cls)
+                    community = community_cls.load_community(self, master, *args, **kargs)
+                    communities.append(community)
+                    assert community.master.mid == master.mid
+                    assert community.master.mid in self._communities
+
+        return communities
 
     def undefine_auto_load(self, community):
         """
