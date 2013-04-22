@@ -386,8 +386,8 @@ class DebugNode(object):
 
             try:
                 message = self._community.get_conversion(packet[:22]).decode_message(candidate, packet)
-            except KeyError:
-                logger.debug("Ignored", exc_info=True)
+            except KeyError as exception:
+                logger.exception("Ignored %s", exception)
                 continue
 
             if not (message_names is None or message.name in message_names):

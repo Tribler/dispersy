@@ -184,8 +184,8 @@ class Callback(object):
             try:
                 if exception_handler(exception, fatal):
                     fatal = True
-            except Exception:
-                logger.error(exc_info=True)
+            except Exception as exception:
+                logger.exception("%s", exception)
                 assert False, "the exception handler should not cause an exception"
         return fatal
 
@@ -631,7 +631,7 @@ class Callback(object):
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
                 except (SystemExit, KeyboardInterrupt, GeneratorExit), exception:
-                    logger.error("attempting proper shutdown", exc_info=True)
+                    logger.exception("attempting proper shutdown")
                     with lock:
                         self._state = "STATE_EXCEPTION"
                         self._exception = exception
@@ -642,7 +642,7 @@ class Callback(object):
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    logger.error("keep running regardless of exception", exc_info=True)
+                    logger.exception("keep running regardless of exception")
                     if self._call_exception_handlers(exception, False):
                         # one or more of the exception handlers returned True, we will consider this
                         # exception to be fatal and quit
@@ -671,8 +671,8 @@ class Callback(object):
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
-                except:
-                    logger.error(exc_info=True)
+                except Exception as exception:
+                    logger.exception("%s", exception)
                 else:
                     if isinstance(result, GeneratorType):
                         # we only received the generator, no actual call has been made to the
@@ -682,15 +682,15 @@ class Callback(object):
                     elif callback:
                         try:
                             callback[0](result, *callback[1], **callback[2])
-                        except:
-                            logger.error(exc_info=True)
+                        except Exception as exception:
+                            logger.exception("%s", exception)
 
             if isinstance(call, GeneratorType):
                 logger.debug("raise Shutdown in %s", call)
                 try:
                     call.close()
-                except:
-                    logger.error(exc_info=True)
+                except Exception as exception:
+                    logger.exception("%s", exception)
 
         # send GeneratorExit exceptions to scheduled generators
         logger.debug("there are %d scheduled tasks", len(requests))
@@ -700,8 +700,8 @@ class Callback(object):
                 logger.debug("raise Shutdown in %s", call)
                 try:
                     call.close()
-                except:
-                    logger.error(exc_info=True)
+                except Exception as exception:
+                    logger.exception("%s", exception)
 
         # set state to finished
         with lock:

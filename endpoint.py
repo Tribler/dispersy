@@ -102,8 +102,8 @@ class RawserverEndpoint(Endpoint):
     def close(self, timeout=0.0):
         try:
             self._socket.close()
-        except socket.error:
-            logger.error(exc_info=True)
+        except socket.error as exception:
+            logger.exception("%s", exception)
 
         super(RawserverEndpoint, self).close(timeout)
 

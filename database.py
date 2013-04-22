@@ -272,9 +272,7 @@ class Database(object):
             return result
 
         except Error:
-            logger.warning(exc_info=True)
-            logger.warning("Filename: %s", self._file_path)
-            logger.warning(statement)
+            logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
     def executescript(self, statements):
@@ -297,9 +295,7 @@ class Database(object):
             return result
 
         except Error:
-            logger.warning(exc_info=True)
-            logger.warning("Filename: %s", self._file_path)
-            logger.warning(statements)
+            logger.exception("Filename: %s\n%s", self._file_path, statements)
             raise
 
     def executemany(self, statement, sequenceofbindings):
@@ -359,9 +355,7 @@ class Database(object):
             return result
 
         except Error:
-            logger.debug(exc_info=True)
-            logger.debug("Filename: %s", self._file_path)
-            logger.debug(statement)
+            logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
     def commit(self, exiting = False):
@@ -384,8 +378,8 @@ class Database(object):
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting = exiting)
-                except Exception:
-                    logger.debug(exc_info=True)
+                except Exception as exception:
+                    logger.exception("%s", exception)
 
             if __DEBUG_QUERIES__:
                 f.write('QueryDebug-commit: (%f) END\n' % time())
@@ -441,11 +435,7 @@ class APSWDatabase(Database):
             return self._cursor.execute(statement, bindings)
 
         except apsw.Error:
-            if __debug__:
-                logger.warning(exc_info=True)
-                logger.warning("Filename: %s", self._file_path)
-                logger.warning(statement)
-                logger.warning(bindings)
+            logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
     def executescript(self, statements):
@@ -470,10 +460,7 @@ class APSWDatabase(Database):
             return self._cursor.executemany(statement, sequenceofbindings)
 
         except apsw.Error:
-            if __debug__:
-                logger.debug(exc_info=True)
-                logger.debug("Filename: %s", self._file_path)
-                logger.debug(statement)
+            logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
     @property
@@ -504,6 +491,6 @@ class APSWDatabase(Database):
         for callback in self._commit_callbacks:
             try:
                 callback(exiting = exiting)
-            except Exception:
-                logger.debug(exc_info=True)
+            except Exception as exception:
+                logger.debug("%s", exception)
         return result
