@@ -187,6 +187,7 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
+        assert dispersy.callback.is_current_thread
         logger.debug("joining %s %s", cls.get_classification(), master.mid.encode("HEX"))
 
         dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
@@ -215,6 +216,7 @@ class Community(object):
     @classmethod
     def get_master_members(cls, dispersy):
         assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert dispersy.callback.is_current_thread
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
         return [dispersy.get_member(str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
@@ -237,6 +239,7 @@ class Community(object):
         """
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
+        assert dispersy.callback.is_current_thread
         logger.debug("loading %s %s", cls.get_classification(), master.mid.encode("HEX"))
         community = cls(dispersy, master, *args, **kargs)
 
@@ -260,9 +263,9 @@ class Community(object):
         """
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
-        if __debug__:
-            logger.debug("initializing:  %s", self.get_classification())
-            logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
+        assert dispersy.callback.is_current_thread
+        logger.debug("initializing:  %s", self.get_classification())
+        logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
 
         # Dispersy
         self._dispersy = dispersy

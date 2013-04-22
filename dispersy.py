@@ -4489,8 +4489,10 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             self._endpoint_ready()
 
         # start
+        logger.info("starting the Dispersy core...")
         self._callback.start()
         self._callback.call(start)
+        logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
         return True
 
     def stop(self, timeout=10.0):
@@ -4546,8 +4548,11 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             # stop the database
             self._database.close()
 
+        logger.info("stopping the Dispersy core...")
         self._callback.call(stop, priority=-512)
-        return self._callback.stop(timeout)
+        self._callback.stop(timeout)
+        logger.info("Dispersy core stopped")
+        return True
 
     def _candidate_walker(self):
         """
