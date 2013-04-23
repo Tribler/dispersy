@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 the community module provides the Community base class that should be used when a new Community is
 implemented.  It provides a simplified interface between the Dispersy instance and a running

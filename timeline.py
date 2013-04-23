@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 The Timeline is an important part of Dispersy.  The Timeline can be
 queried as to who had what actions at some point in time.

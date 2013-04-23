@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 This module provides basic database functionalty and simple version control.
 
@@ -13,9 +11,6 @@ logger = logging.getLogger(__name__)
 
 from os import environ
 from sqlite3 import Connection, Error
-
-import logging
-logger = logging.getLogger("database")
 
 if __debug__:
     import thread

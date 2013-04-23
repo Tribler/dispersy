@@ -1,8 +1,3 @@
-#!/usr/bin/env/python
-
-# Python 2.5 features
-from __future__ import with_statement
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -14,10 +9,6 @@ import errno
 import socket
 import sys
 import threading
-
-import logging
-logger = logging.getLogger("endpoint")
-
 
 from .candidate import Candidate
 
