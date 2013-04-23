@@ -529,8 +529,11 @@ class DebugNode(object):
         """
         Returns a new dispersy-introduction-request message.
         """
-        # TODO assert other arguments
-        assert isinstance(destination, Candidate), destination
+        assert isinstance(destination, Candidate), type(destination)
+        assert isinstance(source_lan, tuple), type(source_lan)
+        assert isinstance(source_wan, tuple), type(source_wan)
+        assert isinstance(advice, bool), type(advice)
+        assert isinstance(connection_type, unicode), type(connection_type)
         if sync:
             assert isinstance(sync, tuple)
             assert len(sync) == 5
@@ -545,6 +548,7 @@ class DebugNode(object):
             for packet in bloom_packets:
                 bloom_filter.add(packet)
             sync = (time_low, time_high, modulo, offset, bloom_filter)
+        assert isinstance(identifier, int), type(identifier)
         assert isinstance(global_time, (int, long))
         meta = self._community.get_meta_message(u"dispersy-introduction-request")
         return meta.impl(authentication=(self._my_member,),
