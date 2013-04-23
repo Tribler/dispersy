@@ -22,7 +22,7 @@ logger = logging.getLogger("endpoint")
 from .candidate import Candidate
 
 if sys.platform == 'win32':
-    SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
+    SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
@@ -100,11 +100,7 @@ class RawserverEndpoint(Endpoint):
         self._rawserver.start_listening_udp(self._socket, self)
 
     def close(self, timeout=0.0):
-        try:
-            self._socket.close()
-        except socket.error as exception:
-            logger.exception("%s", exception)
-
+        self._rawserver.stop_listening_udp(self._socket)
         super(RawserverEndpoint, self).close(timeout)
 
     def get_address(self):
@@ -290,7 +286,7 @@ class StandaloneEndpoint(RawserverEndpoint):
                             break
 
                 except socket.error, e:
-                    self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'"%str(e))
+                    self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'" % str(e))
 
                 finally:
                     if packets:
