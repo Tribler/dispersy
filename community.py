@@ -26,15 +26,15 @@ except ImportError:
     from .python27_ordereddict import OrderedDict
 
 from .bloomfilter import BloomFilter
+from .candidate import WalkCandidate
 from .conversion import BinaryConversion, DefaultConversion
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
-from .distribution import SyncDistribution
+from .distribution import SyncDistribution, GlobalTimePruning
 from .member import DummyMember, Member
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-from .candidate import WalkCandidate
 
 class SyncCache(object):
     def __init__(self, time_low, time_high, modulo, offset, bloom_filter):
@@ -1166,19 +1166,36 @@ class Community(object):
         """
         self._global_time += 1
         logger.debug("claiming a new global time value @%d", self._global_time)
+        self._check_for_pruning()
         return self._global_time
 
     def update_global_time(self, global_time):
         """
         Increase the local global time if the given GLOBAL_TIME is larger.
         """
-        previous = self._global_time
-        new = max(self._global_time, global_time)
-        if new - previous >= 100:
-            logger.warning("updating global time %d -> %d", previous, new)
-        else:
-            logger.debug("updating global time %d -> %d", previous, new)
-        self._global_time = max(self._global_time, global_time)
+        if global_time > self._global_time:
+            logger.debug("updating global time %d -> %d", self._global_time, global_time)
+            self._global_time = global_time
+            self._check_for_pruning()
+
+    def _check_for_pruning(self):
+        """
+        Check for messages that need to be pruned because the global time changed.  Should be called
+        whenever self._global_time is increased.
+        """
+        for meta in self._meta_messages.itervalues():
+            if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
+                # TODO: some messages should support a notifier when a message is pruned
+                # if __debug__: dprint("checking pruning for ", meta.name, " @", self._global_time, force=1)
+                # packets = [str(packet)
+                #            for packet,
+                #            in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? AND global_time <= ?",
+                #                                               (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))]
+                # if packets:
+
+                self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
+                                                (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
+                logger.debug("%d %s messages have been pruned", self._dispersy.database.changes, meta.name)
 
     def dispersy_check_database(self):
         """

@@ -614,6 +614,12 @@ class DebugNode(object):
         """
         return self._create_text(u"full-sync-text", text, global_time)
 
+    def create_full_sync_global_time_pruning_text(self, text, global_time):
+        """
+        Returns a new full-sync-global-time-pruning-text message.
+        """
+        return self._create_text(u"full-sync-global-time-pruning-text", text, global_time)
+
     def create_in_order_text(self, text, global_time):
         """
         Returns a new ASC-text message.
