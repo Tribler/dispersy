@@ -3,6 +3,8 @@ Run Dispersy in standalone mode.
 """
 
 import logging
+import logging.config
+logging.config.fileConfig("logger.conf")
 logger = logging.getLogger(__name__)
 
 # optparse is deprecated since python 2.7
