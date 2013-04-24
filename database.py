@@ -70,6 +70,7 @@ class Database(object):
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
+        logger.info("open %s", self._file_path)
         self._connect()
         self._initial_statements()
         self._prepare_version()
@@ -79,6 +80,7 @@ class Database(object):
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         if commit:
             self.commit(exiting=True)
+        logger.info("close %s", self._file_path)
         self._cursor.close()
         self._cursor = None
         self._connection.close()
