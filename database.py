@@ -158,6 +158,7 @@ class Database(object):
     def database_version(self):
         return self._database_version
 
+    @property
     def file_path(self):
         """
         The database filename including path.
