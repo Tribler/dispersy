@@ -160,6 +160,30 @@ if "--runtime-statistics" in getattr(sys, "argv", []):
 
 else:
     def attach_runtime_statistics(format_):
+        """
+        Keep track of how often and how long a function was called.
+
+        Runtime statistics will only be collected when sys.argv contains '--runtime-statistics'.
+        Otherwise the decorator will not influence the runtime in any way.
+
+        FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.
+        FORMAT_ uses the format mini language and has access to all the arguments and keyword
+        arguments of the function.  Furthermore, the function name is available as a keyword
+        argument called 'function_name'.  The python format mini language is described at:
+        http://docs.python.org/2/library/string.html#format-specification-mini-language.
+
+           @attach_runtime_statistics("{function_name} bar={1}, moo={moo}")
+           def foo(self, bar, moo='milk'):
+               pass
+
+           foo(1)
+           foo(2)
+           foo(2)
+
+        After running the above example, the statistics will show that:
+        - 'foo bar=1 moo=milk' was called once
+        - 'foo bar=2 moo=milk' was called twice
+        """
         def helper(func):
             return func
         return helper
