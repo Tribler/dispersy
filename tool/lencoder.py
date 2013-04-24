@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from atexit import register
 from bz2 import BZ2File
 from time import time

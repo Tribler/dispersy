@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 The Distributed Permission System, or Dispersy, is a platform to simplify the design of distributed
 communities.  At the heart of Dispersy lies a simple identity and message handling system where each

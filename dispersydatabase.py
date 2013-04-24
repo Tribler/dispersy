@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 This module provides an interface to the Dispersy database.
 
