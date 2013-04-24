@@ -1,9 +1,17 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from atexit import register as atexit_register
+from cProfile import Profile
+from collections import defaultdict
+from hashlib import sha1
+from thread import get_ident
+from threading import current_thread
+from time import time
 import sys
+
 if __debug__:
-    from time import time, sleep
+    from time import sleep
 
 class Constructor(object):
     """
@@ -66,11 +74,11 @@ def documentation(documented_func):
         return func
     return helper
 
-def runtime_duration_warning(threshold):
-    assert isinstance(threshold, float), type(threshold)
-    assert 0.0 <= threshold
-    def helper(func):
-        if __debug__:
+if __debug__:
+    def runtime_duration_warning(threshold):
+        assert isinstance(threshold, float), type(threshold)
+        assert 0.0 <= threshold
+        def helper(func):
             def runtime_duration_warning_helper(*args, **kargs):
                 start = time()
                 try:
@@ -81,36 +89,80 @@ def runtime_duration_warning(threshold):
                         logger.warning("%.2fs %s", end - start, func)
             runtime_duration_warning_helper.__name__ = func.__name__ + "_RDWH"
             return runtime_duration_warning_helper
-        else:
+        return helper
+
+else:
+    def runtime_duration_warning(threshold):
+        def helper(func):
             return func
-    return helper
+        return helper
 
-profiled_threads = set()
-def attach_profiler(func):
-    def helper(*args, **kargs):
-        filename = "profile-%s-%d.out" % (current_thread().name, get_ident())
-        if filename in profiled_threads:
-            raise RuntimeError("Can not attach profiler on the same thread twice")
+# Niels 21-06-2012: argv seems to be missing if python is not started as a script
+if "--profiler" in getattr(sys, "argv", []):
+    _profiled_threads = set()
 
-        logger.debug("running with profiler [%s]", filename)
-        profiled_threads.add(filename)
-        profiler = Profile()
+    def attach_profiler(func):
+        def helper(*args, **kargs):
+            filename = "profile-%s-%d.out" % (current_thread().name, get_ident())
+            if filename in _profiled_threads:
+                raise RuntimeError("Can not attach profiler on the same thread twice")
 
-        try:
-            return profiler.runcall(func, *args, **kargs)
-        finally:
-            logger.debug("profiler results [%s]", filename)
-            profiler.dump_stats(filename)
+            logger.debug("running with profiler [%s]", filename)
+            _profiled_threads.add(filename)
+            profiler = Profile()
 
-    #Niels 21-06-2012: argv seems to be missing if python is not started as a script
-    if "--profiler" in getattr(sys, "argv", []):
-        from cProfile import Profile
-        from thread import get_ident
-        from threading import current_thread
+            try:
+                return profiler.runcall(func, *args, **kargs)
+            finally:
+                logger.debug("profiler results [%s]", filename)
+                profiler.dump_stats(filename)
 
         return helper
-    else:
+
+else:
+    def attach_profiler(func):
         return func
+
+if "--runtime-statistics" in getattr(sys, "argv", []):
+    _runtime_statistics_logger = logging.getLogger("runtime-statistics")
+    _runtime_statistics = defaultdict(lambda: [0, 0.0])
+
+    def _output_runtime_statistics():
+        _runtime_statistics_logger.info(" COUNT      SUM      AVG  ENTRY")
+        entries = [(stats[0], stats[1], entry) for entry, stats in _runtime_statistics.iteritems()]
+        entries.sort()
+        for count, duration, entry in entries:
+            if "\n" in entry:
+                print "<<<%s %dx %.2fs %.2fs\n%s\n>>>" % (sha1(entry).digest().encode("HEX"), count, duration, duration / count, entry)
+                _runtime_statistics_logger.info("<<<%s %dx %.2fs %.2fs\n%s\n>>>", sha1(entry).digest().encode("HEX"), count, duration, duration / count, entry)
+
+        for count, duration, entry in entries:
+            print "%5dx %7.2fs %7.2fs  %s" % (count, duration, duration / count, "<%s>" % sha1(entry).digest().encode("HEX") if "\n" in entry else entry)
+            _runtime_statistics_logger.info("%5dx %7.2fs %7.2fs  %s", count, duration, duration / count, entry.strip().split("\n")[0])
+    atexit_register(_output_runtime_statistics)
+
+    def attach_runtime_statistics(format_):
+        def helper(func):
+            def attach_runtime_statistics_helper(*args, **kargs):
+                start = time()
+                try:
+                    return func(*args, **kargs)
+                finally:
+                    end = time()
+                    entry = format_.format(duration=(end - start), function_name=func.__name__, *args, **kargs)
+                    _runtime_statistics_logger.debug(entry)
+                    stats = _runtime_statistics[entry]
+                    stats[0] += 1
+                    stats[1] += (end - start)
+            attach_runtime_statistics_helper.__name__ = func.__name__
+            return attach_runtime_statistics_helper
+        return helper
+
+else:
+    def attach_runtime_statistics(format_):
+        def helper(func):
+            return func
+        return helper
 
 if __debug__:
     def main():

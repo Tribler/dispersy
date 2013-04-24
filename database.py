@@ -9,20 +9,34 @@ This module provides basic database functionalty and simple version control.
 import logging
 logger = logging.getLogger(__name__)
 
-from os import environ
 from sqlite3 import Connection, Error
+
+from .decorator import attach_runtime_statistics
 
 if __debug__:
     import thread
 
-__DEBUG_QUERIES__ = environ.has_key('DISPERSY_DEBUG_DATABASE_QUERIES')
-if __DEBUG_QUERIES__:
-    from random import randint
-    from os.path import exists
-    from time import time
-    DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
-    while exists(DB_DEBUG_FILE):
-        DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
+if "--explain-query-plan" in getattr(sys, "argv", []):
+    _explain_query_plan_logger = logging.getLogger("explain-query-plan")
+    _explain_query_plan = set()
+
+    def attach_explain_query_plan(func):
+        def attach_explain_query_plan_helper(self, statements, bindings=()):
+            if not statements in _explain_query_plan:
+                _explain_query_plan.add(statements)
+
+                _explain_query_plan_logger.info("Explain query plan for <<<%s>>>", statements)
+                for line in self._cursor.execute(u"EXPLAIN QUERY PLAN %s" % statements, bindings):
+                    _explain_query_plan_logger.info(line)
+                _explain_query_plan_logger.info("--")
+
+            return func(self, statements, bindings)
+        attach_explain_query_plan_helper.__name__ = func.__name__
+        return attach_explain_query_plan_helper
+
+else:
+    def attach_explain_query_plan(func):
+        return func
 
 class IgnoreCommits(Exception):
     """
@@ -230,6 +244,8 @@ class Database(object):
         return self._cursor.rowcount
         # return self._connection.changes()
 
+    @attach_explain_query_plan
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def execute(self, statement, bindings=()):
         """
         Execute one SQL statement.
@@ -263,35 +279,13 @@ class Database(object):
 
         try:
             logger.debug("%s <-- %s", statement, bindings)
-
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                #Store the query plan with EXPLAIN QUERY PLAN to detect possible optimizations
-                debug_bindings = list(bindings)
-                for i, binding in enumerate(debug_bindings):
-                    if isinstance(binding, buffer):
-                        try:
-                            binding = str(binding).encode("HEX")[:100] #try to show content of buffer, but a most 100 characters
-                        except:
-                            pass
-                        debug_bindings[i] = binding
-
-                f.write('QueryDebug: (%f) %s %s\n' % (time(), statement, str(debug_bindings)))
-                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, bindings).fetchall():
-                    f.write('%s %s %s\t%s\n' % row)
-
-            result = self._cursor.execute(statement, bindings)
-
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug: (%f) END\n' % time())
-                f.close()
-
-            return result
+            return self._cursor.execute(statement, bindings)
 
         except Error:
             logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
@@ -300,23 +294,14 @@ class Database(object):
 
         try:
             logger.debug(statements)
-
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                f.write('QueryDebug-script: (%f) %s\n' % (time(), statements))
-
-            result = self._cursor.executescript(statements)
-
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug-script: (%f) END\n' % time())
-                f.close()
-
-            return result
+            return self._cursor.executescript(statements)
 
         except Error:
             logger.exception("Filename: %s\n%s", self._file_path, statements)
             raise
 
+    @attach_explain_query_plan
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executemany(self, statement, sequenceofbindings):
         """
         Execute one SQL statement several times.
@@ -349,36 +334,25 @@ class Database(object):
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
             # generator can only iterate once
             from types import GeneratorType
-            if isinstance(sequenceofbindings, GeneratorType):
+            is_iterator = isinstance(sequenceofbindings, GeneratorType)
+            if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
-        assert all(isinstance(x, (tuple, list, dict, set)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
-        assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
+            assert all(isinstance(x, (tuple, list, dict, set)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
+            assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
+            if is_iterator:
+                sequenceofbindings = iter(sequenceofbindings)
 
         try:
             logger.debug(statement)
-
-
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-
-                f.write('QueryDebug-executemany: (%f) %s %s %d times\n' % (time(), statement, len(sequenceofbindings)))
-                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, sequenceofbindings[0]).fetchall():
-                    f.write('%s %s %s\t%s\n' % row)
-
-            result =  self._cursor.executemany(statement, sequenceofbindings)
-
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug-executemany: (%f) END\n' % time())
-                f.close()
-
-            return result
+            return self._cursor.executemany(statement, sequenceofbindings)
 
         except Error:
             logger.exception("Filename: %s\n%s", self._file_path, statement)
             raise
 
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
     def commit(self, exiting = False):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
@@ -392,23 +366,13 @@ class Database(object):
 
         else:
             logger.debug("COMMIT")
-
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                f.write('QueryDebug-commit: (%f)\n' % time())
-
-            result = self._connection.commit()
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting = exiting)
                 except Exception as exception:
                     logger.exception("%s", exception)
 
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug-commit: (%f) END\n' % time())
-                f.close()
-
-            return result
+            return self._connection.commit()
 
     def check_database(self, database_version):
         """
