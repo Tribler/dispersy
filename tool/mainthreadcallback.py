@@ -19,10 +19,3 @@ class MainThreadCallback(Callback):
 
     def start(self, *args, **kargs):
         return True
-
-    def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_="", include_id=False, timeout=0.0, default=None):
-        if kargs:
-            return call(*args, **kargs)
-        else:
-            return call(*args)
-
