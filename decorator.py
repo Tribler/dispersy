@@ -128,13 +128,13 @@ if "--runtime-statistics" in getattr(sys, "argv", []):
     _runtime_statistics = defaultdict(lambda: [0, 0.0])
 
     def _output_runtime_statistics():
-        _runtime_statistics_logger.info(" COUNT      SUM      AVG  ENTRY")
         entries = [(stats[0], stats[1], entry) for entry, stats in _runtime_statistics.iteritems()]
         entries.sort()
         for count, duration, entry in entries:
             if "\n" in entry:
                 _runtime_statistics_logger.info("<<<%s %dx %.2fs %.2fs\n%s\n>>>", sha1(entry).digest().encode("HEX"), count, duration, duration / count, entry)
 
+        _runtime_statistics_logger.info(" COUNT      SUM      AVG  ENTRY")
         for count, duration, entry in entries:
             _runtime_statistics_logger.info("%5dx %7.2fs %7.2fs  %s", count, duration, duration / count, entry.strip().split("\n")[0])
     atexit_register(_output_runtime_statistics)
