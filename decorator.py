@@ -149,7 +149,7 @@ if "--runtime-statistics" in getattr(sys, "argv", []):
                     return func(*args, **kargs)
                 finally:
                     end = time()
-                    entry = format_.format(duration=(end - start), function_name=func.__name__, *args, **kargs)
+                    entry = format_.format(function_name=func.__name__, *args, **kargs)
                     _runtime_statistics_logger.debug(entry)
                     stats = _runtime_statistics[entry]
                     stats[0] += 1
