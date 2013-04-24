@@ -228,7 +228,7 @@ class ScenarioScript(ScriptBase):
         if filepath:
             # clone the database from filepath instead of using a new one
             origional_database_filename = path.join(self._kargs["localcodedir"], filepath)
-            database_filename = self._dispersy.database.file_path()
+            database_filename = self._dispersy.database.file_path
             self.log("scenario-start-clone", source=origional_database_filename, destination=database_filename)
 
             # HACK: close the old database, copy the original database file, and open the new file
