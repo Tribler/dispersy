@@ -242,10 +242,17 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._thread.start()
 
     def close(self, timeout=10.0):
-        super(StandaloneEndpoint, self).close(timeout)
         self._running = False
         if timeout > 0.0:
             self._thread.join(timeout)
+
+        try:
+            self._socket.close()
+        except socket.error as exception:
+            logger.exception("%s", exception)
+
+        # do NOT call RawserverEndpoint.open!
+        Endpoint.close(self, timeout)
 
     def _loop(self):
         assert self._dispersy, "Should not be called before open(...)"
