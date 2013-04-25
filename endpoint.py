@@ -1,8 +1,3 @@
-#!/usr/bin/env/python
-
-# Python 2.5 features
-from __future__ import with_statement
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -15,14 +10,10 @@ import socket
 import sys
 import threading
 
-import logging
-logger = logging.getLogger("endpoint")
-
-
 from .candidate import Candidate
 
 if sys.platform == 'win32':
-    SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
+    SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
@@ -100,11 +91,7 @@ class RawserverEndpoint(Endpoint):
         self._rawserver.start_listening_udp(self._socket, self)
 
     def close(self, timeout=0.0):
-        try:
-            self._socket.close()
-        except socket.error as exception:
-            logger.exception("%s", exception)
-
+        self._rawserver.stop_listening_udp(self._socket)
         super(RawserverEndpoint, self).close(timeout)
 
     def get_address(self):
@@ -255,10 +242,17 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._thread.start()
 
     def close(self, timeout=10.0):
-        super(StandaloneEndpoint, self).close(timeout)
         self._running = False
         if timeout > 0.0:
             self._thread.join(timeout)
+
+        try:
+            self._socket.close()
+        except socket.error as exception:
+            logger.exception("%s", exception)
+
+        # do NOT call RawserverEndpoint.open!
+        Endpoint.close(self, timeout)
 
     def _loop(self):
         assert self._dispersy, "Should not be called before open(...)"
@@ -290,7 +284,7 @@ class StandaloneEndpoint(RawserverEndpoint):
                             break
 
                 except socket.error, e:
-                    self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'"%str(e))
+                    self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'" % str(e))
 
                 finally:
                     if packets:

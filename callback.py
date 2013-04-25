@@ -435,15 +435,23 @@ class Callback(object):
             container[0] = result
             event.set()
 
+        # result container
+        container = [default]
+
         if self._thread_ident == get_ident():
             if kargs:
-                return call(*args, **kargs)
+                container[0] = call(*args, **kargs)
             else:
-                return call(*args)
+                container[0] = call(*args)
+
+            if isinstance(container[0], GeneratorType):
+                logger.warning("using callback.call from the same thread on a generator can cause deadlocks")
+                for delay in container[0]:
+                    sleep(delay)
+
+                container[0] = default
 
         else:
-            # result container
-            container = [default]
             event = Event()
 
             # register the call
@@ -452,10 +460,10 @@ class Callback(object):
             # wait for call to finish
             event.wait(None if timeout == 0.0 else timeout)
 
-            if isinstance(container[0], Exception):
-                raise container[0]
-            else:
-                return container[0]
+        if isinstance(container[0], Exception):
+            raise container[0]
+        else:
+            return container[0]
 
     def start(self, wait=True):
         """

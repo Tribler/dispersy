@@ -1,5 +1,3 @@
-#!/usr/bin/env/python
-
 """
 This module provides basic database functionalty and simple version control.
 
@@ -16,7 +14,6 @@ from sqlite3 import Connection, Error
 
 if __debug__:
     import thread
-    from threading import current_thread
 
 __DEBUG_QUERIES__ = environ.has_key('DISPERSY_DEBUG_DATABASE_QUERIES')
 if __DEBUG_QUERIES__:
@@ -69,25 +66,34 @@ class Database(object):
             self._debug_thread_ident = 0
 
     def open(self):
+        assert self._cursor is None, "Database.open() has already been called"
+        assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
-        logger.debug("OPEN %s", self._file_path)
+        logger.info("open %s", self._file_path)
         self._connect()
         self._initial_statements()
         self._prepare_version()
 
     def close(self, commit=True):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         if commit:
             self.commit(exiting=True)
-        logger.debug("CLOSE %s", self._file_path)
+        logger.info("close %s", self._file_path)
         self._cursor.close()
+        self._cursor = None
         self._connection.close()
+        self._connection = None
 
     def _connect(self):
         self._connection = Connection(self._file_path)
         self._cursor = self._connection.cursor()
 
     def _initial_statements(self):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+
         # collect current database configuration
         page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
         journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
@@ -127,6 +133,9 @@ class Database(object):
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
 
     def _prepare_version(self):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+
         # check is the database contains an 'option' table
         try:
             count, = next(self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'"))
@@ -163,8 +172,10 @@ class Database(object):
 
         @return: The method self.execute
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         logger.debug("disabling Database.commit()")
         self._pending_commits = max(1, self._pending_commits)
@@ -175,8 +186,10 @@ class Database(object):
         Leaves a no-commit state.  A commit will be performed if Database.commit() was called while
         in the no-commit state.
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         self._pending_commits, pending_commits = 0, self._pending_commits
 
@@ -202,8 +215,10 @@ class Database(object):
         The row id of the most recent insert query.
         @rtype: int or long
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._cursor.lastrowid
 
@@ -213,8 +228,10 @@ class Database(object):
         The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._cursor.rowcount
         # return self._connection.changes()
 
@@ -242,8 +259,10 @@ class Database(object):
         @returns: unknown
         @raise sqlite.Error: unknown
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread (%s %d-%d)"%(current_thread().getName(), self._debug_thread_ident, thread.get_ident())
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
         assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
@@ -280,6 +299,8 @@ class Database(object):
             raise
 
     def executescript(self, statements):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
@@ -328,6 +349,8 @@ class Database(object):
         @returns: unknown
         @raise sqlite.Error: unknown
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
@@ -365,6 +388,8 @@ class Database(object):
             raise
 
     def commit(self, exiting = False):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
@@ -490,7 +515,7 @@ class APSWDatabase(Database):
         @rtype: int or long
         """
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._connection.totalchanges()
 
     def commit(self, exiting = False):
