@@ -3,9 +3,8 @@ logger = logging.getLogger(__name__)
 
 from random import random
 
-if __debug__:
-    def identifier_to_string(identifier):
-        return identifier.encode("HEX") if isinstance(identifier, str) else identifier
+def identifier_to_string(identifier):
+    return identifier.encode("HEX") if isinstance(identifier, str) else identifier
 
 class Cache(object):
     timeout_delay = 10.0
