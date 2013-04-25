@@ -636,8 +636,8 @@ class Dispersy(object):
                     logger.debug("Loading %s at start", community_cls.get_classification())
                     community = community_cls.load_community(self, master, *args, **kargs)
                     communities.append(community)
-                    assert community.master.mid == master.mid
-                    assert community.master.mid in self._communities
+                    assert community.master_member.mid == master.mid
+                    assert community.master_member.mid in self._communities
 
         return communities
 
