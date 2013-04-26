@@ -4501,6 +4501,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         This method is thread safe.
 
         1. unload all communities
+           in reverse define_auto_load order, starting with all undefined communities
         2. closes endpoint
         3. closes database
         4. stops callback
@@ -4509,13 +4510,28 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
         assert isinstance(timeout, float), type(timeout)
         assert 0.0 <= timeout, timeout
 
+        def unload_communities(communities):
+            for community in communities:
+                if community.cid in self._communities:
+                    community.unload_community()
+
+        def ordered_unload_communities():
+            # unload communities that are not defined
+            unload_communities([community
+                                for community
+                                in self._communities.itervalues()
+                                if not community.get_classification() in self._auto_load_communities])
+
+            # unload communities in reverse auto load order
+            for classification in reversed(self._auto_load_communities):
+                unload_communities([community
+                                    for community
+                                    in self._communities.itervalues()
+                                    if community.get_classification() == classification])
+
         def stop():
             # unload all communities
-            try:
-                while True:
-                    next(self._communities.itervalues()).unload_community()
-            except StopIteration:
-                pass
+            ordered_unload_communities()
 
             # stop endpoint
             self._endpoint.close(timeout)
@@ -4538,11 +4554,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                 self._batch_cache.clear()
 
                 # unload all communities
-                try:
-                    while True:
-                        next(self._communities.itervalues()).unload_community()
-                except StopIteration:
-                    pass
+                ordered_unload_communities()
 
             # stop the database
             self._database.close()
