@@ -71,7 +71,7 @@ class ScriptBase(object):
         community.unload_community()
 
 class ScenarioScriptBase(ScriptBase):
-    #TODO: all bartercast references should be converted to some universal style
+    # TODO: all bartercast references should be converted to some universal style
     def __init__(self, dispersy, logfile, **kargs):
         ScriptBase.__init__(self, dispersy, **kargs)
 
@@ -86,7 +86,7 @@ class ScenarioScriptBase(ScriptBase):
 
         if 'starting_timestamp' in kargs:
             self._starting_timestamp = int(kargs['starting_timestamp'])
-            log(self._logfile, "Using %d as starting timestamp, will wait for %d seconds"%(self._starting_timestamp, self._starting_timestamp - int(time())))
+            log(self._logfile, "Using %d as starting timestamp, will wait for %d seconds" % (self._starting_timestamp, self._starting_timestamp - int(time())))
         else:
             self._starting_timestamp = int(time())
             log(self._logfile, "No starting_timestamp specified, using currentime")
@@ -108,7 +108,7 @@ class ScenarioScriptBase(ScriptBase):
     def __get_nr_peers(self):
         line_nr = 0
         for line in open('data/peers'):
-            line_nr +=1
+            line_nr += 1
 
         return line_nr
 
@@ -172,7 +172,7 @@ class ScenarioScriptBase(ScriptBase):
     def sleep(self):
         """ Calculate the time to sleep.
         """
-        #when should we start the next step?
+        # when should we start the next step?
         expected_time = self._starting_timestamp + (self._timestep * (self._stepcount + 1))
         diff = expected_time - time()
 
@@ -202,7 +202,7 @@ class ScenarioScriptBase(ScriptBase):
             self._my_name, ip, port, _ = fp.readline().split()
             self._my_address = (ip, int(port))
 
-        log(self._logfile, "Read config done", my_name = self._my_name, my_address = self._my_address)
+        log(self._logfile, "Read config done", my_name=self._my_name, my_address=self._my_address)
 
         # create my member
         my_member = self._dispersy.get_new_member(u"low")
@@ -215,7 +215,7 @@ class ScenarioScriptBase(ScriptBase):
         self._community = self.join_community(my_member)
         logger.debug("Joined community %s", self._community._my_member)
 
-        log("dispersy.log", "joined-community", time = time(), timestep = self._timestep, sync_response_limit = self._community.dispersy_sync_response_limit, starting_timestamp = self._starting_timestamp)
+        log("dispersy.log", "joined-community", time=time(), timestep=self._timestep, sync_response_limit=self._community.dispersy_sync_response_limit, starting_timestamp=self._starting_timestamp)
 
         self._stepcount = 0
 
@@ -296,23 +296,37 @@ class ScenarioScriptBase(ScriptBase):
         prev_bootstrap_candidates = {}
 
         while True:
-            #print statistics
+            # print statistics
             self._dispersy.statistics.update()
 
-            bl_reuse = sum(c.sync_bloom_reuse for c in self._dispersy.statistics.communities)
+            bloom = [(c.classification, c.sync_bloom_reuse, c.sync_bloom_skip) for c in self._dispersy.statistics.communities]
             candidates = [(c.classification, len(c.candidates) if c.candidates else 0) for c in self._dispersy.statistics.communities]
-            statistics_dict= {'received_count': self._dispersy.statistics.received_count, 'total_up': self._dispersy.statistics.total_up, 'total_down': self._dispersy.statistics.total_down, 'drop_count': self._dispersy.statistics.drop_count, 'total_send': self._dispersy.statistics.total_send, 'cur_sendqueue': self._dispersy.statistics.cur_sendqueue, 'delay_count': self._dispersy.statistics.delay_count, 'delay_success': self._dispersy.statistics.delay_success, 'delay_timeout': self._dispersy.statistics.delay_timeout, 'walk_attempt': self._dispersy.statistics.walk_attempt, 'walk_success': self._dispersy.statistics.walk_success, 'walk_reset': self._dispersy.statistics.walk_reset, 'conn_type': self._dispersy.statistics.connection_type, 'bl_reuse': bl_reuse, 'candidates': candidates}
+            statistics_dict = {'received_count': self._dispersy.statistics.received_count,
+                              'total_up': self._dispersy.statistics.total_up,
+                              'total_down': self._dispersy.statistics.total_down,
+                              'drop_count': self._dispersy.statistics.drop_count,
+                              'total_send': self._dispersy.statistics.total_send,
+                              'cur_sendqueue': self._dispersy.statistics.cur_sendqueue,
+                              'delay_count': self._dispersy.statistics.delay_count,
+                              'delay_success': self._dispersy.statistics.delay_success,
+                              'delay_timeout': self._dispersy.statistics.delay_timeout,
+                              'walk_attempt': self._dispersy.statistics.walk_attempt,
+                              'walk_success': self._dispersy.statistics.walk_success,
+                              'walk_reset': self._dispersy.statistics.walk_reset,
+                              'conn_type': self._dispersy.statistics.connection_type,
+                              'bloom': bloom,
+                              'candidates': candidates}
 
             prev_statistics = print_on_change("statistics", prev_statistics, statistics_dict)
-            prev_total_received = print_on_change("statistics-successful-messages", prev_total_received ,self._dispersy.statistics.success)
-            prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped ,self._dispersy.statistics.drop)
-            prev_total_delayed = print_on_change("statistics-delayed-messages", prev_total_delayed ,self._dispersy.statistics.delay)
-            prev_total_outgoing = print_on_change("statistics-outgoing-messages", prev_total_outgoing ,self._dispersy.statistics.outgoing)
-            prev_total_fail = print_on_change("statistics-walk-fail", prev_total_fail ,self._dispersy.statistics.walk_fail)
-            prev_endpoint_recv = print_on_change("statistics-endpoint-recv", prev_endpoint_recv ,self._dispersy.statistics.endpoint_recv)
-            prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send ,self._dispersy.statistics.endpoint_send)
-            prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages ,self._dispersy.statistics.created)
-            prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates ,self._dispersy.statistics.bootstrap_candidates)
+            prev_total_received = print_on_change("statistics-successful-messages", prev_total_received , self._dispersy.statistics.success)
+            prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped , self._dispersy.statistics.drop)
+            prev_total_delayed = print_on_change("statistics-delayed-messages", prev_total_delayed , self._dispersy.statistics.delay)
+            prev_total_outgoing = print_on_change("statistics-outgoing-messages", prev_total_outgoing , self._dispersy.statistics.outgoing)
+            prev_total_fail = print_on_change("statistics-walk-fail", prev_total_fail , self._dispersy.statistics.walk_fail)
+            prev_endpoint_recv = print_on_change("statistics-endpoint-recv", prev_endpoint_recv , self._dispersy.statistics.endpoint_recv)
+            prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send , self._dispersy.statistics.endpoint_send)
+            prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages , self._dispersy.statistics.created)
+            prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates , self._dispersy.statistics.bootstrap_candidates)
 
 #            def callback_cmp(a, b):
 #                return cmp(self._dispersy.callback._statistics[a][0], self._dispersy.callback._statistics[b][0])
