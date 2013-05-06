@@ -307,9 +307,9 @@ class TunnelEndpoint(Endpoint):
     def get_def(self):
         class DummyDef(object):
             def get_roothash(self):
-                return "dispersy"
+                return "dispersy-endpoint"
             def get_roothash_as_hex(self):
-                return "dispersy".encode("HEX")
+                return "dispersy-endpoint".encode("HEX")
         return DummyDef()
 
     def get_address(self):
