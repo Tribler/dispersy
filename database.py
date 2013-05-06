@@ -9,6 +9,7 @@ This module provides basic database functionalty and simple version control.
 import logging
 logger = logging.getLogger(__name__)
 
+import sys
 from sqlite3 import Connection, Error
 
 from .decorator import attach_runtime_statistics
