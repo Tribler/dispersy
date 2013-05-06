@@ -1629,8 +1629,6 @@ class Community(object):
         @raise KeyError: When there is no meta message by that name.
         """
         assert isinstance(name, unicode)
-        if not name in self._meta_messages:
-            logger.warning("this community does not support the %s message", name)
         return self._meta_messages[name]
 
     def get_meta_messages(self):
