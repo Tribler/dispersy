@@ -33,15 +33,18 @@ class Callback(object):
 
             try:
                 source_file = getsourcefile(call)[-25:]
-            except TypeError:
+            except (TypeError, IndexError):
                 source_file = "<unknown>"
 
             try:
                 line_number = getsourcelines(call)[1]
-            except (TypeError, IOError):
+            except (TypeError, IOError, IndexError):
                 line_number = -1
 
-            return "%s@%s:%d" % (call.__name__, source_file, line_number)
+            if source_file == "<unknown>" and line_number == -1:
+                return call.__name__
+            else:
+                return "%s@%s:%d" % (call.__name__, source_file, line_number)
 
     def __init__(self, name="Generic-Callback"):
         assert isinstance(name, str), type(name)
