@@ -6,7 +6,7 @@ import inspect
 class MetaObject(object):
     class Implementation(object):
         def __init__(self, meta):
-            assert isinstance(meta, MetaObject)
+            assert isinstance(meta, MetaObject), type(meta)
             self._meta = meta
 
         @property

@@ -63,7 +63,7 @@ from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Can
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination, MemberDestination
 from .dispersydatabase import DispersyDatabase
-from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
 from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
@@ -952,29 +952,30 @@ class Dispersy(object):
             return self._communities[cid]
 
         except KeyError:
-            try:
-                # have we joined this community
-                classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
-                                                                                           (buffer(cid),)).next()
+            if load or auto_load:
+                try:
+                    # have we joined this community
+                    classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
+                                                                                               (buffer(cid),)).next()
 
-            except StopIteration:
-                pass
-
-            else:
-                if load or (auto_load and auto_load_flag):
-
-                    if classification in self._auto_load_communities:
-                        master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
-                        cls, args, kargs = self._auto_load_communities[classification]
-                        community = cls.load_community(self, master, *args, **kargs)
-                        assert master.mid in self._communities
-                        return community
-
-                    else:
-                        logger.warning("unable to auto load %s is an undefined classification [%s]", cid.encode("HEX"), classification)
+                except StopIteration:
+                    pass
 
                 else:
-                    logger.debug("not allowed to load [%s]", classification)
+                    if load or (auto_load and auto_load_flag):
+
+                        if classification in self._auto_load_communities:
+                            master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
+                            cls, args, kargs = self._auto_load_communities[classification]
+                            community = cls.load_community(self, master, *args, **kargs)
+                            assert master.mid in self._communities
+                            return community
+
+                        else:
+                            logger.warning("unable to auto load %s is an undefined classification [%s]", cid.encode("HEX"), classification)
+
+                    else:
+                        logger.debug("not allowed to load [%s]", classification)
 
         raise KeyError(cid)
 
@@ -1081,8 +1082,8 @@ class Dispersy(object):
 
             else:
                 # it is possible that, for some time after the WAN address changes, we will believe
-                # that the connection type is symmetric NAT.  once votes decay we may find that we
-                # are no longer behind a symmetric-NAT
+                # that the connection type is symmetric NAT.  once votes have been pruned we may
+                # find that we are no longer behind a symmetric-NAT
                 if self._connection_type == u"symmetric-NAT":
                     self._connection_type = u"unknown"
 
@@ -1248,6 +1249,10 @@ class Dispersy(object):
                     yield DropMessage(message, "global time is not within acceptable range (%d, we accept %d)" % (message.distribution.global_time, acceptable_global_time))
                     continue
 
+                if not message.distribution.pruning.is_active():
+                    yield DropMessage(message, "message has been pruned")
+                    continue
+
                 key = (message.authentication.member.database_id, message.distribution.global_time)
                 if key in unique:
                     yield DropMessage(message, "duplicate message by member^global_time (1)")
@@ -1313,6 +1318,10 @@ class Dispersy(object):
             for message in messages:
                 if message.distribution.global_time > acceptable_global_time:
                     yield DropMessage(message, "global time is not within acceptable range")
+                    continue
+
+                if not message.distribution.pruning.is_active():
+                    yield DropMessage(message, "message has been pruned")
                     continue
 
                 key = (message.authentication.member.database_id, message.distribution.global_time)
@@ -1524,6 +1533,9 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # refuse messages where the global time is unreasonably high
         acceptable_global_time = meta.community.acceptable_global_time
         messages = [message if message.distribution.global_time <= acceptable_global_time else DropMessage(message, "global time is not within acceptable range") for message in messages]
+
+        # refuse messages that have been pruned (or soon will be)
+        messages = [DropMessage(message, "message has been pruned") if isinstance(message, Message.Implementation) and not message.distribution.pruning.is_active() else message for message in messages]
 
         if isinstance(meta.authentication, MemberAuthentication):
             # a message is considered unique when (creator, global-time), i.r. (authentication.member,
@@ -2347,7 +2359,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
                     # verify that the bloom filter is correct
                     try:
-                        packets = [str(packet) for packet, in self._database.execute(u"""SELECT sync.packet
+                        packets = [str(packet) for packet, in self._database.execute(u"""
+SELECT sync.packet
 FROM sync
 JOIN meta_message ON meta_message.id = sync.meta_message
 WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0""",
@@ -2471,7 +2484,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             if payload.advice:
                 first_invalid_sock_addr = None
-                for introduced in community.dispersy_yield_introduce_candidates(candidate):
+                for introduced in community.dispersy_yield_introduce_candidates(candidate, not candidate.tunnel):
                     if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break
@@ -2523,14 +2536,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         sub_selects = []
         for _, _, meta in meta_messages:
-            sub_selects.append(u"""SELECT * FROM (SELECT sync.packet FROM sync
-WHERE sync.meta_message = %d AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) %% ? = 0
-ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchronization_direction))
+            sub_selects.append(u"""
+ SELECT * FROM
+  (SELECT sync.packet FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) %% ? = 0
+   ORDER BY sync.global_time %s)""" % (meta.distribution.synchronization_direction,))
 
-        sql = u"SELECT * FROM ("
-        sql += " UNION ALL ".join(sub_selects)
-        sql += ")"
-
+        sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(sub_selects), ")"))
         logger.debug(sql)
 
         for message in messages:
@@ -2539,19 +2551,24 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             if payload.sync:
                 # we limit the response by byte_limit bytes
                 byte_limit = community.dispersy_sync_response_limit
-
                 time_high = payload.time_high if payload.has_time_high else community.global_time
 
                 # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause
                 # overflow exceptions in the sqlite3 wrapper
-                time_low = min(payload.time_low, 2**63-1)
-                time_high = min(time_high, 2**63-1)
-
-                offset = long(payload.offset)
-                modulo = long(payload.modulo)
+                # 26/02/13 Boudewijn: time_low and time_high must now be given once for every
+                # sub_selects, taking into account that time_low may not be below the
+                # inactive_threshold (if given)
+                sql_arguments = []
+                for _, _, meta in meta_messages:
+                    sql_arguments.extend((meta.database_id,
+                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2**63-1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2**63-1),
+                                          min(time_high, 2**63-1),
+                                          long(payload.offset),
+                                          long(payload.modulo)))
+                logger.debug("%s", sql_arguments)
 
                 packets = []
-                generator = ((str(packet),) for packet, in self._database.execute(sql, (time_low, long(time_high), offset, modulo) * len(sub_selects)))
+                generator = ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
 
                 for packet, in payload.bloom_filter.not_filter(generator):
                     logger.debug("found missing (%d bytes) %s for %s", len(packet), sha1(packet).digest().encode("HEX"), message.candidate)
@@ -2563,7 +2580,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                         break
 
                 if packets:
-                    logger.debug("syncing %d packets (%d bytes) over [%d:%d] %%%d+%d to %s", len(packets), sum(len(packet) for packet in packets), time_low, time_high, modulo, offset, message.candidate)
+                    logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
                     self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
                     self._endpoint.send([message.candidate], packets)
 
@@ -4390,7 +4407,7 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
                                 counter = 1
 
                             if counter > meta.distribution.history_size:
-                                raise ValueError("decayed packet ", packet_id, " still in database")
+                                raise ValueError("pruned packet ", packet_id, " still in database")
 
                             logger.debug("LastSyncDistribution for %s is OK", meta.name)
 
@@ -4490,8 +4507,10 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             self._endpoint_ready()
 
         # start
+        logger.info("starting the Dispersy core...")
         self._callback.start()
         self._callback.call(start)
+        logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
         return True
 
     def stop(self, timeout=10.0):
@@ -4559,8 +4578,11 @@ ORDER BY sync.global_time %s)"""%(meta.database_id, meta.distribution.synchroniz
             # stop the database
             self._database.close()
 
+        logger.info("stopping the Dispersy core...")
         self._callback.call(stop, priority=-512)
-        return self._callback.stop(timeout)
+        self._callback.stop(timeout)
+        logger.info("Dispersy core stopped")
+        return True
 
     def _candidate_walker(self):
         """

@@ -24,16 +24,15 @@ except ImportError:
     from .python27_ordereddict import OrderedDict
 
 from .bloomfilter import BloomFilter
+from .candidate import WalkCandidate
 from .conversion import BinaryConversion, DefaultConversion
-from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
-from .distribution import SyncDistribution
+from .distribution import SyncDistribution, GlobalTimePruning
 from .member import DummyMember, Member
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-from .candidate import WalkCandidate
 
 class SyncCache(object):
     def __init__(self, time_low, time_high, modulo, offset, bloom_filter):
@@ -89,8 +88,8 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        ec = ec_generate_key(u"high")
-        master = dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        assert dispersy.callback.is_current_thread
+        master = dispersy.get_new_member(u"high")
 
         dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES(?, ?, ?)", (master.database_id, my_member.database_id, cls.get_classification()))
         community_database_id = dispersy.database.last_insert_rowid
@@ -186,6 +185,7 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
+        assert dispersy.callback.is_current_thread
         logger.debug("joining %s %s", cls.get_classification(), master.mid.encode("HEX"))
 
         dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
@@ -214,6 +214,7 @@ class Community(object):
     @classmethod
     def get_master_members(cls, dispersy):
         assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert dispersy.callback.is_current_thread
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
         return [dispersy.get_member(str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
@@ -236,6 +237,7 @@ class Community(object):
         """
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
+        assert dispersy.callback.is_current_thread
         logger.debug("loading %s %s", cls.get_classification(), master.mid.encode("HEX"))
         community = cls(dispersy, master, *args, **kargs)
 
@@ -259,9 +261,9 @@ class Community(object):
         """
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
-        if __debug__:
-            logger.debug("initializing:  %s", self.get_classification())
-            logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
+        assert dispersy.callback.is_current_thread
+        logger.debug("initializing:  %s", self.get_classification())
+        logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
 
         # Dispersy
         self._dispersy = dispersy
@@ -1162,19 +1164,36 @@ class Community(object):
         """
         self._global_time += 1
         logger.debug("claiming a new global time value @%d", self._global_time)
+        self._check_for_pruning()
         return self._global_time
 
     def update_global_time(self, global_time):
         """
         Increase the local global time if the given GLOBAL_TIME is larger.
         """
-        previous = self._global_time
-        new = max(self._global_time, global_time)
-        if new - previous >= 100:
-            logger.warning("updating global time %d -> %d", previous, new)
-        else:
-            logger.debug("updating global time %d -> %d", previous, new)
-        self._global_time = max(self._global_time, global_time)
+        if global_time > self._global_time:
+            logger.debug("updating global time %d -> %d", self._global_time, global_time)
+            self._global_time = global_time
+            self._check_for_pruning()
+
+    def _check_for_pruning(self):
+        """
+        Check for messages that need to be pruned because the global time changed.  Should be called
+        whenever self._global_time is increased.
+        """
+        for meta in self._meta_messages.itervalues():
+            if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
+                # TODO: some messages should support a notifier when a message is pruned
+                # if __debug__: dprint("checking pruning for ", meta.name, " @", self._global_time, force=1)
+                # packets = [str(packet)
+                #            for packet,
+                #            in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? AND global_time <= ?",
+                #                                               (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))]
+                # if packets:
+
+                self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
+                                                (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
+                logger.debug("%d %s messages have been pruned", self._dispersy.database.changes, meta.name)
 
     def dispersy_check_database(self):
         """
@@ -1429,7 +1448,7 @@ class Community(object):
         shuffle(candidates)
         return iter(candidates)
 
-    def dispersy_yield_introduce_candidates(self, candidate = None):
+    def dispersy_yield_introduce_candidates(self, exclude_candidate=None, exclude_tunnel=False):
         """
         Yield non-unique active candidates or None in round robin fashion.
 
@@ -1448,7 +1467,7 @@ class Community(object):
                 yield None
             else:
                 prev_result = result
-                if result == candidate:
+                if (result == exclude_candidate) or (exclude_tunnel and result.tunnel):
                     continue
 
                 yield result
@@ -1610,8 +1629,6 @@ class Community(object):
         @raise KeyError: When there is no meta message by that name.
         """
         assert isinstance(name, unicode)
-        if not name in self._meta_messages:
-            logger.warning("this community does not support the %s message", name)
         return self._meta_messages[name]
 
     def get_meta_messages(self):

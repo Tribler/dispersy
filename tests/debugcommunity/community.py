@@ -6,7 +6,7 @@ from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import MemberDestination, CommunityDestination
-from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution
+from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...message import Message, DelayMessageByProof
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
 
@@ -69,10 +69,19 @@ class DebugCommunity(Community):
                 Message(self, u"protected-full-sync-text", MemberAuthentication(), LinearResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"dynamic-resolution-text", MemberAuthentication(), DynamicResolution(PublicResolution(), LinearResolution()), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 Message(self, u"sequence-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
+                Message(self, u"full-sync-global-time-pruning-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128, pruning=GlobalTimePruning(10, 20)), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 ]
 
     def create_full_sync_text(self, text, store=True, update=True, forward=True):
         meta = self.get_meta_message(u"full-sync-text")
+        message = meta.impl(authentication=(self._my_member,),
+                            distribution=(self.claim_global_time(),),
+                            payload=(text,))
+        self._dispersy.store_update_forward([message], store, update, forward)
+        return message
+
+    def create_full_sync_global_time_pruning_text(self, text, store=True, update=True, forward=True):
+        meta = self.get_meta_message(u"full-sync-global-time-pruning-text")
         message = meta.impl(authentication=(self._my_member,),
                             distribution=(self.claim_global_time(),),
                             payload=(text,))

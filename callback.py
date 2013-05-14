@@ -608,7 +608,7 @@ class Callback(object):
 
             else:
                 if __debug__:
-                    logger.debug("calling %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
+                    logger.debug("---- call %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
                     debug_call_start = time()
 
                 # call can be either:
@@ -666,7 +666,9 @@ class Callback(object):
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
                     if debug_call_duration > 1.0:
-                        logger.warning("%.2f call to %s", debug_call_duration, self._debug_call_name)
+                        logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                    else:
+                        logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
 
         with lock:
             # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still

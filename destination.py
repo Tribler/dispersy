@@ -12,6 +12,9 @@ class Destination(MetaObject):
             from .message import Message
         assert isinstance(message, Message)
 
+    def __str__(self):
+        return "<%s>" % (self.__class__.__name__,)
+
 class CandidateDestination(Destination):
     """
     A destination policy where the message is sent to one or more specified candidates.
@@ -96,3 +99,6 @@ class CommunityDestination(Destination):
     @property
     def node_count(self):
         return self._node_count
+
+    def __str__(self):
+        return "<%s node_count:%d>" % (self.__class__.__name__, self._node_count)

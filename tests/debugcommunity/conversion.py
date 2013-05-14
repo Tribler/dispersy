@@ -19,6 +19,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(12), community.get_meta_message(u"protected-full-sync-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(13), community.get_meta_message(u"dynamic-resolution-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(14), community.get_meta_message(u"sequence-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(15), community.get_meta_message(u"full-sync-global-time-pruning-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         """

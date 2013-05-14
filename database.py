@@ -190,6 +190,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         logger.debug("disabling Database.commit()")
@@ -203,6 +204,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         self._pending_commits, pending_commits = 0, self._pending_commits
@@ -231,6 +233,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._cursor.lastrowid
@@ -243,6 +246,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._cursor.rowcount
         # return self._connection.changes()
@@ -275,6 +279,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
@@ -285,13 +290,14 @@ class Database(object):
             return self._cursor.execute(statement, bindings)
 
         except Error:
-            logger.exception("Filename: %s\n%s", self._file_path, statement)
+            logger.exception("%s: %s", self._file_path, statement)
             raise
 
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
 
@@ -300,7 +306,7 @@ class Database(object):
             return self._cursor.executescript(statements)
 
         except Error:
-            logger.exception("Filename: %s\n%s", self._file_path, statements)
+            logger.exception("%s: %s", self._file_path, statements)
             raise
 
     @attach_explain_query_plan
@@ -332,6 +338,7 @@ class Database(object):
         """
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
@@ -352,28 +359,29 @@ class Database(object):
             return self._cursor.executemany(statement, sequenceofbindings)
 
         except Error:
-            logger.exception("Filename: %s\n%s", self._file_path, statement)
+            logger.exception("%s: %s", self._file_path, statement)
             raise
 
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
     def commit(self, exiting = False):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:
-            logger.debug("defer COMMIT")
+            logger.debug("defer COMMIT [%s]", self._file_path)
             self._pending_commits += 1
             return False
 
         else:
-            logger.debug("COMMIT")
+            logger.debug("COMMIT [%s]", self._file_path)
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting = exiting)
                 except Exception as exception:
-                    logger.exception("%s", exception)
+                    logger.exception("%s: %s", self._file_path, exception)
 
             return self._connection.commit()
 
@@ -415,6 +423,7 @@ class APSWDatabase(Database):
 
     def execute(self, statement, bindings=()):
         import apsw
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict)), "The bindings must be a tuple, list, or dictionary"
@@ -425,7 +434,7 @@ class APSWDatabase(Database):
             return self._cursor.execute(statement, bindings)
 
         except apsw.Error:
-            logger.exception("Filename: %s\n%s", self._file_path, statement)
+            logger.exception("%s: %s", self._file_path, statement)
             raise
 
     def executescript(self, statements):
@@ -433,6 +442,7 @@ class APSWDatabase(Database):
 
     def executemany(self, statement, sequenceofbindings):
         import apsw
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
@@ -450,7 +460,7 @@ class APSWDatabase(Database):
             return self._cursor.executemany(statement, sequenceofbindings)
 
         except apsw.Error:
-            logger.exception("Filename: %s\n%s", self._file_path, statement)
+            logger.exception("%s: %s", self._file_path, statement)
             raise
 
     @property
@@ -459,7 +469,8 @@ class APSWDatabase(Database):
         The row id of the most recent insert query.
         @rtype: int or long
         """
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident()
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._connection.last_insert_rowid()
 
@@ -469,10 +480,12 @@ class APSWDatabase(Database):
         The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._connection.totalchanges()
 
     def commit(self, exiting = False):
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 

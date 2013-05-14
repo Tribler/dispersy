@@ -296,12 +296,20 @@ class TunnelEndpoint(Endpoint):
         self._swift = swift_process
         self._session = "ffffffff".decode("HEX")
 
+    def open(self, dispersy):
+        super(TunnelEndpoint, self).open(dispersy)
+        self._swift.add_download(self)
+
+    def close(self, timeout=0.0):
+        self._swift.remove_download(self, True, True)
+        super(TunnelEndpoint, self).close(timeout)
+
     def get_def(self):
         class DummyDef(object):
             def get_roothash(self):
-                return "dispersy"
+                return "dispersy-endpoint"
             def get_roothash_as_hex(self):
-                return "dispersy".encode("HEX")
+                return "dispersy-endpoint".encode("HEX")
         return DummyDef()
 
     def get_address(self):
