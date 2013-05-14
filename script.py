@@ -7,11 +7,14 @@ from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
 from .tool.lencoder import log, make_valid_key
 
+
 def assert_(value, *args):
     if not value:
         raise AssertionError(*args)
 
+
 class ScriptBase(object):
+
     def __init__(self, dispersy, **kargs):
         assert isinstance(dispersy, Dispersy), type(dispersy)
         super(ScriptBase, self).__init__()
@@ -70,8 +73,10 @@ class ScriptBase(object):
 
         community.unload_community()
 
+
 class ScenarioScriptBase(ScriptBase):
     # TODO: all bartercast references should be converted to some universal style
+
     def __init__(self, dispersy, logfile, **kargs):
         ScriptBase.__init__(self, dispersy, **kargs)
 
@@ -132,6 +137,7 @@ class ScenarioScriptBase(ScriptBase):
         """
         def dummy_on_socket(*params):
             return
+
         def dummy_send(*params):
             return False
 
@@ -152,8 +158,10 @@ class ScenarioScriptBase(ScriptBase):
                 cursor_position = fp.tell()
                 line = fp.readline().strip()
                 if not line:
-                    if commands: return commands
-                    else: return -1
+                    if commands:
+                        return commands
+                    else:
+                        return -1
 
                 cmdstep, command = line.split(' ', 1)
 
@@ -192,7 +200,8 @@ class ScenarioScriptBase(ScriptBase):
         self.add_testcase(self._run)
 
     def _run(self):
-        if __debug__: log(self._logfile, "start-scenario-script")
+        if __debug__:
+            log(self._logfile, "start-scenario-script")
 
         #
         # Read our configuration from the peer.conf file
@@ -302,9 +311,9 @@ class ScenarioScriptBase(ScriptBase):
             bloom = [(c.classification, c.sync_bloom_reuse, c.sync_bloom_skip) for c in self._dispersy.statistics.communities]
             candidates = [(c.classification, len(c.candidates) if c.candidates else 0) for c in self._dispersy.statistics.communities]
             statistics_dict = {'received_count': self._dispersy.statistics.received_count,
-                              'total_up': self._dispersy.statistics.total_up,
-                              'total_down': self._dispersy.statistics.total_down,
-                              'drop_count': self._dispersy.statistics.drop_count,
+                               'total_up': self._dispersy.statistics.total_up,
+                               'total_down': self._dispersy.statistics.total_down,
+                               'drop_count': self._dispersy.statistics.drop_count,
                               'total_send': self._dispersy.statistics.total_send,
                               'cur_sendqueue': self._dispersy.statistics.cur_sendqueue,
                               'delay_count': self._dispersy.statistics.delay_count,
@@ -318,15 +327,15 @@ class ScenarioScriptBase(ScriptBase):
                               'candidates': candidates}
 
             prev_statistics = print_on_change("statistics", prev_statistics, statistics_dict)
-            prev_total_received = print_on_change("statistics-successful-messages", prev_total_received , self._dispersy.statistics.success)
-            prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped , self._dispersy.statistics.drop)
-            prev_total_delayed = print_on_change("statistics-delayed-messages", prev_total_delayed , self._dispersy.statistics.delay)
-            prev_total_outgoing = print_on_change("statistics-outgoing-messages", prev_total_outgoing , self._dispersy.statistics.outgoing)
-            prev_total_fail = print_on_change("statistics-walk-fail", prev_total_fail , self._dispersy.statistics.walk_fail)
-            prev_endpoint_recv = print_on_change("statistics-endpoint-recv", prev_endpoint_recv , self._dispersy.statistics.endpoint_recv)
-            prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send , self._dispersy.statistics.endpoint_send)
-            prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages , self._dispersy.statistics.created)
-            prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates , self._dispersy.statistics.bootstrap_candidates)
+            prev_total_received = print_on_change("statistics-successful-messages", prev_total_received, self._dispersy.statistics.success)
+            prev_total_dropped = print_on_change("statistics-dropped-messages", prev_total_dropped, self._dispersy.statistics.drop)
+            prev_total_delayed = print_on_change("statistics-delayed-messages", prev_total_delayed, self._dispersy.statistics.delay)
+            prev_total_outgoing = print_on_change("statistics-outgoing-messages", prev_total_outgoing, self._dispersy.statistics.outgoing)
+            prev_total_fail = print_on_change("statistics-walk-fail", prev_total_fail, self._dispersy.statistics.walk_fail)
+            prev_endpoint_recv = print_on_change("statistics-endpoint-recv", prev_endpoint_recv, self._dispersy.statistics.endpoint_recv)
+            prev_endpoint_send = print_on_change("statistics-endpoint-send", prev_endpoint_send, self._dispersy.statistics.endpoint_send)
+            prev_created_messages = print_on_change("statistics-created-messages", prev_created_messages, self._dispersy.statistics.created)
+            prev_bootstrap_candidates = print_on_change("statistics-bootstrap-candidates", prev_bootstrap_candidates, self._dispersy.statistics.bootstrap_candidates)
 
 #            def callback_cmp(a, b):
 #                return cmp(self._dispersy.callback._statistics[a][0], self._dispersy.callback._statistics[b][0])

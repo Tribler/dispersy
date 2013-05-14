@@ -85,6 +85,7 @@ CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '""" + str(LATEST_VERSION) + """');
 """
 
+
 class DispersyDatabase(Database):
     if __debug__:
         __doc__ = schema
@@ -512,7 +513,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                         message = convert_packet_to_message(str(packet), community, verify=False)
                         assert message.authentication.member.database_id == member_id
                         if (last_sequence_number + 1 == message.distribution.sequence_number and
-                            last_global_time < message.distribution.global_time):
+                                last_global_time < message.distribution.global_time):
                             # message is OK
                             last_sequence_number += 1
                             last_global_time = message.distribution.global_time

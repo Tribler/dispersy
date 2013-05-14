@@ -1,8 +1,10 @@
 from time import time
 
+
 class Statistics():
+
     @staticmethod
-    def dict_inc(dictionary, key, value=1L):
+    def dict_inc(dictionary, key, value=1):
         if dictionary != None:
             try:
                 dictionary[key] += value
@@ -12,7 +14,9 @@ class Statistics():
     def update(self):
         raise NotImplementedError()
 
+
 class DispersyStatistics(Statistics):
+
     def __init__(self, dispersy):
         self._dispersy = dispersy
 
@@ -153,7 +157,9 @@ class DispersyStatistics(Statistics):
             self.overlapping_stumble_candidates = {}
             self.overlapping_intro_candidates = {}
 
+
 class CommunityStatistics(Statistics):
+
     def __init__(self, community):
         self._community = community
         self.acceptable_global_time = None
@@ -183,7 +189,7 @@ class CommunityStatistics(Statistics):
         self.global_time = self._community.global_time
         self.candidates = [(candidate.lan_address, candidate.wan_address, candidate.get_global_time(self._community))
                            for candidate
-                           in self._community._iter_categories([u'walk', u'stumble', u'intro'], once = True) if candidate]
+                           in self._community._iter_categories([u'walk', u'stumble', u'intro'], once=True) if candidate]
         if database:
             self.database = dict(self._community.dispersy.database.execute(u"SELECT meta_message.name, COUNT(sync.id) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? GROUP BY sync.meta_message", (self._community.database_id,)))
         else:

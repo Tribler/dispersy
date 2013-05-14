@@ -3,6 +3,7 @@ from bz2 import BZ2File
 from time import time
 import re
 
+
 def _encode_str(l, value):
     assert isinstance(l, list)
     assert isinstance(value, str)
@@ -14,6 +15,7 @@ def _encode_str(l, value):
     else:
         l.extend(("s", str(len(value)), ":", value))
 
+
 def _encode_unicode(l, value):
     value = value.encode("UTF-8")
     for char in value:
@@ -24,20 +26,26 @@ def _encode_unicode(l, value):
     else:
         l.extend(("u", str(len(value)), ":", value))
 
+
 def _encode_int(l, value):
     l.extend(("i", str(value)))
+
 
 def _encode_long(l, value):
     l.extend(("j", str(value)))
 
+
 def _encode_float(l, value):
     l.extend(("f", str(value)))
+
 
 def _encode_boolean(l, value):
     l.extend(("b", value and "True" or "False"))
 
+
 def _encode_none(l, value):
     l.append("nNone")
+
 
 def _encode_tuple(l, values):
     if values:
@@ -49,6 +57,7 @@ def _encode_tuple(l, values):
     else:
         l.append("t0:()")
 
+
 def _encode_list(l, values):
     if values:
         l.extend(("l", str(len(values)), ":", "["))
@@ -58,6 +67,7 @@ def _encode_list(l, values):
         l[-1] = "]"
     else:
         l.append("l0:[]")
+
 
 def _encode_dict(l, values):
     if values:
@@ -71,11 +81,13 @@ def _encode_dict(l, values):
     else:
         l.append("m0:{}")
 
+
 def _encode(l, value):
     if type(value) in _encode_mapping:
         _encode_mapping[type(value)](l, value)
     else:
         raise ValueError("Can not encode %s" % type(value))
+
 
 def log(filename, _message, **kargs):
     assert isinstance(_message, str)
@@ -101,6 +113,7 @@ def log(filename, _message, **kargs):
     # save to file
     open(filename, "a+").write(s)
 
+
 def bz2log(filename, _message, **kargs):
     assert isinstance(_message, str)
     assert ";" not in _message
@@ -114,7 +127,7 @@ def bz2log(filename, _message, **kargs):
         l = ["################################################################################", "\n",
              "{0:.6f}".format(time()), _seperator, "s6:logger", _seperator, "event:s5:start", "\n",
              "{0:.6f}".format(time()), _seperator]
-        handle = BZ2File(filename, "w", 8*1024, 9)
+        handle = BZ2File(filename, "w", 8 * 1024, 9)
         register(handle.close)
         _cache[filename] = handle
 
@@ -131,6 +144,7 @@ def bz2log(filename, _message, **kargs):
 
     return handle
 
+
 def make_valid_key(key):
     return re.sub('[^a-zA-Z0-9_]', '_', key)
 
@@ -139,14 +153,13 @@ _seperator = "   "
 _valid_key_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
 _cache = {}
 _encode_initiated = False
-_encode_mapping = {str:_encode_str,
-                   unicode:_encode_unicode,
-                   int:_encode_int,
-                   long:_encode_long,
-                   float:_encode_float,
-                   bool:_encode_boolean,
-                   type(None):_encode_none,
-                   tuple:_encode_tuple,
-                   list:_encode_list,
-                   dict:_encode_dict}
-
+_encode_mapping = {str: _encode_str,
+                   unicode: _encode_unicode,
+                   int: _encode_int,
+                   long: _encode_long,
+                   float: _encode_float,
+                   bool: _encode_boolean,
+                   type(None): _encode_none,
+                   tuple: _encode_tuple,
+                   list: _encode_list,
+                   dict: _encode_dict}

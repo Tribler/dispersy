@@ -6,7 +6,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestDynamicSettings(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_default_resolution(self):
         """
@@ -135,12 +137,12 @@ class TestDynamicSettings(DispersyTestClass):
         community.update_global_time(10)
         self.assertEqual(community.global_time, 10)
         policy_linear = community.create_dispersy_dynamic_settings([(meta, linear)], store=False, update=False, forward=False)
-        self.assertEqual(policy_linear.distribution.global_time, 11) # hence the policy starts at 12
+        self.assertEqual(policy_linear.distribution.global_time, 11)  # hence the policy starts at 12
 
         community.update_global_time(20)
         self.assertEqual(community.global_time, 20)
         policy_public = community.create_dispersy_dynamic_settings([(meta, public)], store=False, update=False, forward=False)
-        self.assertEqual(policy_public.distribution.global_time, 21) # hence the policy starts at 22
+        self.assertEqual(policy_public.distribution.global_time, 21)  # hence the policy starts at 22
 
         # because above policy changes were not applied (i.e. update=False) everything is still
         # PublicResolution without any proof

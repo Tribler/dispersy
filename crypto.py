@@ -13,17 +13,17 @@ if False:
 
     from random import random
 
-    _curves = {u"very-low":42,
-               u"low":60,
-               u"medium":104,
-               u"high":144}
+    _curves = {u"very-low": 42,
+               u"low": 60,
+               u"medium": 104,
+               u"high": 144}
 
     def ec_generate_key(security):
         assert isinstance(security, unicode)
         assert security in _curves
 
         length = _curves[security]
-        private_key = "".join(chr(int(random() * 2**8)) for _ in xrange(2*length))
+        private_key = "".join(chr(int(random() * 2 ** 8)) for _ in xrange(2 * length))
         public_key = private_key[:length]
 
         return (length, public_key, private_key)
@@ -77,7 +77,7 @@ if False:
         return ec[0]
 
     def ec_sign(ec, digest):
-        return "".join(chr(int(random() * 2**8)) for _ in xrange(ec[0]))
+        return "".join(chr(int(random() * 2 ** 8)) for _ in xrange(ec[0]))
 
     def ec_verify(ec, digest, signature):
         return True
@@ -100,10 +100,10 @@ else:
 
     # We want to provide a few default curves.  We will change these curves as new become available
     # and old ones to small to provide sufficient security.
-    _curves.update({u"very-low":EC.NID_sect163k1,
-                    u"low":EC.NID_sect233k1,
-                    u"medium":EC.NID_sect409k1,
-                    u"high":EC.NID_sect571r1})
+    _curves.update({u"very-low": EC.NID_sect163k1,
+                    u"low": EC.NID_sect233k1,
+                    u"medium": EC.NID_sect409k1,
+                    u"high": EC.NID_sect571r1})
 
     def _progress(*args):
         "Called when no feedback needs to be given."
@@ -318,7 +318,7 @@ if __debug__:
                 ec_verify(curve, str(i), signature)
 
             t3 = time.time()
-            print key, "signing took", round(t2-t1, 5), "verify took", round(t3-t2, 5), "totals", round(t3-t1, 5)
+            print key, "signing took", round(t2 - t1, 5), "verify took", round(t3 - t2, 5), "totals", round(t3-t1, 5)
 
     def main():
         for curve in [u"very-low", u"NID_secp224r1", u"low", u"medium", u"high"]:

@@ -23,12 +23,13 @@ _trackers = [(u"dispersy1.tribler.org", 6421),
 
 # _trackers = [(u"kayapo.tribler.org", 6431)]
 
+
 def get_bootstrap_hosts(working_directory):
     """
     Reads WORKING_DIRECTORY/bootstraptribler.txt and returns the hosts therein, otherwise it
     returns _TRACKERS.
     """
-    trackers= []
+    trackers = []
     filename = os.path.join(working_directory, "bootstraptribler.txt")
     try:
         for line in open(filename, "r"):
@@ -43,6 +44,7 @@ def get_bootstrap_hosts(working_directory):
         return trackers
     else:
         return _trackers
+
 
 def get_bootstrap_candidates(dispersy):
     """

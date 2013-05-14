@@ -13,7 +13,9 @@ import sys
 if __debug__:
     from time import sleep
 
+
 class Constructor(object):
+
     """
     Allow a class to have multiple constructors.  The right one will
     be chosen based on the parameter types.
@@ -53,6 +55,8 @@ class Constructor(object):
         raise RuntimeError("No constructor found for", tuple(map(type, args)))
 
 __constructor_order = 0
+
+
 def constructor(*types):
     def helper(func):
         if __debug__:
@@ -63,6 +67,7 @@ def constructor(*types):
         __constructor_order += 1
         return "CONSTRUCTOR", __constructor_order, types, func
     return helper
+
 
 def documentation(documented_func):
     def helper(func):
@@ -78,6 +83,7 @@ if __debug__:
     def runtime_duration_warning(threshold):
         assert isinstance(threshold, float), type(threshold)
         assert 0.0 <= threshold
+
         def helper(func):
             def runtime_duration_warning_helper(*args, **kargs):
                 start = time()
@@ -128,8 +134,7 @@ if "--runtime-statistics" in getattr(sys, "argv", []):
     _runtime_statistics = defaultdict(lambda: [0, 0.0])
 
     def _output_runtime_statistics():
-        entries = [(stats[0], stats[1], entry) for entry, stats in _runtime_statistics.iteritems()]
-        entries.sort()
+        entries = sorted([(stats[0], stats[1], entry) for entry, stats in _runtime_statistics.iteritems()])
         for count, duration, entry in entries:
             if "\n" in entry:
                 _runtime_statistics_logger.info("<<<%s %dx %.2fs %.2fs\n%s\n>>>", sha1(entry).digest().encode("HEX"), count, duration, duration / count, entry)
@@ -189,6 +194,7 @@ else:
 if __debug__:
     def main():
         class Foo(Constructor):
+
             @constructor(int)
             def init_a(self, *args):
                 self.init = int
@@ -208,6 +214,7 @@ if __debug__:
                 self.clss = Foo
 
         class Bar(Constructor):
+
             @constructor(int)
             def init_a(self, *args):
                 self.init = int

@@ -2,6 +2,7 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestDestroyCommunity(DispersyTestClass):
     # TODO: test that after a hard-kill, all new incoming messages are dropped.
     # TODO: test that after a hard-kill, nothing is added to the candidate table anymore
@@ -42,4 +43,3 @@ class TestDestroyCommunity(DispersyTestClass):
 
         # the database should have been cleaned
         # todo
-

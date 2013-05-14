@@ -8,9 +8,12 @@ from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length
 if __debug__:
     from .crypto import ec_check_public_bin, ec_check_private_bin
 
+
 class DummyMember(object):
+
     def __init__(self, dispersy, mid):
-        if __debug__: from .dispersy import Dispersy
+        if __debug__:
+            from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
@@ -100,12 +103,15 @@ class DummyMember(object):
     def __str__(self):
         return "<%s 0 %s>" % (self.__class__.__name__, self._mid.encode("HEX"))
 
+
 class Member(DummyMember):
+
     def __init__(self, dispersy, public_key, private_key=""):
         """
         Create a new Member instance.
         """
-        if __debug__: from .dispersy import Dispersy
+        if __debug__:
+            from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
@@ -274,8 +280,8 @@ class Member(DummyMember):
         assert isinstance(offset, (int, long))
         assert isinstance(length, (int, long))
         return self._public_key and \
-               self._signature_length == len(signature) \
-               and ec_verify(self._ec, sha1(data[offset:offset+(length or len(data))]).digest(), signature)
+            self._signature_length == len(signature) \
+            and ec_verify(self._ec, sha1(data[offset:offset + (length or len(data))]).digest(), signature)
 
     def sign(self, data, offset=0, length=0):
         """

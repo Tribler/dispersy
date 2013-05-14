@@ -5,7 +5,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestPruning(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_local_creation_causes_pruning(self):
         """
@@ -232,7 +234,7 @@ class TestPruning(DispersyTestClass):
 
         # NODE requests missing messages
         sync = (1, 0, 1, 0, [])
-        global_time = 1 # ensure we do not increase the global time, causing further pruning
+        global_time = 1  # ensure we do not increase the global time, causing further pruning
         node.drop_packets()
         node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, global_time))
         yield 0.1
@@ -251,7 +253,7 @@ class TestPruning(DispersyTestClass):
 
         # NODE requests missing messages
         sync = (1, 0, 1, 0, [])
-        global_time = 1 # ensure we do not increase the global time, causing further pruning
+        global_time = 1  # ensure we do not increase the global time, causing further pruning
         node.drop_packets()
         node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, global_time))
         yield 0.1

@@ -20,7 +20,9 @@ else:
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
 DEBUG = False
 
+
 class Endpoint(object):
+
     def __init__(self):
         self._dispersy = None
         self._total_up = 0
@@ -63,7 +65,9 @@ class Endpoint(object):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(timeout, float), type(timeout)
 
+
 class RawserverEndpoint(Endpoint):
+
     def __init__(self, rawserver, port, ip="0.0.0.0"):
         super(RawserverEndpoint, self).__init__()
 
@@ -187,7 +191,7 @@ class RawserverEndpoint(Endpoint):
 
                         index += 1
 
-                    except socket.error, e:
+                    except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
                             if DEBUG:
                                 print >> sys.stderr, long(time()), "endpoint: could not send", len(data), "to", sock_addr, len(self._sendqueue)
@@ -205,7 +209,9 @@ class RawserverEndpoint(Endpoint):
 
                 self._cur_sendqueue = len(self._sendqueue)
 
+
 class StandaloneEndpoint(RawserverEndpoint):
+
     def __init__(self, port, ip="0.0.0.0"):
         # do NOT call RawserverEndpoint.__init__!
         Endpoint.__init__(self)
@@ -283,14 +289,16 @@ class StandaloneEndpoint(RawserverEndpoint):
                         else:
                             break
 
-                except socket.error, e:
+                except socket.error as e:
                     self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, u"socket-error-'%s'" % str(e))
 
                 finally:
                     if packets:
                         self.data_came_in(packets)
 
+
 class TunnelEndpoint(Endpoint):
+
     def __init__(self, swift_process):
         super(TunnelEndpoint, self).__init__()
         self._swift = swift_process
@@ -306,8 +314,10 @@ class TunnelEndpoint(Endpoint):
 
     def get_def(self):
         class DummyDef(object):
+
             def get_roothash(self):
                 return "dispersy-endpoint"
+
             def get_roothash_as_hex(self):
                 return "dispersy-endpoint".encode("HEX")
         return DummyDef()

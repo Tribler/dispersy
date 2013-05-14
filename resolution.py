@@ -1,6 +1,8 @@
 from .meta import MetaObject
 
+
 class Resolution(MetaObject):
+
     class Implementation(MetaObject.Implementation):
         pass
 
@@ -12,21 +14,27 @@ class Resolution(MetaObject):
             from .message import Message
         assert isinstance(message, Message)
 
+
 class PublicResolution(Resolution):
+
     """
     PublicResolution allows any member to create a message.
     """
     class Implementation(Resolution.Implementation):
         pass
 
+
 class LinearResolution(Resolution):
+
     """
     LinearResolution allows only members that have a specific permission to create a message.
     """
     class Implementation(Resolution.Implementation):
         pass
 
+
 class DynamicResolution(Resolution):
+
     """
     DynamicResolution allows the resolution policy to change.
 
@@ -35,6 +43,7 @@ class DynamicResolution(Resolution):
     and LinearResolution.
     """
     class Implementation(Resolution.Implementation):
+
         def __init__(self, meta, policy):
             """
             Create a DynamicResolution.Implementation instance.

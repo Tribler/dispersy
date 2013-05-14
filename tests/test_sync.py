@@ -7,7 +7,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestSync(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_modulo(self):
         """
@@ -332,12 +334,12 @@ class TestSync(DispersyTestClass):
         nodeC.init_socket()
         nodeC.init_my_member()
 
-        # # dump some junk data, TODO: should not use this btw in actual test...
+        # dump some junk data, TODO: should not use this btw in actual test...
         # self._dispersy.database.execute(u"INSERT INTO sync (community, meta_message, member, global_time) VALUES (?, ?, 42, 9)", (community.database_id, message.database_id))
         # sync_id = self._dispersy.database.last_insert_rowid
         # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (42, ?)", (sync_id,))
         # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (43, ?)", (sync_id,))
-        # #
+        #
         # self._dispersy.database.execute(u"INSERT INTO sync (community, meta_message, member, global_time) VALUES (?, ?, 4, 9)", (community.database_id, message.database_id))
         # sync_id = self._dispersy.database.last_insert_rowid
         # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (4, ?)", (sync_id,))

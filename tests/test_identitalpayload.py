@@ -2,7 +2,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestIdenticalPayload(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_incoming__drop_first(self):
         """
@@ -48,7 +50,7 @@ class TestIdenticalPayload(DispersyTestClass):
         # 03/11/11 Boudewijn: we no longer store the ranges in memory, hence only the new packet
         # will be in the bloom filter
         #
-        # # both packets must be in the bloom filter
+        # both packets must be in the bloom filter
         # assert_(len(community._sync_ranges) == 1)
         # for message in messages:
         #     for bloom_filter in community._sync_ranges[0].bloom_filters:
@@ -103,7 +105,7 @@ class TestIdenticalPayload(DispersyTestClass):
         # 03/11/11 Boudewijn: we no longer store the ranges in memory, hence only the new packet
         # will be in the bloom filter
         #
-        # # both packets must be in the bloom filter
+        # both packets must be in the bloom filter
         # assert_(len(community._sync_ranges) == 1)
         # for message in messages:
         #     for bloom_filter in community._sync_ranges[0].bloom_filters:

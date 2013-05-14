@@ -6,7 +6,10 @@ from .meta import MetaObject
 #
 # Exceptions
 #
+
+
 class DelayPacket(Exception):
+
     """
     Uses an identifier to match request to response.
     """
@@ -29,7 +32,9 @@ class DelayPacket(Exception):
             # timeout, do nothing
             self._community.dispersy.statistics.delay_timeout += 1
 
+
 class DelayPacketByMissingMember(DelayPacket):
+
     def __init__(self, community, missing_member_id):
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
@@ -39,7 +44,9 @@ class DelayPacketByMissingMember(DelayPacket):
     def create_request(self, candidate, delayed):
         return self._community.dispersy.create_missing_identity(self._community, candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
 
+
 class DelayPacketByMissingLastMessage(DelayPacket):
+
     def __init__(self, community, member, message, count):
         if __debug__:
             from .member import Member
@@ -54,7 +61,9 @@ class DelayPacketByMissingLastMessage(DelayPacket):
     def create_request(self, candidate, delayed):
         return self._community.dispersy.create_missing_last_message(self._community, candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
 
+
 class DelayPacketByMissingMessage(DelayPacket):
+
     def __init__(self, community, member, global_time):
         if __debug__:
             from .community import Community
@@ -69,7 +78,9 @@ class DelayPacketByMissingMessage(DelayPacket):
     def create_request(self, candidate, delayed):
         return self._community.dispersy.create_missing_message(self._community, candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
 
+
 class DropPacket(Exception):
+
     """
     Raised by Conversion.decode_message when the packet is invalid.
     I.e. does not conform to valid syntax, contains malicious
@@ -77,7 +88,9 @@ class DropPacket(Exception):
     """
     pass
 
+
 class DelayMessage(Exception):
+
     """
     Uses an identifier to match request to response.
 
@@ -122,12 +135,16 @@ class DelayMessage(Exception):
             logger.debug("ignore %s (no response was received)", self._delayed)
             self._delayed.community.dispersy.statistics.delay_timeout += 1
 
+
 class DelayMessageByProof(DelayMessage):
+
     def create_request(self):
         community = self._delayed.community
         return community.dispersy.create_missing_proof(community, self._delayed.candidate, self._delayed, self._process_delayed_message)
 
+
 class DelayMessageBySequence(DelayMessage):
+
     def __init__(self, delayed, missing_low, missing_high):
         assert isinstance(missing_low, (int, long))
         assert isinstance(missing_high, (int, long))
@@ -143,7 +160,9 @@ class DelayMessageBySequence(DelayMessage):
         community = self._delayed.community
         return community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
 
+
 class DelayMessageByMissingMessage(DelayMessage):
+
     def __init__(self, delayed, member, global_time):
         if __debug__:
             from .member import Member
@@ -160,7 +179,9 @@ class DelayMessageByMissingMessage(DelayMessage):
         community = self._delayed.community
         return community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
 
+
 class DropMessage(Exception):
+
     """
     Raised during Community.on_message.
 
@@ -191,7 +212,9 @@ class DropMessage(Exception):
 # batch
 #
 
+
 class BatchConfiguration(object):
+
     def __init__(self, max_window=0.0, priority=0, max_size=1024, max_age=300.0):
         """
         Per meta message configuration on batch handling.
@@ -250,7 +273,9 @@ class BatchConfiguration(object):
 # packet
 #
 
+
 class Packet(MetaObject.Implementation):
+
     def __init__(self, meta, packet, packet_id):
         assert isinstance(packet, str)
         assert isinstance(packet_id, (int, long))
@@ -318,8 +343,12 @@ class Packet(MetaObject.Implementation):
 #
 # message
 #
+
+
 class Message(MetaObject):
+
     class Implementation(Packet):
+
         def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
             if __debug__:
                 from .conversion import Conversion
@@ -456,7 +485,7 @@ class Message(MetaObject):
             community.dispersy.database.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, 0, 128, 1)",
                                                 (community.database_id, name))
             self._database_id = community.dispersy.database.last_insert_rowid
-            community.meta_message_cache[name] = {"id":self._database_id, "cluster":0, "priority":128, "direction":1}
+            community.meta_message_cache[name] = {"id": self._database_id, "cluster": 0, "priority": 128, "direction": 1}
 
         # allow optional setup methods to initialize the specific parts of the meta message
         self._authentication.setup(self)
@@ -544,7 +573,6 @@ class Message(MetaObject):
                                    self._destination.Implementation(self._destination, *destination),
                                    self._payload.Implementation(self._payload, *payload),
                                    *args, **kargs)
-
 
     def __str__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)

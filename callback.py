@@ -17,6 +17,7 @@ if __debug__:
     from atexit import register as atexit_register
     from inspect import getsourcefile, getsourcelines
 
+
 class Callback(object):
     if __debug__:
         @staticmethod
@@ -434,6 +435,7 @@ class Callback(object):
         assert isinstance(timeout, float)
         assert 0.0 <= timeout
         assert self._thread_ident
+
         def callback(result):
             container[0] = result
             event.set()
@@ -557,7 +559,7 @@ class Callback(object):
                 self._state = "STATE_RUNNING"
                 logger.debug("STATE_RUNNING")
 
-        while 1:
+        while True:
             actual_time = get_timestamp()
 
             with lock:
@@ -641,7 +643,7 @@ class Callback(object):
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
-                except (SystemExit, KeyboardInterrupt, GeneratorExit), exception:
+                except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
                     logger.exception("attempting proper shutdown")
                     with lock:
                         self._state = "STATE_EXCEPTION"
@@ -649,7 +651,7 @@ class Callback(object):
                         self._exception_traceback = exc_info()[2]
                     self._call_exception_handlers(exception, True)
 
-                except Exception, exception:
+                except Exception as exception:
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))

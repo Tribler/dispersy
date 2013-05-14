@@ -8,7 +8,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestBatch(DispersyTestClass):
+
     def __init__(self, *args, **kargs):
         super(TestBatch, self).__init__(*args, **kargs)
         self._big_batch_took = 0.0
@@ -28,6 +30,7 @@ class TestBatch(DispersyTestClass):
         Gives many messages at once, the system should process them in max-batch-size batches.
         """
         class MaxBatchSizeCommunity(DebugCommunity):
+
             def _initialize_meta_messages(self):
                 super(MaxBatchSizeCommunity, self)._initialize_meta_messages()
 
