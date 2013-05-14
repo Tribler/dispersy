@@ -6,7 +6,9 @@ from .debugcommunity.node import DebugNode
 
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestSignature(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_double_signed_timeout(self):
         """
@@ -14,7 +16,7 @@ class TestSignature(DispersyTestClass):
         a timeout on the signature request after a few seconds.
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        container = {"timeout":0}
+        container = {"timeout": 0}
 
         # create node and ensure that SELF knows the node address
         node = DebugNode(community)
@@ -23,6 +25,7 @@ class TestSignature(DispersyTestClass):
         yield 0.555
 
         logger.debug("SELF requests NODE to double sign")
+
         def on_response(request, response, modified):
             self.assertIsNone(response)
             container["timeout"] += 1
@@ -38,7 +41,7 @@ class TestSignature(DispersyTestClass):
         # should timeout
         wait = 4
         for counter in range(wait):
-            logger.debug("waiting... %d", wait-counter)
+            logger.debug("waiting... %d", wait - counter)
             yield 1.0
         yield 0.11
 
@@ -56,7 +59,7 @@ class TestSignature(DispersyTestClass):
         double signed message.
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        container = {"response":0}
+        container = {"response": 0}
 
         # create node and ensure that SELF knows the node address
         node = DebugNode(community)
@@ -64,6 +67,7 @@ class TestSignature(DispersyTestClass):
         node.init_my_member()
 
         logger.debug("SELF requests NODE to double sign")
+
         def on_response(request, response, modified):
             self.assertEqual(container["response"], 0)
             self.assertTrue(response.authentication.is_signed)

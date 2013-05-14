@@ -3,7 +3,9 @@ from threading import currentThread
 
 from ..callback import Callback
 
+
 class MainThreadCallback(Callback):
+
     """
     MainThreadCallback must be used when Dispersy must run on the main process thread.
     """

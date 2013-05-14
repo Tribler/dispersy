@@ -13,7 +13,9 @@ from ...resolution import PublicResolution, LinearResolution, DynamicResolution
 from .payload import TextPayload
 from .conversion import DebugCommunityConversion
 
+
 class DebugCommunity(Community):
+
     """
     DebugCommunity is used to debug Dispersy related messages and policies.
     """
@@ -181,6 +183,7 @@ class DebugCommunity(Community):
 
         elif message.payload.is_hard_kill:
             return HardKilledDebugCommunity
+
 
 class HardKilledDebugCommunity(DebugCommunity, HardKilledCommunity):
     pass

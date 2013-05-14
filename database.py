@@ -39,7 +39,9 @@ else:
     def attach_explain_query_plan(func):
         return func
 
+
 class IgnoreCommits(Exception):
+
     """
     Ignore all commits made within the body of a 'with database:' clause.
 
@@ -53,7 +55,9 @@ class IgnoreCommits(Exception):
     def __init__(self):
         super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
 
+
 class Database(object):
+
     def __init__(self, file_path):
         """
         Initialize a new Database instance.
@@ -212,7 +216,7 @@ class Database(object):
         if exc_type is None:
             logger.debug("enabling Database.commit()")
             if pending_commits > 1:
-                logger.debug("performing %d pending commits", pending_commits-1)
+                logger.debug("performing %d pending commits", pending_commits - 1)
                 self.commit()
             return True
 
@@ -221,8 +225,8 @@ class Database(object):
             return True
 
         else:
-            #Niels 23-01-2013, an exception happened from within the with database block
-            #returning False to let Python reraise the exception.
+            # Niels 23-01-2013, an exception happened from within the with database block
+            # returning False to let Python reraise the exception.
             return False
 
     @property
@@ -363,7 +367,7 @@ class Database(object):
             raise
 
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
-    def commit(self, exiting = False):
+    def commit(self, exiting=False):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
@@ -379,7 +383,7 @@ class Database(object):
             logger.debug("COMMIT [%s]", self._file_path)
             for callback in self._commit_callbacks:
                 try:
-                    callback(exiting = exiting)
+                    callback(exiting=exiting)
                 except Exception as exception:
                     logger.exception("%s: %s", self._file_path, exception)
 
@@ -411,7 +415,9 @@ class Database(object):
         assert func in self._commit_callbacks
         self._commit_callbacks.remove(func)
 
+
 class APSWDatabase(Database):
+
     def _connect(self):
         import apsw
         self._connection = apsw.Connection(self._file_path)
@@ -484,7 +490,7 @@ class APSWDatabase(Database):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._connection.totalchanges()
 
-    def commit(self, exiting = False):
+    def commit(self, exiting=False):
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
@@ -493,7 +499,7 @@ class APSWDatabase(Database):
         result = self.execute("COMMIT;BEGIN")
         for callback in self._commit_callbacks:
             try:
-                callback(exiting = exiting)
+                callback(exiting=exiting)
             except Exception as exception:
                 logger.debug("%s", exception)
         return result

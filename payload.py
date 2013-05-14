@@ -14,7 +14,9 @@ if __debug__:
         assert address[1] >= 0, address[1]
         return True
 
+
 class Payload(MetaObject):
+
     class Implementation(MetaObject.Implementation):
         pass
 
@@ -29,8 +31,11 @@ class Payload(MetaObject):
     def __str__(self):
         return "<{0.__class__.__name__}>".format(self)
 
+
 class IntroductionRequestPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, destination_address, source_lan_address, source_wan_address, advice, connection_type, sync, identifier):
             """
             Create the payload for an introduction-request message.
@@ -77,7 +82,7 @@ class IntroductionRequestPayload(Payload):
             assert sync is None or isinstance(sync, tuple), sync
             assert sync is None or len(sync) == 5, sync
             assert isinstance(identifier, int), identifier
-            assert 0 <= identifier < 2**16, identifier
+            assert 0 <= identifier < 2 ** 16, identifier
             super(IntroductionRequestPayload.Implementation, self).__init__(meta)
             self._destination_address = destination_address
             self._source_lan_address = source_lan_address
@@ -92,7 +97,7 @@ class IntroductionRequestPayload(Payload):
                 assert isinstance(self._time_high, (int, long))
                 assert self._time_high == 0 or self._time_low <= self._time_high
                 assert isinstance(self._modulo, int)
-                assert 0 < self._modulo < 2**16
+                assert 0 < self._modulo < 2 ** 16
                 assert isinstance(self._offset, int)
                 assert 0 <= self._offset < self._modulo
                 assert isinstance(self._bloom_filter, BloomFilter)
@@ -151,8 +156,11 @@ class IntroductionRequestPayload(Payload):
         def identifier(self):
             return self._identifier
 
+
 class IntroductionResponsePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, destination_address, source_lan_address, source_wan_address, lan_introduction_address, wan_introduction_address, connection_type, tunnel, identifier):
             """
             Create the payload for an introduction-response message.
@@ -197,7 +205,7 @@ class IntroductionResponsePayload(Payload):
             assert isinstance(connection_type, unicode) and connection_type in (u"unknown", u"public", u"symmetric-NAT")
             assert isinstance(tunnel, bool)
             assert isinstance(identifier, int)
-            assert 0 <= identifier < 2**16
+            assert 0 <= identifier < 2 ** 16
             super(IntroductionResponsePayload.Implementation, self).__init__(meta)
             self._destination_address = destination_address
             self._source_lan_address = source_lan_address
@@ -240,8 +248,11 @@ class IntroductionResponsePayload(Payload):
         def identifier(self):
             return self._identifier
 
+
 class PunctureRequestPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, lan_walker_address, wan_walker_address, identifier):
             """
             Create the payload for a puncture-request payload.
@@ -263,7 +274,7 @@ class PunctureRequestPayload(Payload):
             assert is_address(lan_walker_address)
             assert is_address(wan_walker_address)
             assert isinstance(identifier, int)
-            assert 0 <= identifier < 2**16
+            assert 0 <= identifier < 2 ** 16
             super(PunctureRequestPayload.Implementation, self).__init__(meta)
             self._lan_walker_address = lan_walker_address
             self._wan_walker_address = wan_walker_address
@@ -281,8 +292,11 @@ class PunctureRequestPayload(Payload):
         def identifier(self):
             return self._identifier
 
+
 class PuncturePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, source_lan_address, source_wan_address, identifier):
             """
             Create the payload for a puncture message
@@ -299,7 +313,7 @@ class PuncturePayload(Payload):
             assert is_address(source_lan_address)
             assert is_address(source_wan_address)
             assert isinstance(identifier, int)
-            assert 0 <= identifier < 2**16
+            assert 0 <= identifier < 2 ** 16
             super(PuncturePayload.Implementation, self).__init__(meta)
             self._source_lan_address = source_lan_address
             self._source_wan_address = source_wan_address
@@ -317,8 +331,11 @@ class PuncturePayload(Payload):
         def identifier(self):
             return self._identifier
 
+
 class AuthorizePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, permission_triplets):
             """
             Authorize the given permission_triplets.
@@ -348,8 +365,11 @@ class AuthorizePayload(Payload):
         def permission_triplets(self):
             return self._permission_triplets
 
+
 class RevokePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, permission_triplets):
             """
             Revoke the given permission_triplets.
@@ -379,8 +399,11 @@ class RevokePayload(Payload):
         def permission_triplets(self):
             return self._permission_triplets
 
+
 class UndoPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, member, global_time, packet=None):
             if __debug__:
                 from .member import Member
@@ -413,8 +436,11 @@ class UndoPayload(Payload):
             assert isinstance(packet, Packet), type(packet)
             self._packet = packet
 
+
 class MissingSequencePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, member, message, missing_low, missing_high):
             """
             We are missing messages of type MESSAGE signed by USER.  We
@@ -451,13 +477,16 @@ class MissingSequencePayload(Payload):
         def missing_high(self):
             return self._missing_high
 
+
 class SignaturePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, identifier, message):
             if __debug__:
                 from .message import Message
             assert isinstance(identifier, int), identifier
-            assert 0 <= identifier < 2**16, identifier
+            assert 0 <= identifier < 2 ** 16, identifier
             assert isinstance(message, Message.Implementation)
             super(SignaturePayload.Implementation, self).__init__(meta)
             self._identifier = identifier
@@ -471,20 +500,29 @@ class SignaturePayload(Payload):
         def message(self):
             return self._message
 
+
 class SignatureRequestPayload(SignaturePayload):
+
     class Implementation(SignaturePayload.Implementation):
         pass
+
 
 class SignatureResponsePayload(SignaturePayload):
+
     class Implementation(SignaturePayload.Implementation):
         pass
 
+
 class IdentityPayload(Payload):
+
     class Implementation(Payload.Implementation):
         pass
 
+
 class MissingIdentityPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, mid):
             assert isinstance(mid, str)
             assert len(mid) == 20
@@ -495,8 +533,11 @@ class MissingIdentityPayload(Payload):
         def mid(self):
             return self._mid
 
+
 class DestroyCommunityPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, degree):
             assert isinstance(degree, unicode)
             assert degree in (u"soft-kill", u"hard-kill")
@@ -515,8 +556,11 @@ class DestroyCommunityPayload(Payload):
         def is_hard_kill(self):
             return self._degree == u"hard-kill"
 
+
 class MissingMessagePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, member, global_times):
             if __debug__:
                 from .member import Member
@@ -538,8 +582,11 @@ class MissingMessagePayload(Payload):
         def global_times(self):
             return self._global_times
 
+
 class MissingLastMessagePayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, member, message, count):
             if __debug__:
                 from .member import Member
@@ -561,8 +608,11 @@ class MissingLastMessagePayload(Payload):
         def count(self):
             return self._count
 
+
 class MissingProofPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, member, global_time):
             if __debug__:
                 from .member import Member
@@ -581,8 +631,11 @@ class MissingProofPayload(Payload):
         def global_time(self):
             return self._global_time
 
+
 class DynamicSettingsPayload(Payload):
+
     class Implementation(Payload.Implementation):
+
         def __init__(self, meta, policies):
             """
             Create a new payload container for a dispersy-dynamic-settings message.

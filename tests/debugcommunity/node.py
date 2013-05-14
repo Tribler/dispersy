@@ -12,7 +12,9 @@ from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 
+
 class DebugNode(object):
+
     """
     DebugNode is used to represent an external node/peer while performing unittests.
 
@@ -201,7 +203,8 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
-        if verbose: logger.debug("giving %d bytes", len(packet))
+        if verbose:
+            logger.debug("giving %d bytes", len(packet))
         candidate = Candidate(self.lan_address, tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet)], cache=cache, timestamp=time())
         return packet
@@ -216,7 +219,8 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
-        if verbose: logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
+        if verbose:
+            logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
         candidate = Candidate(self.lan_address, tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
@@ -231,7 +235,8 @@ class DebugNode(object):
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
         packet = message.packet if message.packet else self.encode_message(message)
-        if verbose: logger.debug("giving %s (%d bytes)", message.name, len(packet))
+        if verbose:
+            logger.debug("giving %s (%d bytes)", message.name, len(packet))
         self.give_packet(packet, verbose=verbose, cache=cache, tunnel=tunnel)
         return message
 
@@ -246,7 +251,8 @@ class DebugNode(object):
         assert isinstance(cache, bool)
         assert isinstance(tunnel, bool)
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
-        if verbose: logger.debug("giving %d messages (%d bytes)", len(messages),  sum(len(packet) for packet in packets))
+        if verbose:
+            logger.debug("giving %d messages (%d bytes)", len(messages), sum(len(packet) for packet in packets))
         self.give_packets(packets, verbose=verbose, cache=cache, tunnel=tunnel)
         return messages
 
@@ -258,7 +264,8 @@ class DebugNode(object):
         assert isinstance(packet, str)
         assert isinstance(address, tuple)
         assert isinstance(verbose, bool)
-        if verbose: logger.debug( "%d bytes to %s:%d", len(packet), address[0], address[1])
+        if verbose:
+            logger.debug("%d bytes to %s:%d", len(packet), address[0], address[1])
         self._socket.sendto(packet, address)
         return packet
 
@@ -271,7 +278,8 @@ class DebugNode(object):
         assert isinstance(address, tuple)
         assert isinstance(verbose, bool)
         self.encode_message(message)
-        if verbose: logger.debug("%s (%d bytes) to %s:%d", message.name, len(message.packet), address[0], address[1])
+        if verbose:
+            logger.debug("%s (%d bytes) to %s:%d", message.name, len(message.packet), address[0], address[1])
         self.send_packet(message.packet, address)
         return message
 
@@ -285,7 +293,8 @@ class DebugNode(object):
             except:
                 break
 
-            if verbose: logger.debug("dropped %d bytes from %s:%d", len(packet), address[0], address[1])
+            if verbose:
+                logger.debug("dropped %d bytes from %s:%d", len(packet), address[0], address[1])
 
     def receive_packet(self, timeout=None, addresses=None, packets=None):
         """
@@ -542,7 +551,7 @@ class DebugNode(object):
             assert isinstance(offset, int)
             assert isinstance(bloom_packets, list)
             assert all(isinstance(packet, str) for packet in bloom_packets)
-            bloom_filter = BloomFilter(512*8, 0.001, prefix="x")
+            bloom_filter = BloomFilter(512 * 8, 0.001, prefix="x")
             for packet in bloom_packets:
                 bloom_filter.add(packet)
             sync = (time_low, time_high, modulo, offset, bloom_filter)

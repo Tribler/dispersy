@@ -2,12 +2,23 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestNeighborhood(DispersyTestClass):
-    def test_forward_1(self): return self.forward(1)
-    def test_forward_10(self): return self.forward(10)
-    def test_forward_2(self): return self.forward(2)
-    def test_forward_3(self): return self.forward(3)
-    def test_forward_20(self): return self.forward(20)
+
+    def test_forward_1(self):
+        return self.forward(1)
+
+    def test_forward_10(self):
+        return self.forward(10)
+
+    def test_forward_2(self):
+        return self.forward(2)
+
+    def test_forward_3(self):
+        return self.forward(3)
+
+    def test_forward_20(self):
+        return self.forward(20)
 
     @call_on_dispersy_thread
     def forward(self, node_count):

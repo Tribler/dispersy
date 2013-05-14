@@ -9,7 +9,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestClassification(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_reclassify_unloaded_community(self):
         """
@@ -197,7 +199,7 @@ class TestClassification(DispersyTestClass):
         wait = 10
         for i in range(wait):
             gc.collect()
-            logger.debug("waiting... %d", wait-i)
+            logger.debug("waiting... %d", wait - i)
             if check() == 0:
                 break
             else:

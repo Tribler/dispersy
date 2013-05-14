@@ -26,7 +26,9 @@ from ..dispersydatabase import DispersyDatabase
 from ..script import ScriptBase
 from .ldecoder import Parser, NextFile
 
+
 class ScenarioScript(ScriptBase):
+
     def __init__(self, *args, **kargs):
         super(ScenarioScript, self).__init__(*args, **kargs)
         self._my_member = None
@@ -65,8 +67,8 @@ class ScenarioScript(ScriptBase):
     def master_member_public_key(self):
         raise NotImplementedError("must return an experiment specific master member public key")
             # if False:
-            #     # when crypto.py is disabled a public key is slightly
-            #     # different...
+            # when crypto.py is disabled a public key is slightly
+            # different...
             #     master_public_key = ";".join(("60", master_public_key[:60].encode("HEX"), ""))
         # return "3081a7301006072a8648ce3d020106052b81040027038192000404668ed626c6d6bf4a280cf4824c8cd31fe4c7c46767afb127129abfccdf8be3c38d4b1cb8792f66ccb603bfed395e908786049cb64bacab198ef07d49358da490fbc41f43ade33e05c9991a1bb7ef122cda5359d908514b3c935fe17a3679b6626161ca8d8d934d372dec23cc30ff576bfcd9c292f188af4142594ccc5f6376e2986e1521dc874819f7bcb7ae3ce400".decode("HEX")
 
@@ -165,8 +167,8 @@ class ScenarioScript(ScriptBase):
                                       "\s*(?:\n)?$")))
         peernumber = int(self._kargs["peernumber"])
         filename = self._kargs["scenario"]
-        origin = {"@":float(self._kargs["startstamp"]) if "startstamp" in self._kargs else time(),
-                  "+":time()}
+        origin = {"@": float(self._kargs["startstamp"]) if "startstamp" in self._kargs else time(),
+                  "+": time()}
 
         for lineno, line in enumerate(open(filename, "r")):
             match = re_line.match(line)
@@ -189,7 +191,7 @@ class ScenarioScript(ScriptBase):
                         # parse the peer number (or peer number pair)
                         if "-" in peer:
                             low, high = peer.split("-")
-                            peers.update(xrange(int(low), int(high)+1))
+                            peers.update(xrange(int(low), int(high) + 1))
                         else:
                             peers.add(int(peer))
 
@@ -307,6 +309,7 @@ class ScenarioScript(ScriptBase):
 
 if poisson:
     class ScenarioPoisson(object):
+
         def __init__(self, *args, **kargs):
             self.__poisson_online_mu = 0.0
             self.__poisson_offline_mu = 0.0
@@ -329,6 +332,7 @@ if poisson:
 
 if expon:
     class ScenarioExpon(object):
+
         def __init__(self, *args, **kargs):
             self.__expon_online_beta = 0.0
             self.__expon_offline_beta = 0.0
@@ -365,7 +369,9 @@ if expon:
             self.log("scenario-expon-churn", online_beta=self.__expon_online_beta, offline_beta=self.__expon_offline_beta, online_threshold=self.__expon_online_threshold, min_online=self.__expon_min_online, max_online=self.__expon_max_online, offline_threshold=self.__expon_offline_threshold, min_offline=self.__expon_min_offline, max_offline=self.__expon_max_offline)
             self._dispersy.callback.persistent_register("scenario-expon-identifier", self.__expon_churn)
 
+
 class ScenarioUniform(object):
+
     def __init__(self, *args, **kargs):
         self.__uniform_online_low = 0.0
         self.__uniform_online_high = 0.0
@@ -394,7 +400,9 @@ class ScenarioUniform(object):
         self.log("scenario-uniform-churn", online_low=self.__uniform_online_low, online_high=self.__uniform_online_high, offline_low=self.__uniform_offline_low, offline_high=self.__uniform_offline_high)
         self._dispersy.callback.persistent_register("scenario-uniform-identifier", self.__uniform_churn)
 
+
 class ScenarioParser1(Parser):
+
     def __init__(self, database):
         super(ScenarioParser1, self).__init__()
 
@@ -421,7 +429,9 @@ class ScenarioParser1(Parser):
         finally:
             self.db.commit()
 
+
 class ScenarioParser2(Parser):
+
     def __init__(self, database):
         super(ScenarioParser2, self).__init__()
 
@@ -517,7 +527,7 @@ class ScenarioParser2(Parser):
 
         delta = timestamp - self.bandwidth_timestamp
         self.cur.execute(u"INSERT INTO bandwidth_rate (timestamp, peer, up, down) VALUES (?, ?, ?, ?)",
-                         (timestamp, self.peer_id, (up-self.bandwidth_up)/delta, (down-self.bandwidth_down)/delta))
+                         (timestamp, self.peer_id, (up - self.bandwidth_up) / delta, (down-self.bandwidth_down)/delta))
         self.bandwidth_timestamp = timestamp
         self.bandwidth_up = up
         self.bandwidth_down = down

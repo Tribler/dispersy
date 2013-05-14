@@ -12,12 +12,15 @@ creator of this message.
 
 from .meta import MetaObject
 
+
 class Authentication(MetaObject):
+
     """
     The Authentication baseclass.
     """
 
     class Implementation(MetaObject.Implementation):
+
         """
         The implementation of an Authentication policy.
         """
@@ -51,7 +54,9 @@ class Authentication(MetaObject):
             from .message import Message
         assert isinstance(message, Message)
 
+
 class NoAuthentication(Authentication):
+
     """
     The NoAuthentication policy can be used when a message is not owned, i.e. signed, by anyone.
 
@@ -62,11 +67,14 @@ class NoAuthentication(Authentication):
     gossiping purposes.
     """
     class Implementation(Authentication.Implementation):
+
         @property
         def is_signed(self):
             return True
 
+
 class MemberAuthentication(Authentication):
+
     """
     The MemberAuthentication policy can be used when a message is owned, i.e. signed, bye one
     member.
@@ -87,6 +95,7 @@ class MemberAuthentication(Authentication):
     give you this permission in the form of a signed message.
     """
     class Implementation(Authentication.Implementation):
+
         def __init__(self, meta, member, is_signed=False):
             """
             Initialize a new MemberAuthentication.Implementation instance.
@@ -168,7 +177,9 @@ class MemberAuthentication(Authentication):
         """
         return self._encoding
 
+
 class DoubleMemberAuthentication(Authentication):
+
     """
     The DoubleMemberAuthentication policy can be used when a message needs to be signed by two
     members.
@@ -194,6 +205,7 @@ class DoubleMemberAuthentication(Authentication):
     forwarded to other nodes in the community.
     """
     class Implementation(Authentication.Implementation):
+
         def __init__(self, meta, members, signatures=[]):
             """
             Initialize a new DoubleMemberAuthentication.Implementation instance.
@@ -293,7 +305,7 @@ class DoubleMemberAuthentication(Authentication):
             @param signature: The signature for this message.
             @type signature: string
             """
-            #todo: verify the signature
+            # todo: verify the signature
             assert member in self._members
             assert member.signature_length == len(signature)
             self._signatures[self._members.index(member)] = signature

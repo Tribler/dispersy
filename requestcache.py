@@ -3,8 +3,10 @@ logger = logging.getLogger(__name__)
 
 from random import random
 
+
 def identifier_to_string(identifier):
     return identifier.encode("HEX") if isinstance(identifier, str) else identifier
+
 
 class Cache(object):
     timeout_delay = 10.0
@@ -19,14 +21,16 @@ class Cache(object):
     def __str__(self):
         return "<%s>" % self.__class__.__name__
 
+
 class RequestCache(object):
+
     def __init__(self, callback):
         self._callback = callback
         self._identifiers = dict()
 
     def generate_identifier(self):
         while True:
-            identifier = int(random() * 2**16)
+            identifier = int(random() * 2 ** 16)
             if not identifier in self._identifiers:
                 logger.debug("claiming on %s", identifier_to_string(identifier))
                 return identifier

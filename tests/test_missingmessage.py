@@ -7,7 +7,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestMissingMessage(DispersyTestClass):
+
     @call_on_dispersy_thread
     def test_single_request(self):
         """

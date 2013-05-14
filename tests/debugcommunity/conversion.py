@@ -3,7 +3,9 @@ from struct import pack, unpack_from
 from ...conversion import BinaryConversion
 from ...message import DropPacket
 
+
 class DebugCommunityConversion(BinaryConversion):
+
     """
     DebugCommunityConversion is used to convert messages to and from binary while performing unittests.
     """
@@ -42,7 +44,7 @@ class DebugCommunityConversion(BinaryConversion):
         if len(data) < offset + text_length:
             raise DropPacket("Insufficient packet size")
 
-        text = data[offset:offset+text_length]
+        text = data[offset:offset + text_length]
         offset += text_length
 
         return offset, placeholder.meta.payload.implement(text)

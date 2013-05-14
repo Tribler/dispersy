@@ -87,6 +87,7 @@ if __debug__:
 # the callback identifier for the task that periodically takes a step
 CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
 
+
 class SignatureRequestCache(Cache):
     cleanup_delay = 0.0
 
@@ -103,6 +104,7 @@ class SignatureRequestCache(Cache):
     def on_timeout(self):
         logger.debug("signature timeout")
         self.response_func(self, None, True, *self.response_args)
+
 
 class IntroductionRequestCache(Cache):
     # we will accept the response at most 10.5 seconds after our request
@@ -133,6 +135,7 @@ class IntroductionRequestCache(Cache):
         self.helper_candidate.obsolete(self.community, now)
         self.helper_candidate.all_inactive(now)
 
+
 class MissingSomethingCache(Cache):
     cleanup_delay = 0.0
 
@@ -154,7 +157,9 @@ class MissingSomethingCache(Cache):
     def message_to_identifier(message):
         raise NotImplementedError()
 
+
 class MissingMemberCache(MissingSomethingCache):
+
     @staticmethod
     def properties_to_identifier(community, member):
         return "-missing-member-%s-%s-" % (community.cid, member.mid)
@@ -163,7 +168,9 @@ class MissingMemberCache(MissingSomethingCache):
     def message_to_identifier(message):
         return "-missing-member-%s-%s-" % (message.community.cid, message.authentication.member.mid)
 
+
 class MissingMessageCache(MissingSomethingCache):
+
     @staticmethod
     def properties_to_identifier(community, member, global_time):
         return "-missing-message-%s-%s-%d-" % (community.cid, member.mid, global_time)
@@ -172,7 +179,9 @@ class MissingMessageCache(MissingSomethingCache):
     def message_to_identifier(message):
         return "-missing-message-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.distribution.global_time)
 
+
 class MissingLastMessageCache(MissingSomethingCache):
+
     @staticmethod
     def properties_to_identifier(community, member, message):
         return "-missing-last-message-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
@@ -181,7 +190,9 @@ class MissingLastMessageCache(MissingSomethingCache):
     def message_to_identifier(message):
         return "-missing-last-message-%s-%s-%s-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"))
 
+
 class MissingProofCache(MissingSomethingCache):
+
     def __init__(self, timeout):
         super(MissingProofCache, self).__init__(timeout)
 
@@ -197,6 +208,7 @@ class MissingProofCache(MissingSomethingCache):
     def message_to_identifier(message):
         return "-missing-proof-%s-" % (message.community.cid,)
 
+
 class MissingSequenceOverviewCache(Cache):
     cleanup_delay = 0.0
 
@@ -211,7 +223,9 @@ class MissingSequenceOverviewCache(Cache):
     def properties_to_identifier(community, member, message):
         return "-missing-sequence-overview-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
 
+
 class MissingSequenceCache(MissingSomethingCache):
+
     @staticmethod
     def properties_to_identifier(community, member, message, missing_high):
         return "-missing-sequence-%s-%s-%s-%d-" % (community.cid, member.mid, message.name.encode("UTF-8"), missing_high)
@@ -220,7 +234,9 @@ class MissingSequenceCache(MissingSomethingCache):
     def message_to_identifier(message):
         return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
 
+
 class GlobalCandidateCache():
+
     def __init__(self, dispersy):
         self._dispersy = dispersy
 
@@ -265,6 +281,7 @@ class GlobalCandidateCache():
 
 
 class Dispersy(object):
+
     """
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
     outgoing data for, possibly, multiple communities.
@@ -348,9 +365,9 @@ class Dispersy(object):
         self._communities = {}
         self._walker_commmunities = []
 
-        self._check_distribution_batch_map = {DirectDistribution:self._check_direct_distribution_batch,
-                                              FullSyncDistribution:self._check_full_sync_distribution_batch,
-                                              LastSyncDistribution:self._check_last_sync_distribution_batch}
+        self._check_distribution_batch_map = {DirectDistribution: self._check_direct_distribution_batch,
+                                              FullSyncDistribution: self._check_full_sync_distribution_batch,
+                                              LastSyncDistribution: self._check_last_sync_distribution_batch}
 
         # progress handlers (used to notify the user when something will take a long time)
         self._progress_handlers = []
@@ -391,7 +408,7 @@ class Dispersy(object):
                 if "broadcast" in option and "addr" in option and not option["addr"] in blacklist:
                     logger.debug("interface %s address %s", interface, option["addr"])
                     return option["addr"]
-        #Exception for virtual machines/containers
+        # Exception for virtual machines/containers
         for interface in netifaces.interfaces():
             addresses = netifaces.ifaddresses(interface)
             for option in addresses.get(netifaces.AF_INET, []):
@@ -1294,7 +1311,7 @@ class Dispersy(object):
 
                 if seq + 1 != message.distribution.sequence_number:
                     # we do not have the previous message (delay and request)
-                    yield DelayMessageBySequence(message, seq+1, message.distribution.sequence_number-1)
+                    yield DelayMessageBySequence(message, seq + 1, message.distribution.sequence_number -1)
                     continue
 
                 # we have the previous message, check for duplicates based on community,
@@ -1420,7 +1437,6 @@ class Dispersy(object):
 
                     return DropMessage(message, "old message by member^global_time")
 
-
                 else:
                     # we accept this message
                     tim.append(message.distribution.global_time)
@@ -1485,7 +1501,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
                         else:
                             signature_length = sum(member.signature_length for member in message.authentication.members)
-                            member_authentication_begin = 23 # version, version, community-id, message-type
+                            member_authentication_begin = 23  # version, version, community-id, message-type
                             member_authentication_end = member_authentication_begin + 20 * len(message.authentication.members)
                             if (have_packet[:member_authentication_begin] == message.packet[:member_authentication_begin] and
                                 have_packet[member_authentication_end:signature_length] == message.packet[member_authentication_end:signature_length]):
@@ -1638,7 +1654,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 return None
 
             # check if we have this candidate registered at its sock_addr
-            candidate = self.get_candidate(message.candidate.sock_addr, lan_address = source_lan_address)
+            candidate = self.get_candidate(message.candidate.sock_addr, lan_address=source_lan_address)
             if candidate:
                 return candidate
 
@@ -1698,7 +1714,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         try:
             message = conversion.decode_message(LoopbackCandidate(), packet, verify)
 
-        except (DropPacket, DelayPacket), exception:
+        except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
             return None
 
@@ -1734,7 +1750,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         try:
             return conversion.decode_meta_message(packet)
 
-        except (DropPacket, DelayPacket), exception:
+        except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
             return None
 
@@ -1769,7 +1785,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         try:
             return conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet, verify)
 
-        except (DropPacket, DelayPacket), exception:
+        except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
             return None
 
@@ -1819,8 +1835,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         self._statistics.received_count += len(packets)
 
-        sort_key = lambda tup: (tup[0].batch.priority, tup[0]) # meta, address, packet, conversion
-        groupby_key = lambda tup: tup[0] # meta, address, packet, conversion
+        sort_key = lambda tup: (tup[0].batch.priority, tup[0])  # meta, address, packet, conversion
+        groupby_key = lambda tup: tup[0]  # meta, address, packet, conversion
         for meta, iterator in groupby(sorted(self._convert_packets_into_batch(packets), key=sort_key), key=groupby_key):
             batch = [(self._candidates.get(candidate.sock_addr) or self._bootstrap_candidates.get(candidate.sock_addr) or candidate, packet, conversion)
                      for _, candidate, packet, conversion
@@ -1980,7 +1996,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # drop all duplicate or old messages
         assert type(meta.distribution) in self._check_distribution_batch_map
         messages = list(self._check_distribution_batch_map[type(meta.distribution)](messages))
-        assert len(messages) > 0 # should return at least one item for each message
+        assert len(messages) > 0  # should return at least one item for each message
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
 
         # handle/remove DropMessage and DelayMessage instances
@@ -1995,7 +2011,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         except:
             logger.exception("exception during check_callback for %s", meta.name)
             return 0
-        assert len(messages) >= 0 # may return zero messages
+        assert len(messages) >= 0  # may return zero messages
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
 
         if len(messages) == 0:
@@ -2077,7 +2093,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 # convert binary data into the meta message
                 yield conversion.decode_meta_message(packet), candidate, packet, conversion
 
-            except DropPacket, exception:
+            except DropPacket as exception:
                 logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:decode_meta_message:%s" % exception)
                 self._statistics.drop_count += 1
@@ -2099,12 +2115,12 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 # convert binary data to internal Message
                 yield conversion.decode_message(candidate, packet)
 
-            except DropPacket, exception:
+            except DropPacket as exception:
                 logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
                 self._statistics.dict_inc(self._statistics.drop, "_convert_batch_into_messages:%s" % exception)
                 self._statistics.drop_count += 1
 
-            except DelayPacket, delay:
+            except DelayPacket as delay:
                 logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
                 if delay.create_request(candidate, packet):
                     self._statistics.delay_send += 1
@@ -2211,12 +2227,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
             if items:
-                self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid, ) for syncid,_ in items])
+                self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid, ) for syncid, _ in items])
                 assert len(items) == self._database.changes
                 logger.debug("deleted %d messages", self._database.changes)
 
                 if is_double_member_authentication:
-                    self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid, ) for syncid,_ in items])
+                    self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid, ) for syncid, _ in items])
                     assert len(items) == self._database.changes
 
                 # update_sync_range.update(global_time for _, _, global_time in items)
@@ -2234,7 +2250,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         meta.community.dispersy_store(messages)
 
         # if update_sync_range:
-        #     # notify that global times have changed
+        # notify that global times have changed
         #     meta.community.update_sync_range(meta, update_sync_range)
 
     @property
@@ -2368,7 +2384,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     except OverflowError:
                         logger.error("time_low:  %d", time_low)
                         logger.error("time_high: %d", time_high)
-                        logger.error("2**63 - 1: %d", 2**63-1)
+                        logger.error("2**63 - 1: %d", 2 ** 63 -1)
                         logger.exception("the sqlite3 python module can not handle values 2**63 or larger.  limit time_low and time_high to 2**63-1")
                         assert False
 
@@ -2532,7 +2548,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         # obtain all available messages for this community
         meta_messages = [(meta.distribution.priority, -meta.distribution.synchronization_direction_value, meta) for meta in community.get_meta_messages() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32]
-        meta_messages.sort(reverse = True)
+        meta_messages.sort(reverse=True)
 
         sub_selects = []
         for _, _, meta in meta_messages:
@@ -2561,8 +2577,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 sql_arguments = []
                 for _, _, meta in meta_messages:
                     sql_arguments.extend((meta.database_id,
-                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2**63-1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2**63-1),
-                                          min(time_high, 2**63-1),
+                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 -1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2**63-1),
+                                          min(time_high, 2 ** 63 -1),
                                           long(payload.offset),
                                           long(payload.modulo)))
                 logger.debug("%s", sql_arguments)
@@ -2606,7 +2622,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     yield DropMessage(message, "invalid WAN introduction address [introduced to myself]")
                     continue
 
-                #if WAN ip-addresses match, check if the LAN address is not the same
+                # if WAN ip-addresses match, check if the LAN address is not the same
                 if message.payload.wan_introduction_address[0] == self._wan_address[0] and message.payload.lan_introduction_address == self._lan_address:
                     yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
                     continue
@@ -2918,7 +2934,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         return result
 
-    def _send(self, candidates, messages, debug = False):
+    def _send(self, candidates, messages, debug=False):
         """
         Send a list of messages to a list of candidates. If no candidates are specified or endpoint reported
         a failure this method will return False.
@@ -3054,7 +3070,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         return sendRequest
 
     def on_missing_message(self, messages):
-        responses = [] # (candidate, packet) tuples
+        responses = []  # (candidate, packet) tuples
         for message in messages:
             candidate = message.candidate
             community_database_id = message.community.database_id
@@ -3144,7 +3160,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             return False
 
         # ending with .0
-#Niels: is now allowed, subnet mask magic call actually allow for this
+# Niels: is now allowed, subnet mask magic call actually allow for this
 #        if binary[3] == "\x00":
 #            return False
 
@@ -3362,7 +3378,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if not is_signed and member.private_key:
                         has_private_member = True
                         break
-            except DropMessage, exception:
+            except DropMessage as exception:
                 yield exception
                 continue
 
@@ -3372,9 +3388,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 continue
 
             # we can not timeline.check the submessage because it uses the DoubleMemberAuthentication policy
-            # # the message that we are signing must be valid according to our timeline
-            # # if not message.community.timeline.check(submsg):
-            # #     raise DropMessage("Does not fit timeline")
+            # the message that we are signing must be valid according to our timeline
+            # if not message.community.timeline.check(submsg):
+            # raise DropMessage("Does not fit timeline")
 
             # allow message
             yield message
@@ -3476,7 +3492,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
             result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
-            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s"%(type(cache), str(cache.response_func))
+            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s" % (type(cache), str(cache.response_func))
             if result:
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
@@ -3578,7 +3594,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # limiter
                 highest = min(lowest + packet_limit, highest)
 
-                logger.debug("fetching member:%d message:%d %d packets from database for %s", member_id, message_id, highest-lowest+1, candidate)
+                logger.debug("fetching member:%d message:%d %d packets from database for %s", member_id, message_id, highest - lowest +1, candidate)
                 for packet, in self._database.execute(u"SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time LIMIT ? OFFSET ?",
                                                       (member_id, message_id, highest - lowest + 1, lowest - 1)):
                     packet = str(packet)
@@ -3724,7 +3740,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
     #         allowed, proofs = check(message)
     #         if allowed:
 
-    #             # ensure that the author has the authorize permission
+    # ensure that the author has the authorize permission
     #             authorize_allowed, authorize_proofs = check(messageauthor, global_time, [(message, u"authorize") for _, message, __ in permission_triplets])
     #             if not authorize_allowed:
     #                 yield DelayMessageByProof(message)
@@ -4126,7 +4142,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                         # get proofs required for ITEM
                         _, proofs = community._timeline.check(item)
                         todo.extend(proofs)
-
 
                 # 1. cleanup the double_signed_sync table.
                 self._database.execute(u"DELETE FROM double_signed_sync WHERE sync IN (SELECT id FROM sync JOIN double_signed_sync ON sync.id = double_signed_sync.sync WHERE sync.community = ?)", (community.database_id,))
@@ -4692,7 +4707,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if community.get_classification() == u"PreviewChannelCommunity":
                         continue
 
-                    categories = {u"walk":[], u"stumble":[], u"intro":[], u"none":[]}
+                    categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
                     for candidate in self._candidates.itervalues():
                         if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
                             categories[candidate.get_category(community, now)].append(candidate)

@@ -1,6 +1,8 @@
 from .meta import MetaObject
 
+
 class Destination(MetaObject):
+
     class Implementation(MetaObject.Implementation):
         pass
 
@@ -15,11 +17,14 @@ class Destination(MetaObject):
     def __str__(self):
         return "<%s>" % (self.__class__.__name__,)
 
+
 class CandidateDestination(Destination):
+
     """
     A destination policy where the message is sent to one or more specified candidates.
     """
     class Implementation(Destination.Implementation):
+
         def __init__(self, meta, *candidates):
             """
             Construct a CandidateDestination.Implementation object.
@@ -41,7 +46,9 @@ class CandidateDestination(Destination):
         def candidates(self):
             return self._candidates
 
+
 class MemberDestination(Destination):
+
     """
     A destination policy where the message is sent to one or more specified Members.
 
@@ -51,6 +58,7 @@ class MemberDestination(Destination):
     not be sent and will be silently dropped.
     """
     class Implementation(Destination.Implementation):
+
         def __init__(self, meta, *members):
             """
             Construct an AddressDestination.Implementation object.
@@ -71,7 +79,9 @@ class MemberDestination(Destination):
         def members(self):
             return self._members
 
+
 class CommunityDestination(Destination):
+
     """
     A destination policy where the message is sent to one or more community members selected from
     the current candidate list.
@@ -80,6 +90,7 @@ class CommunityDestination(Destination):
     community.yield_random_candidates(...) to receive the message.
     """
     class Implementation(Destination.Implementation):
+
         @property
         def node_count(self):
             return self._meta._node_count

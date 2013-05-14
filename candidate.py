@@ -32,7 +32,9 @@ assert isinstance(CANDIDATE_STUMBLE_LIFETIME, float)
 assert isinstance(CANDIDATE_INTRO_LIFETIME, float)
 assert isinstance(CANDIDATE_LIFETIME, float)
 
+
 class Candidate(object):
+
     def __init__(self, sock_addr, tunnel):
         assert is_address(sock_addr), sock_addr
         assert isinstance(tunnel, bool), type(tunnel)
@@ -66,7 +68,9 @@ class Candidate(object):
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
 
+
 class WalkCandidate(Candidate):
+
     """
     A Candidate instance represents a communication endpoint with one or more member/community
     pairs.
@@ -136,7 +140,8 @@ class WalkCandidate(Candidate):
         return self._lan_address if wan_address[0] == self._wan_address[0] else self._wan_address
 
     def merge(self, dispersy, other):
-        if __debug__: from .dispersy import Dispersy
+        if __debug__:
+            from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
@@ -147,7 +152,7 @@ class WalkCandidate(Candidate):
             else:
                 self._timestamps[cid] = timestamps
 
-                #TODO: this should be improved
+                # TODO: this should be improved
                 community = dispersy._communities.get(cid, None)
                 community.add_candidate(self)
 
@@ -401,7 +406,9 @@ class WalkCandidate(Candidate):
             # should not occur
             return "{%s:%d %s:%d %s:%d}" % (self._sock_addr[0], self._sock_addr[1], self._lan_address[0], self._lan_address[1], self._wan_address[0], self._wan_address[1])
 
+
 class BootstrapCandidate(WalkCandidate):
+
     def __init__(self, sock_addr, tunnel):
         super(BootstrapCandidate, self).__init__(sock_addr, tunnel, sock_addr, sock_addr, connection_type=u"public")
 
@@ -430,6 +437,8 @@ class BootstrapCandidate(WalkCandidate):
     def __str__(self):
         return "B!" + super(BootstrapCandidate, self).__str__()
 
+
 class LoopbackCandidate(Candidate):
+
     def __init__(self):
         super(LoopbackCandidate, self).__init__(("localhost", 0), False)

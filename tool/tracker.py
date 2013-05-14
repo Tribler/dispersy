@@ -54,12 +54,16 @@ if sys.platform == 'win32':
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
+
 class BinaryTrackerConversion(BinaryConversion):
+
     def decode_message(self, candidate, data, _=None):
         # disable verify
         return self._decode_message(candidate, data, False, False)
 
+
 class TrackerHardKilledCommunity(HardKilledCommunity):
+
     def __init__(self, *args, **kargs):
         super(TrackerHardKilledCommunity, self).__init__(*args, **kargs)
         # communities are cleaned based on a 'strike' rule.  periodically, we will check is there
@@ -79,7 +83,9 @@ class TrackerHardKilledCommunity(HardKilledCommunity):
             print "DESTROY_OUT", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerHardKilledCommunity, self).dispersy_on_introduction_request(messages)
 
+
 class TrackerCommunity(Community):
+
     """
     This community will only use dispersy-candidate-request and dispersy-candidate-response messages.
     """
@@ -123,7 +129,7 @@ class TrackerCommunity(Community):
     @property
     def dispersy_acceptable_global_time_range(self):
         # we will accept the full 64 bit global time range
-        return 2**64 - self._global_time
+        return 2 ** 64 - self._global_time
 
     def update_strikes(self, now):
         # does the community have any active candidates
@@ -213,8 +219,10 @@ class TrackerCommunity(Community):
                 logger.debug("yielding random %s", result)
                 yield result
 
+
 class TrackerDispersy(Dispersy):
-    def __init__(self, callback, endpoint, working_directory, silent = False):
+
+    def __init__(self, callback, endpoint, working_directory, silent=False):
         super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:")
 
         # non-autoload nodes
@@ -274,7 +282,7 @@ class TrackerDispersy(Dispersy):
             for candidate, packet in packets:
                 cid = packet[2:22]
 
-                if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
+                if not cid in self._communities and False:  # candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
                         logger.warn("drop a %d byte packet (received from non-autoload node) from %s", len(packet), candidate)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
@@ -314,7 +322,7 @@ class TrackerDispersy(Dispersy):
     def _report_statistics(self):
         while True:
             yield 300.0
-            mapping = {TrackerCommunity:0, TrackerHardKilledCommunity:0}
+            mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
             for community in self._communities.itervalues():
                 mapping[type(community)] += 1
 
@@ -355,9 +363,11 @@ class TrackerDispersy(Dispersy):
                 print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
+
 def setup_dispersy(dispersy):
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
+
 
 def main():
     command_line_parser = optparse.OptionParser()

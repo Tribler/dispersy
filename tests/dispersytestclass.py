@@ -4,13 +4,16 @@ from ..callback import Callback
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 
+
 def call_on_dispersy_thread(func):
     def helper(*args, **kargs):
         return args[0]._dispersy.callback.call(func, args, kargs)
     helper.__name__ = func.__name__
     return helper
 
+
 class DispersyTestClass(TestCase):
+
     """
     Setup Dispersy test.
 

@@ -4,7 +4,9 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestSequence(DispersyTestClass):
+
     @call_on_dispersy_thread
     def incoming_simple_conflict_different_global_time(self):
         """
@@ -55,7 +57,6 @@ class TestSequence(DispersyTestClass):
         node.give_message(msgs[5][2])
         self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet])
 
-
         # SELF must accept M@7#2
         node.give_message(msgs[7][2])
         self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[7][2].packet])
@@ -80,7 +81,6 @@ class TestSequence(DispersyTestClass):
         node.give_message(msgs[6][3])
         self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet])
 
-
         # SELF must accept M@8#3
         node.give_message(msgs[8][3])
         self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet])
@@ -102,96 +102,225 @@ class TestSequence(DispersyTestClass):
         community.create_dispersy_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
-    def test_requests_1_1(self): self.requests(1, [1], (1, 1))
-    def test_requests_1_2(self): self.requests(1, [10], (10, 10))
-    def test_requests_1_3(self): self.requests(1, [1,2,3,4,5,6,7,8,9,10], (1, 10))
-    def test_requests_1_4(self): self.requests(1, [3,4,5,6,7,8,9,10], (3, 10))
-    def test_requests_1_5(self): self.requests(1, [1,2,3,4,5,6,7], (1, 7))
-    def test_requests_1_6(self): self.requests(1, [3,4,5,6,7], (3, 7))
+    def test_requests_1_1(self):
+        self.requests(1, [1], (1, 1))
 
-    def test_requests_2_1(self): self.requests(2, [1], (1, 1))
-    def test_requests_2_2(self): self.requests(2, [10], (10, 10))
-    def test_requests_2_3(self): self.requests(2, [1,2,3,4,5,6,7,8,9,10], (1, 10))
-    def test_requests_2_4(self): self.requests(2, [3,4,5,6,7,8,9,10], (3, 10))
-    def test_requests_2_5(self): self.requests(2, [1,2,3,4,5,6,7], (1, 7))
-    def test_requests_2_6(self): self.requests(2, [3,4,5,6,7], (3, 7))
+    def test_requests_1_2(self):
+        self.requests(1, [10], (10, 10))
 
-    def test_requests_3_1(self): self.requests(3, [1], (1, 1))
-    def test_requests_3_2(self): self.requests(3, [10], (10, 10))
-    def test_requests_3_3(self): self.requests(3, [1,2,3,4,5,6,7,8,9,10], (1, 10))
-    def test_requests_3_4(self): self.requests(3, [3,4,5,6,7,8,9,10], (3, 10))
-    def test_requests_3_5(self): self.requests(3, [1,2,3,4,5,6,7], (1, 7))
-    def test_requests_3_6(self): self.requests(3, [3,4,5,6,7], (3, 7))
+    def test_requests_1_3(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 10))
+
+    def test_requests_1_4(self):
+        self.requests(1, [3, 4, 5, 6, 7, 8, 9, 10], (3, 10))
+
+    def test_requests_1_5(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7], (1, 7))
+
+    def test_requests_1_6(self):
+        self.requests(1, [3, 4, 5, 6, 7], (3, 7))
+
+    def test_requests_2_1(self):
+        self.requests(2, [1], (1, 1))
+
+    def test_requests_2_2(self):
+        self.requests(2, [10], (10, 10))
+
+    def test_requests_2_3(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 10))
+
+    def test_requests_2_4(self):
+        self.requests(2, [3, 4, 5, 6, 7, 8, 9, 10], (3, 10))
+
+    def test_requests_2_5(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7], (1, 7))
+
+    def test_requests_2_6(self):
+        self.requests(2, [3, 4, 5, 6, 7], (3, 7))
+
+    def test_requests_3_1(self):
+        self.requests(3, [1], (1, 1))
+
+    def test_requests_3_2(self):
+        self.requests(3, [10], (10, 10))
+
+    def test_requests_3_3(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 10))
+
+    def test_requests_3_4(self):
+        self.requests(3, [3, 4, 5, 6, 7, 8, 9, 10], (3, 10))
+
+    def test_requests_3_5(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7], (1, 7))
+
+    def test_requests_3_6(self):
+        self.requests(3, [3, 4, 5, 6, 7], (3, 7))
 
             # multi-range requests
-    def test_requests_1_7(self): self.requests(1, [1], (1,1), (1,1), (1,1))
-    def test_requests_1_8(self): self.requests(1, [1,2,3,4,5], (1,4), (2,5))
-    def test_requests_1_9(self): self.requests(1, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
-    def test_requests_1_10(self): self.requests(1, [1,2,3,4,5], (1,1), (5,5))
-    def test_requests_1_11(self): self.requests(1, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
-    def test_requests_1_12(self): self.requests(1, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
+    def test_requests_1_7(self):
+        self.requests(1, [1], (1, 1), (1, 1), (1, 1))
 
-    def test_requests_2_7(self): self.requests(2, [1], (1,1), (1,1), (1,1))
-    def test_requests_2_8(self): self.requests(2, [1,2,3,4,5], (1,4), (2,5))
-    def test_requests_2_9(self): self.requests(2, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
-    def test_requests_2_10(self): self.requests(2, [1,2,3,4,5], (1,1), (5,5))
-    def test_requests_2_11(self): self.requests(2, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
-    def test_requests_2_12(self): self.requests(2, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
+    def test_requests_1_8(self):
+        self.requests(1, [1, 2, 3, 4, 5], (1, 4), (2, 5))
 
-    def test_requests_3_7(self): self.requests(3, [1], (1,1), (1,1), (1,1))
-    def test_requests_3_8(self): self.requests(3, [1,2,3,4,5], (1,4), (2,5))
-    def test_requests_3_9(self): self.requests(3, [1,2,3,4,5], (1,2), (2,3), (3,4), (4,5))
-    def test_requests_3_10(self): self.requests(3, [1,2,3,4,5], (1,1), (5,5))
-    def test_requests_3_11(self): self.requests(3, [1,2,3,4,5,6,7,8], (1,2), (4,5), (7,8))
-    def test_requests_3_12(self): self.requests(3, [1,2,3,4,5,6,7,8,9], (1,2), (4,5), (7,8), (1,5), (7,9))
+    def test_requests_1_9(self):
+        self.requests(1, [1, 2, 3, 4, 5], (1, 2), (2, 3), (3, 4), (4, 5))
+
+    def test_requests_1_10(self):
+        self.requests(1, [1, 2, 3, 4, 5], (1, 1), (5, 5))
+
+    def test_requests_1_11(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (4, 5), (7, 8))
+
+    def test_requests_1_12(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8, 9], (1, 2), (4, 5), (7, 8), (1, 5), (7, 9))
+
+    def test_requests_2_7(self):
+        self.requests(2, [1], (1, 1), (1, 1), (1, 1))
+
+    def test_requests_2_8(self):
+        self.requests(2, [1, 2, 3, 4, 5], (1, 4), (2, 5))
+
+    def test_requests_2_9(self):
+        self.requests(2, [1, 2, 3, 4, 5], (1, 2), (2, 3), (3, 4), (4, 5))
+
+    def test_requests_2_10(self):
+        self.requests(2, [1, 2, 3, 4, 5], (1, 1), (5, 5))
+
+    def test_requests_2_11(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (4, 5), (7, 8))
+
+    def test_requests_2_12(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8, 9], (1, 2), (4, 5), (7, 8), (1, 5), (7, 9))
+
+    def test_requests_3_7(self):
+        self.requests(3, [1], (1, 1), (1, 1), (1, 1))
+
+    def test_requests_3_8(self):
+        self.requests(3, [1, 2, 3, 4, 5], (1, 4), (2, 5))
+
+    def test_requests_3_9(self):
+        self.requests(3, [1, 2, 3, 4, 5], (1, 2), (2, 3), (3, 4), (4, 5))
+
+    def test_requests_3_10(self):
+        self.requests(3, [1, 2, 3, 4, 5], (1, 1), (5, 5))
+
+    def test_requests_3_11(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (4, 5), (7, 8))
+
+    def test_requests_3_12(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8, 9], (1, 2), (4, 5), (7, 8), (1, 5), (7, 9))
 
     # multi-range requests, in different orders
-    def test_requests_1_13(self): self.requests(1, [1], (1,1), (1,1), (1,1))
-    def test_requests_1_14(self): self.requests(1, [1,2,3,4,5], (2,5), (1,4))
-    def test_requests_1_15(self): self.requests(1, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
-    def test_requests_1_16(self): self.requests(1, [1,2,3,4,5], (5,5), (1,1))
-    def test_requests_1_17(self): self.requests(1, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
-    def test_requests_1_18(self): self.requests(1, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
+    def test_requests_1_13(self):
+        self.requests(1, [1], (1, 1), (1, 1), (1, 1))
 
-    def test_requests_2_13(self): self.requests(2, [1], (1,1), (1,1), (1,1))
-    def test_requests_2_14(self): self.requests(2, [1,2,3,4,5], (2,5), (1,4))
-    def test_requests_2_15(self): self.requests(2, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
-    def test_requests_2_16(self): self.requests(2, [1,2,3,4,5], (5,5), (1,1))
-    def test_requests_2_17(self): self.requests(2, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
-    def test_requests_2_18(self): self.requests(2, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
+    def test_requests_1_14(self):
+        self.requests(1, [1, 2, 3, 4, 5], (2, 5), (1, 4))
 
-    def test_requests_3_13(self): self.requests(3, [1], (1,1), (1,1), (1,1))
-    def test_requests_3_14(self): self.requests(3, [1,2,3,4,5], (2,5), (1,4))
-    def test_requests_3_15(self): self.requests(3, [1,2,3,4,5], (4,5), (3,4), (1,2), (2,3))
-    def test_requests_3_16(self): self.requests(3, [1,2,3,4,5], (5,5), (1,1))
-    def test_requests_3_17(self): self.requests(3, [1,2,3,4,5,6,7,8], (1,2), (7,8), (4,5))
-    def test_requests_3_18(self): self.requests(3, [1,2,3,4,5,6,7,8,9], (7,9), (1,5), (7,8), (4,5), (1,2))
+    def test_requests_1_15(self):
+        self.requests(1, [1, 2, 3, 4, 5], (4, 5), (3, 4), (1, 2), (2, 3))
+
+    def test_requests_1_16(self):
+        self.requests(1, [1, 2, 3, 4, 5], (5, 5), (1, 1))
+
+    def test_requests_1_17(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (7, 8), (4, 5))
+
+    def test_requests_1_18(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8, 9], (7, 9), (1, 5), (7, 8), (4, 5), (1, 2))
+
+    def test_requests_2_13(self):
+        self.requests(2, [1], (1, 1), (1, 1), (1, 1))
+
+    def test_requests_2_14(self):
+        self.requests(2, [1, 2, 3, 4, 5], (2, 5), (1, 4))
+
+    def test_requests_2_15(self):
+        self.requests(2, [1, 2, 3, 4, 5], (4, 5), (3, 4), (1, 2), (2, 3))
+
+    def test_requests_2_16(self):
+        self.requests(2, [1, 2, 3, 4, 5], (5, 5), (1, 1))
+
+    def test_requests_2_17(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (7, 8), (4, 5))
+
+    def test_requests_2_18(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8, 9], (7, 9), (1, 5), (7, 8), (4, 5), (1, 2))
+
+    def test_requests_3_13(self):
+        self.requests(3, [1], (1, 1), (1, 1), (1, 1))
+
+    def test_requests_3_14(self):
+        self.requests(3, [1, 2, 3, 4, 5], (2, 5), (1, 4))
+
+    def test_requests_3_15(self):
+        self.requests(3, [1, 2, 3, 4, 5], (4, 5), (3, 4), (1, 2), (2, 3))
+
+    def test_requests_3_16(self):
+        self.requests(3, [1, 2, 3, 4, 5], (5, 5), (1, 1))
+
+    def test_requests_3_17(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (7, 8), (4, 5))
+
+    def test_requests_3_18(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8, 9], (7, 9), (1, 5), (7, 8), (4, 5), (1, 2))
 
     # single range requests, invalid requests
-    def test_requests_1_19(self): self.requests(1, [10], (10, 11))
-    def test_requests_1_20(self): self.requests(1, [], (11, 11))
-    def test_requests_1_21(self): self.requests(1, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
-    def test_requests_1_22(self): self.requests(1, [], (1111, 11112))
+    def test_requests_1_19(self):
+        self.requests(1, [10], (10, 11))
 
-    def test_requests_2_19(self): self.requests(2, [10], (10, 11))
-    def test_requests_2_20(self): self.requests(2, [], (11, 11))
-    def test_requests_2_21(self): self.requests(2, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
-    def test_requests_2_22(self): self.requests(2, [], (1111, 11112))
+    def test_requests_1_20(self):
+        self.requests(1, [], (11, 11))
 
-    def test_requests_3_19(self): self.requests(3, [10], (10, 11))
-    def test_requests_3_20(self): self.requests(3, [], (11, 11))
-    def test_requests_3_21(self): self.requests(3, [1,2,3,4,5,6,7,8,9,10], (1, 11112))
-    def test_requests_3_22(self): self.requests(3, [], (1111, 11112))
+    def test_requests_1_21(self):
+        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 11112))
+
+    def test_requests_1_22(self):
+        self.requests(1, [], (1111, 11112))
+
+    def test_requests_2_19(self):
+        self.requests(2, [10], (10, 11))
+
+    def test_requests_2_20(self):
+        self.requests(2, [], (11, 11))
+
+    def test_requests_2_21(self):
+        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 11112))
+
+    def test_requests_2_22(self):
+        self.requests(2, [], (1111, 11112))
+
+    def test_requests_3_19(self):
+        self.requests(3, [10], (10, 11))
+
+    def test_requests_3_20(self):
+        self.requests(3, [], (11, 11))
+
+    def test_requests_3_21(self):
+        self.requests(3, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], (1, 11112))
+
+    def test_requests_3_22(self):
+        self.requests(3, [], (1111, 11112))
 
     # multi-range requests, invalid requests
-    def test_requests_1_23(self): self.requests(1, [10], (10, 11), (10, 100), (50, 75))
-    def test_requests_1_24(self): self.requests(1, [], (11, 11), (11, 50), (100, 200))
+    def test_requests_1_23(self):
+        self.requests(1, [10], (10, 11), (10, 100), (50, 75))
 
-    def test_requests_2_23(self): self.requests(2, [10], (10, 11), (10, 100), (50, 75))
-    def test_requests_2_24(self): self.requests(2, [], (11, 11), (11, 50), (100, 200))
+    def test_requests_1_24(self):
+        self.requests(1, [], (11, 11), (11, 50), (100, 200))
 
-    def test_requests_3_23(self): self.requests(3, [10], (10, 11), (10, 100), (50, 75))
-    def test_requests_3_24(self): self.requests(3, [], (11, 11), (11, 50), (100, 200))
+    def test_requests_2_23(self):
+        self.requests(2, [10], (10, 11), (10, 100), (50, 75))
+
+    def test_requests_2_24(self):
+        self.requests(2, [], (11, 11), (11, 50), (100, 200))
+
+    def test_requests_3_23(self):
+        self.requests(3, [10], (10, 11), (10, 100), (50, 75))
+
+    def test_requests_3_24(self):
+        self.requests(3, [], (11, 11), (11, 50), (100, 200))
 
     @classmethod
     def setUpClass(cls):

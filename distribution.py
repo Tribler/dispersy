@@ -16,8 +16,11 @@ LastSyncDistribution object holds additional information for this specific messa
 global_time.
 """
 
+
 class Pruning(MetaObject):
+
     class Implementation(MetaObject.Implementation):
+
         def __init__(self, meta, distribution):
             assert isinstance(distribution, SyncDistribution.Implementation), type(distribution)
             super(Pruning.Implementation, self).__init__(meta)
@@ -41,8 +44,11 @@ class Pruning(MetaObject):
         def is_pruned(self):
             raise NotImplementedError("missing implementation")
 
+
 class NoPruning(Pruning):
+
     class Implementation(Pruning.Implementation):
+
         def is_active(self):
             return True
 
@@ -52,8 +58,11 @@ class NoPruning(Pruning):
         def is_pruned(self):
             return False
 
+
 class GlobalTimePruning(Pruning):
+
     class Implementation(Pruning.Implementation):
+
         @property
         def inactive_threshold(self):
             return self._meta.inactive_threshold
@@ -98,8 +107,11 @@ class GlobalTimePruning(Pruning):
     def prune_threshold(self):
         return self._prune_threshold
 
+
 class Distribution(MetaObject):
+
     class Implementation(MetaObject.Implementation):
+
         def __init__(self, meta, global_time):
             assert isinstance(meta, Distribution)
             assert isinstance(global_time, (int, long))
@@ -121,7 +133,9 @@ class Distribution(MetaObject):
             from .message import Message
         assert isinstance(message, Message)
 
+
 class SyncDistribution(Distribution):
+
     """
     Allows gossiping and synchronization of messages thoughout the community.
 
@@ -135,6 +149,7 @@ class SyncDistribution(Distribution):
     """
 
     class Implementation(Distribution.Implementation):
+
         def __init__(self, meta, global_time):
             super(SyncDistribution.Implementation, self).__init__(meta, global_time)
             self._pruning = meta.pruning.Implementation(meta.pruning, self)
@@ -225,7 +240,9 @@ class SyncDistribution(Distribution):
                                                         (self._priority, self.synchronization_direction_value, message.database_id))
             assert message.community.dispersy.database.changes == 1
 
+
 class FullSyncDistribution(SyncDistribution):
+
     """
     Allows gossiping and synchronization of messages thoughout the community.
 
@@ -240,6 +257,7 @@ class FullSyncDistribution(SyncDistribution):
     is not currently, and my never be, implemented.
     """
     class Implementation(SyncDistribution.Implementation):
+
         def __init__(self, meta, global_time, sequence_number=0):
             assert isinstance(sequence_number, (int, long))
             assert (meta._enable_sequence_number and sequence_number > 0) or (not meta._enable_sequence_number and sequence_number == 0), (meta._enable_sequence_number, sequence_number)
@@ -269,13 +287,17 @@ class FullSyncDistribution(SyncDistribution):
             # obtain the most recent sequence number that we have used
             self._current_sequence_number, = message.community.dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE member = ? AND meta_message = ?",
                                                                                          (message.community.my_member.database_id, message.database_id)).next()
+
     def claim_sequence_number(self):
         assert self._enable_sequence_number
         self._current_sequence_number += 1
         return self._current_sequence_number
 
+
 class LastSyncDistribution(SyncDistribution):
+
     class Implementation(SyncDistribution.Implementation):
+
         @property
         def cluster(self):
             return self._meta._cluster
@@ -294,10 +316,14 @@ class LastSyncDistribution(SyncDistribution):
     def history_size(self):
         return self._history_size
 
+
 class DirectDistribution(Distribution):
+
     class Implementation(Distribution.Implementation):
         pass
 
+
 class RelayDistribution(Distribution):
+
     class Implementation(Distribution.Implementation):
         pass

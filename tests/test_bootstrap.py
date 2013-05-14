@@ -11,7 +11,9 @@ from .debugcommunity.community import DebugCommunity
 
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestBootstrapServers(DispersyTestClass):
+
     @skip("The stress test is not actually a unittest")
     @call_on_dispersy_thread
     def test_servers_are_up(self):
@@ -20,6 +22,7 @@ class TestBootstrapServers(DispersyTestClass):
         dispersy-introduction-response is received.
         """
         class PingCommunity(DebugCommunity):
+
             def __init__(self, *args, **kargs):
                 # original walker callbacks (will be set during super(...).__init__)
                 self._original_on_introduction_response = None
@@ -94,7 +97,6 @@ class TestBootstrapServers(DispersyTestClass):
                     test.assertLess(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
                     test.assertLess(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
-
         community = PingCommunity.create_community(self._dispersy, self._my_member)
 
         test = self
@@ -121,6 +123,7 @@ class TestBootstrapServers(DispersyTestClass):
         it takes until the dispersy-introduction-response messages are received.
         """
         class PingCommunity(DebugCommunity):
+
             def __init__(self, master, candidates):
                 super(PingCommunity, self).__init__(master)
 
@@ -219,7 +222,7 @@ class TestBootstrapServers(DispersyTestClass):
                     else:
                         logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
-        MEMBERS = 10000 # must be a multiple of 100
+        MEMBERS = 10000  # must be a multiple of 100
         COMMUNITIES = 1
         ROUNDS = 10
 
@@ -246,7 +249,7 @@ class TestBootstrapServers(DispersyTestClass):
         BEGIN = time()
         for _ in xrange(ROUNDS):
             for community in communities:
-                for _ in xrange(MEMBERS/100):
+                for _ in xrange(MEMBERS / 100):
                     community.ping_from_queue(100)
                     yield 0.1
 
@@ -255,7 +258,7 @@ class TestBootstrapServers(DispersyTestClass):
         END = time()
 
         yield 10.0
-        logger.info("--- did %d requests per community", ROUNDS*MEMBERS)
+        logger.info("--- did %d requests per community", ROUNDS * MEMBERS)
         logger.info("--- spread over %.2f seconds", END - BEGIN)
         for community in communities:
             community.summary()

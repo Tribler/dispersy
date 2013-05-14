@@ -1,6 +1,8 @@
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
+
 class TestCallback(DispersyTestClass):
+
     def previous_performance_profile(self):
         """
 Run on MASAQ Dell laptop 23/04/12

@@ -15,6 +15,7 @@ from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from .mainthreadcallback import MainThreadCallback
 
+
 def start_script(dispersy, opt):
     try:
         module, class_ = opt.script.strip().rsplit(".", 1)
@@ -36,6 +37,7 @@ def start_script(dispersy, opt):
     script = cls(dispersy, **kargs)
     script.next_testcase()
 
+
 def main_real(setup=None):
     assert setup is None or callable(setup)
 
@@ -51,7 +53,7 @@ def main_real(setup=None):
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
     command_line_parser.add_option("--strict", action="store_true", help="Exit on any exception", default=False)
-    # # swift
+    # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
     # command_line_parser.add_option("--swiftcmdlistenport", action="store", type="int", default=7760+481)
@@ -97,6 +99,7 @@ def main_real(setup=None):
     dispersy.start()
     dispersy.callback.loop()
     return dispersy.callback
+
 
 def main(setup=None):
     callback = main_real(setup)
