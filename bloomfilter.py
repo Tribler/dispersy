@@ -40,7 +40,7 @@ class BloomFilter(Constructor):
         assert 0 < k_functions <= m_size
         assert isinstance(prefix, str)
         assert 0 <= len(prefix) < 256
-        assert isinstance(filter_, long)
+        assert isinstance(filter_, (int, long))
 
         self._m_size = m_size
         self._k_functions = k_functions
