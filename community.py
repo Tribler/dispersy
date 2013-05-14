@@ -1448,7 +1448,7 @@ class Community(object):
         shuffle(candidates)
         return iter(candidates)
 
-    def dispersy_yield_introduce_candidates(self, candidate = None):
+    def dispersy_yield_introduce_candidates(self, exclude_candidate=None, exclude_tunnel=False):
         """
         Yield non-unique active candidates or None in round robin fashion.
 
@@ -1467,7 +1467,7 @@ class Community(object):
                 yield None
             else:
                 prev_result = result
-                if result == candidate:
+                if (result == exclude_candidate) or (exclude_tunnel and result.tunnel):
                     continue
 
                 yield result

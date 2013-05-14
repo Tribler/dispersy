@@ -2484,7 +2484,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             if payload.advice:
                 first_invalid_sock_addr = None
-                for introduced in community.dispersy_yield_introduce_candidates(candidate):
+                for introduced in community.dispersy_yield_introduce_candidates(candidate, not candidate.tunnel):
                     if is_valid_candidate(message, candidate, introduced):
                         # found candidate, break
                         break

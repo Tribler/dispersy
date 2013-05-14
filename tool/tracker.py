@@ -194,7 +194,7 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
-    def dispersy_yield_introduce_candidates(self, candidate=None):
+    def dispersy_yield_introduce_candidates(self, exclude_candidate=None, exclude_tunnel=False):
         """
         Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
         """
@@ -208,7 +208,7 @@ class TrackerCommunity(Community):
 
             else:
                 prev_result = result
-                if result == candidate:
+                if (result == exclude_candidate) or (exclude_tunnel and result.tunnel):
                     continue
                 logger.debug("yielding random %s", result)
                 yield result
