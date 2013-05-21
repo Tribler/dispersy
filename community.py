@@ -1469,7 +1469,7 @@ class Community(object):
                 yield None
             else:
                 prev_result = result
-                if (result == exclude_candidate) or (exclude_tunnel and result.tunnel):
+                if (result == exclude_candidate) or (exclude_tunnel and result and result.tunnel):
                     continue
 
                 yield result
