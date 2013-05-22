@@ -66,6 +66,25 @@ class Endpoint(object):
         assert isinstance(timeout, float), type(timeout)
 
 
+class NullEndpoint(Endpoint):
+
+    """
+    NullEndpoint will ignore not send or receive anything.
+
+    This Endpoint can be used during unit tests that should not communicate with other peers.
+    """
+
+    def __init__(self, address=("0.0.0.0", -1)):
+        super(NullEndpoint, self).__init__()
+        self._address = address
+
+    def get_address(self):
+        return self._address
+
+    def send(self, candidates, packets):
+        self._total_up += sum(len(packet) for packet in packets) * len(candidates)
+
+
 class RawserverEndpoint(Endpoint):
 
     def __init__(self, rawserver, port, ip="0.0.0.0"):
