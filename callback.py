@@ -427,8 +427,8 @@ class Callback(object):
         will occur when TIMEOUT is 0.0.  When a timeout occurs the DEFAULT value is returned.
         TIMEOUT is unused when called from the same thread.
 
-        DEFAULT can be anything.  The DEFAULT value is returned when a TIMEOUT occurs.  When DEFAULT
-        is an Exception instance it will be raised instead of returned.
+        DEFAULT can be anything.  The DEFAULT value is returned when a TIMEOUT occurs.  Note: as of 24/05/13 when
+        DEFAULT is an Exception instance it will no longer be raised.
 
         For the arguments CALL, ARGS, KARGS, DELAY, PRIORITY, ID_, and INCLUDE_ID: see the register(...) method.
         """
@@ -436,12 +436,18 @@ class Callback(object):
         assert 0.0 <= timeout
         assert self._thread_ident
 
-        def callback(result):
-            container[0] = result
-            event.set()
+        def call_and_catch():
+            try:
+                container[0] = call(*args, **(kargs if kargs else {}))
 
-        # result container
-        container = [default]
+            except Exception as exception:
+                container[1] = exc_info()
+
+            finally:
+                event.set()
+
+        # result container with [RETURN-VALUE, EXC_INFO-TUPLE]
+        container = [default, None]
 
         if self._thread_ident == get_ident():
             if kargs:
@@ -460,13 +466,15 @@ class Callback(object):
             event = Event()
 
             # register the call
-            self.register(call, args, kargs, delay, priority, id_, callback, (), None, include_id)
+            self.register(call_and_catch, delay=delay, priority=priority, id_=id_, include_id=include_id)
 
             # wait for call to finish
             event.wait(None if timeout == 0.0 else timeout)
 
-        if isinstance(container[0], Exception):
-            raise container[0]
+        if container[1]:
+            type_, value, traceback = container[1]
+            raise type_, value, traceback
+
         else:
             return container[0]
 
