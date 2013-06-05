@@ -1,5 +1,5 @@
 import logging
-logger = logging.getLogger("eviy")
+logger = logging.getLogger(__name__)
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
