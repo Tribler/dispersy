@@ -3,7 +3,7 @@ from time import time
 from ..tool.tracker import TrackerCommunity
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
-
+from ..candidate import CANDIDATE_ELIGIBLE_DELAY
 
 class TestCandidates(DispersyTestClass):
 
