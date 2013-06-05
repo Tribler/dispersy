@@ -8,11 +8,11 @@ from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 class TestCandidates(DispersyTestClass):
 
     @call_on_dispersy_thread
-    def test_yield_introduce_candidates(self):
+    def test_get_introduce_candidate(self):
         self.__test_introduce(DebugCommunity.create_community)
 
     @call_on_dispersy_thread
-    def test_tracker_yield_introduce_candidates(self):
+    def test_tracker_get_introduce_candidate(self):
         communities, candidates = self.__test_introduce(TrackerCommunity.create_community)
 
         # trackers should not prefer either stumbled or walked candidates, i.e. it should not return
@@ -29,7 +29,7 @@ class TestCandidates(DispersyTestClass):
         for candidate in candidates:
             candidate.stumble(c, now)
 
-            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
+            candidate = c.dispersy_get_introduce_candidate(candidate)
             got.append(candidate.lan_address if candidate else None)
 
         self.assertEquals(expected, got)
@@ -50,7 +50,7 @@ class TestCandidates(DispersyTestClass):
         for candidate in candidates:
             candidate.stumble(c, now)
 
-            candidate = c.dispersy_yield_introduce_candidates(candidate).next()
+            candidate = c.dispersy_get_introduce_candidate(candidate)
             got.append(candidate.lan_address if candidate else None)
 
         self.assertEquals(expected, got)
@@ -63,7 +63,7 @@ class TestCandidates(DispersyTestClass):
         for candidate in reversed(candidates):
             candidate.stumble(c2, now)
 
-            candidate = c2.dispersy_yield_introduce_candidates(candidate).next()
+            candidate = c2.dispersy_get_introduce_candidate(candidate)
             got.append(candidate.lan_address if candidate else None)
 
         self.assertEquals(expected, got)
@@ -85,7 +85,7 @@ class TestCandidates(DispersyTestClass):
         expected = [candidates[0].wan_address]
 
         got = []
-        for candidate in self._dispersy._candidates.itervalues():
+        for candidate in c._candidates.itervalues():
             got.append(candidate.wan_address)
 
         self.assertEquals(expected, got)

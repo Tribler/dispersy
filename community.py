@@ -378,7 +378,7 @@ class Community(object):
                     assert self._master_member.public_key
                     break
 
-            for candidate in islice(self.dispersy_yield_random_candidates(), 1):
+            for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
                 if candidate:
                     logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
                     self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
@@ -1140,7 +1140,7 @@ class Community(object):
 
             # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause overflow
             # exceptions in the sqlite3 wrapper
-            return min(max(self._global_time, median_global_time) + self.dispersy_acceptable_global_time_range, 2 ** 63 -1)
+            return min(max(self._global_time, median_global_time) + self.dispersy_acceptable_global_time_range, 2 ** 63 - 1)
 
         # get opinions from all active candidates
         if self._acceptable_global_time_deadline < now:
@@ -1341,13 +1341,6 @@ class Community(object):
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
 
-    def dispersy_yield_candidates(self):
-        """
-        Yields all active candidates that are part of COMMUNITY.
-        """
-        now = time()
-        return (candidate for candidate in self._candidates.itervalues() if candidate.in_community(self, now) and candidate.is_any_active(now))
-
     def _iter_category(self, category):
         while True:
             index = 0
@@ -1430,14 +1423,20 @@ class Community(object):
             if once:
                 break
 
-    def _iter_a_or_b(self, a, b, prev_result=None):
-        r = random()
-        result = a.next() if r <= .5 else b.next()
-        if not result or result == prev_result:
-            result = b.next() if r <= .5 else a.next()
-        return result
+    def dispersy_yield_candidates(self):
+        """
+        Yields all active candidates that are part of this community.
+        
+        The returned candidates are randomized on every call and returned only once each.
+        """
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
-    def dispersy_yield_random_candidates(self):
+        now = time()
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.is_any_active(now)]
+        shuffle(candidates)
+        return iter(candidates)
+
+    def dispersy_yield_verified_candidates(self):
         """
         Yields unique active candidates.
 
@@ -1445,96 +1444,133 @@ class Community(object):
         once each.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+
         now = time()
         candidates = [candidate for candidate in self._candidates.itervalues() if candidate.is_any_active(now) and candidate.get_category(self, now) in (u"walk", u"stumble")]
         shuffle(candidates)
         return iter(candidates)
 
-    def dispersy_yield_introduce_candidates(self, exclude_candidate=None, exclude_tunnel=False):
+    def dispersy_get_introduce_candidate(self, exclude_candidate=None):
         """
-        Yield non-unique active candidates or None in round robin fashion.
-
+        Return one candidate or None in round robin fashion from the walked or stumbled categories.
         This method is used by the walker to choose the candidates to introduce when an introduction
         request is received.
-
-        None is yielded whenever either self._walked_candidates or self._stumbled_candidates runs
-        out of candidates.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-        prev_result = None
-        while True:
-            result = self._iter_a_or_b(self._walked_candidates, self._stumbled_candidates, prev_result)
 
-            if prev_result == result:
-                yield None
-            else:
-                prev_result = result
-                if (result == exclude_candidate) or (exclude_tunnel and result and result.tunnel):
+        first_candidates = [None, None]
+        while True:
+            def get_walked():
+                result = self._walked_candidates.next()
+                if result == first_candidates[0]:
+                    result = None
+
+                if not first_candidates[0]:
+                    first_candidates[0] = result
+
+                return result
+
+            def get_stumbled():
+                result = self._stumbled_candidates.next()
+                if result == first_candidates[1]:
+                    result = None
+
+                if not first_candidates[1]:
+                    first_candidates[1] = result
+
+                return result
+
+            r = random()
+            result = get_walked() if r <= .5 else get_stumbled()
+            if not result:
+                result = get_stumbled() if r <= .5 else get_walked()
+
+            if result and exclude_candidate:
+                # same candidate as requesting the introduction
+                if result == exclude_candidate:
                     continue
 
-                yield result
+                # cannot introduce a non-tunnelled candidate to a tunneled candidate (it's swift instance will not
+                # get it)
+                if not exclude_candidate.tunnel and result.tunnel:
+                    continue
 
-    def dispersy_yield_walk_candidates(self):
-        """
-        Yields a mixture of all candidates that we could get our hands on that are part of
-        COMMUNITY.
-        """
-        # TODO we can optimize by not doing all the sorting until we select where we want to pick a
-        # node.  since we always just need one candidate the other sorts would be useless
+                # cannot introduce two nodes that are behind a different symmetric NAT
+                if (exclude_candidate.connection_type == u"symmetric-NAT" and
+                    result.connection_type == u"symmetric-NAT" and
+                    not exclude_candidate.wan_address[0] == result.wan_address[0]):
+                    continue
 
+            return result
+
+    def dispersy_get_walk_candidate(self):
+        """
+        Returns a candidate from either the walk, stumble or intro category which is eligible for walking.
+        Selects a category based on predifined probabilities.
+        """
         # 13/02/12 Boudewijn: normal peers can not be visited multiple times within 30 seconds,
         # bootstrap peers can not be visited multiple times within 55 seconds.  this is handled by
         # the Candidate.is_eligible_for_walk(...) method
 
+        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+
+        from sys import maxint
+
         now = time()
-        categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
+        categories = [(maxint, None), (maxint, None), (maxint, None)]
+        category_sizes = [0, 0, 0]
+
         for candidate in self._candidates.itervalues():
             if candidate.is_eligible_for_walk(self, now):
-                categories[candidate.get_category(self, now)].append(candidate)
+                category = candidate.get_category(self, now)
+                if category == u"walk":
+                    categories[0] = min(categories[0], (candidate.last_walk(self), candidate))
+                    category_sizes[0] += 1
+                elif category == u"stumble":
+                    categories[1] = min(categories[1], (candidate.last_stumble(self), candidate))
+                    category_sizes[1] += 1
+                elif category == u"intro":
+                    categories[2] = min(categories[2], (candidate.last_intro(self), candidate))
+                    category_sizes[2] += 1
 
-        walks = sorted(categories[u"walk"], key=lambda candidate: candidate.last_walk(self))
-        stumbles = sorted(categories[u"stumble"], key=lambda candidate: candidate.last_stumble(self))
-        intros = sorted(categories[u"intro"], key=lambda candidate: candidate.last_intro(self))
-
-        while walks or stumbles or intros:
+        walk, stumble, intro = [candidate for _, candidate in categories]
+        while walk or stumble or intro:
             r = random()
 
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
             if r <= .4975:  # ~50%
-                if walks:
-                    logger.debug("yield [%2d:%2d:%2d walk   ] %s", len(walks), len(stumbles), len(intros), walks[0])
-                    yield walks.pop(0)
+                if walk:
+                    logger.debug("returning [%2d:%2d:%2d walk   ] %s", category_sizes[0] , category_sizes[1], category_sizes[2], walk)
+                    return walk
 
             elif r <= .995:  # ~50%
-                if stumbles or intros:
+                if stumble or intro:
                     while True:
                         if random() <= .5:
-                            if stumbles:
-                                logger.debug("yield [%2d:%2d:%2d stumble] %s", len(walks), len(stumbles), len(intros), stumbles[0])
-                                yield stumbles.pop(0)
-                                break
+                            if stumble:
+                                logger.debug("returning [%2d:%2d:%2d stumble] %s", category_sizes[0] , category_sizes[1], category_sizes[2], stumble)
+                                return stumble
 
                         else:
-                            if intros:
-                                logger.debug("yield [%2d:%2d:%2d intro  ] %s", len(walks), len(stumbles), len(intros), intros[0])
-                                yield intros.pop(0)
-                                break
+                            if intro:
+                                logger.debug("returning [%2d:%2d:%2d intro  ] %s", category_sizes[0] , category_sizes[1], category_sizes[2], intro)
+                                return intro
 
             else:  # ~.5%
                 candidate = self._bootstrap_candidates.next()
                 if candidate:
-                    logger.debug("yield [%2d:%2d:%2d bootstr] %s", len(walks), len(stumbles), len(intros), candidate)
-                    yield candidate
+                    logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0] , category_sizes[1], category_sizes[2], candidate)
+                    return candidate
 
         bootstrap_candidates = list(self._iter_bootstrap(once=True))
         shuffle(bootstrap_candidates)
-
         for candidate in bootstrap_candidates:
             if candidate:
-                logger.debug("yield [%2d:%2d:%2d bootstr] %s", len(walks), len(stumbles), len(intros), candidate)
-            yield candidate
+                logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0] , category_sizes[1], category_sizes[2], candidate)
+                return candidate
 
         logger.debug("no candidates or bootstrap candidates available")
+        return None
 
     def create_candidate(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
         """
