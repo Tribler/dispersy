@@ -1094,7 +1094,7 @@ class Dispersy(object):
         # change when new vote count equal or higher than old address vote count
         if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
             if len(votes) > 1:
-                logger.debug("not updating WAN address, suspect symmetric NAT", )
+                logger.debug("not updating WAN address, suspect symmetric NAT",)
                 self._connection_type = u"symmetric-NAT"
 
             else:
@@ -1311,7 +1311,7 @@ class Dispersy(object):
 
                 if seq + 1 != message.distribution.sequence_number:
                     # we do not have the previous message (delay and request)
-                    yield DelayMessageBySequence(message, seq + 1, message.distribution.sequence_number -1)
+                    yield DelayMessageBySequence(message, seq + 1, message.distribution.sequence_number - 1)
                     continue
 
                 # we have the previous message, check for duplicates based on community,
@@ -2227,12 +2227,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
             if items:
-                self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid, ) for syncid, _ in items])
+                self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
                 assert len(items) == self._database.changes
                 logger.debug("deleted %d messages", self._database.changes)
 
                 if is_double_member_authentication:
-                    self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid, ) for syncid, _ in items])
+                    self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid,) for syncid, _ in items])
                     assert len(items) == self._database.changes
 
                 # update_sync_range.update(global_time for _, _, global_time in items)
@@ -2308,20 +2308,15 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     def take_step(self, community, allow_sync):
         if community.cid in self._communities:
-            try:
-                candidate = community.dispersy_yield_walk_candidates().next()
-                if candidate == None:
-                    raise StopIteration()
-
-            except StopIteration:
-                logger.debug("%s %s no candidate to take step", community.cid.encode("HEX"), community.get_classification())
-                return False
-
-            else:
+            candidate = community.dispersy_get_walk_candidate()
+            if candidate:
                 assert community.my_member.private_key
                 logger.debug("%s %s taking step towards %s", community.cid.encode("HEX"), community.get_classification(), candidate)
                 community.create_introduction_request(candidate, allow_sync)
                 return True
+            else:
+                logger.debug("%s %s no candidate to take step", community.cid.encode("HEX"), community.get_classification())
+                return False
 
     def handle_missing_messages(self, messages, *classes):
         assert all(isinstance(message, Message.Implementation) for message in messages)
@@ -2384,7 +2379,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     except OverflowError:
                         logger.error("time_low:  %d", time_low)
                         logger.error("time_high: %d", time_high)
-                        logger.error("2**63 - 1: %d", 2 ** 63 -1)
+                        logger.error("2**63 - 1: %d", 2 ** 63 - 1)
                         logger.exception("the sqlite3 python module can not handle values 2**63 or larger.  limit time_low and time_high to 2**63-1")
                         assert False
 
@@ -2499,27 +2494,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             logger.debug("received introduction request from %s", candidate)
 
             if payload.advice:
-                first_invalid_sock_addr = None
-                for introduced in community.dispersy_yield_introduce_candidates(candidate, not candidate.tunnel):
-                    if is_valid_candidate(message, candidate, introduced):
-                        # found candidate, break
-                        break
-
-                    if first_invalid_sock_addr is None:
-                        # introduced is not valid for this candidate,
-                        # we will remember its sock_addr to ensure
-                        # that we do not endlessly loop over the
-                        # dispersy_yield_random_candidates
-                        first_invalid_sock_addr = introduced.sock_addr
-
-                    elif first_invalid_sock_addr == introduced.sock_addr:
-                        # we cycled through all candidates in
-                        # dispersy_yield_random_candidates and did not find
-                        # any valid ones
-                        introduced = None
-                        break
+                introduced = community.dispersy_get_introduce_candidate(candidate)
+                if introduced == None:
+                    logger.debug("no candidates available to introduce")
             else:
-                logger.debug("no candidates available to introduce")
                 introduced = None
 
             if introduced:
@@ -2577,8 +2555,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 sql_arguments = []
                 for _, _, meta in meta_messages:
                     sql_arguments.extend((meta.database_id,
-                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 -1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2**63-1),
-                                          min(time_high, 2 ** 63 -1),
+                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 - 1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2 ** 63 - 1),
+                                          min(time_high, 2 ** 63 - 1),
                                           long(payload.offset),
                                           long(payload.modulo)))
                 logger.debug("%s", sql_arguments)
@@ -2683,7 +2661,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 if candidate is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
-                    # by yield_walk_candidates and yield_candidates
+                    # by get_walk_candidate and yield_candidates
                     candidate = community.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
                     candidate.inactive(community, now)
 
@@ -2787,7 +2765,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 if candidate is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
-                    # by yield_walk_candidates
+                    # by get_walk_candidate
                     candidate = community.create_candidate(sock_addr, message.candidate.tunnel, lan_address, wan_address, u"unknown")
                     candidate.inactive(community, now)
 
@@ -2911,7 +2889,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         if isinstance(meta.destination, CommunityDestination):
             # CommunityDestination.node_count is allowed to be zero
             if meta.destination.node_count > 0:
-                result = all(self._send(list(islice(meta.community.dispersy_yield_random_candidates(), meta.destination.node_count)), [message]) for message in messages)
+                result = all(self._send(list(islice(meta.community.dispersy_yield_verified_candidates(), meta.destination.node_count)), [message]) for message in messages)
 
         elif isinstance(meta.destination, CandidateDestination):
             # CandidateDestination.candidates may be empty
@@ -3594,7 +3572,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # limiter
                 highest = min(lowest + packet_limit, highest)
 
-                logger.debug("fetching member:%d message:%d %d packets from database for %s", member_id, message_id, highest - lowest +1, candidate)
+                logger.debug("fetching member:%d message:%d %d packets from database for %s", member_id, message_id, highest - lowest + 1, candidate)
                 for packet, in self._database.execute(u"SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time LIMIT ? OFFSET ?",
                                                       (member_id, message_id, highest - lowest + 1, lowest - 1)):
                     packet = str(packet)
@@ -4594,7 +4572,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._database.close()
 
         logger.info("stopping the Dispersy core...")
-        self._callback.call(stop, priority=-512)
+        self._callback.call(stop, priority= -512)
         self._callback.stop(timeout)
         logger.info("Dispersy core stopped")
         return True

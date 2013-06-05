@@ -50,7 +50,7 @@ from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
 
 if sys.platform == 'win32':
-    SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
+    SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
@@ -200,25 +200,37 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
-    def dispersy_yield_introduce_candidates(self, exclude_candidate=None, exclude_tunnel=False):
+    def dispersy_get_introduce_candidate(self, exclude_candidate=None):
         """
-        Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
+        Get an active candidate that is part of this community in Round Robin (Not random anymore).
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-        prev_result = None
+        first_candidate = None
         while True:
             result = self._walked_stumbled_candidates.next()
-            if prev_result == result:
-                logger.debug("yielding None")
-                yield None
+            if result == first_candidate:
+                result = None
 
-            else:
-                prev_result = result
-                if (result == exclude_candidate) or (exclude_tunnel and result and result.tunnel):
+            if not first_candidate:
+                first_candidate = result
+
+            if result and exclude_candidate:
+                # same candidate as requesting the introduction
+                if result == exclude_candidate:
                     continue
-                logger.debug("yielding random %s", result)
-                yield result
 
+                # cannot introduce a non-tunnelled candidate to a tunneled candidate (it's swift instance will not
+                # get it)
+                if not exclude_candidate.tunnel and result.tunnel:
+                    continue
+
+                # cannot introduce two nodes that are behind a different symmetric NAT
+                if (exclude_candidate.connection_type == u"symmetric-NAT" and
+                    result.connection_type == u"symmetric-NAT" and
+                    not exclude_candidate.wan_address[0] == result.wan_address[0]):
+                    continue
+
+            return result
 
 class TrackerDispersy(Dispersy):
 
