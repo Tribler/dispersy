@@ -2451,13 +2451,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         requests = []
         now = time()
 
+        #
+        # make all candidates available for introduction
+        #
         for message in messages:
             candidate = self.get_walkcandidate(message, community)
+            message._candidate = candidate
             if not candidate:
                 continue
 
             payload = message.payload
-            message._candidate = candidate
 
             # apply vote to determine our WAN address
             self.wan_address_vote(payload.destination_address, candidate)
@@ -2473,6 +2476,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             self._filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
+
+        #
+        # process the walker part of the request
+        #
+
+        for message in messages:
+            payload = message.payload
+            candidate = message.candidate
+            if not candidate:
+                continue
 
             if payload.advice:
                 introduced = community.dispersy_get_introduce_candidate(candidate)
