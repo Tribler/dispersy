@@ -12,17 +12,46 @@ def call_on_dispersy_thread(func):
     return helper
 
 
+class DispersyTestFunc(TestCase):
+
+    """
+    Setup and tear down Dispersy before and after each test method.
+
+    setUp will ensure the following members exists before each test method is called:
+    - self._dispersy
+    - self._my_member
+
+    tearDown will ensure these members are properly cleaned after each test method is finished.
+    """
+
+    def setUp(self):
+        super(DispersyTestFunc, self).setUp()
+
+        callback = Callback("Dispersy-Unit-Test")
+        endpoint = StandaloneEndpoint(12345)
+        working_directory = u"."
+        database_filename = u":memory:"
+
+        self._dispersy = Dispersy(callback, endpoint, working_directory, database_filename)
+        self._dispersy.start()
+        self._my_member = callback.call(self._dispersy.get_new_member, (u"low",))
+
+    def tearDown(self):
+        super(DispersyTestFunc, self).tearDown()
+        self._dispersy.stop()
+        self._dispersy = None
+        self._my_member = None
+
 class DispersyTestClass(TestCase):
 
     """
-    Setup Dispersy test.
+    Setup and tear down Dispersy before the first and after the last test method.
 
-    setUpClass will ensure the following members exists:
+    setUpClass will ensure the following members exists before the first test method in the class is called:
     - cls._dispersy
     - cls._my_member
 
-    tearDownClass will ensure these members are properly cleaned after all the class tests have
-    finished.
+    tearDownClass will ensure these members are properly cleaned after after the last class test has finished.
     """
     @classmethod
     def setUpClass(cls):
@@ -41,3 +70,5 @@ class DispersyTestClass(TestCase):
     def tearDownClass(cls):
         super(DispersyTestClass, cls).tearDownClass()
         cls._dispersy.stop()
+        cls._dispersy = None
+        cls._my_member = None
