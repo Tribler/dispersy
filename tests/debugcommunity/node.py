@@ -36,6 +36,7 @@ class DebugNode(object):
         self._community = community
         self._dispersy = community.dispersy if community else None
         self._socket = None
+        self._tunnel = False
         self._my_member = None
 
     @property
@@ -55,6 +56,15 @@ class DebugNode(object):
         Will fail unless self.init_socket() has been called.
         """
         return self._socket
+
+    @property
+    def tunnel(self):
+        """
+        True when this node is behind a tunnel.
+
+        Will fail unless self.init_socket() has been called.
+        """
+        return self._tunnel
 
     @property
     def lan_address(self):
@@ -94,6 +104,15 @@ class DebugNode(object):
         """
         return self._my_member
 
+    @property
+    def candidate(self):
+        """
+        A Candidate instance for this node.
+
+        Will fail unless self.init_socket() has been called.
+        """
+        return Candidate(self.lan_address, self.tunnel)
+
     def set_community(self, community):
         """
         Set the community that this node is associated to.
@@ -103,7 +122,7 @@ class DebugNode(object):
         if community:
             self._dispersy = community.dispersy
 
-    def init_socket(self):
+    def init_socket(self, tunnel=False):
         """
         Create a socket.socket instance for this node.
 
@@ -111,6 +130,7 @@ class DebugNode(object):
         socket.socket instances will be reused.  Hence it is possible to emulate many external
         nodes.
         """
+        assert isinstance(tunnel, bool)
         assert self._socket is None
         port = self._socket_range[0] + self._socket_counter % (self._socket_range[1] - self._socket_range[0])
         type(self)._socket_counter += 1
@@ -136,6 +156,7 @@ class DebugNode(object):
             logger.debug("create socket %d", port)
 
         self._socket = self._socket_pool[port]
+        self._tunnel = tunnel
 
     def init_my_member(self, bits=None, sync_with_database=None, candidate=True, identity=True):
         """
@@ -194,7 +215,7 @@ class DebugNode(object):
         finally:
             self._community._my_member = tmp_member
 
-    def give_packet(self, packet, verbose=False, cache=False, tunnel=False):
+    def give_packet(self, packet, verbose=False, cache=False, tunnel=None):
         """
         Give PACKET directly to Dispersy on_incoming_packets.
         Returns PACKET
@@ -202,14 +223,14 @@ class DebugNode(object):
         assert isinstance(packet, str)
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
-        assert isinstance(tunnel, bool)
+        assert tunnel is None, "TUNNEL property is set using init_socket(...)"
         if verbose:
             logger.debug("giving %d bytes", len(packet))
-        candidate = Candidate(self.lan_address, tunnel)
+        candidate = Candidate(self.lan_address, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet)], cache=cache, timestamp=time())
         return packet
 
-    def give_packets(self, packets, verbose=False, cache=False, tunnel=False):
+    def give_packets(self, packets, verbose=False, cache=False, tunnel=None):
         """
         Give multiple PACKETS directly to Dispersy on_incoming_packets.
         Returns PACKETS
@@ -218,14 +239,14 @@ class DebugNode(object):
         assert all(isinstance(packet, str) for packet in packets)
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
-        assert isinstance(tunnel, bool)
+        assert tunnel is None, "TUNNEL property is set using init_socket(...)"
         if verbose:
             logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
-        candidate = Candidate(self.lan_address, tunnel)
+        candidate = Candidate(self.lan_address, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
 
-    def give_message(self, message, verbose=False, cache=False, tunnel=False):
+    def give_message(self, message, verbose=False, cache=False, tunnel=None):
         """
         Give MESSAGE directly to Dispersy on_incoming_packets after it is encoded.
         Returns MESSAGE
@@ -233,14 +254,14 @@ class DebugNode(object):
         assert isinstance(message, Message.Implementation)
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
-        assert isinstance(tunnel, bool)
+        assert tunnel is None, "TUNNEL property is set using init_socket(...)"
         packet = message.packet if message.packet else self.encode_message(message)
         if verbose:
             logger.debug("giving %s (%d bytes)", message.name, len(packet))
-        self.give_packet(packet, verbose=verbose, cache=cache, tunnel=tunnel)
+        self.give_packet(packet, verbose=verbose, cache=cache)
         return message
 
-    def give_messages(self, messages, verbose=False, cache=False, tunnel=False):
+    def give_messages(self, messages, verbose=False, cache=False, tunnel=None):
         """
         Give multiple MESSAGES directly to Dispersy on_incoming_packets after they are encoded.
         Returns MESSAGES
@@ -249,11 +270,11 @@ class DebugNode(object):
         assert all(isinstance(message, Message.Implementation) for message in messages)
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
-        assert isinstance(tunnel, bool)
+        assert tunnel is None, "TUNNEL property is set using init_socket(...)"
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
         if verbose:
             logger.debug("giving %d messages (%d bytes)", len(messages), sum(len(packet) for packet in packets))
-        self.give_packets(packets, verbose=verbose, cache=cache, tunnel=tunnel)
+        self.give_packets(packets, verbose=verbose, cache=cache)
         return messages
 
     def send_packet(self, packet, address, verbose=False):

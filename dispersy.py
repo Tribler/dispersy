@@ -2445,25 +2445,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             yield message
 
     def on_introduction_request(self, messages):
-        def is_valid_candidate(message, candidate, introduced):
-            if introduced == None:
-                return True
-
-            assert isinstance(introduced, WalkCandidate)
-            assert self.is_valid_address(introduced.lan_address), [introduced.lan_address, self.lan_address]
-            assert self.is_valid_address(introduced.wan_address), [introduced.wan_address, self.wan_address]
-
-            if (message.payload.connection_type == u"symmetric-NAT" and
-                introduced.connection_type == u"symmetric-NAT" and
-                not candidate.wan_address[0] == introduced.wan_address[0]):
-                # must not introduce two nodes that are behind a different symmetric NAT
-                return False
-
-            return True
-
-        #
-        # process the walker part of the request
-        #
         community = messages[0].community
         meta_introduction_response = community.get_meta_message(u"dispersy-introduction-response")
         meta_puncture_request = community.get_meta_message(u"dispersy-puncture-request")
@@ -2472,13 +2453,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         now = time()
         self._statistics.walk_advice_incoming_request += len(messages)
 
+        #
+        # make all candidates available for introduction
+        #
         for message in messages:
             candidate = self.get_walkcandidate(message, community)
+            message._candidate = candidate
             if not candidate:
                 continue
 
             payload = message.payload
-            message._candidate = candidate
 
             # apply vote to determine our WAN address
             self.wan_address_vote(payload.destination_address, candidate)
@@ -2494,6 +2478,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             self._filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
+
+        #
+        # process the walker part of the request
+        #
+
+        for message in messages:
+            payload = message.payload
+            candidate = message.candidate
+            if not candidate:
+                continue
 
             if payload.advice:
                 introduced = community.dispersy_get_introduce_candidate(candidate)
