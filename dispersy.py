@@ -2417,6 +2417,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.walk_attempt += 1
             if isinstance(destination, BootstrapCandidate):
                 self._statistics.walk_bootstrap_attempt += 1
+            if request.payload.advice:
+                self._statistics.walk_advice_outgoing_request += 1
 
             self._forward([request])
 
@@ -2469,6 +2471,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         responses = []
         requests = []
         now = time()
+        self._statistics.walk_advice_incoming_request += len(messages)
 
         for message in messages:
             candidate = self.get_walkcandidate(message, community)
@@ -2502,6 +2505,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             if introduced:
                 logger.debug("telling %s that %s exists %s", candidate, introduced, type(community))
+                self._statistics.walk_advice_outgoing_response += 1
 
                 # create introduction response
                 responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.get_destination_address(self._wan_address), self._lan_address, self._wan_address, introduced.lan_address, introduced.wan_address, self._connection_type, introduced.tunnel, payload.identifier)))
@@ -2656,12 +2660,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 assert self.is_valid_address(wan_introduction_address), wan_introduction_address
 
                 # get or create the introduced candidate
+                self._statistics.walk_advice_incoming_response += 1
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._wan_address[0] else wan_introduction_address
                 candidate = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
                 if candidate is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
                     # by get_walk_candidate and yield_candidates
+                    self._statistics.walk_advice_incoming_response_new += 1
                     candidate = community.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
                     candidate.inactive(community, now)
 
