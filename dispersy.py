@@ -392,9 +392,8 @@ class Dispersy(object):
 
             self._callback.register(memory_dump)
 
-        if __debug__:
-            self._callback.register(self._stats_candidates)
-            self._callback.register(self._stats_detailed_candidates)
+        self._callback.register(self._stats_candidates)
+        self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
     def _guess_lan_address():
@@ -4667,46 +4666,59 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 del self._candidates[key]
                 self.wan_address_unvote(candidate)
 
-    if __debug__:
-        def _stats_candidates(self):
-            while True:
-                yield 10.0
-                now = time()
-                logger.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-                for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
-                    if community.get_classification() == u"PreviewChannelCommunity":
-                        continue
+    def _stats_candidates(self):
+        logger = logging.getLogger("dispersy-stats-candidates")
+        while logger.isEnabledFor(logging.INFO):
+            yield 5.0
+            now = time()
+            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
+                if community.get_classification() == u"PreviewChannelCommunity":
+                    continue
 
-                    candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
-                    logger.debug(" %s %20s with %d%s candidates[:5] %s",
-                                 community.cid.encode("HEX"), community.get_classification(), len(candidates),
-                                 "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
+                candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
+                logger.info(" %s %20s with %d%s candidates[:5] %s",
+                            community.cid.encode("HEX"), community.get_classification(), len(candidates),
+                            "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
 
-        def _stats_detailed_candidates(self):
-            while True:
-                yield 10.0
-                now = time()
-                logger.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-                for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
-                    if community.get_classification() == u"PreviewChannelCommunity":
-                        continue
+    def _stats_detailed_candidates(self):
+        logger = logging.getLogger("dispersy-stats-detailed-candidates")
+        while logger.isEnabledFor(logging.INFO):
+            yield 5.0
+            now = time()
+            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            logger.info("walk-attempt %d; success %d; boot-attempt %d; boot-success %d; reset %d",
+                        self._statistics.walk_attempt,
+                        self._statistics.walk_success,
+                        self._statistics.walk_bootstrap_attempt,
+                        self._statistics.walk_bootstrap_success,
+                        self._statistics.walk_reset)
+            logger.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
+                        self._statistics.walk_advice_outgoing_request,
+                        self._statistics.walk_advice_incoming_response,
+                        self._statistics.walk_advice_incoming_response_new,
+                        self._statistics.walk_advice_incoming_request,
+                        self._statistics.walk_advice_outgoing_response)
+            for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
+                if community.get_classification() == u"PreviewChannelCommunity":
+                    continue
 
-                    categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
-                    for candidate in self._candidates.itervalues():
-                        if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
-                            categories[candidate.get_category(community, now)].append(candidate)
+                categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
+                for candidate in self._candidates.itervalues():
+                    if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
+                        categories[candidate.get_category(community, now)].append(candidate)
 
-                    logger.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                    logger.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                logger.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
+                logger.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
-                    for category, candidates in categories.iteritems():
-                        for candidate in candidates:
-                            logger.debug("%4ds %s%s%s%s %-7s %-13s %s",
-                                         min(candidate.age(now), 9999),
-                                         "A " if candidate.is_any_active(now) else " I",
-                                         "O" if candidate.is_all_obsolete(now) else " ",
-                                         "E" if candidate.is_eligible_for_walk(community, now) else " ",
-                                         "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                         category,
-                                         candidate.connection_type,
-                                         candidate)
+                for category, candidates in categories.iteritems():
+                    for candidate in candidates:
+                        logger.info("%4ds %s%s%s%s %-7s %-13s %s",
+                                    min(candidate.age(now), 9999),
+                                    "A " if candidate.is_any_active(now) else " I",
+                                    "O" if candidate.is_all_obsolete(now) else " ",
+                                    "E" if candidate.is_eligible_for_walk(community, now) else " ",
+                                    "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                    category,
+                                    candidate.connection_type,
+                                    candidate)
