@@ -258,7 +258,7 @@ class WalkCandidate(Candidate):
 
     def age(self, now):
         """
-        Returns the time between NOW and the most recent walk or stumble or any of the associated communities.
+        Returns the time between NOW and the most recent walk or stumble in any of the associated communities.
         """
         return now - max(max(timestamps.last_walk, timestamps.last_stumble) for timestamps in self._timestamps.itervalues())
 
