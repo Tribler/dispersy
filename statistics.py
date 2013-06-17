@@ -64,6 +64,7 @@ class DispersyStatistics(Statistics):
         self.walk_bootstrap_attempt = 0
         self.walk_bootstrap_success = 0
         self.walk_reset = 0
+        self.walk_invalid_response_identifier = 0
 
         # nr of outgoing introduction-request messages with payload.advice == True
         self.walk_advice_outgoing_request = 0
