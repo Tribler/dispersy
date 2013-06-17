@@ -4,7 +4,6 @@ logger = logging.getLogger(__name__)
 from itertools import product
 from select import select
 from time import time
-from traceback import print_exc
 import errno
 import socket
 import sys
@@ -18,7 +17,7 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
-DEBUG = False
+CONVERT_AND_LOG_PACKET = True
 
 
 class Endpoint(object):
@@ -130,13 +129,13 @@ class RawserverEndpoint(Endpoint):
         if packets:
             self._total_down += sum(len(data) for _, data in packets)
 
-            if DEBUG:
+            if CONVERT_AND_LOG_PACKET:
                 for sock_addr, data in packets:
                     try:
                         name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                     except:
                         name = "???"
-                    print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+                    logger.debug("%30s <- %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
                     self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
 
             self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
@@ -193,28 +192,25 @@ class RawserverEndpoint(Endpoint):
             if self._sendqueue:
                 index = 0
                 NUM_PACKETS = min(max(50, len(self._sendqueue) / 10), len(self._sendqueue))
-                if DEBUG:
-                    print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue, trying to send", NUM_PACKETS
+                logger.debug("%d left in sendqueue, trying to send %d packets", len(self._sendqueue), NUM_PACKETS)
 
                 for i in xrange(NUM_PACKETS):
                     sock_addr, data = self._sendqueue[i]
                     try:
                         self._socket.sendto(data, sock_addr)
-                        if DEBUG:
+                        if CONVERT_AND_LOG_PACKET:
                             try:
                                 name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                             except:
                                 name = "???"
-                            print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+                            logger.debug("%30s -> %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
                             self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
 
                         index += 1
 
                     except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
-                            if DEBUG:
-                                print >> sys.stderr, long(time()), "endpoint: could not send", len(data), "to", sock_addr, len(self._sendqueue)
-                                print_exc()
+                            logger.warning("could not send %d to %s (%d in sendqueue)", len(data), sock_addr, len(self._sendqueue))
 
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, u"socket-error")
                         break
@@ -223,8 +219,7 @@ class RawserverEndpoint(Endpoint):
                 if self._sendqueue:
                     # And schedule a new attempt
                     self._add_task(self._process_sendqueue, 0.1, "process_sendqueue")
-                    if DEBUG:
-                        print >> sys.stderr, "endpoint:", len(self._sendqueue), "left in queue"
+                    logger.debug("%d left in sendqueue", len(self._sendqueue))
 
                 self._cur_sendqueue = len(self._sendqueue)
 
@@ -363,13 +358,12 @@ class TunnelEndpoint(Endpoint):
                 assert self._dispersy.is_valid_address(sock_addr), sock_addr
 
                 for data in packets:
-                    if DEBUG:
+                    if CONVERT_AND_LOG_PACKET:
                         try:
                             name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                         except:
                             name = "???"
-
-                        print >> sys.stderr, "endpoint: %.1f %30s -> %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
 
                     self._swift.send_tunnel(self._session, sock_addr, data)
@@ -383,13 +377,12 @@ class TunnelEndpoint(Endpoint):
     def i2ithread_data_came_in(self, session, sock_addr, data):
         assert self._dispersy, "Should not be called before open(...)"
         # assert session == self._session, [session, self._session]
-        if DEBUG:
+        if CONVERT_AND_LOG_PACKET:
             try:
                 name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
             except:
                 name = "???"
-
-            print >> sys.stderr, "endpoint: %.1f %30s <- %15s:%-5d %4d bytes" % (time(), name, sock_addr[0], sock_addr[1], len(data))
+            logger.debug("%30s <- %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
             self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
 
         self._total_down += len(data)
