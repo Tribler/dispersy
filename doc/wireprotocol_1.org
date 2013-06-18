@@ -3,7 +3,7 @@
 #+LATEX_HEADER: \usepackage{enumitem}
 #+LATEX_HEADER: \setlist{nolistsep}
 
-# This document is written using orgmode.  
+# This document is written using orgmode.
 # Allowing easy text editing and export to various formats.
 
 * Introduction
