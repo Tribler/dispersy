@@ -99,13 +99,13 @@ class TestBootstrapServers(DispersyTestClass):
             def finish(self, request_count, min_response_count, max_rtt):
                 # write graph statistics
                 handle = open("summary.txt", "w+")
-                handle.write("# HOST_NAME ADDRESS REQUESTS RESPONSES\n")
+                handle.write("HOST_NAME ADDRESS REQUESTS RESPONSES\n")
                 for sock_addr, rtts in self._summary.iteritems():
                     handle.write("%s %s:%d %d %d\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
                 handle.close()
 
                 handle = open("walk_rtts.txt", "w+")
-                handle.write("# HOST_NAME ADDRESS RTT\n")
+                handle.write("HOST_NAME ADDRESS RTT\n")
                 for sock_addr, rtts in self._summary.iteritems():
                     for rtt in rtts:
                         handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))

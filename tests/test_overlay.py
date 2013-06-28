@@ -160,7 +160,7 @@ class TestOverlay(DispersyTestFunc):
 
         # write graph statistics
         handle = open("%s_connections.txt" % cid_hex, "w+")
-        handle.write("# TIME VERIFIED_CANDIDATES CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES\n")
+        handle.write("TIME VERIFIED_CANDIDATES CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES\n")
         for info in history:
             handle.write("%.2f %d %d %d %d %d %d\n" % (
                     info.diff,
