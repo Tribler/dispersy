@@ -2,6 +2,7 @@ import logging
 logger = logging.getLogger(__name__)
 summary = logging.getLogger("test-bootstrap-summary")
 
+from os import environ
 from unittest import skip, skipUnless
 from time import time
 from socket import getfqdn
@@ -15,7 +16,7 @@ from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):
 
-    @skipUnless(summary.isEnabledFor(logging.DEBUG), "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
+    @skipUnless(environ.get("TEST_BOOTSTRAP"), "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     @call_on_dispersy_thread
     def test_servers_are_up(self):
         """
