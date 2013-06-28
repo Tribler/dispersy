@@ -1,5 +1,5 @@
-library("ggplot2", lib.loc="/home/boudewijn/R/x86_64-pc-linux-gnu-library/2.15")
-library("reshape2", lib.loc="/home/boudewijn/R/x86_64-pc-linux-gnu-library/2.15")
+library("ggplot2")
+library("reshape2")
 
 my_graph <- function(name, hash) {
  connections <- read.table(paste(hash, "_connections.txt", sep=""), header=T, quote="\"")

@@ -1,5 +1,5 @@
-library("ggplot2", lib.loc="/home/boudewijn/R/x86_64-pc-linux-gnu-library/2.15")
-library("reshape2", lib.loc="/home/boudewijn/R/x86_64-pc-linux-gnu-library/2.15")
+library("ggplot2")
+library("reshape2")
 
 walk_rtts <- read.table("walk_rtts.txt", quote="\"")
 p <- ggplot(walk_rtts, aes(factor(V2), V3))
