@@ -1,7 +1,8 @@
 import logging
 logger = logging.getLogger(__name__)
+summary = logging.getLogger("test-bootstrap-summary")
 
-from unittest import skip
+from unittest import skip, skipUnless
 from time import time
 from socket import getfqdn
 
@@ -14,7 +15,7 @@ from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):
 
-    @skip("The stress test is not actually a unittest")
+    @skipUnless(summary.isEnabledFor(logging.DEBUG), "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     @call_on_dispersy_thread
     def test_servers_are_up(self):
         """
@@ -81,16 +82,16 @@ class TestBootstrapServers(DispersyTestClass):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                    self._identifiers[sock_addr].encode("HEX"),
-                                    sock_addr[0],
-                                    sock_addr[1],
-                                    self._hostname[sock_addr],
-                                    len(rtts),
-                                    sum(rtts) / len(rtts),
-                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+                        summary.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                     self._identifiers[sock_addr].encode("HEX"),
+                                     sock_addr[0],
+                                     sock_addr[1],
+                                     self._hostname[sock_addr],
+                                     len(rtts),
+                                     sum(rtts) / len(rtts),
+                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
+                        summary.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
 
             def finish(self, request_count, min_response_count, max_rtt):
                 for sock_addr, rtts in self._summary.iteritems():
