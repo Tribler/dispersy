@@ -105,7 +105,7 @@ class TestBootstrapServers(DispersyTestClass):
                 handle.close()
 
                 handle = open("walk_rtts.txt", "w+")
-                handle.write("# HOST_NAME ADDRESS rtt\n")
+                handle.write("# HOST_NAME ADDRESS RTT\n")
                 for sock_addr, rtts in self._summary.iteritems():
                     for rtt in rtts:
                         handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))
