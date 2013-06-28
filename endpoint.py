@@ -17,7 +17,6 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
-CONVERT_AND_LOG_PACKET = logger.isEnabledFor(logging.DEBUG)
 
 
 class Endpoint(object):
@@ -129,7 +128,7 @@ class RawserverEndpoint(Endpoint):
         if packets:
             self._total_down += sum(len(data) for _, data in packets)
 
-            if CONVERT_AND_LOG_PACKET:
+            if logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
                     try:
                         name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
@@ -198,7 +197,7 @@ class RawserverEndpoint(Endpoint):
                     sock_addr, data = self._sendqueue[i]
                     try:
                         self._socket.sendto(data, sock_addr)
-                        if CONVERT_AND_LOG_PACKET:
+                        if logger.isEnabledFor(logging.DEBUG):
                             try:
                                 name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                             except:
@@ -358,7 +357,7 @@ class TunnelEndpoint(Endpoint):
                 assert self._dispersy.is_valid_address(sock_addr), sock_addr
 
                 for data in packets:
-                    if CONVERT_AND_LOG_PACKET:
+                    if logger.isEnabledFor(logging.DEBUG):
                         try:
                             name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                         except:
@@ -377,7 +376,7 @@ class TunnelEndpoint(Endpoint):
     def i2ithread_data_came_in(self, session, sock_addr, data):
         assert self._dispersy, "Should not be called before open(...)"
         # assert session == self._session, [session, self._session]
-        if CONVERT_AND_LOG_PACKET:
+        if logger.isEnabledFor(logging.DEBUG):
             try:
                 name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
             except:
