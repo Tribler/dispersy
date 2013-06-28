@@ -17,19 +17,19 @@ from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 class TestOverlay(DispersyTestFunc):
 
-    @skipUnless(environ.get("TEST_OVERLAY"), "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
+    @skipUnless(environ.get("TEST_OVERLAY") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_all_channel_community(self):
         return self.check_live_overlay(cid_hex="8164f55c2f828738fa779570e4605a81fec95c9d",
                                        version="\x01",
                                        enable_fast_walker=False)
 
-    @skipUnless(environ.get("TEST_OVERLAY"), "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
+    @skipUnless(environ.get("TEST_OVERLAY") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_barter_community(self):
         return self.check_live_overlay(cid_hex="4fe1172862c649485c25b3d446337a35f389a2a2",
                                        version="\x01",
                                        enable_fast_walker=False)
 
-    @skipUnless(environ.get("TEST_OVERLAY"), "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
+    @skipUnless(environ.get("TEST_OVERLAY") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_search_community(self):
         # TODO because the search community uses a modified search message, the introduction request is larger than
         # normal.  This causes incoming requests to be dropped.

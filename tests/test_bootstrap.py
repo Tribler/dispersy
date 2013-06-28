@@ -16,7 +16,7 @@ from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
 
 class TestBootstrapServers(DispersyTestClass):
 
-    @skipUnless(environ.get("TEST_BOOTSTRAP"), "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
+    @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     @call_on_dispersy_thread
     def test_servers_are_up(self):
         """
