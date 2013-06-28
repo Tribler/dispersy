@@ -436,15 +436,14 @@ class Callback(object):
         assert 0.0 <= timeout
         assert self._thread_ident
 
-        def call_and_catch():
-            try:
-                container[0] = call(*args, **(kargs if kargs else {}))
-
-            except Exception as exception:
+        def callback(result):
+            if isinstance(result, Exception):
                 container[1] = exc_info()
 
-            finally:
-                event.set()
+            else:
+                container[0] = result
+
+            event.set()
 
         # result container with [RETURN-VALUE, EXC_INFO-TUPLE]
         container = [default, None]
@@ -466,7 +465,7 @@ class Callback(object):
             event = Event()
 
             # register the call
-            self.register(call_and_catch, delay=delay, priority=priority, id_=id_, include_id=include_id)
+            self.register(call, args, kargs, delay, priority, id_, callback, include_id=include_id)
 
             # wait for call to finish
             event.wait(None if timeout == 0.0 else timeout)
