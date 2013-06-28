@@ -17,7 +17,7 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
-CONVERT_AND_LOG_PACKET = True
+CONVERT_AND_LOG_PACKET = False
 
 
 class Endpoint(object):
