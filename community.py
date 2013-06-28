@@ -1427,12 +1427,13 @@ class Community(object):
         """
         Yields all candidates that are part of this community.
 
-        The returned 'walk', 'stumble', 'intro', and 'none' candidates are randomised on every call
-        and returned only once each.
+        The returned 'walk', 'stumble', and 'intro' candidates are randomised on every call and
+        returned only once each.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
-        candidates = self._candidates.values()
+        now = time()
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(self, now) in (u"walk", u"stumble", u"intro")]
         shuffle(candidates)
         return iter(candidates)
 
@@ -1446,7 +1447,7 @@ class Community(object):
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         now = time()
-        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.is_active(self, now)]
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(self, now) in (u"walk", u"stumble")]
         shuffle(candidates)
         return iter(candidates)
 
