@@ -2417,6 +2417,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._statistics.walk_bootstrap_attempt += 1
             if request.payload.advice:
                 self._statistics.walk_advice_outgoing_request += 1
+            if self._statistics.are_debug_statistics_enabled():
+                self._statistics.outgoing_introduction_request[destination.sock_addr] += 1
 
             self._forward([request])
 
@@ -2640,6 +2642,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.walk_success += 1
             if isinstance(candidate, BootstrapCandidate):
                 self._statistics.walk_bootstrap_success += 1
+            if self._statistics.are_debug_statistics_enabled():
+                self._statistics.incoming_introduction_response[candidate.sock_addr] += 1
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self._request_cache.pop(payload.identifier, IntroductionRequestCache)
@@ -2671,11 +2675,21 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
                 cache.response_candidate = introduce
 
+                # update statistics
+                if self._statistics.are_debug_statistics_enabled():
+                    self._statistics.received_introductions[candidate.sock_addr][introduce.sock_addr] += 1
+
                 # TEMP: see which peers we get returned by the trackers
                 if self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
                     self._statistics.bootstrap_candidates[introduce.sock_addr] = self._statistics.bootstrap_candidates.get(introduce.sock_addr, 0) + 1
 
-            elif self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
+            else:
+                # update statistics
+                if self._statistics.are_debug_statistics_enabled():
+                    self._statistics.received_introductions[candidate.sock_addr][wan_introduction_address] += 1
+
+                # TEMP: see which peers we get returned by the trackers
+                if self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
                     self._statistics.bootstrap_candidates["none"] = self._statistics.bootstrap_candidates.get("none", 0) + 1
 
     def check_puncture_request(self, messages):

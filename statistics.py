@@ -1,4 +1,5 @@
 from time import time
+from collections import defaultdict
 
 
 class Statistics():
@@ -98,6 +99,16 @@ class DispersyStatistics(Statistics):
                 self.bootstrap_candidates = {}
                 self.overlapping_stumble_candidates = {}
                 self.overlapping_intro_candidates = {}
+
+                # SOURCE:INTRODUCED:COUNT nested dictionary
+                self.received_introductions = defaultdict(lambda: defaultdict(int))
+
+                # DESTINATION:COUNT dictionary
+                self.outgoing_introduction_request = defaultdict(int)
+
+                # SOURCE:COUNT dictionary
+                self.incoming_introduction_response = defaultdict(int)
+
             else:
                 self.drop = None
                 self.delay = None
@@ -112,6 +123,9 @@ class DispersyStatistics(Statistics):
                 self.bootstrap_candidates = None
                 self.overlapping_stumble_candidates = None
                 self.overlapping_intro_candidates = None
+                self.received_introductions = None
+                self.outgoing_introduction_request = None
+                self.incoming_introduction_response = None
 
     def are_debug_statistics_enabled(self):
         return getattr(self, 'drop', None) != None
@@ -168,6 +182,9 @@ class DispersyStatistics(Statistics):
             self.bootstrap_candidates = {}
             self.overlapping_stumble_candidates = {}
             self.overlapping_intro_candidates = {}
+            self.received_introductions = defaultdict(lambda: defaultdict(int))
+            self.outgoing_introduction_request = defaultdict(int)
+            self.incoming_introduction_response = defaultdict(int)
 
 
 class CommunityStatistics(Statistics):
