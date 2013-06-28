@@ -31,6 +31,7 @@ class TestBootstrapServers(DispersyTestClass):
 
                 super(PingCommunity, self).__init__(*args, **kargs)
 
+                self._pings_done = 0
                 self._request = {}
                 self._summary = {}
                 self._hostname = {}
@@ -76,6 +77,7 @@ class TestBootstrapServers(DispersyTestClass):
 
             def ping(self, now):
                 logger.debug("PING")
+                self._pings_done += 1
                 for candidate in self._pcandidates:
                     request = self._dispersy.create_introduction_request(self, candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
@@ -92,9 +94,23 @@ class TestBootstrapServers(DispersyTestClass):
                                      sum(rtts) / len(rtts),
                                      ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        summary.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
+                        summary.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
             def finish(self, request_count, min_response_count, max_rtt):
+                # write graph statistics
+                handle = open("summary.txt", "w+")
+                handle.write("# HOST_NAME ADDRESS REQUESTS RESPONSES\n")
+                for sock_addr, rtts in self._summary.iteritems():
+                    handle.write("%s %s:%d %d %d\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
+                handle.close()
+
+                handle = open("walk_rtts.txt", "w+")
+                handle.write("# HOST_NAME ADDRESS rtt\n")
+                for sock_addr, rtts in self._summary.iteritems():
+                    for rtt in rtts:
+                        handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))
+                handle.close()
+
                 for sock_addr, rtts in self._summary.iteritems():
                     test.assertLess(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
                     test.assertLess(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
@@ -222,7 +238,7 @@ class TestBootstrapServers(DispersyTestClass):
                                     sum(rtts) / len(rtts),
                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        logger.warning("%s:%d  missing", sock_addr[0], sock_addr[1])
+                        logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
         MEMBERS = 10000  # must be a multiple of 100
         COMMUNITIES = 1
