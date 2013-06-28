@@ -1612,7 +1612,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         """
         # use existing (bootstrap) candidate
         candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
-        logger.debug("%s:%d -> %s", sock_addr[0], sock_addr[1], candidate)
+        logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
 
         if candidate is None:
             # find matching candidate with the same host but a different port (symmetric NAT)
@@ -4711,7 +4711,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     for age, candidate in sorted(aged):
                         logger.info("%4ds %s%s%s%s %-7s %-13s %s",
                                     min(age, 9999),
-                                    "A " if candidate.is_any_active(now) else " I",
+                                    "A" if candidate.is_any_active(now) else " ",
                                     "O" if candidate.is_all_obsolete(now) else " ",
                                     "E" if candidate.is_eligible_for_walk(community, now) else " ",
                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
