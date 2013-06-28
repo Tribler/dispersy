@@ -15,6 +15,33 @@ class Statistics():
     def update(self):
         raise NotImplementedError()
 
+    def get_dict(self):
+        """
+        Returns a deep clone of SELF as a dictionary.
+
+        Warning: there is no recursion protection, if SELF contains self-references it will hang.
+        """
+        def clone(o):
+            if isinstance(o, Statistics):
+                return dict((key, clone(value))
+                            for key, value
+                            in o.__dict__.iteritems()
+                            if not key.startswith("_"))
+
+            if isinstance(o, dict):
+                return dict((clone(key), clone(value))
+                            for key, value
+                            in o.iteritems())
+
+            if isinstance(o, tuple):
+                return tuple(clone(value) for value in o)
+
+            if isinstance(o, list):
+                return [clone(value) for value in o]
+
+            return o
+        return clone(self)
+
 
 class DispersyStatistics(Statistics):
 
