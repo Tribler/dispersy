@@ -2417,7 +2417,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._statistics.walk_bootstrap_attempt += 1
             if request.payload.advice:
                 self._statistics.walk_advice_outgoing_request += 1
-            if self._statistics.outgoing_introduction_request:
+            if self._statistics.outgoing_introduction_request != None:
                 self._statistics.outgoing_introduction_request[destination.sock_addr] += 1
 
             self._forward([request])
@@ -2642,7 +2642,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.walk_success += 1
             if isinstance(candidate, BootstrapCandidate):
                 self._statistics.walk_bootstrap_success += 1
-            if self._statistics.incoming_introduction_response:
+            if self._statistics.incoming_introduction_response != None:
                 self._statistics.incoming_introduction_response[candidate.sock_addr] += 1
 
             # get cache object linked to this request and stop timeout from occurring
@@ -2676,7 +2676,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 cache.response_candidate = introduce
 
                 # update statistics
-                if self._statistics.received_introductions:
+                if self._statistics.received_introductions != None:
                     self._statistics.received_introductions[candidate.sock_addr][introduce.sock_addr] += 1
 
                 # TEMP: see which peers we get returned by the trackers
@@ -2685,7 +2685,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             else:
                 # update statistics
-                if self._statistics.received_introductions:
+                if self._statistics.received_introductions != None:
                     self._statistics.received_introductions[candidate.sock_addr][wan_introduction_address] += 1
 
                 # TEMP: see which peers we get returned by the trackers
