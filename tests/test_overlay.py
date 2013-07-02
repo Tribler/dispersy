@@ -31,8 +31,9 @@ class TestOverlay(DispersyTestFunc):
 
     @skipUnless(environ.get("TEST_OVERLAY") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_search_community(self):
-        # TODO because the search community uses a modified search message, the introduction request is larger than
-        # normal.  This causes incoming requests to be dropped.
+        # TODO because the search community modifies the introduction-request message (it replaces the normal
+        # bloomfilter with a bloomfilter with preferences, while keeping the 'sync enabled' bit at zero), the incoming
+        # requests are dropped.
         return self.check_live_overlay(cid_hex="2782dc9253cef6cc9272ee8ed675c63743c4eb3a",
                                        version="\x01",
                                        enable_fast_walker=True)
