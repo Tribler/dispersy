@@ -2417,8 +2417,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._statistics.walk_bootstrap_attempt += 1
             if request.payload.advice:
                 self._statistics.walk_advice_outgoing_request += 1
-            if self._statistics.outgoing_introduction_request != None:
-                self._statistics.outgoing_introduction_request[destination.sock_addr] += 1
+            self._statistics.dict_inc(self._statistics.outgoing_introduction_request, destination.sock_addr)
 
             self._forward([request])
 
@@ -2642,8 +2641,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.walk_success += 1
             if isinstance(candidate, BootstrapCandidate):
                 self._statistics.walk_bootstrap_success += 1
-            if self._statistics.incoming_introduction_response != None:
-                self._statistics.incoming_introduction_response[candidate.sock_addr] += 1
+            self._statistics.dict_inc(self._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self._request_cache.pop(payload.identifier, IntroductionRequestCache)
