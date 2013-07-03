@@ -424,9 +424,10 @@ class BootstrapCandidate(WalkCandidate):
         """
         Bootstrap nodes are, by definition, always online, hence the timeouts do not apply.
         """
-        assert community.cid in self._timestamps
-        timestamps = self._timestamps[community.cid]
-        return now >= timestamps.last_walk + CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY
+        timestamps = self._timestamps.get(community.cid)
+        if timestamps:
+            return now >= timestamps.last_walk + CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY
+        return True
 
     def is_associated(self, community, member):
         """
