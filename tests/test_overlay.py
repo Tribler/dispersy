@@ -31,22 +31,26 @@ class TestOverlay(DispersyTestFunc):
 
     @skipUnless(environ.get("TEST_OVERLAY") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_search_community(self):
-        # TODO because the search community modifies the introduction-request message (it replaces the normal
-        # bloomfilter with a bloomfilter with preferences, while keeping the 'sync enabled' bit at zero), the incoming
-        # requests are dropped.
         return self.check_live_overlay(cid_hex="2782dc9253cef6cc9272ee8ed675c63743c4eb3a",
                                        version="\x01",
                                        enable_fast_walker=True)
 
     @call_on_dispersy_thread
     def check_live_overlay(self, cid_hex, version, enable_fast_walker):
+        class Conversion(DebugCommunityConversion):
+            # there are overlays that modify the introduction request, ensure that the returned offset 'consumed' all
+            # bytes in the packet
+            def _decode_introduction_request(self, placeholder, offset, data):
+                _, payload = super(Conversion, self)._decode_introduction_request(placeholder, offset, data)
+                return len(data), payload
+
         class Community(DebugCommunity):
             def __init__(self, dispersy, master):
                 super(Community, self).__init__(dispersy, master)
                 self.dispersy.callback.register(self.fast_walker)
 
             def initiate_conversions(self):
-                return [DefaultConversion(self), DebugCommunityConversion(self, version)]
+                return [DefaultConversion(self), Conversion(self, version)]
 
             def dispersy_claim_sync_bloom_filter(self, request_cache):
                 # we only want to walk in the community, not exchange data
@@ -65,6 +69,7 @@ class TestOverlay(DispersyTestFunc):
                         logger.debug("there are %d active non-bootstrap candidates available, prematurely quitting fast walker", len(active_canidates))
                         break
 
+                    # request bootstrap peers that are eligible
                     eligible_candidates = [candidate
                                            for candidate
                                            in chain(self._dispersy.bootstrap_candidates)
@@ -73,7 +78,7 @@ class TestOverlay(DispersyTestFunc):
                         logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
                         self.create_introduction_request(candidate, allow_sync=False)
 
-                    # request peers that is eligible
+                    # request peers that are eligible
                     eligible_candidates = [candidate
                                            for candidate
                                            in self._candidates.itervalues()
@@ -116,11 +121,9 @@ class TestOverlay(DispersyTestFunc):
             info.candidate_ratio = 100.0 * info.candidate_success / info.candidate_attempt if info.candidate_attempt else 0.0
             history.append(info)
 
-            minimum = min(int(info.diff / 5) - 5, 20)
-            summary.info("after %.1f seconds there are %d verified candidates (%d minimum) [w%d:s%d:i%d:n%d]",
+            summary.info("after %.1f seconds there are %d verified candidates [w%d:s%d:i%d:n%d]",
                          info.diff,
                          len([_ for _, category in info.candidates if category in (u"walk", u"stumble")]),
-                         minimum,
                          len([_ for _, category in info.candidates if category == u"walk"]),
                          len([_ for _, category in info.candidates if category == u"stumble"]),
                          len([_ for _, category in info.candidates if category == u"intro"]),
@@ -161,12 +164,15 @@ class TestOverlay(DispersyTestFunc):
 
         # write graph statistics
         handle = open("%s_connections.txt" % cid_hex, "w+")
-        handle.write("TIME VERIFIED_CANDIDATES CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES\n")
+        handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES\n")
         for info in history:
-            handle.write("%.2f %d %d %d %d %d %d\n" % (
+            handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d\n" % (
                     info.diff,
                     len(info.verified_candidates),
-                    len(info.candidates),
+                    len([_ for _, category in info.candidates if category == u"walk"]),
+                    len([_ for _, category in info.candidates if category == u"stumble"]),
+                    len([_ for _, category in info.candidates if category == u"intro"]),
+                    len([_ for _, category in info.candidates if category == u"none"]),
                     info.bootstrap_attempt,
                     info.bootstrap_success,
                     info.candidate_attempt,
