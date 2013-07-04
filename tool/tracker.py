@@ -134,7 +134,7 @@ class TrackerCommunity(Community):
     def update_strikes(self, now):
         # does the community have any active candidates
         for candidate in self._dispersy.candidates:
-            if candidate.is_active(self, now):
+            if candidate.get_category(self, now) in (u"walk", u"stumble"):
                 self._strikes = 0
                 break
         else:

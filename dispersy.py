@@ -4670,7 +4670,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 if community.get_classification() == u"PreviewChannelCommunity":
                     continue
 
-                candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
+                candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(community, now) in (u"walk", u"stumble")]
                 logger.info(" %s %20s with %d%s candidates[:5] %s",
                             community.cid.encode("HEX"), community.get_classification(), len(candidates),
                             "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
@@ -4709,7 +4709,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     for candidate in candidates:
                         logger.info("%4ds %s%s%s%s %-7s %-13s %s",
                                     min(candidate.age(now), 9999),
-                                    "A " if candidate.is_any_active(now) else " I",
                                     "O" if candidate.is_all_obsolete(now) else " ",
                                     "E" if candidate.is_eligible_for_walk(community, now) else " ",
                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
