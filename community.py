@@ -1128,7 +1128,7 @@ class Community(object):
         now = time()
 
         def acceptable_global_time_helper():
-            options = sorted(global_time for global_time in (candidate.get_global_time(self) for candidate in self._dispersy.candidates if candidate.get_category(self, now) in (u"walk", u"stumble")) if global_time > 0)
+            options = sorted(global_time for global_time in (candidate.get_global_time(self) for candidate in self.dispersy_yield_verified_candidates()) if global_time > 0)
 
             if len(options) > 5:
                 # note: officially when the number of options is even, the median is the average between the
