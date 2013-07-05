@@ -4661,6 +4661,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self.wan_address_unvote(candidate)
 
     def _stats_candidates(self):
+        """
+        Periodically logs the number of walk and stumble candidates for all communities.
+
+        Enable this output by enabling INFO logging for a logger named "dispersy-stats-candidates".
+
+        Exception: all PreviewChannelCommunity are filter out of the results.
+        """
         logger = logging.getLogger("dispersy-stats-candidates")
         while logger.isEnabledFor(logging.INFO):
             yield 5.0
@@ -4675,6 +4682,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                             "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
 
     def _stats_detailed_candidates(self):
+        """
+        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all communities.
+
+        Enable this output by enabling INFO logging for a logger named "dispersy-stats-detailed-candidates".
+
+        Exception: all PreviewChannelCommunity are filter out of the results.
+        """
         logger = logging.getLogger("dispersy-stats-detailed-candidates")
         while logger.isEnabledFor(logging.INFO):
             yield 5.0
