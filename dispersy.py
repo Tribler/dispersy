@@ -1196,7 +1196,7 @@ class Dispersy(object):
                 signature_length = message.authentication.member.signature_length
                 if have_packet[:signature_length] == message.packet[:signature_length]:
                     # the message payload is binary unique (only the signature is different)
-                    logger.warning("received identical message %s %d@%d with different signature from %s",
+                    logger.warning("received identical message %s %d@%d with different signature from %s %s",
                                    message.name,
                                    message.authentication.member.database_id,
                                    message.distribution.global_time,

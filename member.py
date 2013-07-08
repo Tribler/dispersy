@@ -224,7 +224,7 @@ class Member(DummyMember):
         assert isinstance(tag, unicode)
         assert tag in [u"store", u"ignore", u"blacklist"]
         assert isinstance(value, bool)
-        logger.debug("mid:%d set tag %s -> %s", self._mid.encode("HEX"), tag, value)
+        logger.debug("mid:%s set tag %s -> %s", self._mid.encode("HEX"), tag, value)
         if value:
             if tag in self._tags:
                 # the tag is already set
