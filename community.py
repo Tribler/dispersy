@@ -340,12 +340,19 @@ class Community(object):
         self._walked_candidates = self._iter_category(u'walk')
         self._stumbled_candidates = self._iter_category(u'stumble')
         self._introduced_candidates = self._iter_category(u'intro')
-
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
         self._bootstrap_candidates = self._iter_bootstrap()
+        self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_candidates))
 
         # statistics...
         self._statistics = CommunityStatistics(self)
+
+    @property
+    def candidates(self):
+        """
+        Dictionary containing sock_addr:Candidate pairs.
+        """
+        return self._candidates
 
     @property
     def statistics(self):
@@ -1581,6 +1588,70 @@ class Community(object):
         self.add_candidate(candidate)
         return candidate
 
+    def get_candidate(self, sock_addr, replace=True, lan_address=("0.0.0.0", 0)):
+        """
+        Returns an existing candidate object or None
+
+        1. returns an existing candidate from self._candidates, or
+
+        2. returns a bootstrap candidate from self._bootstrap_candidates, or
+
+        3. returns an existing candidate with the same host on a different port if this candidate is
+           marked as a symmetric NAT.  When replace is True, the existing candidate is moved from
+           its previous sock_addr to the new sock_addr.
+
+        4. Or returns None
+        """
+        # use existing (bootstrap) candidate
+        candidate = self._candidates.get(sock_addr) or self._dispersy._bootstrap_candidates.get(sock_addr)
+        logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
+
+        if candidate is None:
+            # find matching candidate with the same host but a different port (symmetric NAT)
+            for candidate in self._candidates.itervalues():
+                if (candidate.connection_type == "symmetric-NAT" and
+                    candidate.sock_addr[0] == sock_addr[0] and
+                    candidate.lan_address in (("0.0.0.0", 0), lan_address)):
+                    logger.debug("using existing candidate %s at different port %s %s", candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
+
+                    if replace:
+                        # remove vote under previous key
+                        self._dispersy.wan_address_unvote(candidate)
+
+                        # replace candidate
+                        del self._candidates[candidate.sock_addr]
+                        lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, candidate.lan_address, candidate.wan_address)
+                        candidate.sock_addr = sock_addr
+                        candidate.update(candidate.tunnel, lan_address, wan_address, candidate.connection_type)
+                        self._candidates[candidate.sock_addr] = candidate
+
+                    break
+
+            else:
+                # no symmetric NAT candidate found
+                candidate = None
+
+        return candidate
+
+    def get_walkcandidate(self, message):
+        if isinstance(message.candidate, WalkCandidate):
+            return message.candidate
+
+        else:
+            # modify either the senders LAN or WAN address based on how we perceive that node
+            source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
+            if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
+                logger.debug("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
+                return None
+
+            # check if we have this candidate registered at its sock_addr
+            candidate = self.get_candidate(message.candidate.sock_addr, lan_address=source_lan_address)
+            if candidate:
+                return candidate
+
+            candidate = self.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
+            return candidate
+
     def add_candidate(self, candidate):
         assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
 
@@ -1600,6 +1671,46 @@ class Community(object):
             for candidate in self._candidates.itervalues():
                 if candidate.is_associated(self, member):
                     return candidate
+
+    def filter_duplicate_candidate(self, candidate):
+        """
+        A node told us its LAN and WAN address, it is possible that we can now determine that we
+        already have CANDIDATE in our candidate list.
+
+        When we learn that a candidate happens to be behind a symmetric NAT we must remove all other
+        candidates that have the same host.
+        """
+        wan_address = candidate.wan_address
+        lan_address = candidate.lan_address
+
+        # find existing candidates that are likely to be the same candidate
+        others = [other
+                  for other
+                  in self._candidates.itervalues()
+                  if (other.wan_address[0] == wan_address[0] and
+                      other.lan_address == lan_address)]
+
+        # merge and remove existing candidates in favor of the new CANDIDATE
+        for other in others:
+            # all except for the CANDIDATE
+            if not other == candidate:
+                logger.warn("removing %s in favor of %s", other, candidate)
+                candidate.merge(self, other)
+                del self._candidates[other.sock_addr]
+                self._dispersy.wan_address_unvote(other)
+
+    def _periodically_cleanup_candidates(self):
+        """
+        Periodically remove obsolete Candidate instances.
+        """
+        while True:
+            yield 5 * 60.0
+
+            now = time()
+            for key, candidate in [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_all_obsolete(now)]:
+                logger.debug("removing obsolete candidate %s", candidate)
+                del self._candidates[key]
+                self._dispersy.wan_address_unvote(candidate)
 
     def dispersy_cleanup_community(self, message):
         """

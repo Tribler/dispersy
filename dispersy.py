@@ -235,51 +235,6 @@ class MissingSequenceCache(MissingSomethingCache):
         return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
 
 
-class GlobalCandidateCache():
-
-    def __init__(self, dispersy):
-        self._dispersy = dispersy
-
-    def __contains__(self, item):
-        for community in self._dispersy._communities.itervalues():
-            if item in community._candidates:
-                return True
-
-    def __setitem__(self, key, item):
-        now = time()
-        for community in self._dispersy._communities.itervalues():
-            if item.in_community(community, now):
-                community._candidates[key] = item
-
-    def __delitem__(self, item):
-        for community in self._dispersy._communities.itervalues():
-            if item in community._candidates:
-                del community._candidates[item]
-
-    def iteritems(self):
-        for community in self._dispersy._communities.itervalues():
-            for key, value in community._candidates.iteritems():
-                yield key, value
-
-    def itervalues(self):
-        for community in self._dispersy._communities.itervalues():
-            for value in community._candidates.itervalues():
-                yield value
-
-    def get(self, item, default=None):
-        for community in self._dispersy._communities.itervalues():
-            if item in community._candidates:
-                return community._candidates[item]
-
-        return default
-
-    def __len__(self):
-        candidates = set()
-        for community in self._dispersy._communities.itervalues():
-            candidates.update(community._candidates.itervalues())
-        return len(candidates)
-
-
 class Dispersy(object):
 
     """
@@ -331,11 +286,6 @@ class Dispersy(object):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
         self._database = DispersyDatabase(database_filename)
-
-        # peer selection candidates.  address:Candidate pairs (where
-        # address is obtained from socket.recv_from)
-        self._candidates = GlobalCandidateCache(self)
-        self._callback.register(self._periodically_cleanup_candidates)
 
         # assigns temporary cache objects to unique identifiers
         self._request_cache = RequestCache(self._callback)
@@ -482,8 +432,8 @@ class Dispersy(object):
             del self._bootstrap_candidates[self._lan_address]
 
         # our address may not be a candidate
-        if self._lan_address in self._candidates:
-            del self._candidates[self._lan_address]
+        for community in self._communities.itervalues():
+            community.candidates.pop(self._lan_address, None)
 
     @property
     def lan_address(self):
@@ -1115,11 +1065,11 @@ class Dispersy(object):
                     del self._bootstrap_candidates[self._wan_address]
 
                 # our address may not be a candidate
-                if self._wan_address in self._candidates:
-                    del self._candidates[self._wan_address]
+                for community in self._communities.itervalues():
+                    community.candidates.pop(self._wan_address, None)
 
-            for sock_addr in [sock_addr for sock_addr, candidate in self._candidates.iteritems() if self._wan_address == candidate.wan_address]:
-                del self._candidates[sock_addr]
+            for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
+                community.candidates.pop(candidate.sock_addr, None)
 
         if self._connection_type == u"unknown" and self._lan_address == self._wan_address:
             self._connection_type = u"public"
@@ -1598,95 +1548,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         return messages
 
-    def get_candidate(self, sock_addr, replace=True, lan_address=("0.0.0.0", 0)):
-        """
-        Returns an existing candidate object or None
-
-        1. returns an existing candidate from self._candidates, or
-
-        2. returns a bootstrap candidate from self._bootstrap_candidates, or
-
-        3. returns an existing candidate with the same host on a different port if this candidate is
-           marked as a symmetric NAT.  When replace is True, the existing candidate is moved from
-           its previous sock_addr to the new sock_addr.
-        """
-        # use existing (bootstrap) candidate
-        candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
-        logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
-
-        if candidate is None:
-            # find matching candidate with the same host but a different port (symmetric NAT)
-            for candidate in self._candidates.itervalues():
-                if (candidate.connection_type == "symmetric-NAT" and
-                    candidate.sock_addr[0] == sock_addr[0] and
-                    candidate.lan_address in (("0.0.0.0", 0), lan_address)):
-                    logger.debug("using existing candidate %s at different port %s %s", candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
-
-                    if replace:
-                        # remove vote under previous key
-                        self.wan_address_unvote(candidate)
-
-                        # replace candidate
-                        del self._candidates[candidate.sock_addr]
-                        lan_address, wan_address = self._estimate_lan_and_wan_addresses(sock_addr, candidate.lan_address, candidate.wan_address)
-                        candidate.sock_addr = sock_addr
-                        candidate.update(candidate.tunnel, lan_address, wan_address, candidate.connection_type)
-                        self._candidates[candidate.sock_addr] = candidate
-
-                    break
-
-            else:
-                # no symmetric NAT candidate found
-                candidate = None
-
-        return candidate
-
-    def get_walkcandidate(self, message, community):
-        if isinstance(message.candidate, WalkCandidate):
-            return message.candidate
-
-        else:
-            # modify either the senders LAN or WAN address based on how we perceive that node
-            source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
-            if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
-                logger.debug("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
-                return None
-
-            # check if we have this candidate registered at its sock_addr
-            candidate = self.get_candidate(message.candidate.sock_addr, lan_address=source_lan_address)
-            if candidate:
-                return candidate
-
-            candidate = community.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
-            return candidate
-
-    def _filter_duplicate_candidate(self, candidate):
-        """
-        A node told us its LAN and WAN address, it is possible that we can now determine that we
-        already have CANDIDATE in our candidate list.
-
-        When we learn that a candidate happens to be behind a symmetric NAT we must remove all other
-        candidates that have the same host.
-        """
-        wan_address = candidate.wan_address
-        lan_address = candidate.lan_address
-
-        # find existing candidates that are likely to be the same candidate
-        others = [other
-                  for other
-                  in self._candidates.itervalues()
-                  if (other.wan_address[0] == wan_address[0] and
-                      other.lan_address == lan_address)]
-
-        # merge and remove existing candidates in favor of the new CANDIDATE
-        for other in others:
-            # all except for the CANDIDATE
-            if not other == candidate:
-                logger.warn("removing %s in favor of %s", other, candidate)
-                candidate.merge(self, other)
-                del self._candidates[other.sock_addr]
-                self.wan_address_unvote(other)
-
     def load_message(self, community, member, global_time, verify=False):
         """
         Returns the message identified by community, member, and global_time.
@@ -1837,7 +1698,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         sort_key = lambda tup: (tup[0].batch.priority, tup[0])  # meta, address, packet, conversion
         groupby_key = lambda tup: tup[0]  # meta, address, packet, conversion
         for meta, iterator in groupby(sorted(self._convert_packets_into_batch(packets), key=sort_key), key=groupby_key):
-            batch = [(self._candidates.get(candidate.sock_addr) or self._bootstrap_candidates.get(candidate.sock_addr) or candidate, packet, conversion)
+            batch = [(meta.community.candidates.get(candidate.sock_addr) or self._bootstrap_candidates.get(candidate.sock_addr) or candidate, packet, conversion)
                      for _, candidate, packet, conversion
                      in iterator]
 
@@ -2252,14 +2113,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         #     meta.community.update_sync_range(meta, update_sync_range)
 
     @property
-    def candidates(self):
-        return self._candidates.itervalues()
-
-    @property
     def bootstrap_candidates(self):
         return self._bootstrap_candidates.itervalues()
 
-    def _estimate_lan_and_wan_addresses(self, sock_addr, lan_address, wan_address):
+    def estimate_lan_and_wan_addresses(self, sock_addr, lan_address, wan_address):
         """
         We received a message from SOCK_ADDR claiming to have LAN_ADDRESS and WAN_ADDRESS, returns
         the estimated LAN and WAN address for this node.
@@ -2337,7 +2194,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         identifier = self._request_cache.claim(cache)
 
         # decide if the requested node should introduce us to someone else
-        # advice = random() < 0.5 or len(self._candidates) <= 5
+        # advice = random() < 0.5 or len(community.candidates) <= 5
         advice = True
 
         # obtain sync range
@@ -2457,7 +2314,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # make all candidates available for introduction
         #
         for message in messages:
-            candidate = self.get_walkcandidate(message, community)
+            candidate = community.get_walkcandidate(message)
             message._candidate = candidate
             if not candidate:
                 continue
@@ -2472,11 +2329,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             candidate.associate(community, message.authentication.member)
 
             # update sender candidate
-            source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
+            source_lan_address, source_wan_address = self.estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
             candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
             candidate.stumble(community, now)
 
-            self._filter_duplicate_candidate(candidate)
+            community.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
 
         #
@@ -2619,7 +2476,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             payload = message.payload
 
             # modify either the senders LAN or WAN address based on how we perceive that node
-            source_lan_address, source_wan_address = self._estimate_lan_and_wan_addresses(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
+            source_lan_address, source_wan_address = self.estimate_lan_and_wan_addresses(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
 
             if isinstance(message.candidate, WalkCandidate):
                 candidate = message.candidate
@@ -2631,7 +2488,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # this message is associated to this candidate
             candidate.associate(community, message.authentication.member)
             candidate.walk_response(community)
-            self._filter_duplicate_candidate(candidate)
+            community.filter_duplicate_candidate(candidate)
             logger.debug("introduction response from %s", candidate)
 
             # apply vote to determine our WAN address
@@ -2657,7 +2514,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # get or create the introduced candidate
                 self._statistics.walk_advice_incoming_response += 1
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._wan_address[0] else wan_introduction_address
-                introduce = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
+                introduce = community.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
                 if introduce is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
@@ -2668,7 +2525,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
                 # reset the 'I have been introduced' timer
                 introduce.intro(community, now)
-                self._filter_duplicate_candidate(introduce)
+                community.filter_duplicate_candidate(introduce)
                 logger.debug("received introduction to %s from %s", introduce, candidate)
 
                 cache.response_candidate = introduce
@@ -2731,7 +2588,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # we are asked to send a message to a -possibly- unknown peer get the actual candidate
             # or create a dummy candidate
             sock_addr = lan_walker_address if wan_walker_address[0] == self._wan_address[0] else wan_walker_address
-            candidate = self.get_candidate(sock_addr, replace=False, lan_address=lan_walker_address)
+            candidate = community.get_candidate(sock_addr, replace=False, lan_address=lan_walker_address)
             if candidate is None:
                 # assume that tunnel is disabled
                 tunnel = False
@@ -2765,14 +2622,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # we can match this source address (message.candidate.sock_addr) to the candidate and
             # modify the LAN or WAN address that has been proposed.
             sock_addr = message.candidate.sock_addr
-            lan_address, wan_address = self._estimate_lan_and_wan_addresses(sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
+            lan_address, wan_address = self.estimate_lan_and_wan_addresses(sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
 
             if not (lan_address == ("0.0.0.0", 0) or wan_address == ("0.0.0.0", 0)):
                 assert self.is_valid_address(lan_address), lan_address
                 assert self.is_valid_address(wan_address), wan_address
 
                 # get or create the introduced candidate
-                candidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
+                candidate = community.get_candidate(sock_addr, replace=True, lan_address=lan_address)
                 if candidate is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
@@ -2909,14 +2766,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         elif isinstance(meta.destination, MemberDestination):
             # MemberDestination.candidates may be empty
             result = all(self._send([candidate
-                                            for candidate
-                                            in self._candidates.itervalues()
-                                            if any(candidate.is_associated(message.community, member)
-                                                   for member
-                                                   in message.destination.members)],
-                                           [message])
-                       for message
-                       in messages)
+                                     for candidate
+                                     in message.community.candidates.itervalues()
+                                     if any(candidate.is_associated(message.community, member)
+                                            for member
+                                            in message.destination.members)],
+                                    [message])
+                         for message
+                         in messages)
 
         else:
             raise NotImplementedError(meta.destination)
@@ -4659,19 +4516,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     DELAY = max(0.0, optimaltime - actualtime)
                 yield max(0.0, optimaltime - actualtime)
 
-    def _periodically_cleanup_candidates(self):
-        """
-        Periodically remove Candidate instance where all communities are obsolete.
-        """
-        while True:
-            yield 5 * 60.0
-
-            now = time()
-            for key, candidate in [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_all_obsolete(now)]:
-                logger.debug("removing obsolete candidate %s", candidate)
-                del self._candidates[key]
-                self.wan_address_unvote(candidate)
-
     def _stats_candidates(self):
         """
         Periodically logs the number of walk and stumble candidates for all communities.
@@ -4725,7 +4569,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     continue
 
                 categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
-                for candidate in self._candidates.itervalues():
+                for candidate in community.candidates.itervalues():
                     if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
                         categories[candidate.get_category(community, now)].append(candidate)
 

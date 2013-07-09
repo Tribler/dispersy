@@ -643,12 +643,12 @@ class TestCandidates(DispersyTestFunc):
         candidates.append(c.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
         candidates.append(c.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
 
-        self._dispersy._filter_duplicate_candidate(candidates[0])
+        c.filter_duplicate_candidate(candidates[0])
 
         expected = [candidates[0].wan_address]
 
         got = []
-        for candidate in self._dispersy._candidates.itervalues():
+        for candidate in c._candidates.itervalues():
             got.append(candidate.wan_address)
 
         self.assertEquals(expected, got)
