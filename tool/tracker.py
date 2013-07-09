@@ -133,10 +133,8 @@ class TrackerCommunity(Community):
 
     def update_strikes(self, now):
         # does the community have any active candidates
-        for candidate in self._dispersy.candidates:
-            if candidate.is_active(self, now):
-                self._strikes = 0
-                break
+        if any(self.dispersy_yield_verified_candidates()):
+            self._strikes = 0
         else:
             self._strikes += 1
         return self._strikes

@@ -4673,21 +4673,34 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self.wan_address_unvote(candidate)
 
     def _stats_candidates(self):
+        """
+        Periodically logs the number of walk and stumble candidates for all communities.
+
+        Enable this output by enabling INFO logging for a logger named "dispersy-stats-candidates".
+
+        Exception: all PreviewChannelCommunity are filter out of the results.
+        """
         logger = logging.getLogger("dispersy-stats-candidates")
         while logger.isEnabledFor(logging.INFO):
             yield 5.0
-            now = time()
             logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
                     continue
 
-                candidates = [candidate for candidate in self._candidates.itervalues() if candidate.in_community(community, now) and candidate.is_any_active(now)]
+                candidates = sorted(community.dispersy_yield_verified_candidates())
                 logger.info(" %s %20s with %d%s candidates[:5] %s",
                             community.cid.encode("HEX"), community.get_classification(), len(candidates),
                             "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
 
     def _stats_detailed_candidates(self):
+        """
+        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all communities.
+
+        Enable this output by enabling INFO logging for a logger named "dispersy-stats-detailed-candidates".
+
+        Exception: all PreviewChannelCommunity are filter out of the results.
+        """
         logger = logging.getLogger("dispersy-stats-detailed-candidates")
         while logger.isEnabledFor(logging.INFO):
             yield 5.0
@@ -4706,6 +4719,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                         self._statistics.walk_advice_incoming_response_new,
                         self._statistics.walk_advice_incoming_request,
                         self._statistics.walk_advice_outgoing_response)
+
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
                     continue

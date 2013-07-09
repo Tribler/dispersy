@@ -225,29 +225,6 @@ class WalkCandidate(Candidate):
         else:
             return False
 
-    def is_active(self, community, now):
-        """
-        Returns True if SELF is either walk or stumble in COMMUNITY.
-        """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            return (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
-                    now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME)
-        return False
-
-    def is_any_active(self, now):
-        """
-        Returns True if SELF is either walk or stumble in any of the associated communities.
-
-        This is used when deciding if this candidate can be used for communication, the assumption
-        is that if any community is still active, that all will still be active.  The exception to
-        this rule is when a node decides to leave one or more communities while remaining active in
-        one or more others.
-        """
-        return any(timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME
-                   for timestamps
-                   in self._timestamps.itervalues())
-
     def is_all_obsolete(self, now):
         """
         Returns True if SELF exceeded the CANDIDATE_LIFETIME of all the associated communities.
