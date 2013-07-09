@@ -1,4 +1,5 @@
 from time import time
+from collections import defaultdict
 
 
 class Statistics():
@@ -6,13 +7,37 @@ class Statistics():
     @staticmethod
     def dict_inc(dictionary, key, value=1):
         if dictionary != None:
-            try:
-                dictionary[key] += value
-            except KeyError:
-                dictionary[key] = value
+            dictionary[key] += value
 
     def update(self):
         raise NotImplementedError()
+
+    def get_dict(self):
+        """
+        Returns a deep clone of SELF as a dictionary.
+
+        Warning: there is no recursion protection, if SELF contains self-references it will hang.
+        """
+        def clone(o):
+            if isinstance(o, Statistics):
+                return dict((key, clone(value))
+                            for key, value
+                            in o.__dict__.iteritems()
+                            if not key.startswith("_"))
+
+            if isinstance(o, dict):
+                return dict((clone(key), clone(value))
+                            for key, value
+                            in o.iteritems())
+
+            if isinstance(o, tuple):
+                return tuple(clone(value) for value in o)
+
+            if isinstance(o, list):
+                return [clone(value) for value in o]
+
+            return o
+        return clone(self)
 
 
 class DispersyStatistics(Statistics):
@@ -64,6 +89,7 @@ class DispersyStatistics(Statistics):
         self.walk_bootstrap_attempt = 0
         self.walk_bootstrap_success = 0
         self.walk_reset = 0
+        self.walk_invalid_response_identifier = 0
 
         # nr of outgoing introduction-request messages with payload.advice == True
         self.walk_advice_outgoing_request = 0
@@ -84,19 +110,29 @@ class DispersyStatistics(Statistics):
     def enable_debug_statistics(self, enable):
         if self.are_debug_statistics_enabled() != enable or not hasattr(self, 'drop'):
             if enable:
-                self.drop = {}
-                self.delay = {}
-                self.success = {}
-                self.outgoing = {}
-                self.created = {}
-                self.walk_fail = {}
-                self.attachment = {}
-                self.database = {}
-                self.endpoint_recv = {}
-                self.endpoint_send = {}
-                self.bootstrap_candidates = {}
-                self.overlapping_stumble_candidates = {}
-                self.overlapping_intro_candidates = {}
+                self.drop = defaultdict(int)
+                self.delay = defaultdict(int)
+                self.success = defaultdict(int)
+                self.outgoing = defaultdict(int)
+                self.created = defaultdict(int)
+                self.walk_fail = defaultdict(int)
+                self.attachment = defaultdict(int)
+                self.database = defaultdict(int)
+                self.endpoint_recv = defaultdict(int)
+                self.endpoint_send = defaultdict(int)
+                self.bootstrap_candidates = defaultdict(int)
+                self.overlapping_stumble_candidates = defaultdict(int)
+                self.overlapping_intro_candidates = defaultdict(int)
+
+                # SOURCE:INTRODUCED:COUNT nested dictionary
+                self.received_introductions = defaultdict(lambda: defaultdict(int))
+
+                # DESTINATION:COUNT dictionary
+                self.outgoing_introduction_request = defaultdict(int)
+
+                # SOURCE:COUNT dictionary
+                self.incoming_introduction_response = defaultdict(int)
+
             else:
                 self.drop = None
                 self.delay = None
@@ -111,6 +147,9 @@ class DispersyStatistics(Statistics):
                 self.bootstrap_candidates = None
                 self.overlapping_stumble_candidates = None
                 self.overlapping_intro_candidates = None
+                self.received_introductions = None
+                self.outgoing_introduction_request = None
+                self.incoming_introduction_response = None
 
     def are_debug_statistics_enabled(self):
         return getattr(self, 'drop', None) != None
@@ -154,19 +193,22 @@ class DispersyStatistics(Statistics):
         self.walk_bootstrap_success = 0
 
         if self.are_debug_statistics_enabled():
-            self.drop = {}
-            self.delay = {}
-            self.success = {}
-            self.outgoing = {}
-            self.created = {}
-            self.walk_fail = {}
-            self.attachment = {}
-            self.database = {}
-            self.endpoint_recv = {}
-            self.endpoint_send = {}
-            self.bootstrap_candidates = {}
-            self.overlapping_stumble_candidates = {}
-            self.overlapping_intro_candidates = {}
+            self.drop = defaultdict(int)
+            self.delay = defaultdict(int)
+            self.success = defaultdict(int)
+            self.outgoing = defaultdict(int)
+            self.created = defaultdict(int)
+            self.walk_fail = defaultdict(int)
+            self.attachment = defaultdict(int)
+            self.database = defaultdict(int)
+            self.endpoint_recv = defaultdict(int)
+            self.endpoint_send = defaultdict(int)
+            self.bootstrap_candidates = defaultdict(int)
+            self.overlapping_stumble_candidates = defaultdict(int)
+            self.overlapping_intro_candidates = defaultdict(int)
+            self.received_introductions = defaultdict(lambda: defaultdict(int))
+            self.outgoing_introduction_request = defaultdict(int)
+            self.incoming_introduction_response = defaultdict(int)
 
 
 class CommunityStatistics(Statistics):
