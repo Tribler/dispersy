@@ -1196,7 +1196,7 @@ class Dispersy(object):
                 signature_length = message.authentication.member.signature_length
                 if have_packet[:signature_length] == message.packet[:signature_length]:
                     # the message payload is binary unique (only the signature is different)
-                    logger.warning("received identical message %s %d@%d with different signature from %s",
+                    logger.warning("received identical message %s %d@%d with different signature from %s %s",
                                    message.name,
                                    message.authentication.member.database_id,
                                    message.distribution.global_time,
@@ -1612,7 +1612,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         """
         # use existing (bootstrap) candidate
         candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
-        logger.debug("%s:%d -> %s", sock_addr[0], sock_addr[1], candidate)
+        logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
 
         if candidate is None:
             # find matching candidate with the same host but a different port (symmetric NAT)
@@ -1979,8 +1979,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 return False
 
             elif isinstance(message, DropMessage):
-                if __debug__:
-                    logger.warning("%s drop: %s (%s)", message.dropped.candidate, message.dropped.name, message)
+                logger.debug("%s drop: %s (%s)", message.dropped.candidate, message.dropped.name, message)
                 self._statistics.dict_inc(self._statistics.drop, "on_message_batch:%s" % message)
                 self._statistics.drop_count += 1
                 return False
@@ -2418,6 +2417,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._statistics.walk_bootstrap_attempt += 1
             if request.payload.advice:
                 self._statistics.walk_advice_outgoing_request += 1
+            self._statistics.dict_inc(self._statistics.outgoing_introduction_request, destination.sock_addr)
 
             self._forward([request])
 
@@ -2578,6 +2578,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
     def check_introduction_response(self, messages):
         for message in messages:
             if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+                self._statistics.walk_invalid_response_identifier += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2640,6 +2641,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.walk_success += 1
             if isinstance(candidate, BootstrapCandidate):
                 self._statistics.walk_bootstrap_success += 1
+            self._statistics.dict_inc(self._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self._request_cache.pop(payload.identifier, IntroductionRequestCache)
@@ -2655,27 +2657,37 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # get or create the introduced candidate
                 self._statistics.walk_advice_incoming_response += 1
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._wan_address[0] else wan_introduction_address
-                candidate = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
-                if candidate is None:
+                introduce = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
+                if introduce is None:
                     # create candidate but set its state to inactive to ensure that it will not be
                     # used.  note that we call candidate.intro to allow the candidate to be returned
                     # by get_walk_candidate and yield_candidates
                     self._statistics.walk_advice_incoming_response_new += 1
-                    candidate = community.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
-                    candidate.inactive(community, now)
+                    introduce = community.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
+                    introduce.inactive(community, now)
 
                 # reset the 'I have been introduced' timer
-                candidate.intro(community, now)
-                self._filter_duplicate_candidate(candidate)
-                logger.debug("received introduction to %s", candidate)
+                introduce.intro(community, now)
+                self._filter_duplicate_candidate(introduce)
+                logger.debug("received introduction to %s from %s", introduce, candidate)
 
-                cache.response_candidate = candidate
+                cache.response_candidate = introduce
+
+                # update statistics
+                if self._statistics.received_introductions != None:
+                    self._statistics.received_introductions[candidate.sock_addr][introduce.sock_addr] += 1
 
                 # TEMP: see which peers we get returned by the trackers
                 if self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
-                    self._statistics.bootstrap_candidates[candidate.sock_addr] = self._statistics.bootstrap_candidates.get(candidate.sock_addr, 0) + 1
+                    self._statistics.bootstrap_candidates[introduce.sock_addr] = self._statistics.bootstrap_candidates.get(introduce.sock_addr, 0) + 1
 
-            elif self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
+            else:
+                # update statistics
+                if self._statistics.received_introductions != None:
+                    self._statistics.received_introductions[candidate.sock_addr][wan_introduction_address] += 1
+
+                # TEMP: see which peers we get returned by the trackers
+                if self._statistics.bootstrap_candidates != None and isinstance(message.candidate, BootstrapCandidate):
                     self._statistics.bootstrap_candidates["none"] = self._statistics.bootstrap_candidates.get("none", 0) + 1
 
     def check_puncture_request(self, messages):
@@ -4694,9 +4706,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             yield 5.0
             now = time()
             logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            logger.info("walk-attempt %d; success %d; boot-attempt %d; boot-success %d; reset %d",
+            logger.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
                         self._statistics.walk_attempt,
                         self._statistics.walk_success,
+                        self._statistics.walk_invalid_response_identifier,
                         self._statistics.walk_bootstrap_attempt,
                         self._statistics.walk_bootstrap_success,
                         self._statistics.walk_reset)
@@ -4720,9 +4733,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 logger.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                 for category, candidates in categories.iteritems():
-                    for candidate in candidates:
+                    aged = [(candidate.age(now), candidate) for candidate in candidates]
+                    for age, candidate in sorted(aged):
                         logger.info("%4ds %s%s%s%s %-7s %-13s %s",
-                                    min(candidate.age(now), 9999),
+                                    min(age, 9999),
+                                    "A" if candidate.is_any_active(now) else " ",
                                     "O" if candidate.is_all_obsolete(now) else " ",
                                     "E" if candidate.is_eligible_for_walk(community, now) else " ",
                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",

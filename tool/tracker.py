@@ -156,13 +156,6 @@ class TrackerCommunity(Community):
             else:
                 raise KeyError("Unknown conversion")
 
-            # use highest version as default
-            if None in self._conversions:
-                if self._conversions[None].version < self._conversions[prefix].version:
-                    self._conversions[None] = self._conversions[prefix]
-            else:
-                self._conversions[None] = self._conversions[prefix]
-
         return self._conversions[prefix]
 
     def dispersy_cleanup_community(self, message):

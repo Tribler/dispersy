@@ -2,9 +2,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 from unittest import skip
-from collections import defaultdict
 from fractions import gcd
-from itertools import combinations, islice, ifilterfalse
+from itertools import combinations, islice
 from time import time
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
@@ -36,7 +35,7 @@ class TestCandidates(DispersyTestFunc):
     Most tests are performed with check_candidates, this method takes ALL_FLAGS, list were every entry is a string.  The
     following characters can be put in the string to enable a candidate property:
     - t: SELF knows the candidate is tunnelled
-    - w: SELF has walked towards the candidate
+    - w: SELF has walked towards the candidate (but has not yet received a response)
     - r: SELF has received a walk response from the candidate
     - e: CANDIDATE_ELIGIBLE_DELAY seconds ago SELF performed a successful walk to candidate
     - s: SELF has received an incoming walk from the candidate
@@ -364,6 +363,7 @@ class TestCandidates(DispersyTestFunc):
             """
             return ("s" in flags or
                     "e" in flags or
+                    "i" in flags or
                     ("w" in flags and "r" in flags))
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
@@ -456,6 +456,7 @@ class TestCandidates(DispersyTestFunc):
             try:
                 self.assertEquals(set(selection), set(actual))
             except:
+                print "FLAGS ", all_flags
                 print "SELECT", selection
                 print "ACTUAL", actual
                 raise

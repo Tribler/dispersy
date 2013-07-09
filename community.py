@@ -1423,9 +1423,10 @@ class Community(object):
 
     def dispersy_yield_candidates(self):
         """
-        Yields all active candidates that are part of this community.
-        
-        The returned candidates are randomized on every call and returned only once each.
+        Yields all candidates that are part of this community.
+
+        The returned 'walk', 'stumble', and 'intro' candidates are randomised on every call and
+        returned only once each.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
@@ -1438,7 +1439,7 @@ class Community(object):
         """
         Yields unique active candidates.
 
-        The returned 'walk' and 'stumble' candidates are randomized on every call and returned only
+        The returned 'walk' and 'stumble' candidates are randomised on every call and returned only
         once each.
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
@@ -1723,7 +1724,7 @@ class HardKilledCommunity(Community):
     def _initialize_meta_messages(self):
         super(HardKilledCommunity, self)._initialize_meta_messages()
 
-        # replace introduction_request behavior
+        # replace introduction_request behaviour
         self._meta_messages[u"dispersy-introduction-request"]._handle_callback = self.dispersy_on_introduction_request
 
     @property
