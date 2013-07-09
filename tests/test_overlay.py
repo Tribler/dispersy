@@ -111,7 +111,7 @@ class TestOverlay(DispersyTestFunc):
             now = time()
             info = Info()
             info.diff = now - begin
-            info.candidates = [(candidate, candidate.get_category(community, now)) for candidate in community.dispersy_yield_candidates()]
+            info.candidates = [(candidate, candidate.get_category(community, now)) for candidate in community._candidates.itervalues()]
             info.verified_candidates = [(candidate, candidate.get_category(community, now)) for candidate in community.dispersy_yield_verified_candidates()]
             info.bootstrap_attempt = self._dispersy.statistics.walk_bootstrap_attempt
             info.bootstrap_success = self._dispersy.statistics.walk_bootstrap_success
