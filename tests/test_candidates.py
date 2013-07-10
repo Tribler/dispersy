@@ -338,20 +338,20 @@ class TestCandidates(DispersyTestFunc):
         for flags, candidate in zip(all_flags, candidates):
             if "w" in flags:
                 # SELF has performed an outgoing walk to CANDIDATE
-                candidate.walk(community, now, 10.0)
+                candidate.walk(now, 10.0)
             if "r" in flags:
                 # SELF has received an incoming walk response from CANDIDATE
-                candidate.walk_response(community)
+                candidate.walk_response()
             if "e" in flags:
                 # CANDIDATE_ELIGIBLE_DELAY seconds ago SELF performed a successful walk to CANDIDATE
-                candidate.walk(community, now - CANDIDATE_ELIGIBLE_DELAY, 10.0)
-                candidate.walk_response(community)
+                candidate.walk(now - CANDIDATE_ELIGIBLE_DELAY, 10.0)
+                candidate.walk_response()
             if "s" in flags:
                 # SELF has received an incoming walk request from CANDIDATE
-                candidate.stumble(community, now)
+                candidate.stumble(now)
             if "i" in flags:
                 # SELF has received an incoming walk response which introduced CANDIDATE
-                candidate.intro(community, now)
+                candidate.intro(now)
 
         return now
 
@@ -525,7 +525,7 @@ class TestCandidates(DispersyTestFunc):
             candidate = community.dispersy_get_walk_candidate()
             self.assertNotEquals(candidate, None)
             self.assertIn("%s:%d" % candidate.sock_addr, ["%s:%d" % c.sock_addr for c in selection])
-            candidate.walk(community, time(), 10.5)
+            candidate.walk(time(), 10.5)
         for _ in xrange(5):
             candidate = community.dispersy_get_walk_candidate()
             self.assertEquals(candidate, None)
@@ -538,18 +538,8 @@ class TestCandidates(DispersyTestFunc):
         now = time()
         got = []
         for candidate in candidates:
-            candidate.stumble(community, now)
+            candidate.stumble(now)
             introduce = community.dispersy_get_introduce_candidate(candidate)
-            got.append(introduce.sock_addr if introduce else None)
-        self.assertEquals(expected, got)
-
-        # ordering should not interfere between communities
-        community2 = community_create_method(self._dispersy, self._my_member)
-        expected = [None, ("127.0.0.1", 5), ("127.0.0.1", 4), ("127.0.0.1", 3), ("127.0.0.1", 2)]
-        got = []
-        for candidate in reversed(candidates):
-            candidate.stumble(community2, now)
-            introduce = community2.dispersy_get_introduce_candidate(candidate)
             got.append(introduce.sock_addr if introduce else None)
         self.assertEquals(expected, got)
 
@@ -562,12 +552,12 @@ class TestCandidates(DispersyTestFunc):
         # trackers should not prefer either stumbled or walked candidates, i.e. it should not return
         # candidate 1 more than once/in the wrong position
         now = time()
-        candidates[0].walk(community, now, 10.5)
-        candidates[0].walk_response(community)
+        candidates[0].walk(now, 10.5)
+        candidates[0].walk_response()
         expected = [("127.0.0.1", 5), ("127.0.0.1", 1), ("127.0.0.1", 2), ("127.0.0.1", 3), ("127.0.0.1", 4)]
         got = []
         for candidate in candidates:
-            candidate.stumble(community, now)
+            candidate.stumble(now)
             introduce = community.dispersy_get_introduce_candidate(candidate)
             got.append(introduce.sock_addr if introduce else None)
         self.assertEquals(expected, got)
@@ -584,9 +574,9 @@ class TestCandidates(DispersyTestFunc):
 
         # mark 1 candidate as walk, 1 as stumble
         now = time()
-        candidates[0].walk(c, now, 10.5)
-        candidates[0].walk_response(c)
-        candidates[1].stumble(c, now)
+        candidates[0].walk(now, 10.5)
+        candidates[0].walk_response()
+        candidates[1].stumble(now)
 
         # fetch candidates
         returned_walked_candidate = 0
@@ -609,10 +599,10 @@ class TestCandidates(DispersyTestFunc):
 
         # mark 1 candidate as walk, 1 as stumble
         now = time()
-        candidates[0].walk(c, now - CANDIDATE_ELIGIBLE_DELAY, 10.5)
-        candidates[0].walk_response(c)
-        candidates[1].stumble(c, now)
-        candidates[2].intro(c, now)
+        candidates[0].walk(now - CANDIDATE_ELIGIBLE_DELAY, 10.5)
+        candidates[0].walk_response()
+        candidates[1].stumble(now)
+        candidates[2].intro(now)
 
         # fetch candidates
         returned_walked_candidate = 0

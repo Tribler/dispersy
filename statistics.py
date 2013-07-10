@@ -2,7 +2,7 @@ from time import time
 from collections import defaultdict
 
 
-class Statistics():
+class Statistics(object):
 
     @staticmethod
     def dict_inc(dictionary, key, value=1):
@@ -81,8 +81,6 @@ class DispersyStatistics(Statistics):
 
         # nr of candidates introduced/stumbled upon
         self.total_candidates_discovered = 0
-        # nr of times a candidate was known in another community
-        self.total_candidates_overlapped = 0
 
         self.walk_attempt = 0
         self.walk_success = 0
@@ -121,8 +119,6 @@ class DispersyStatistics(Statistics):
                 self.endpoint_recv = defaultdict(int)
                 self.endpoint_send = defaultdict(int)
                 self.bootstrap_candidates = defaultdict(int)
-                self.overlapping_stumble_candidates = defaultdict(int)
-                self.overlapping_intro_candidates = defaultdict(int)
 
                 # SOURCE:INTRODUCED:COUNT nested dictionary
                 self.received_introductions = defaultdict(lambda: defaultdict(int))
@@ -145,8 +141,6 @@ class DispersyStatistics(Statistics):
                 self.endpoint_recv = None
                 self.endpoint_send = None
                 self.bootstrap_candidates = None
-                self.overlapping_stumble_candidates = None
-                self.overlapping_intro_candidates = None
                 self.received_introductions = None
                 self.outgoing_introduction_request = None
                 self.incoming_introduction_response = None
@@ -204,8 +198,6 @@ class DispersyStatistics(Statistics):
             self.endpoint_recv = defaultdict(int)
             self.endpoint_send = defaultdict(int)
             self.bootstrap_candidates = defaultdict(int)
-            self.overlapping_stumble_candidates = defaultdict(int)
-            self.overlapping_intro_candidates = defaultdict(int)
             self.received_introductions = defaultdict(lambda: defaultdict(int))
             self.outgoing_introduction_request = defaultdict(int)
             self.incoming_introduction_response = defaultdict(int)
@@ -241,9 +233,9 @@ class CommunityStatistics(Statistics):
         self.dispersy_enable_candidate_walker_responses = self._community.dispersy_enable_candidate_walker_responses
         self.global_time = self._community.global_time
         now = time()
-        self.candidates = [(candidate.lan_address, candidate.wan_address, candidate.get_global_time(self._community))
+        self.candidates = [(candidate.lan_address, candidate.wan_address, candidate.global_time)
                            for candidate
-                           in self._community._candidates.itervalues() if candidate.get_category(self._community, now) in [u'walk', u'stumble', u'intro']]
+                           in self._community.candidates.itervalues() if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
         if database:
             self.database = dict(self._community.dispersy.database.execute(u"SELECT meta_message.name, COUNT(sync.id) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? GROUP BY sync.meta_message", (self._community.database_id,)))
         else:

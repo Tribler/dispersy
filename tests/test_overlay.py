@@ -73,7 +73,7 @@ class TestOverlay(DispersyTestFunc):
                     eligible_candidates = [candidate
                                            for candidate
                                            in chain(self._dispersy.bootstrap_candidates)
-                                           if candidate.is_eligible_for_walk(self, now)]
+                                           if candidate.is_eligible_for_walk(now)]
                     for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
                         logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
                         self.create_introduction_request(candidate, allow_sync=False)
@@ -82,7 +82,7 @@ class TestOverlay(DispersyTestFunc):
                     eligible_candidates = [candidate
                                            for candidate
                                            in self._candidates.itervalues()
-                                           if candidate.is_eligible_for_walk(self, now)]
+                                           if candidate.is_eligible_for_walk(now)]
                     for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
                         logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
                         self.create_introduction_request(candidate, allow_sync=False)
@@ -111,8 +111,8 @@ class TestOverlay(DispersyTestFunc):
             now = time()
             info = Info()
             info.diff = now - begin
-            info.candidates = [(candidate, candidate.get_category(community, now)) for candidate in community._candidates.itervalues()]
-            info.verified_candidates = [(candidate, candidate.get_category(community, now)) for candidate in community.dispersy_yield_verified_candidates()]
+            info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.itervalues()]
+            info.verified_candidates = [(candidate, candidate.get_category(now)) for candidate in community.dispersy_yield_verified_candidates()]
             info.bootstrap_attempt = self._dispersy.statistics.walk_bootstrap_attempt
             info.bootstrap_success = self._dispersy.statistics.walk_bootstrap_success
             info.bootstrap_ratio = 100.0 * info.bootstrap_success / info.bootstrap_attempt if info.bootstrap_attempt else 0.0
