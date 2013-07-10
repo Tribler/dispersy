@@ -1330,8 +1330,8 @@ class Community(object):
         return self._dispersy.create_identity(self, sign_with_master, store, update)
 
     @documentation(Dispersy.create_signature_request)
-    def create_dispersy_signature_request(self, message, response_func, response_args=(), timeout=10.0, forward=True):
-        return self._dispersy.create_signature_request(self, message, response_func, response_args, timeout, forward)
+    def create_dispersy_signature_request(self, candidates, message, response_func, response_args=(), timeout=10.0, forward=True):
+        return self._dispersy.create_signature_request(self, candidates, message, response_func, response_args, timeout, forward)
 
     @documentation(Dispersy.create_destroy_community)
     def create_dispersy_destroy_community(self, degree, sign_with_master=False, store=True, update=True, forward=True):

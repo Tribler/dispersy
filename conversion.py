@@ -10,7 +10,7 @@ from random import choice
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
-from .destination import MemberDestination, CommunityDestination, CandidateDestination
+from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
@@ -270,8 +270,7 @@ class BinaryConversion(Conversion):
                    LastSyncDistribution: self._decode_last_sync_distribution,
 
                    CandidateDestination: self._decode_empty_destination,
-                   CommunityDestination: self._decode_empty_destination,
-                   MemberDestination: self._decode_empty_destination}
+                   CommunityDestination: self._decode_empty_destination}
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 

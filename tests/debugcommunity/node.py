@@ -504,16 +504,17 @@ class DebugNode(object):
                          destination=(destination_candidate,),
                          payload=(missing_member, missing_message, missing_sequence_low, missing_sequence_high))
 
-    def create_dispersy_signature_request(self, message, global_time, destination_member):
+    def create_dispersy_signature_request(self, message, global_time, destination_member, destination_candidate):
         """
         Returns a new dispersy-signature-request message.
         """
-        isinstance(message, Message.Implementation)
-        isinstance(global_time, (int, long))
-        isinstance(destination_member, Member)
+        assert isinstance(message, Message.Implementation)
+        assert isinstance(global_time, (int, long))
+        assert isinstance(destination_member, Member)
+        assert isinstance(destination_candidate, Candidate)
         meta = self._community.get_meta_message(u"dispersy-signature-request")
         return meta.impl(distribution=(global_time,),
-                         destination=(destination_member,),
+                         destination=(destination_candidate,),
                          payload=(message,))
 
     def create_dispersy_signature_response(self, identifier, message, global_time, destination_candidate):

@@ -36,48 +36,15 @@ class CandidateDestination(Destination):
             """
             if __debug__:
                 from .candidate import Candidate
-            assert isinstance(candidates, tuple)
-            assert len(candidates) >= 0
-            assert all(isinstance(candidate, Candidate) for candidate in candidates)
+            assert isinstance(candidates, tuple), type(candidates)
+            assert len(candidates) >= 0, len(candidates)
+            assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
             super(CandidateDestination.Implementation, self).__init__(meta)
             self._candidates = candidates
 
         @property
         def candidates(self):
             return self._candidates
-
-
-class MemberDestination(Destination):
-
-    """
-    A destination policy where the message is sent to one or more specified Members.
-
-    Note that the Member objects need to be translated into an address.  This is done using the
-    candidates that are currently online.  As this candidate list constantly changes (random walk,
-    timeout, churn, etc.) it is possible that no address can be found.  In this case the message can
-    not be sent and will be silently dropped.
-    """
-    class Implementation(Destination.Implementation):
-
-        def __init__(self, meta, *members):
-            """
-            Construct an AddressDestination.Implementation object.
-
-            META the associated MemberDestination object.
-
-            MEMBERS is a tuple containing one or more Member instances.  These will be used to try
-            to find the destination addresses when the associated message is sent.
-            """
-            if __debug__:
-                from .member import Member
-            assert len(members) >= 0
-            assert all(isinstance(member, Member) for member in members)
-            super(MemberDestination.Implementation, self).__init__(meta)
-            self._members = members
-
-        @property
-        def members(self):
-            return self._members
 
 
 class CommunityDestination(Destination):
