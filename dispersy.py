@@ -3116,7 +3116,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 assert not message.payload.mid == message.community.my_member.mid, "we should always have our own dispersy-identity"
                 logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", message.payload.mid.encode("HEX"), message.community.my_member.mid.encode("HEX"), message.community.cid.encode("HEX"))
 
-    def create_signature_request(self, community, candidates, message, response_func, response_args=(), timeout=10.0, forward=True):
+    def create_signature_request(self, community, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
         Create a dispersy-signature-request message.
 
@@ -3144,8 +3144,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
          created.
         @type community: Community
 
-        @param candidates: List with destination candidates.
-        @type candidates: [Candidate]
+        @param candidate: Destination candidate.
+        @type candidate: Candidate
 
         @param message: The message that needs the signature.
         @type message: Message.Implementation
@@ -3167,8 +3167,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         if __debug__:
             from .community import Community
         assert isinstance(community, Community)
-        assert isinstance(candidates, list)
-        assert all(isinstance(candidate, Candidate) for candidate in candidates)
+        assert isinstance(candidate, Candidate)
         assert isinstance(message, Message.Implementation)
         assert isinstance(message.authentication, DoubleMemberAuthentication.Implementation)
         assert hasattr(response_func, "__call__")
@@ -3188,7 +3187,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # message that should obtain more signatures
         meta = community.get_meta_message(u"dispersy-signature-request")
         cache.request = meta.impl(distribution=(community.global_time,),
-                                  destination=tuple(candidates),
+                                  destination=(candidate,),
                                   payload=(identifier, message))
 
         logger.debug("asking %s", [member.mid.encode("HEX") for member in members])

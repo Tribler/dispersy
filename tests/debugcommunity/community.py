@@ -5,7 +5,7 @@ from ...authentication import DoubleMemberAuthentication, MemberAuthentication
 from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
-from ...destination import CommunityDestination, CandidateDestination
+from ...destination import CommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...message import Message, DelayMessageByProof
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
@@ -64,7 +64,7 @@ class DebugCommunity(Community):
         return [Message(self, u"last-1-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"last-9-test", MemberAuthentication(), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=9), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"last-1-doublemember-text", DoubleMemberAuthentication(allow_signature_func=self.allow_signature_func), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
-                Message(self, u"double-signed-text", DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), CandidateDestination(), TextPayload(), self.check_text, self.on_text),
+                Message(self, u"double-signed-text", DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text), PublicResolution(), DirectDistribution(), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"full-sync-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 Message(self, u"ASC-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 Message(self, u"DESC-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"DESC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
@@ -94,16 +94,13 @@ class DebugCommunity(Community):
     # double-signed-text
     #
 
-    def create_double_signed_text(self, text, candidates, member, response_func, response_args=(), timeout=10.0, forward=True):
-        assert isinstance(candidates, list)
-        assert len(candidates) == 1
-        assert all(isinstance(candidate, Candidate) for candidate in candidates)
+    def create_double_signed_text(self, text, candidate, member, response_func, response_args=(), timeout=10.0, forward=True):
+        assert isinstance(candidate, Candidate)
         meta = self.get_meta_message(u"double-signed-text")
         message = meta.impl(authentication=([self._my_member, member],),
                             distribution=(self.global_time,),
-                            destination=tuple(candidates),
                             payload=(text,))
-        return self.create_dispersy_signature_request(candidates, message, response_func, response_args, timeout, forward)
+        return self.create_dispersy_signature_request(candidate, message, response_func, response_args, timeout, forward)
 
     def allow_double_signed_text(self, message):
         """
