@@ -80,6 +80,8 @@ class NullEndpoint(Endpoint):
         return self._address
 
     def send(self, candidates, packets):
+        if any(len(packet) > 2**16 - 60 for packet in packets):
+            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
         self._total_up += sum(len(packet) for packet in packets) * len(candidates)
 
 
@@ -161,6 +163,8 @@ class RawserverEndpoint(Endpoint):
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets)
         assert all(len(packet) > 0 for packet in packets)
+        if any(len(packet) > 2**16 - 60 for packet in packets):
+            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
@@ -345,6 +349,8 @@ class TunnelEndpoint(Endpoint):
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets)
         assert all(len(packet) > 0 for packet in packets)
+        if any(len(packet) > 2**16 - 60 for packet in packets):
+            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
