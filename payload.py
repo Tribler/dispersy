@@ -485,9 +485,9 @@ class SignaturePayload(Payload):
         def __init__(self, meta, identifier, message):
             if __debug__:
                 from .message import Message
-            assert isinstance(identifier, int), identifier
+            assert isinstance(identifier, int),  type(identifier)
             assert 0 <= identifier < 2 ** 16, identifier
-            assert isinstance(message, Message.Implementation)
+            assert isinstance(message, Message.Implementation), type(message)
             super(SignaturePayload.Implementation, self).__init__(meta)
             self._identifier = identifier
             self._message = message

@@ -105,10 +105,13 @@ class DebugCommunity(Community):
     def allow_double_signed_text(self, message):
         """
         Received a request to sign MESSAGE.
+
+        Must return either: a. the same message, b. a modified version of message, or c. None.
         """
         logger.debug("%s \"%s\"", message, message.payload.text)
         assert message.payload.text in ("Allow=True", "Allow=False")
-        return message.payload.text == "Allow=True"
+        if message.payload.text == "Allow=True":
+            return message
 
     #
     # last-1-doublemember-text
