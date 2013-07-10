@@ -3264,6 +3264,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             # the community must allow this signature
             submsg = message.payload.message.authentication.allow_signature_func(message.payload.message)
+            assert submsg is None or isinstance(submsg, Message.Implementation), type(submsg)
             if submsg:
                 responses.append(meta.impl(distribution=(message.community.global_time,),
                                            destination=(message.candidate,),

@@ -504,17 +504,14 @@ class DebugNode(object):
                          destination=(destination_candidate,),
                          payload=(missing_member, missing_message, missing_sequence_low, missing_sequence_high))
 
-    def create_dispersy_signature_request(self, message, global_time, destination_candidate):
+    def create_dispersy_signature_request(self, identifier, message, global_time):
         """
         Returns a new dispersy-signature-request message.
         """
         assert isinstance(message, Message.Implementation)
         assert isinstance(global_time, (int, long))
-        assert isinstance(destination_candidate, Candidate)
         meta = self._community.get_meta_message(u"dispersy-signature-request")
-        return meta.impl(distribution=(global_time,),
-                         destination=(destination_candidate,),
-                         payload=(message,))
+        return meta.impl(distribution=(global_time,), payload=(identifier, message,))
 
     def create_dispersy_signature_response(self, identifier, message, global_time, destination_candidate):
         """
@@ -607,7 +604,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(text,))
 
-    def _create_doublemember_text(self, message_name, other, text, global_time):
+    def _create_doublemember_text(self, message_name, other, text, global_time, sign):
         assert isinstance(message_name, unicode)
         assert isinstance(other, Member)
         assert not self._my_member == other
@@ -616,7 +613,8 @@ class DebugNode(object):
         meta = self._community.get_meta_message(message_name)
         return meta.impl(authentication=([self._my_member, other],),
                          distribution=(global_time,),
-                         payload=(text,))
+                         payload=(text,),
+                         sign=sign)
 
     def create_last_1_test(self, text, global_time):
         """
@@ -630,11 +628,17 @@ class DebugNode(object):
         """
         return self._create_text(u"last-9-test", text, global_time)
 
-    def create_last_1_doublemember_text(self, other, text, global_time):
+    def create_last_1_doublemember_text(self, other, text, global_time, sign):
         """
         Returns a new last-1-doublemember-text message.
         """
-        return self._create_doublemember_text(u"last-1-doublemember-text", other, text, global_time)
+        return self._create_doublemember_text(u"last-1-doublemember-text", other, text, global_time, sign)
+
+    def create_double_signed_text(self, other, text, global_time, sign):
+        """
+        Returns a new double-signed-text message.
+        """
+        return self._create_doublemember_text(u"double-signed-text", other, text, global_time, sign)
 
     def create_full_sync_text(self, text, global_time):
         """
