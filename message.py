@@ -582,7 +582,7 @@ class Message(MetaObject):
         from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
         from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
         from .distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
-        from .destination import Destination, CandidateDestination, MemberDestination, CommunityDestination
+        from .destination import Destination, CandidateDestination, CommunityDestination
 
         assert isinstance(authentication, Authentication)
         assert isinstance(resolution, Resolution)
@@ -596,26 +596,26 @@ class Message(MetaObject):
         if isinstance(authentication, NoAuthentication):
             require(authentication, resolution, PublicResolution)
             require(authentication, distribution, (RelayDistribution, DirectDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(authentication, MemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(authentication, DoubleMemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         else:
             raise ValueError("%s is not supported" % authentication.__class_.__name__)
 
         if isinstance(resolution, PublicResolution):
             require(resolution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(resolution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(resolution, LinearResolution):
             require(resolution, authentication, (MemberAuthentication, DoubleMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(resolution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(resolution, DynamicResolution):
             pass
         else:
@@ -624,11 +624,11 @@ class Message(MetaObject):
         if isinstance(distribution, RelayDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(distribution, destination, (CandidateDestination, MemberDestination))
+            require(distribution, destination, (CandidateDestination,))
         elif isinstance(distribution, DirectDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(distribution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(distribution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(distribution, FullSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
@@ -643,10 +643,6 @@ class Message(MetaObject):
             raise ValueError("%s is not supported" % distribution.__class_.__name__)
 
         if isinstance(destination, CandidateDestination):
-            require(destination, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
-            require(destination, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(destination, distribution, (RelayDistribution, DirectDistribution))
-        elif isinstance(destination, MemberDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(destination, distribution, (RelayDistribution, DirectDistribution))

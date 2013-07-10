@@ -31,7 +31,7 @@ class TestSignature(DispersyTestClass):
             container["timeout"] += 1
             return False, False, False
 
-        community.create_double_signed_text("Accept=<does not reach this point>", self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
+        community.create_double_signed_text("Accept=<does not reach this point>", node.candidate, self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
         yield 0.11
 
         logger.debug("NODE receives dispersy-signature-request message")
@@ -74,7 +74,7 @@ class TestSignature(DispersyTestClass):
             self.assertFalse(modified)
             container["response"] += 1
             return False
-        community.create_double_signed_text("Accept=<does not matter>", self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
+        community.create_double_signed_text("Accept=<does not matter>", node.candidate, self._dispersy.get_member(node.my_member.public_key), on_response, (), 3.0)
         yield 0.11
 
         logger.debug("NODE receives dispersy-signature-request message from SELF")

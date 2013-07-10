@@ -61,7 +61,7 @@ from .bloomfilter import BloomFilter
 from .bootstrap import get_bootstrap_candidates
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
-from .destination import CommunityDestination, CandidateDestination, MemberDestination
+from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
 from .member import DummyMember, Member
@@ -524,7 +524,7 @@ class Dispersy(object):
             from .community import Community
         assert isinstance(community, Community)
         messages = [Message(community, u"dispersy-identity", MemberAuthentication(encoding="bin"), PublicResolution(), LastSyncDistribution(synchronization_direction=u"ASC", priority=16, history_size=1), CommunityDestination(node_count=0), IdentityPayload(), self._generic_timeline_check, self.on_identity),
-                    Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), MemberDestination(), SignatureRequestPayload(), self.check_signature_request, self.on_signature_request),
+                    Message(community, u"dispersy-signature-request", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(), SignatureRequestPayload(), self.check_signature_request, self.on_signature_request),
                     Message(community, u"dispersy-signature-response", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(), SignatureResponsePayload(), self.check_signature_response, self.on_signature_response),
                     Message(community, u"dispersy-authorize", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), AuthorizePayload(), self._generic_timeline_check, self.on_authorize),
                     Message(community, u"dispersy-revoke", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), RevokePayload(), self._generic_timeline_check, self.on_revoke),
@@ -2736,9 +2736,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
          - CandidateDestination causes a message to be sent to the addresses in
            message.destination.candidates.
 
-         - MemberDestination causes a message to be sent to the address associated to the member in
-           message.destination.members.
-
          - CommunityDestination causes a message to be sent to one or more addresses to be picked
            from the database candidate table.
 
@@ -2761,18 +2758,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         elif isinstance(meta.destination, CandidateDestination):
             # CandidateDestination.candidates may be empty
             result = all(self._send(message.destination.candidates, [message]) for message in messages)
-
-        elif isinstance(meta.destination, MemberDestination):
-            # MemberDestination.candidates may be empty
-            result = all(self._send([candidate
-                                     for candidate
-                                     in message.community.candidates.itervalues()
-                                     if any(candidate.is_associated(member)
-                                            for member
-                                            in message.destination.members)],
-                                    [message])
-                         for message
-                         in messages)
 
         else:
             raise NotImplementedError(meta.destination)
@@ -3130,7 +3115,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 assert not message.payload.mid == message.community.my_member.mid, "we should always have our own dispersy-identity"
                 logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", message.payload.mid.encode("HEX"), message.community.my_member.mid.encode("HEX"), message.community.cid.encode("HEX"))
 
-    def create_signature_request(self, community, message, response_func, response_args=(), timeout=10.0, forward=True):
+    def create_signature_request(self, community, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
         Create a dispersy-signature-request message.
 
@@ -3158,6 +3143,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
          created.
         @type community: Community
 
+        @param candidate: Destination candidate.
+        @type candidate: Candidate
+
         @param message: The message that needs the signature.
         @type message: Message.Implementation
 
@@ -3178,6 +3166,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         if __debug__:
             from .community import Community
         assert isinstance(community, Community)
+        assert isinstance(candidate, Candidate)
         assert isinstance(message, Message.Implementation)
         assert isinstance(message.authentication, DoubleMemberAuthentication.Implementation)
         assert hasattr(response_func, "__call__")
@@ -3197,7 +3186,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # message that should obtain more signatures
         meta = community.get_meta_message(u"dispersy-signature-request")
         cache.request = meta.impl(distribution=(community.global_time,),
-                                  destination=tuple(members),
+                                  destination=(candidate,),
                                   payload=(identifier, message))
 
         logger.debug("asking %s", [member.mid.encode("HEX") for member in members])
