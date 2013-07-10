@@ -57,17 +57,6 @@ class Candidate(object):
         assert is_address(wan_address), wan_address
         return self._sock_addr
 
-    def get_members(self):
-        # TODO this method should be removed, however, it is possibly still used from allchannel/community.py and privatesearch/community.py
-        logger.warning("DEPRECATED.  Please call community.get_candidate(sock_address).get_members() instead!")
-
-        # preferably use the WalkerCandidate directly
-        candidate = community.get_candidate(self._sock_addr)
-        if candidate:
-            return candidate.get_members(community)
-        else:
-            return []
-
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
 
