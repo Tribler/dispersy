@@ -127,13 +127,8 @@ class IntroductionRequestCache(Cache):
 
         self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
 
-        # we choose to set the entire helper to inactive instead of just the community where the
-        # timeout occurred.  this will allow us to quickly respond to nodes going offline, while the
-        # downside is that one dropped packet will cause us to invalidly inactivate all communities
-        # of the candidate.
-        now = time()
-        self.helper_candidate.obsolete(self.community, now)
-        self.helper_candidate.all_inactive(now)
+        # set the candidate to obsolete
+        self.helper_candidate.obsolete(time())
 
 
 class MissingSomethingCache(Cache):
@@ -1544,7 +1539,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         community = messages[0].community
         for message in messages:
             if isinstance(message.candidate, WalkCandidate):
-                message.candidate.set_global_time(community, message.distribution.global_time)
+                message.candidate.global_time = message.distribution.global_time
 
         return messages
 
@@ -2188,7 +2183,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         cache = IntroductionRequestCache(community, destination)
-        destination.walk(community, time(), cache.timeout_delay)
+        destination.walk(time(), cache.timeout_delay)
+        community.add_candidate(destination)
 
         # temporary cache object
         identifier = self._request_cache.claim(cache)
@@ -2326,12 +2322,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
-            candidate.associate(community, message.authentication.member)
+            candidate.associate(message.authentication.member)
 
             # update sender candidate
             source_lan_address, source_wan_address = self.estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
             candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
-            candidate.stumble(community, now)
+            candidate.stumble(now)
+            community.add_candidate(candidate)
 
             community.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
@@ -2486,8 +2483,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
-            candidate.associate(community, message.authentication.member)
-            candidate.walk_response(community)
+            candidate.associate(message.authentication.member)
+            candidate.walk_response()
             community.filter_duplicate_candidate(candidate)
             logger.debug("introduction response from %s", candidate)
 
@@ -2521,10 +2518,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     # by get_walk_candidate and yield_candidates
                     self._statistics.walk_advice_incoming_response_new += 1
                     introduce = community.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
-                    introduce.inactive(community, now)
+                    introduce.inactive(now)
 
                 # reset the 'I have been introduced' timer
-                introduce.intro(community, now)
+                community.add_candidate(introduce)
+                introduce.intro(now)
                 community.filter_duplicate_candidate(introduce)
                 logger.debug("received introduction to %s from %s", introduce, candidate)
 
@@ -2635,14 +2633,15 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     # used.  note that we call candidate.intro to allow the candidate to be returned
                     # by get_walk_candidate
                     candidate = community.create_candidate(sock_addr, message.candidate.tunnel, lan_address, wan_address, u"unknown")
-                    candidate.inactive(community, now)
+                    candidate.inactive(now)
 
                 else:
                     # update candidate
                     candidate.update(message.candidate.tunnel, lan_address, wan_address, u"unknown")
 
                 # reset the 'I have been introduced' timer
-                candidate.intro(community, now)
+                community.add_candidate(candidate)
+                candidate.intro(now)
                 logger.debug("received introduction to %s", candidate)
 
                 cache.puncture_candidate = candidate
@@ -2768,7 +2767,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             result = all(self._send([candidate
                                      for candidate
                                      in message.community.candidates.itervalues()
-                                     if any(candidate.is_associated(message.community, member)
+                                     if any(candidate.is_associated(member)
                                             for member
                                             in message.destination.members)],
                                     [message])
@@ -4570,8 +4569,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
                 categories = {u"walk": [], u"stumble": [], u"intro": [], u"none":[]}
                 for candidate in community.candidates.itervalues():
-                    if isinstance(candidate, WalkCandidate) and candidate.in_community(community, now):
-                        categories[candidate.get_category(community, now)].append(candidate)
+                    if isinstance(candidate, WalkCandidate):
+                        categories[candidate.get_category(now)].append(candidate)
 
                 logger.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
                 logger.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
@@ -4582,8 +4581,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                         logger.info("%4ds %s%s%s%s %-7s %-13s %s",
                                     min(age, 9999),
                                     "A" if candidate.is_any_active(now) else " ",
-                                    "O" if candidate.is_all_obsolete(now) else " ",
-                                    "E" if candidate.is_eligible_for_walk(community, now) else " ",
+                                    "O" if candidate.is_obsolete(now) else " ",
+                                    "E" if candidate.is_eligible_for_walk(now) else " ",
                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
                                     category,
                                     candidate.connection_type,
