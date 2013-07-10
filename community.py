@@ -24,7 +24,7 @@ except ImportError:
     from .python27_ordereddict import OrderedDict
 
 from .bloomfilter import BloomFilter
-from .candidate import WalkCandidate
+from .candidate import WalkCandidate, BootstrapCandidate
 from .conversion import BinaryConversion, DefaultConversion
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
@@ -1135,7 +1135,7 @@ class Community(object):
         now = time()
 
         def acceptable_global_time_helper():
-            options = sorted(global_time for global_time in (candidate.get_global_time(self) for candidate in self.dispersy_yield_verified_candidates()) if global_time > 0)
+            options = sorted(global_time for global_time in (candidate.global_time for candidate in self.dispersy_yield_verified_candidates()) if global_time > 0)
 
             if len(options) > 5:
                 # note: officially when the number of options is even, the median is the average between the
@@ -1360,8 +1360,7 @@ class Community(object):
                 candidate = self._candidates.get(key)
 
                 if (candidate and
-                    candidate.get_category(self, now) == category):
-                    assert candidate.in_community(self, now)
+                    candidate.get_category(now) == category):
 
                     yield candidate
                     has_result = True
@@ -1391,8 +1390,7 @@ class Community(object):
                 candidate = self._candidates.get(key)
 
                 if (candidate and
-                    candidate.get_category(self, now) in categories):
-                    assert candidate.in_community(self, now)
+                    candidate.get_category(now) in categories):
 
                     yield candidate
                     has_result = True
@@ -1418,7 +1416,7 @@ class Community(object):
 
             bootstrap_candidates = list(self._dispersy.bootstrap_candidates)
             for candidate in bootstrap_candidates:
-                if candidate.in_community(self, time()) and candidate.is_eligible_for_walk(self, time()):
+                if candidate.is_eligible_for_walk(time()):
                     no_result = False
                     yield candidate
 
@@ -1438,7 +1436,7 @@ class Community(object):
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         now = time()
-        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(self, now) in (u"walk", u"stumble", u"intro")]
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble", u"intro")]
         shuffle(candidates)
         return iter(candidates)
 
@@ -1452,7 +1450,7 @@ class Community(object):
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         now = time()
-        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(self, now) in (u"walk", u"stumble")]
+        candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble")]
         shuffle(candidates)
         return iter(candidates)
 
@@ -1527,16 +1525,16 @@ class Community(object):
         category_sizes = [0, 0, 0]
 
         for candidate in self._candidates.itervalues():
-            if candidate.is_eligible_for_walk(self, now):
-                category = candidate.get_category(self, now)
+            if candidate.is_eligible_for_walk(now):
+                category = candidate.get_category(now)
                 if category == u"walk":
-                    categories[0] = min(categories[0], (candidate.last_walk(self), candidate))
+                    categories[0] = min(categories[0], (candidate.last_walk, candidate))
                     category_sizes[0] += 1
                 elif category == u"stumble":
-                    categories[1] = min(categories[1], (candidate.last_stumble(self), candidate))
+                    categories[1] = min(categories[1], (candidate.last_stumble, candidate))
                     category_sizes[1] += 1
                 elif category == u"intro":
-                    categories[2] = min(categories[2], (candidate.last_intro(self), candidate))
+                    categories[2] = min(categories[2], (candidate.last_intro, candidate))
                     category_sizes[2] += 1
 
         walk, stumble, intro = [candidate for _, candidate in categories]
@@ -1653,15 +1651,12 @@ class Community(object):
             return candidate
 
     def add_candidate(self, candidate):
-        assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+        if not isinstance(candidate, BootstrapCandidate):
+            assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
 
-        if candidate.sock_addr not in self._candidates:
-            self._candidates[candidate.sock_addr] = candidate
-
-            self._dispersy.statistics.total_candidates_discovered += 1
-            if len(candidate._timestamps) > 1:
-                self._dispersy.statistics.total_candidates_overlapped += 1
-                self._dispersy.statistics.dict_inc(self._dispersy.statistics.overlapping_stumble_candidates, str(self))
+            if candidate.sock_addr not in self._candidates:
+                self._candidates[candidate.sock_addr] = candidate
+                self._dispersy.statistics.total_candidates_discovered += 1
 
     def get_candidate_mid(self, mid):
         members = self._dispersy.get_members_from_id(mid)
@@ -1669,7 +1664,7 @@ class Community(object):
             member = members[0]
 
             for candidate in self._candidates.itervalues():
-                if candidate.is_associated(self, member):
+                if candidate.is_associated(member):
                     return candidate
 
     def filter_duplicate_candidate(self, candidate):
@@ -1695,8 +1690,9 @@ class Community(object):
             # all except for the CANDIDATE
             if not other == candidate:
                 logger.warn("removing %s in favor of %s", other, candidate)
-                candidate.merge(self, other)
+                candidate.merge(other)
                 del self._candidates[other.sock_addr]
+                self.add_candidate(candidate)
                 self._dispersy.wan_address_unvote(other)
 
     def _periodically_cleanup_candidates(self):
@@ -1707,7 +1703,7 @@ class Community(object):
             yield 5 * 60.0
 
             now = time()
-            for key, candidate in [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_all_obsolete(now)]:
+            for key, candidate in [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_obsolete(now)]:
                 logger.debug("removing obsolete candidate %s", candidate)
                 del self._candidates[key]
                 self._dispersy.wan_address_unvote(candidate)
