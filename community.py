@@ -485,6 +485,20 @@ class Community(object):
         return self.dispersy_enable_candidate_walker
 
     @property
+    def dispersy_enable_bloom_filter_sync(self):
+        """
+        Enable the bloom filter synchronisation during the neighbourhood walking.
+
+        When True is returned, outgoing dispersy-introduction-request messages will get the chance to include a sync
+        bloom filter by calling Community.dispersy_claim_sync_bloom_filter(...).
+
+        When False is returned, outgoing dispersy-introduction-request messages will never include sync bloom filters
+        and Community.acceptable_global_time will return 2 ** 63 - 1, ensuring that all messages that are delivered
+        on-demand or incidentally, will be accepted.
+        """
+        return True
+
+    @property
     def dispersy_sync_bloom_filter_error_rate(self):
         """
         The error rate that is allowed within the sync bloom filter.
@@ -1122,13 +1136,15 @@ class Community(object):
         The highest global time that we will accept for incoming messages that need to be stored in
         the database.
 
-        We follow one of two strategies:
+        The acceptable global time is determined as follows:
 
-        When we have more than 5 candidates (i.e. we have more than 5 opinions about what the
-        global_time should be) we will use its median + dispersy_acceptable_global_time_range.
+        1. when self.dispersy_enable_bloom_filter_sync == False, returns 2 ** 63 - 1, or
 
-        Otherwise we will not trust the candidate's opinions and use our own global time (obtained
-        from the highest global time in the database) + dispersy_acceptable_global_time_range.
+        2. when we have more than 5 candidates (i.e. we have more than 5 opinions about what the global_time should be)
+           we will use its median + self.dispersy_acceptable_global_time_range, or
+
+        3. otherwise we will not trust the candidate's opinions and use our own global time (obtained from the highest
+           global time in the database) + self.dispersy_acceptable_global_time_range.
 
         @rtype: int or long
         """
@@ -1149,11 +1165,15 @@ class Community(object):
             # exceptions in the sqlite3 wrapper
             return min(max(self._global_time, median_global_time) + self.dispersy_acceptable_global_time_range, 2 ** 63 - 1)
 
-        # get opinions from all active candidates
-        if self._acceptable_global_time_deadline < now:
-            self._acceptable_global_time_cache = acceptable_global_time_helper()
-            self._acceptable_global_time_deadline = now + 5.0
-        return self._acceptable_global_time_cache
+        if self.dispersy_enable_bloom_filter_sync:
+            # get opinions from all active candidates
+            if self._acceptable_global_time_deadline < now:
+                self._acceptable_global_time_cache = acceptable_global_time_helper()
+                self._acceptable_global_time_deadline = now + 5.0
+            return self._acceptable_global_time_cache
+
+        else:
+            return 2 ** 63 - 1
 
     def unload_community(self):
         """
