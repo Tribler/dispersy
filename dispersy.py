@@ -4464,7 +4464,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             walker_communities.append(community)
 
             actualtime = time()
-            allow_sync = actualtime - community.__most_recent_sync > 4.5
+            allow_sync = community.dispersy_enable_bloom_filter_sync and actualtime - community.__most_recent_sync > 4.5
             logger.debug("previous sync was %.1f seconds ago %s", actualtime - community.__most_recent_sync, "" if allow_sync else "(no sync this cycle)")
             if allow_sync:
                 community.__most_recent_sync = actualtime
