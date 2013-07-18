@@ -332,7 +332,7 @@ class TrackerDispersy(Dispersy):
 
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
-            print "CANDIDATE2", sum(len(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues()))
+            print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
             if self._statistics.outgoing:
                 for key, value in self._statistics.outgoing.iteritems():
