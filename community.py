@@ -1285,15 +1285,15 @@ class Community(object):
         Returns the default conversion or one associated with USING.
 
         When USING is a *string* this method returns the first available conversion that can *decode* USING, this is
-        tested in reversed order using conversion.can_decode_message(USING).  Typically a conversion can decode a
-        message when: it matches the community and dispersy versions, the community identifier, and the conversion knows
-        how to decode messages of the type described in prefix.
+        tested in reversed order using conversion.can_decode_message(USING).  Typically a conversion can decode a string
+        when it matches: the community version, the Dispersy version, and the community identifier, and the conversion
+        knows how to decode messages types described in USING.
 
         When USING is a *Message* or *Message.Implementation* instance this method returns the first available
         conversion that can *encode* USING, this is tested in reversed order using conversion.can_encode_message(USING).
-        Typically a conversion can encode a message when: the conversion knows how to encode messages with a known name.
+        Typically a conversion can encode a message when: the conversion knows how to encode messages with USING.name.
 
-        When USING is None the last Conversion is returned.  Initial conversions are set using initiate_conversions()
+        When USING is None, the last Conversion is returned.  Initial conversions are set using initiate_conversions()
         and additional Conversions are assigned using add_conversion().
 
         Raises a KeyError when no Conversion can be found.
