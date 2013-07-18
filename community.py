@@ -305,7 +305,7 @@ class Community(object):
         # define all available conversions
         conversions = self.initiate_conversions()
         assert len(conversions) > 0
-        self._conversions = dict((conversion.prefix, conversion) for conversion in conversions)
+        self._conversions = OrderedDict((conversion.prefix, conversion) for conversion in conversions)
         # the last conversion in the list will be used as the default conversion
         self._conversions[None] = conversions[-1]
 
@@ -1278,6 +1278,9 @@ class Community(object):
         """
         logger.warning("deprecated.  please use Dispersy.get_members_from_id")
         return self._dispersy.get_members_from_id(mid)
+
+    def get_conversions(self):
+        return self._conversions.values()
 
     def get_conversion(self, prefix=None):
         """
