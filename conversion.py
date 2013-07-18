@@ -80,8 +80,6 @@ class Conversion(object):
 
     def can_decode_message(self, data):
         assert isinstance(data, str)
-        assert len(data) >= 22
-        assert data[:22] == self._prefix
         raise NotImplementedError("The subclass must implement decode_message")
 
     def decode_meta_message(self, data):
