@@ -4568,9 +4568,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 for category, candidates in categories.iteritems():
                     aged = [(candidate.age(now), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        logger.info("%4ds %s%s%s%s %-7s %-13s %s",
+                        logger.info("%4ds %s%s%s %-7s %-13s %s",
                                     min(age, 9999),
-                                    "A" if candidate.is_any_active(now) else " ",
                                     "O" if candidate.is_obsolete(now) else " ",
                                     "E" if candidate.is_eligible_for_walk(now) else " ",
                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
