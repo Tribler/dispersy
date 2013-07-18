@@ -3,8 +3,9 @@ Run Dispersy in standalone tracker mode.
 
 Outputs statistics every 300 seconds:
 - BANDWIDTH BYTES-UP BYTES-DOWN
-- CANDIDATE COUNT(CANDIDATES)
 - COMMUNITY COUNT(OVERLAYS) COUNT(KILLED-OVERLAYS)
+- CANDIDATE COUNT(ALL_CANDIDATES)                       18/07/13 no longer used
+- CANDIDATE2 COUNT(VERIFIED_CANDIDATES)                 18/07/13 replaces CANDIDATE
 
 Outputs active peers whenever encountered:
 - REQ_IN2 HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
@@ -331,7 +332,7 @@ class TrackerDispersy(Dispersy):
 
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
-            print "CANDIDATE", len(self._candidates)
+            print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
             if self._statistics.outgoing:
                 for key, value in self._statistics.outgoing.iteritems():
