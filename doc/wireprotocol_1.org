@@ -1,4 +1,4 @@
-#+TITLE: Dispersy wire protocol\\version 1.3
+#+TITLE: Dispersy wire protocol\\version 1.3.1
 #+OPTIONS: toc:nil ^:nil author:nil
 #+LATEX_HEADER: \usepackage{enumitem}
 #+LATEX_HEADER: \setlist{nolistsep}
@@ -22,6 +22,9 @@ Initial public release.
 ** 12/10/2012 version 1.3
 - added dispersy-signature-request message
 - added dispersy-signature-response message
+
+** 18/07/2013 version 1.3.1
+- fixes incorrect wire protocol documentation
 
 * <<<dispersy-identity>>> (#248)
 Contains the public key for a single member.  This message is the
@@ -484,7 +487,7 @@ bloom synchronization.
 |-------+-------+--------------------+-----------------------|
 
 The option bits are defined as follows:
-- 0000.0100 source is behind a tunnel
+- 0000.0100 introduced address is behind a tunnel
 - 0000.1000 source connection type
 - 1000.0000 source has a public address
 - 1100.0000 source is behind a symmetric NAT
@@ -500,6 +503,13 @@ dispersy-introduction-request.
 
 ** version 1.2
 The tunnel bit was introduced.
+
+** version 1.3.1
+Previously this document incorrectly claimed that the 0000.0100 tunnel
+bit indicated that the source connection is behind a tunnel.  Instead
+this bit actually indicates that the introduced address is behind a
+tunnel.  This is actually the desired behaviour and corresponds to the
+documentation in the source code, and what had been implemented.
 
 ** possible future changes
 See possible future changes described at the
