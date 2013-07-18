@@ -79,7 +79,10 @@ class Conversion(object):
         return self._prefix
 
     def can_decode_message(self, data):
-        assert isinstance(data, str)
+        """
+        Returns True when DATA can be decoded using this conversion.
+        """
+        assert isinstance(data, str), type(data)
         raise NotImplementedError("The subclass must implement decode_message")
 
     def decode_meta_message(self, data):
@@ -106,7 +109,10 @@ class Conversion(object):
         raise NotImplementedError("The subclass must implement decode_message")
 
     def can_encode_message(self, message):
-        assert isinstance(message, Message)
+        """
+        Returns True when MESSAGE can be encoded using this conversion.
+        """
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
         raise NotImplementedError("The subclass must implement can_encode_message")
 
     def encode_message(self, message, sign=True):
@@ -1075,7 +1081,10 @@ class BinaryConversion(Conversion):
         return data + "".join(signatures)
 
     def can_encode_message(self, message):
-        assert isinstance(message, Message.Implementation), message
+        """
+        Returns True when MESSAGE can be encoded using this conversion.
+        """
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
         return message.name in self._encode_message_map
 
     def encode_message(self, message, sign=True):
@@ -1396,6 +1405,9 @@ class BinaryConversion(Conversion):
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
 
     def can_decode_message(self, data):
+        """
+        Returns True when DATA can be decoded using this conversion.
+        """
         assert isinstance(data, str), type(data)
         return (len(data) >= 23 and
                 data[:22] == self._prefix and
