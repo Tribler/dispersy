@@ -303,11 +303,11 @@ class Community(object):
         self.meta_message_cache = None
 
         # define all available conversions
-        conversions = self.initiate_conversions()
-        assert len(conversions) > 0
-        self._conversions = OrderedDict((conversion.prefix, conversion) for conversion in conversions)
-        # the last conversion in the list will be used as the default conversion
-        self._conversions[None] = conversions[-1]
+        self._conversions = self.initiate_conversions()
+        if __debug__:
+            from .conversion import Conversion
+            assert len(self._conversions) > 0, len(self._conversions)
+            assert all(isinstance(conversion, Conversion) for conversion in self._conversions), [type(conversion) for conversion in self._conversions]
 
         # the global time.  zero indicates no messages are available, messages must have global
         # times that are higher than zero.
@@ -1280,18 +1280,18 @@ class Community(object):
         return self._dispersy.get_members_from_id(mid)
 
     def get_conversions(self):
-        return self._conversions.values()
+        return self._conversions
 
     def get_conversion(self, prefix=None):
         """
         returns the conversion associated with prefix.
 
-        prefix is an optional 22 byte sting.  Where the first byte is
+        prefix is an optional sting.  Where the first byte is
         the dispersy version, the second byte is the community version
-        and the last 20 bytes is the community identifier.
+        and the last 20 bytes is the community identifier, followed by a one byte message identifier.
 
-        When no prefix is given, i.e. prefix is None, then the default Conversion is returned.
-        Conversions are assigned to a community using add_conversion().
+        When no prefix is given, i.e. prefix is None, then the last Conversion is returned.
+        Additional Conversions are assigned to a community using add_conversion().
 
         @param prefix: Optional prefix indicating a conversion.
         @type prefix: string
@@ -1300,33 +1300,32 @@ class Community(object):
         @rtype: Conversion
         """
         assert prefix is None or isinstance(prefix, str)
-        assert prefix is None or len(prefix) == 22
-        return self._conversions[prefix]
+        if prefix is None:
+            return self._conversions[-1]
 
-    def add_conversion(self, conversion, default=False):
+        else:
+            for conversion in reversed(self._conversions):
+                if conversion.can_decode_message(prefix):
+                    return conversion
+
+            # for backwards compatibility we will raise a KeyError when prefix isn't found (previously self._conversions
+            # was a dictionary)
+            raise KeyError(prefix)
+
+    def add_conversion(self, conversion):
         """
         Add a Conversion to the Community.
 
         A conversion instance converts between the internal Message structure and the on-the-wire
         message.
 
-        When default is True the conversion is set to be the default conversion.  The default
-        conversion is used (by default) when a message is implemented and no prefix is given.
-
         @param conversion: The new conversion instance.
         @type conversion: Conversion
-
-        @param default: Indicating if this is to become the default conversion.
-        @type default: bool
         """
         if __debug__:
             from .conversion import Conversion
-        assert isinstance(conversion, Conversion)
-        assert isinstance(default, bool)
-        assert not conversion.prefix in self._conversions
-        if default:
-            self._conversions[None] = conversion
-        self._conversions[conversion.prefix] = conversion
+            assert isinstance(conversion, Conversion)
+        self._conversions.append(conversion)
 
     @documentation(Dispersy.take_step)
     def dispersy_take_step(self, allow_sync):
@@ -1827,7 +1826,7 @@ class Community(object):
         Create the Conversion instances for this community instance.
 
         This method is called once for each community when it is created.  The resulting Conversion
-        instances can be obtained using the get_conversion(prefix) method.
+        instances can be obtained using the get_conversions() and get_conversion(prefix) methods.
 
         Returns a list with all Conversion instances that this community will support.  The last
         item in the list will be used as the default conversion.
@@ -1877,24 +1876,17 @@ class HardKilledCommunity(Community):
         return [DefaultConversion(self)]
 
     def get_conversion(self, prefix=None):
-        if not prefix in self._conversions:
+        try:
+            return super(HardKilledCommunity, self).get_conversion(prefix)
 
+        except KeyError:
             # the dispersy version MUST BE available.  Currently we
             # only support \x00: BinaryConversion
             if prefix[0] == "\x00":
-                self._conversions[prefix] = BinaryConversion(self, prefix[1])
+                self.add_conversion(BinaryConversion(self, prefix[1]))
 
-            else:
-                raise KeyError("Unknown conversion")
-
-            # use highest version as default
-            if None in self._conversions:
-                if self._conversions[None].version < self._conversions[prefix].version:
-                    self._conversions[None] = self._conversions[prefix]
-            else:
-                self._conversions[None] = self._conversions[prefix]
-
-        return self._conversions[prefix]
+            # try again
+            return super(HardKilledCommunity, self).get_conversion(prefix)
 
     def dispersy_on_introduction_request(self, messages):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")

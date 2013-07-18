@@ -385,7 +385,7 @@ class Message(MetaObject):
             if conversion:
                 self._conversion = conversion
             elif packet:
-                self._conversion = meta._community.get_conversion(packet[:22])
+                self._conversion = meta._community.get_conversion(packet)
             else:
                 for conversion in reversed(meta._community.get_conversions()):
                     if conversion.can_encode_message(self):

@@ -78,6 +78,12 @@ class Conversion(object):
     def prefix(self):
         return self._prefix
 
+    def can_decode_message(self, data):
+        assert isinstance(data, str)
+        assert len(data) >= 22
+        assert data[:22] == self._prefix
+        raise NotImplementedError("The subclass must implement decode_message")
+
     def decode_meta_message(self, data):
         """
         Obtain the dispersy meta message from DATA.
@@ -1390,6 +1396,12 @@ class BinaryConversion(Conversion):
             assert isinstance(placeholder.offset, (int, long))
 
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
+
+    def can_decode_message(self, data):
+        assert isinstance(data, str), type(data)
+        return (len(data) >= 23 and
+                data[:22] == self._prefix and
+                data[22] in self._decode_message_map)
 
     def decode_meta_message(self, data):
         """

@@ -1560,7 +1560,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         # find associated conversion
         try:
-            conversion = community.get_conversion(packet[:22])
+            conversion = community.get_conversion(packet)
         except KeyError:
             logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
             return None
@@ -1597,7 +1597,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         # find associated conversion
         try:
-            conversion = community.get_conversion(packet[:22])
+            conversion = community.get_conversion(packet)
         except KeyError:
             logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
             return None
@@ -1632,7 +1632,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         # find associated conversion
         try:
-            conversion = community.get_conversion(packet[:22])
+            conversion = community.get_conversion(packet)
         except KeyError:
             logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
             return None
@@ -1936,7 +1936,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
             # find associated conversion
             try:
-                conversion = community.get_conversion(packet[:22])
+                conversion = community.get_conversion(packet)
             except KeyError:
                 logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown conversion")
