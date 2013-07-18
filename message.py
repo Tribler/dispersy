@@ -385,16 +385,9 @@ class Message(MetaObject):
             if conversion:
                 self._conversion = conversion
             elif packet:
-                self._conversion = meta._community.get_conversion(packet)
+                self._conversion = meta.community.get_conversion(packet)
             else:
-                for conversion in reversed(meta._community.get_conversions()):
-                    if conversion.can_encode_message(self):
-                        self._conversion = conversion
-                        break
-
-                else:
-                    logger.warning("Unable to find conversion for %s in %s", self, meta._community.get_conversions())
-                    raise RuntimeError("No conversion found that can encode this message")
+                self._conversion = meta.community.get_conversion(self)
 
             if not packet:
                 self._packet = self._conversion.encode_message(self, sign=sign)

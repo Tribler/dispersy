@@ -30,6 +30,7 @@ from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning
 from .member import DummyMember, Member
+from .message import Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
@@ -1279,38 +1280,49 @@ class Community(object):
         logger.warning("deprecated.  please use Dispersy.get_members_from_id")
         return self._dispersy.get_members_from_id(mid)
 
-    def get_conversions(self):
-        return self._conversions
-
-    def get_conversion(self, prefix=None):
+    def get_conversion(self, using=None):
         """
-        returns the conversion associated with prefix.
+        Returns the default conversion or one associated with USING.
 
-        prefix is an optional sting.  Where the first byte is
-        the dispersy version, the second byte is the community version
-        and the last 20 bytes is the community identifier, followed by a one byte message identifier.
+        When USING is a *string* this method returns the first available conversion that can *decode* USING, this is
+        tested in reversed order using conversion.can_decode_message(USING).  Typically a conversion can decode a
+        message when: it matches the community and dispersy versions, the community identifier, and the conversion knows
+        how to decode messages of the type described in prefix.
 
-        When no prefix is given, i.e. prefix is None, then the last Conversion is returned.
-        Additional Conversions are assigned to a community using add_conversion().
+        When USING is a *Message* or *Message.Implementation* instance this method returns the first available
+        conversion that can *encode* USING, this is tested in reversed order using conversion.can_encode_message(USING).
+        Typically a conversion can encode a message when: the conversion knows how to encode messages with a known name.
 
-        @param prefix: Optional prefix indicating a conversion.
-        @type prefix: string
+        When USING is None the last Conversion is returned.  Initial conversions are set using initiate_conversions()
+        and additional Conversions are assigned using add_conversion().
 
-        @return A Conversion instance indicated by prefix or the default one.
+        Raises a KeyError when no Conversion can be found.
+
+        @param using: Specifies the desired conversion.
+        @type using: None|string|Message|Message.Implementation
+
+        @return: A Conversion instance indicated by USING.
         @rtype: Conversion
         """
-        assert prefix is None or isinstance(prefix, str)
-        if prefix is None:
+        assert using is None or isinstance(using, (str, Message, Message.Implementation)), type(using)
+
+        if using is None:
             return self._conversions[-1]
 
-        else:
+        elif isinstance(using, str):
             for conversion in reversed(self._conversions):
-                if conversion.can_decode_message(prefix):
+                if conversion.can_decode_message(using):
                     return conversion
 
-            # for backwards compatibility we will raise a KeyError when prefix isn't found (previously self._conversions
-            # was a dictionary)
-            raise KeyError(prefix)
+        elif isinstance(using, (Message, Message.Implementation)):
+            for conversion in reversed(self._conversions):
+                if conversion.can_encode_message(using):
+                    return conversion
+
+        # for backwards compatibility we will raise a KeyError when prefix isn't found (previously self._conversions was
+        # a dictionary)
+        logger.warning("Unable to find conversion for %s in %s", using, self._conversions)
+        raise KeyError(using)
 
     def add_conversion(self, conversion):
         """
@@ -1825,11 +1837,11 @@ class Community(object):
         """
         Create the Conversion instances for this community instance.
 
-        This method is called once for each community when it is created.  The resulting Conversion
-        instances can be obtained using the get_conversions() and get_conversion(prefix) methods.
+        This method is called once for each community when it is created.  The resulting Conversion instances can be
+        obtained using get_conversion().
 
-        Returns a list with all Conversion instances that this community will support.  The last
-        item in the list will be used as the default conversion.
+        Returns a list with all Conversion instances that this community will support.  Note that the ordering of
+        Conversion classes determines what get_conversion() returns.  See get_conversion() for the specifics.
 
         @rtype: [Conversion]
         """
@@ -1875,18 +1887,19 @@ class HardKilledCommunity(Community):
         # match
         return [DefaultConversion(self)]
 
-    def get_conversion(self, prefix=None):
+    def get_conversion(self, using=None):
         try:
-            return super(HardKilledCommunity, self).get_conversion(prefix)
+            return super(HardKilledCommunity, self).get_conversion(using)
 
         except KeyError:
-            # the dispersy version MUST BE available.  Currently we
-            # only support \x00: BinaryConversion
-            if prefix[0] == "\x00":
-                self.add_conversion(BinaryConversion(self, prefix[1]))
+            if isinstance(using, str):
+                # the dispersy version MUST BE available.  Currently we
+                # only support \x00: BinaryConversion
+                if using[0] == "\x00":
+                    self.add_conversion(BinaryConversion(self, using[1]))
 
             # try again
-            return super(HardKilledCommunity, self).get_conversion(prefix)
+            return super(HardKilledCommunity, self).get_conversion(using)
 
     def dispersy_on_introduction_request(self, messages):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
