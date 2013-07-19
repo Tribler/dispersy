@@ -53,6 +53,7 @@ except ImportError:
 from collections import defaultdict
 from hashlib import sha1
 from itertools import groupby, islice, count
+from pprint import pformat
 from socket import inet_aton, error as socket_error
 from time import time
 
@@ -4427,6 +4428,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
             # stop the database
             self._database.close()
+
+
+        # output statistics before we stop
+        if logger.isEnabledFor(logging.DEBUG):
+            self._statistics.update()
+            logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
 
         logger.info("stopping the Dispersy core...")
         self._callback.call(stop, priority= -512)
