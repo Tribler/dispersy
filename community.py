@@ -1312,7 +1312,7 @@ class Community(object):
             if conversion.can_decode_message(packet):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PREFIX is found (previously
+        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is found (previously
         # self._conversions was a dictionary)
         logger.warning("Unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
         raise KeyError(packet)
@@ -1335,7 +1335,7 @@ class Community(object):
             if conversion.can_encode_message(message):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PREFIX is found (previously
+        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is found (previously
         # self._conversions was a dictionary)
         logger.warning("Unable to find conversion to encode %s in %s", message, self._conversions)
         raise KeyError(message)
