@@ -1,4 +1,5 @@
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .debugcommunity.community import DebugCommunity
 
 class TestVoting(DispersyTestFunc):
 
