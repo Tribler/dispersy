@@ -303,11 +303,11 @@ class Community(object):
         self.meta_message_cache = None
 
         # define all available conversions
-        conversions = self.initiate_conversions()
-        assert len(conversions) > 0
-        self._conversions = dict((conversion.prefix, conversion) for conversion in conversions)
-        # the last conversion in the list will be used as the default conversion
-        self._conversions[None] = conversions[-1]
+        self._conversions = self.initiate_conversions()
+        if __debug__:
+            from .conversion import Conversion
+            assert len(self._conversions) > 0, len(self._conversions)
+            assert all(isinstance(conversion, Conversion) for conversion in self._conversions), [type(conversion) for conversion in self._conversions]
 
         # the global time.  zero indicates no messages are available, messages must have global
         # times that are higher than zero.
@@ -1279,51 +1279,81 @@ class Community(object):
         logger.warning("deprecated.  please use Dispersy.get_members_from_id")
         return self._dispersy.get_members_from_id(mid)
 
-    def get_conversion(self, prefix=None):
+    def get_default_conversion(self):
         """
-        returns the conversion associated with prefix.
+        Returns the default conversion (defined as the last conversion).
 
-        prefix is an optional 22 byte sting.  Where the first byte is
-        the dispersy version, the second byte is the community version
-        and the last 20 bytes is the community identifier.
-
-        When no prefix is given, i.e. prefix is None, then the default Conversion is returned.
-        Conversions are assigned to a community using add_conversion().
-
-        @param prefix: Optional prefix indicating a conversion.
-        @type prefix: string
-
-        @return A Conversion instance indicated by prefix or the default one.
-        @rtype: Conversion
+        Raises KeyError() when no conversions are available.
         """
-        assert prefix is None or isinstance(prefix, str)
-        assert prefix is None or len(prefix) == 22
-        return self._conversions[prefix]
+        if self._conversions:
+            return self._conversions[-1]
 
-    def add_conversion(self, conversion, default=False):
+        # for backwards compatibility we will raise a KeyError when conversion isn't found (previously self._conversions
+        # was a dictionary)
+        logger.warning("Unable to find default conversion (there are no conversions available)")
+        raise KeyError()
+
+    def get_conversion_for_packet(self, packet):
+        """
+        Returns the conversion associated with PACKET.
+
+        This method returns the first available conversion that can *decode* PACKET, this is tested in reversed order
+        using conversion.can_decode_message(PACKET).  Typically a conversion can decode a string when it matches: the
+        community version, the Dispersy version, and the community identifier, and the conversion knows how to decode
+        messages types described in PACKET.
+
+        Note that only the bytes needed to determine conversion.can_decode_message(PACKET) must be given, therefore
+        PACKET is not necessarily an entire packet but can also be a the first N bytes of a packet.
+
+        Raises KeyError(packet) when no conversion is available.
+        """
+        assert isinstance(packet, str), type(packet)
+        for conversion in reversed(self._conversions):
+            if conversion.can_decode_message(packet):
+                return conversion
+
+        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is found (previously
+        # self._conversions was a dictionary)
+        logger.warning("Unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
+        raise KeyError(packet)
+
+    def get_conversion_for_message(self, message):
+        """
+        Returns the conversion associated with MESSAGE.
+
+        This method returns the first available conversion that can *encode* MESSAGE, this is tested in reversed order
+        using conversion.can_encode_message(MESSAGE).  Typically a conversion can encode a message when: the conversion
+        knows how to encode messages with MESSAGE.name.
+
+        Raises KeyError(message) when no conversion is available.
+        """
+        if __debug__:
+            from .message import Message
+            assert isinstance(message, (Message, Message.Implementation)), type(message)
+
+        for conversion in reversed(self._conversions):
+            if conversion.can_encode_message(message):
+                return conversion
+
+        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is found (previously
+        # self._conversions was a dictionary)
+        logger.warning("Unable to find conversion to encode %s in %s", message, self._conversions)
+        raise KeyError(message)
+
+    def add_conversion(self, conversion):
         """
         Add a Conversion to the Community.
 
         A conversion instance converts between the internal Message structure and the on-the-wire
         message.
 
-        When default is True the conversion is set to be the default conversion.  The default
-        conversion is used (by default) when a message is implemented and no prefix is given.
-
         @param conversion: The new conversion instance.
         @type conversion: Conversion
-
-        @param default: Indicating if this is to become the default conversion.
-        @type default: bool
         """
         if __debug__:
             from .conversion import Conversion
-        assert isinstance(conversion, Conversion)
-        assert isinstance(default, bool)
-        assert not conversion.prefix in self._conversions
-        if default:
-            self._conversions[None] = conversion
-        self._conversions[conversion.prefix] = conversion
+            assert isinstance(conversion, Conversion)
+        self._conversions.append(conversion)
 
     @documentation(Dispersy.take_step)
     def dispersy_take_step(self, allow_sync):
@@ -1823,11 +1853,11 @@ class Community(object):
         """
         Create the Conversion instances for this community instance.
 
-        This method is called once for each community when it is created.  The resulting Conversion
-        instances can be obtained using the get_conversion(prefix) method.
+        This method is called once for each community when it is created.  The resulting Conversion instances can be
+        obtained using get_default_conversion(), get_conversion_for_packet(), and get_conversion_for_message().
 
-        Returns a list with all Conversion instances that this community will support.  The last
-        item in the list will be used as the default conversion.
+        Returns a list with all Conversion instances that this community will support.  Note that the ordering of
+        Conversion classes determines what the get_..._conversion_...() methods return.
 
         @rtype: [Conversion]
         """
@@ -1873,25 +1903,17 @@ class HardKilledCommunity(Community):
         # match
         return [DefaultConversion(self)]
 
-    def get_conversion(self, prefix=None):
-        if not prefix in self._conversions:
+    def get_conversion_for_packet(self, packet):
+        try:
+            return super(HardKilledCommunity, self).get_conversion_for_packet(packet)
 
-            # the dispersy version MUST BE available.  Currently we
-            # only support \x00: BinaryConversion
-            if prefix[0] == "\x00":
-                self._conversions[prefix] = BinaryConversion(self, prefix[1])
+        except KeyError:
+            # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
+            if packet[0] == "\x00":
+                self.add_conversion(BinaryConversion(self, packet[1]))
 
-            else:
-                raise KeyError("Unknown conversion")
-
-            # use highest version as default
-            if None in self._conversions:
-                if self._conversions[None].version < self._conversions[prefix].version:
-                    self._conversions[None] = self._conversions[prefix]
-            else:
-                self._conversions[None] = self._conversions[prefix]
-
-        return self._conversions[prefix]
+            # try again
+            return super(HardKilledCommunity, self).get_conversion(packet)
 
     def dispersy_on_introduction_request(self, messages):
         self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")

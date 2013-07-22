@@ -211,7 +211,7 @@ class DebugNode(object):
         tmp_member = self._community._my_member
         self._community._my_member = self._my_member
         try:
-            return self._community.get_conversion().encode_message(message)
+            return self._community.get_conversion_for_message(message).encode_message(message)
         finally:
             self._community._my_member = tmp_member
 
@@ -413,7 +413,7 @@ class DebugNode(object):
             candidate, packet = self.receive_packet(timeout, addresses, packets)
 
             try:
-                message = self._community.get_conversion(packet[:22]).decode_message(candidate, packet)
+                message = self._community.get_conversion_for_packet(packet).decode_message(candidate, packet)
             except KeyError as exception:
                 logger.exception("Ignored %s", exception)
                 continue
