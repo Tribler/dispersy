@@ -30,7 +30,6 @@ from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning
 from .member import DummyMember, Member
-from .message import Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
@@ -1328,7 +1327,10 @@ class Community(object):
 
         Raises KeyError(message) when no conversion is available.
         """
-        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        if __debug__:
+            from .message import Message
+            assert isinstance(message, (Message, Message.Implementation)), type(message)
+
         for conversion in reversed(self._conversions):
             if conversion.can_encode_message(message):
                 return conversion
