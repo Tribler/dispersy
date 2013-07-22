@@ -1064,8 +1064,8 @@ class Dispersy(object):
                 for community in self._communities.itervalues():
                     community.candidates.pop(self._wan_address, None)
 
-            for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
-                community.candidates.pop(candidate.sock_addr, None)
+                    for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
+                        community.candidates.pop(candidate.sock_addr, None)
 
         if self._connection_type == u"unknown" and self._lan_address == self._wan_address:
             self._connection_type = u"public"
