@@ -145,19 +145,17 @@ class TrackerCommunity(Community):
     def initiate_conversions(self):
         return [BinaryTrackerConversion(self, "\x00")]
 
-    def get_conversion(self, using=None):
+    def get_conversion_for_packet(self, packet):
         try:
-            return super(TrackerCommunity, self).get_conversion(using)
+            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
         except KeyError:
-            if isinstance(using, str):
-                # the dispersy version MUST BE available.  Currently we
-                # only support \x00: BinaryConversion
-                if using[0] == "\x00":
-                    self.add_conversion(BinaryTrackerConversion(self, using[1]))
+            # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
+            if packet[0] == "\x00":
+                self.add_conversion(BinaryConversion(self, packet[1]))
 
             # try again
-            return super(TrackerCommunity, self).get_conversion(using)
+            return super(TrackerCommunity, self).get_conversion(packet)
 
     def dispersy_cleanup_community(self, message):
         # since the trackers use in-memory databases, we need to store the destroy-community
