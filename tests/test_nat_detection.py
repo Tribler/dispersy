@@ -11,7 +11,7 @@ class TestNATDetection(DispersyTestFunc):
     @call_on_dispersy_thread
     def test_symmetric_vote(self):
         """
-        A receiving two votes from different candidates for different port numbers, a peer
+        After receiving two votes from different candidates for different port numbers, a peer
         must change it's connection type to summetric-NAT.
         """
         c = DebugCommunity.create_community(self._dispersy, self._my_member)
