@@ -1,7 +1,7 @@
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestCallback(DispersyTestClass):
+class TestCallback(DispersyTestFunc):
 
     def previous_performance_profile(self):
         """

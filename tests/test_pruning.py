@@ -3,10 +3,10 @@ logger = logging.getLogger(__name__)
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestPruning(DispersyTestClass):
+class TestPruning(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_local_creation_causes_pruning(self):

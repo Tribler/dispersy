@@ -4,10 +4,10 @@ logger = logging.getLogger(__name__)
 from ..message import Message
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestUndo(DispersyTestClass):
+class TestUndo(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_self_undo_own(self):

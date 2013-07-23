@@ -4,10 +4,10 @@ logger = logging.getLogger(__name__)
 from ..message import DelayMessageByProof
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestTimeline(DispersyTestClass):
+class TestTimeline(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_succeed_check(self):

@@ -1,9 +1,9 @@
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestDestroyCommunity(DispersyTestClass):
+class TestDestroyCommunity(DispersyTestFunc):
     # TODO: test that after a hard-kill, all new incoming messages are dropped.
     # TODO: test that after a hard-kill, nothing is added to the candidate table anymore
 

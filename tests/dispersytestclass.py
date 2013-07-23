@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 from unittest import TestCase
 
 from ..callback import Callback
@@ -24,10 +27,22 @@ class DispersyTestFunc(TestCase):
     tearDown will ensure these members are properly cleaned after each test method is finished.
     """
 
+    def on_callback_exception(self, exception, is_fatal):
+        logger.exception("%s", exception)
+
+        # properly shutdown Dispersy
+        self._dispersy.stop()
+        self._dispersy = None
+
+        # consider every exception a fatal error
+        return True
+
     def setUp(self):
         super(DispersyTestFunc, self).setUp()
+        logger.debug("setUp")
 
         callback = Callback("Dispersy-Unit-Test")
+        callback.attach_exception_handler(self.on_callback_exception)
         endpoint = StandaloneEndpoint(12345)
         working_directory = u"."
         database_filename = u":memory:"
@@ -38,37 +53,9 @@ class DispersyTestFunc(TestCase):
 
     def tearDown(self):
         super(DispersyTestFunc, self).tearDown()
-        self._dispersy.stop()
-        self._dispersy = None
+        logger.debug("tearDown")
+
+        if self._dispersy:
+            self._dispersy.stop()
+            self._dispersy = None
         self._my_member = None
-
-class DispersyTestClass(TestCase):
-
-    """
-    Setup and tear down Dispersy before the first and after the last test method.
-
-    setUpClass will ensure the following members exists before the first test method in the class is called:
-    - cls._dispersy
-    - cls._my_member
-
-    tearDownClass will ensure these members are properly cleaned after after the last class test has finished.
-    """
-    @classmethod
-    def setUpClass(cls):
-        super(DispersyTestClass, cls).setUpClass()
-
-        callback = Callback("Dispersy-Unit-Test")
-        endpoint = StandaloneEndpoint(12345)
-        working_directory = u"."
-        database_filename = u":memory:"
-
-        cls._dispersy = Dispersy(callback, endpoint, working_directory, database_filename)
-        cls._dispersy.start()
-        cls._my_member = callback.call(cls._dispersy.get_new_member, (u"low",))
-
-    @classmethod
-    def tearDownClass(cls):
-        super(DispersyTestClass, cls).tearDownClass()
-        cls._dispersy.stop()
-        cls._dispersy = None
-        cls._my_member = None
