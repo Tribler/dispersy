@@ -2,10 +2,10 @@ from collections import defaultdict
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestSequence(DispersyTestClass):
+class TestSequence(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def incoming_simple_conflict_different_global_time(self):
@@ -30,7 +30,7 @@ class TestSequence(DispersyTestClass):
         msgs = defaultdict(dict)
         for i in xrange(1, 10):
             for j in xrange(1, 10):
-                msgs[i][j] = node.create_sequence_test("M@%d#%d" % (i, j), i, j)
+                msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
 
         community.delete_messages(meta.name)
         # SELF must accept M@6#1
@@ -322,39 +322,26 @@ class TestSequence(DispersyTestClass):
     def test_requests_3_24(self):
         self.requests(3, [], (11, 11), (11, 50), (100, 200))
 
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
         """
         SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
         def on_dispersy_thread():
-            cls._community = DebugCommunity.create_community(cls._dispersy, cls._my_member)
-            cls._nodes = [DebugNode(cls._community) for _ in xrange(3)]
-            for node in cls._nodes:
+            self._community = DebugCommunity.create_community(self._dispersy, self._my_member)
+            self._nodes = [DebugNode(self._community) for _ in xrange(3)]
+            for node in self._nodes:
                 node.init_socket()
                 node.init_my_member()
 
             # create messages
-            cls._messages = []
+            self._messages = []
             for i in xrange(1, 11):
-                message = cls._community.create_sequence_text("Sequence message #%d" % i)
+                message = self._community.create_sequence_text("Sequence message #%d" % i)
                 assert message.distribution.sequence_number == i
-                cls._messages.append(message)
+                self._messages.append(message)
 
-        super(TestSequence, cls).setUpClass()
-        cls._dispersy.callback.call(on_dispersy_thread)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        Cleanup.
-        """
-        def on_dispersy_thread():
-            cls._community.create_dispersy_destroy_community(u"hard-kill")
-            cls._dispersy.get_community(cls._community.cid).unload_community()
-
-        cls._dispersy.callback.call(on_dispersy_thread)
-        super(TestSequence, cls).tearDownClass()
+        super(TestSequence, self).setUp()
+        self._dispersy.callback.call(on_dispersy_thread)
 
     @call_on_dispersy_thread
     def requests(self, node_count, responses, *pairs):

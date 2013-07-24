@@ -1,16 +1,15 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from unittest import skip
 from fractions import gcd
 from itertools import combinations, islice
 from time import time
+from unittest import skip
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
 from ..tool.tracker import TrackerCommunity
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
-from ..candidate import CANDIDATE_ELIGIBLE_DELAY
 
 class NoBootstrapDebugCommunity(DebugCommunity):
 

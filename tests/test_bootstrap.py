@@ -11,10 +11,10 @@ from ..candidate import BootstrapCandidate
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
 
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestBootstrapServers(DispersyTestClass):
+class TestBootstrapServers(DispersyTestFunc):
 
     @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     @call_on_dispersy_thread

@@ -4,7 +4,6 @@ summary = logging.getLogger("test-overlay-summary")
 
 from os import environ
 from pprint import pformat
-from itertools import chain
 from time import time
 from unittest import skipUnless
 from collections import defaultdict
@@ -61,10 +60,7 @@ class TestOverlay(DispersyTestFunc):
                     now = time()
 
                     # count -everyone- that is active (i.e. walk or stumble)
-                    active_canidates = [candidate
-                                        for candidate
-                                        in self._candidates.itervalues()
-                                        if candidate.is_active(self, now)]
+                    active_canidates = list(self.dispersy_yield_verified_candidates())
                     if len(active_canidates) > 20:
                         logger.debug("there are %d active non-bootstrap candidates available, prematurely quitting fast walker", len(active_canidates))
                         break
@@ -72,7 +68,7 @@ class TestOverlay(DispersyTestFunc):
                     # request bootstrap peers that are eligible
                     eligible_candidates = [candidate
                                            for candidate
-                                           in chain(self._dispersy.bootstrap_candidates)
+                                           in self._dispersy.bootstrap_candidates
                                            if candidate.is_eligible_for_walk(now)]
                     for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
                         logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)

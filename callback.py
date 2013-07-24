@@ -159,13 +159,12 @@ class Callback(object):
         """
         Attach a new exception notifier.
 
-        FUNC will be called whenever a registered call raises an exception.  The first parameter
-        will be the raised exception, the second parameter will be a boolean indicating if the
-        exception was fatal.
+        FUNC will be called whenever a registered call raises an exception.  The first parameter will be the raised
+        exception, the second parameter will be a boolean indicating if the exception was fatal.  FUNC should return a
+        boolean, if any of the attached exception handlers returns True the exception is considered fatal.
 
-        Fatal exceptions are SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError.  These
-        exceptions will cause the Callback thread to exit.  The Callback thread will continue to
-        function on all other exceptions.
+        Fatal exceptions are SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError.  These exceptions will
+        cause the Callback thread to exit.  The Callback thread will continue to function on all other exceptions.
         """
         assert callable(func), "handler must be callable"
         with self._lock:
@@ -651,18 +650,18 @@ class Callback(object):
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
 
                 except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
-                    logger.exception("attempting proper shutdown")
                     with lock:
                         self._state = "STATE_EXCEPTION"
                         self._exception = exception
                         self._exception_traceback = exc_info()[2]
                     self._call_exception_handlers(exception, True)
+                    logger.exception("attempting proper shutdown")
 
                 except Exception as exception:
                     if callback:
                         with lock:
                             heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-                    logger.exception("keep running regardless of exception")
+
                     if self._call_exception_handlers(exception, False):
                         # one or more of the exception handlers returned True, we will consider this
                         # exception to be fatal and quit
@@ -671,6 +670,8 @@ class Callback(object):
                             self._state = "STATE_EXCEPTION"
                             self._exception = exception
                             self._exception_traceback = exc_info()[2]
+                    else:
+                        logger.exception("keep running regardless of exception")
 
                 if __debug__:
                     debug_call_duration = time() - debug_call_start
@@ -714,14 +715,28 @@ class Callback(object):
                 except Exception as exception:
                     logger.exception("%s", exception)
 
+                if callback:
+                    logger.debug("inform callback for %s", call)
+                    try:
+                        callback[0](RuntimeError("Early shutdown"), *callback[1], **callback[2])
+                    except Exception as exception:
+                        logger.exception("%s", exception)
+
         # send GeneratorExit exceptions to scheduled generators
         logger.debug("there are %d scheduled tasks", len(requests))
         while requests:
-            _, _, _, call, _ = heappop(requests)
+            _, _, _, call, callback = heappop(requests)
             if isinstance(call, GeneratorType):
                 logger.debug("raise Shutdown in %s", call)
                 try:
                     call.close()
+                except Exception as exception:
+                    logger.exception("%s", exception)
+
+            if callback:
+                logger.debug("inform callback for %s", call)
+                try:
+                    callback[0](RuntimeError("Early shutdown"), *callback[1], **callback[2])
                 except Exception as exception:
                     logger.exception("%s", exception)
 

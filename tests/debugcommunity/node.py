@@ -677,7 +677,7 @@ class DebugNode(object):
         assert isinstance(policy, (PublicResolution.Implementation, LinearResolution.Implementation))
         return self._create_text(u"dynamic-resolution-text", text, global_time, resolution=(policy,))
 
-    def create_sequence_test(self, text, global_time, sequence_number):
+    def create_sequence_text(self, text, global_time, sequence_number):
         """
         Returns a new sequence-text message.
         """

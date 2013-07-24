@@ -7,10 +7,10 @@ import unittest
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestClassification(DispersyTestClass):
+class TestClassification(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_reclassify_unloaded_community(self):

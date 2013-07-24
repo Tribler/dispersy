@@ -6,10 +6,10 @@ from time import time
 from ..message import Message, BatchConfiguration
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestClass, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestBatch(DispersyTestClass):
+class TestBatch(DispersyTestFunc):
 
     def __init__(self, *args, **kargs):
         super(TestBatch, self).__init__(*args, **kargs)
