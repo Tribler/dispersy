@@ -403,7 +403,6 @@ class TestOutgoingMissingSequence(DispersyTestFunc):
         self.assertEqual(len(requests), 1)
         _, request = requests[0]
 
-        print "Got request", request.payload.missing_low, "-", request.payload.missing_high
         self.assertEqual(request.payload.member.public_key, node.my_member.public_key)
         self.assertEqual(request.payload.message.name, u"sequence-text")
         self.assertEqual(request.payload.missing_low, 1)
@@ -425,7 +424,6 @@ class TestOutgoingMissingSequence(DispersyTestFunc):
         self.assertEqual(len(requests), 1)
         _, request = requests[0]
 
-        print "Got request", request.payload.missing_low, "-", request.payload.missing_high
         self.assertEqual(request.payload.member.public_key, node.my_member.public_key)
         self.assertEqual(request.payload.message.name, u"sequence-text")
         self.assertEqual(request.payload.missing_low, 6)
