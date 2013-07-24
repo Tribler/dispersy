@@ -30,6 +30,7 @@ from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning
 from .member import DummyMember, Member
+from .requestcache import RequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
@@ -327,6 +328,9 @@ class Community(object):
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
             logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
 
+        # assigns temporary cache objects to unique identifiers
+        self._request_cache = RequestCache(self._dispersy.callback)
+
         # initial timeline.  the timeline will keep track of member permissions
         self._timeline = Timeline(self)
         self._initialize_timeline()
@@ -353,6 +357,14 @@ class Community(object):
         Dictionary containing sock_addr:Candidate pairs.
         """
         return self._candidates
+
+    @property
+    def request_cache(self):
+        """
+        The request cache instance responsible for maintaining identifiers and timeouts for outstanding requests.
+        @rtype: RequestCache
+        """
+        return self._request_cache
 
     @property
     def statistics(self):
@@ -1744,6 +1756,21 @@ class Community(object):
                 del self._candidates[other.sock_addr]
                 self.add_candidate(candidate)
                 self._dispersy.wan_address_unvote(other)
+
+    def handle_missing_messages(self, messages, *classes):
+        if __debug__:
+            from .message import Message
+            from .dispersy import MissingSomethingCache
+            assert all(isinstance(message, Message.Implementation) for message in messages), [type(message) for message in messages]
+            assert all(issubclass(cls, MissingSomethingCache) for cls in classes), [type(cls) for cls in classes]
+
+        for message in messages:
+            for cls in classes:
+                cache = self._request_cache.pop(cls.create_identifier_from_message(message))
+                if cache:
+                    logger.debug("found request cache for %s", message)
+                    for response_func, response_args in cache.callbacks:
+                        response_func(message, *response_args)
 
     def _periodically_cleanup_candidates(self):
         """
