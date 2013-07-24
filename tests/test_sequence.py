@@ -30,7 +30,7 @@ class TestSequence(DispersyTestFunc):
         msgs = defaultdict(dict)
         for i in xrange(1, 10):
             for j in xrange(1, 10):
-                msgs[i][j] = node.create_sequence_test("M@%d#%d" % (i, j), i, j)
+                msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
 
         community.delete_messages(meta.name)
         # SELF must accept M@6#1
@@ -342,17 +342,6 @@ class TestSequence(DispersyTestFunc):
 
         super(TestSequence, self).setUp()
         self._dispersy.callback.call(on_dispersy_thread)
-
-    def tearDown(self):
-        """
-        Cleanup.
-        """
-        def on_dispersy_thread():
-            self._community.create_dispersy_destroy_community(u"hard-kill")
-            self._dispersy.get_community(self._community.cid).unload_community()
-
-        self._dispersy.callback.call(on_dispersy_thread)
-        super(TestSequence, self).tearDown()
 
     @call_on_dispersy_thread
     def requests(self, node_count, responses, *pairs):

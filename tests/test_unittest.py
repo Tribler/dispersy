@@ -12,12 +12,6 @@ def failure_to_success(exception_class, exception_message):
                 if isinstance(exception, exception_class) and exception.message == exception_message:
                     return
 
-                # if isinstance(exception, KeyError) and exception.message == "This must fail":
-                #     return
-
-                # if isinstance(exception, AssertionError) and exception.message == "This must fail":
-                #     return
-
                 # not one of the pre-programmed exceptions, test should indicate failure
                 raise
 
