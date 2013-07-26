@@ -1923,8 +1923,9 @@ class HardKilledCommunity(Community):
                 self.add_conversion(BinaryConversion(self, packet[1]))
 
             # try again
-            return super(HardKilledCommunity, self).get_conversion(packet)
+            return super(HardKilledCommunity, self).get_conversion_for_packet(packet)
 
     def dispersy_on_introduction_request(self, messages):
-        self._dispersy._statistics.dict_inc(self._statistics.outgoing, u"-destroy-community")
-        self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
+        if self._destroy_community_packet:
+            self._dispersy.statistics.dict_inc(self._dispersy.statistics.outgoing, u"-destroy-community")
+            self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])

@@ -2,9 +2,12 @@
 Run Dispersy in standalone mode.
 """
 
-import logging
 import logging.config
-logging.config.fileConfig("logger.conf")
+try:
+    logging.config.fileConfig("logger.conf")
+except:
+    print "Unable to load logging config from 'logger.conf' file."
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # optparse is deprecated since python 2.7
