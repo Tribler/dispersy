@@ -156,7 +156,7 @@ class TrackerCommunity(Community):
                 self.add_conversion(BinaryConversion(self, packet[1]))
 
             # try again
-            return super(TrackerCommunity, self).get_conversion(packet)
+            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
     def dispersy_cleanup_community(self, message):
         # since the trackers use in-memory databases, we need to store the destroy-community
