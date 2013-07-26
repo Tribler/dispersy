@@ -19,7 +19,12 @@ Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DEST
 whenever a introduction request is received for a destroyed overlay.
 """
 
-import logging
+import logging.config
+try:
+    logging.config.fileConfig("logger.conf")
+except:
+    print "Unable to load logging config from 'logger.conf' file."
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
