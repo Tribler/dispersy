@@ -293,10 +293,10 @@ class Dispersy(object):
         # our LAN and WAN addresses
         self._lan_address = (self._guess_lan_address() or "0.0.0.0", 0)
         self._wan_address = ("0.0.0.0", 0)
-        self._wan_address_votes = {}
-        if __debug__:
-            logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
-            logger.debug("my WAN address is %s:%d", self._wan_address[0], self._wan_address[1])
+        self._wan_address_votes = defaultdict(set)
+        logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
+        logger.debug("my WAN address is %s:%d", self._wan_address[0], self._wan_address[1])
+        logger.debug("my connection type is %s", self._connection_type)
 
         # bootstrap peers
         bootstrap_candidates = get_bootstrap_candidates(self)
@@ -406,21 +406,21 @@ class Dispersy(object):
         This method is called immediately after endpoint.start finishes.
         """
         host, port = self._endpoint.get_address()
-        logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
+        logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
         self._lan_address = (self._lan_address[0], port)
 
         # at this point we do not yet have a WAN address, set it to the LAN address to ensure we
         # have something
         assert self._wan_address == ("0.0.0.0", 0)
-        logger.warn("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
+        logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
         self._wan_address = self._lan_address
 
         if not self.is_valid_address(self._lan_address):
-            logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
+            logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
             self._lan_address = (host, self._lan_address[1])
 
             if not self.is_valid_address(self._lan_address):
-                logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
+                logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
                 self._lan_address = (self._wan_address[0], self._lan_address[1])
 
         # our address may not be a bootstrap address
@@ -1016,6 +1016,31 @@ class Dispersy(object):
         assert isinstance(address[0], str)
         assert isinstance(address[1], int)
         assert isinstance(voter, Candidate), type(voter)
+
+        def set_lan_address(address):
+            if self._lan_address == address:
+                return False
+            else:
+                logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], address[0], address[1])
+                self._lan_address = address
+                return True
+
+        def set_wan_address(address):
+            if self._wan_address == address:
+                return False
+            else:
+                logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], address[0], address[1])
+                self._wan_address = address
+                return True
+
+        def set_connection_type(connection_type):
+            if self._connection_type == connection_type:
+                return False
+            else:
+                logger.info("update connection type %s -> %s", self._connection_type, connection_type)
+                self._connection_type = connection_type
+                return True
+
         if self._wan_address[0] in (voter.wan_address[0], voter.sock_addr[0]):
             logger.debug("ignoring vote from candidate on the same LAN")
             return
@@ -1024,55 +1049,60 @@ class Dispersy(object):
             logger.debug("got invalid external vote from %s received %s:%s", voter, address[0], address[1])
             return
 
-        if __debug__:
-            debug_previous_connection_type = self._connection_type
-
         # undo previous vote
         self.wan_address_unvote(voter)
 
         # do vote
-        votes = self._wan_address_votes
-        if not address in votes:
-            votes[address] = set()
-        votes[address].add(voter.sock_addr)
+        logger.debug("add vote for %s from %s", address, voter.sock_addr)
+        self._wan_address_votes[address].add(voter.sock_addr)
+
+        # logger.info("_wan_address %s, address %s", self._wan_address, address)
+        # logger.info("len(self._wan_address_votes[address]) %d, len(self._wan_address_votes[_wan_address]) %d", len(self._wan_address_votes[address]), len(self._wan_address_votes.get(self._wan_address, ())))
+
+        #
+        # check self._lan_address and self._wan_address
+        #
 
         # change when new vote count equal or higher than old address vote count
-        if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
-            if len(votes) > 1:
-                logger.debug("not updating WAN address, suspect symmetric NAT",)
-                self._connection_type = u"symmetric-NAT"
+        if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
+                set_wan_address(address):
 
-            else:
-                # it is possible that, for some time after the WAN address changes, we will believe
-                # that the connection type is symmetric NAT.  once votes have been pruned we may
-                # find that we are no longer behind a symmetric-NAT
-                if self._connection_type == u"symmetric-NAT":
-                    self._connection_type = u"unknown"
+            # reassessing our LAN address, perhaps we are running on a roaming device
+            lan_address = (self._guess_lan_address() or "0.0.0.0", self._lan_address[1])
+            if not self.is_valid_address(lan_address):
+                lan_address = (self._wan_address[0], self._lan_address[1])
+            set_lan_address(lan_address)
 
-                logger.warn("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], address[0], address[1])
-                self._wan_address = address
+            # our address may not be a bootstrap address
+            if self._wan_address in self._bootstrap_candidates:
+                del self._bootstrap_candidates[self._wan_address]
+            if self._lan_address in self._bootstrap_candidates:
+                del self._bootstrap_candidates[self._lan_address]
 
-                if not self.is_valid_address(self._lan_address):
-                    logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
-                    self._lan_address = (self._wan_address[0], self._lan_address[1])
+            # our address may not be a candidate
+            for community in self._communities.itervalues():
+                community.candidates.pop(self._wan_address, None)
+                community.candidates.pop(self._lan_address, None)
 
-                # our address may not be a bootstrap address
-                if self._wan_address in self._bootstrap_candidates:
-                    del self._bootstrap_candidates[self._wan_address]
+                for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
+                    community.candidates.pop(candidate.sock_addr, None)
 
-                # our address may not be a candidate
-                for community in self._communities.itervalues():
-                    community.candidates.pop(self._wan_address, None)
+        #
+        # check self._connection_type
+        #
 
-                    for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
-                        community.candidates.pop(candidate.sock_addr, None)
+        if len(self._wan_address_votes) == 1 and self._lan_address == self._wan_address:
+            # external peers are reporting the same WAN address that happens to be our LAN address as well
+            set_connection_type(u"public")
 
-        if self._connection_type == u"unknown" and self._lan_address == self._wan_address:
-            self._connection_type = u"public"
+        elif len(self._wan_address_votes) > 1:
+            # external peers are reporting multiple WAN addresses (most likely the same IP with different port numbers)
+            set_connection_type(u"symmetric-NAT")
 
-        if __debug__:
-            if not debug_previous_connection_type == self._connection_type:
-                logger.warn("update connection type %s -> %s", debug_previous_connection_type, self._connection_type)
+        else:
+            # it is possible that, for some time after the WAN address changes, we will believe that the connection type
+            # is symmetric NAT.  once votes have been pruned we may find that we are no longer behind a symmetric-NAT
+            set_connection_type(u"unknown")
 
     def _is_duplicate_sync_message(self, message):
         """

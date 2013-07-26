@@ -1751,12 +1751,22 @@ class Community(object):
         """
         while True:
             yield 5 * 60.0
+            self.cleanup_candidates()
 
-            now = time()
-            for key, candidate in [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_obsolete(now)]:
-                logger.debug("removing obsolete candidate %s", candidate)
-                del self._candidates[key]
-                self._dispersy.wan_address_unvote(candidate)
+    def cleanup_candidates(self):
+        """
+        Removes all candidates that are obsolete.
+
+        Returns the number of candidates that were removed.
+        """
+        now = time()
+        obsolete_candidates = [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_obsolete(now)]
+        for key, candidate in obsolete_candidates:
+            logger.debug("removing obsolete candidate %s", candidate)
+            del self._candidates[key]
+            self._dispersy.wan_address_unvote(candidate)
+
+        return len(obsolete_candidates)
 
     def dispersy_cleanup_community(self, message):
         """
