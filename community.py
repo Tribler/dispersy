@@ -1913,7 +1913,7 @@ class HardKilledCommunity(Community):
                 self.add_conversion(BinaryConversion(self, packet[1]))
 
             # try again
-            return super(HardKilledCommunity, self).get_conversion(packet)
+            return super(HardKilledCommunity, self).get_conversion_for_packet(packet)
 
     def dispersy_on_introduction_request(self, messages):
         if self._destroy_community_packet:
