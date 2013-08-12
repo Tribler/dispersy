@@ -1,3 +1,10 @@
+# disable E0611, No name %r in module %r.  pylint is unable to correctly assess the content of hashlib
+# pylint: disable=E0611
+
+# disable E1103, %s %r has no %r member (but some types could not be inferred).  Because pylint can not correctly assess
+# the content of hashlib is can not assess its members either.
+# pylint: disable=E1103
+
 """
 This module provides the bloom filter support.
 
