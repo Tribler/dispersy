@@ -88,11 +88,11 @@ class TestBloomFilter(TestCase):
         Testing BloomFilter.clear()
         """
         bloom = BloomFilter(128 * 8, 0.25)
-        self.assertEqual(bloom.get_bits_checked(), 0)
+        self.assertEqual(bloom.bits_checked, 0)
         bloom.add_keys(str(i) for i in xrange(100))
-        self.assertNotEqual(bloom.get_bits_checked(), 0)
+        self.assertNotEqual(bloom.bits_checked, 0)
         bloom.clear()
-        self.assertEqual(bloom.get_bits_checked(), 0)
+        self.assertEqual(bloom.bits_checked, 0)
 
     def test_false_positives(self):
         """
