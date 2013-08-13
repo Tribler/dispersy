@@ -6,7 +6,6 @@ The crypto module provides a layer between Dispersy and low level crypographic f
 @contact: dispersy@frayja.com
 """
 
-from hashlib import sha1
 from math import ceil
 from M2Crypto import EC, BIO
 from struct import Struct
