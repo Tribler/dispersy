@@ -1,7 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-import socket
+from random import random
 
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -36,20 +36,11 @@ class TestSync(DispersyTestFunc):
                 node.drop_packets()
                 node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, 110))
 
-                received = []
-                while True:
-                    try:
-                        _, message = node.receive_message(message_names=[u"full-sync-text"])
-                        received.append(message.distribution.global_time)
-                    except socket.error:
-                        break
+                responses = node.receive_messages(message_names=[u"full-sync-text"])
+                response_times = [message.distribution.global_time for _, message in responses]
 
-                self.assertEqual(sorted(global_times), sorted(received))
+                self.assertEqual(sorted(global_times), sorted(response_times))
                 logger.debug("%%%d+%d: %s -> OK", modulo, offset, sorted(global_times))
-
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_in_order(self):
@@ -78,10 +69,6 @@ class TestSync(DispersyTestFunc):
             _, message = node.receive_message(message_names=[u"ASC-text"])
             self.assertEqual(message.distribution.global_time, global_time)
 
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
     def test_out_order(self):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
@@ -108,10 +95,6 @@ class TestSync(DispersyTestFunc):
         for global_time in reversed(global_times):
             _, message = node.receive_message(message_names=[u"DESC-text"])
             self.assertEqual(message.distribution.global_time, global_time)
-
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_mixed_order(self):
@@ -171,10 +154,6 @@ class TestSync(DispersyTestFunc):
             received_in_times = received_times[len(out_order_times):len(in_order_times) + len(out_order_times)]
             self.assertEqual(in_order_times, received_in_times)
 
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
     def test_last_1(self):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
@@ -221,10 +200,6 @@ class TestSync(DispersyTestFunc):
         node.give_message(node.create_last_1_test("should be accepted (3)", global_time))
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
-
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_last_9(self):
@@ -292,10 +267,6 @@ class TestSync(DispersyTestFunc):
             self.assertEqual(str(packet), message.packet)
             times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
             self.assertEqual(sorted(times), match_times)
-
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_last_1_doublemember(self):
@@ -414,10 +385,6 @@ class TestSync(DispersyTestFunc):
         self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
         self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
 
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
     def test_last_1_doublemember_unique_member_global_time(self):
         """
@@ -454,6 +421,24 @@ class TestSync(DispersyTestFunc):
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id))]
         self.assertEqual(times, [global_time])
 
-        # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+    @call_on_dispersy_thread
+    def test_performance(self):
+        """
+        SELF creates 10k messages and NODE sends 100 sync requests.
+        """
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+        node = DebugNode(community)
+        node.init_socket()
+        node.init_my_member()
+
+        # SELF creates 10k messages
+        for i in xrange(10000):
+            community.create_full_sync_text("test performance data #%d" % i, forward=False)
+
+        # NODE creates 100 sync requests
+        for i in xrange(100):
+            m = int(random() * 10) + 1
+            o = min(m - 1, int(random() * 10))
+            sync = (1, 0, m, o, [])
+            node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42, 10))
+            node.drop_packets()
