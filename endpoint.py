@@ -1,6 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from abc import ABCMeta, abstractmethod
 from itertools import product
 from select import select
 from time import time
@@ -20,6 +21,7 @@ TUNNEL_PREFIX = "ffffffff".decode("HEX")
 
 
 class Endpoint(object):
+    __metaclass__ = ABCMeta
 
     def __init__(self):
         self._dispersy = None
@@ -50,11 +52,13 @@ class Endpoint(object):
         self._total_send = 0
         self._cur_sendqueue = 0
 
+    @abstractmethod
     def get_address(self):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def send(self, candidates, packets):
-        raise NotImplementedError()
+        pass
 
     def open(self, dispersy):
         self._dispersy = dispersy

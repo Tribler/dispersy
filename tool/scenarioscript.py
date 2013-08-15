@@ -13,6 +13,7 @@ except ImportError:
     Process = cpu_percent = None
     print "Unable to import from psutil.  Process statistics are disabled"
 
+from abc import ABCMeta, abstractproperty
 from hashlib import sha1
 from os import getpid, uname, path
 from random import random, uniform
@@ -28,6 +29,8 @@ from .ldecoder import Parser, NextFile
 
 
 class ScenarioScript(ScriptBase):
+
+    __metaclass__ = ABCMeta
 
     def __init__(self, *args, **kargs):
         super(ScenarioScript, self).__init__(*args, **kargs)
@@ -63,18 +66,18 @@ class ScenarioScript(ScriptBase):
     def my_member_security(self):
         return u"low"
 
-    @property
+    @abstractproperty
     def master_member_public_key(self):
-        raise NotImplementedError("must return an experiment specific master member public key")
+        pass
             # if False:
             # when crypto.py is disabled a public key is slightly
             # different...
             #     master_public_key = ";".join(("60", master_public_key[:60].encode("HEX"), ""))
         # return "3081a7301006072a8648ce3d020106052b81040027038192000404668ed626c6d6bf4a280cf4824c8cd31fe4c7c46767afb127129abfccdf8be3c38d4b1cb8792f66ccb603bfed395e908786049cb64bacab198ef07d49358da490fbc41f43ade33e05c9991a1bb7ef122cda5359d908514b3c935fe17a3679b6626161ca8d8d934d372dec23cc30ff576bfcd9c292f188af4142594ccc5f6376e2986e1521dc874819f7bcb7ae3ce400".decode("HEX")
 
-    @property
+    @abstractproperty
     def community_class(self):
-        raise NotImplementedError("must return an experiment community class")
+        pass
 
     @property
     def community_args(self):

@@ -1,6 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from abc import ABCMeta, abstractmethod
 from .meta import MetaObject
 
 #
@@ -13,15 +14,19 @@ class DelayPacket(Exception):
     """
     Uses an identifier to match request to response.
     """
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, msg, community):
         super(DelayPacket, self).__init__(msg)
         self._community = community
 
+    @abstractmethod
     def create_request(self, candidate, delayed):
         # create and send a request.  once the response is received the _process_delayed_packet can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
         # @return True if actual request is made
-        raise NotImplementedError()
+        pass
 
     def _process_delayed_packet(self, response, candidate, delayed):
         if response:
@@ -97,6 +102,9 @@ class DelayMessage(Exception):
     Ensure to call Dispersy.handle_missing_messages for each incoming message that may have been
     requested.
     """
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, delayed):
         if __debug__:
             from .message import Message
@@ -114,11 +122,12 @@ class DelayMessage(Exception):
         """
         return self.__class__(delayed)
 
+    @abstractmethod
     def create_request(self):
         # create and send a request.  once the response is received the _process_delayed_message can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
         # @return True if actual request is made
-        raise NotImplementedError()
+        pass
 
     def _process_delayed_message(self, response):
         if response:
