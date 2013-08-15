@@ -2275,9 +2275,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     test_bloom_filter.clear()
                     test_bloom_filter.add_keys(packets)
                     if not bloom_filter.bytes == bloom_filter.bytes:
-                        if bloom_filter.get_bits_checked() < test_bloom_filter.get_bits_checked():
-                            logger.error("%d bits in: %s", bloom_filter.get_bits_checked(), bloom_filter.bytes.encode("HEX"))
-                            logger.error("%d bits in: %s", test_bloom_filter.get_bits_checked(), test_bloom_filter.bytes.encode("HEX"))
+                        if bloom_filter.bits_checked < test_bloom_filter.bits_checked:
+                            logger.error("%d bits in: %s", bloom_filter.bits_checked, bloom_filter.bytes.encode("HEX"))
+                            logger.error("%d bits in: %s", test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
         if destination.get_destination_address(self._wan_address) != destination.sock_addr:
