@@ -489,6 +489,18 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(message.authentication.member, message.distribution.global_time, message))
 
+    def create_dispersy_missing_identity(self, dummy_member, global_time, destination_candidate):
+        """
+        Returns a new dispersy-missing-identity message.
+        """
+        assert isinstance(dummy_member, Member), type(dummy_member)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(destination_candidate, Candidate), type(destination_candidate)
+        meta = self._community.get_meta_message(u"dispersy-missing-identity")
+        return meta.impl(distribution=(global_time,),
+                         destination=(destination_candidate,),
+                         payload=(dummy_member.mid,))
+
     def create_dispersy_missing_sequence(self, missing_member, missing_message, missing_sequence_low, missing_sequence_high, global_time, destination_candidate):
         """
         Returns a new dispersy-missing-sequence message.
@@ -582,11 +594,11 @@ class DebugNode(object):
                          payload=(destination.sock_addr, source_lan, source_wan, advice, connection_type, sync, identifier))
 
     def _create_text(self, message_name, text, global_time, resolution=(), destination=()):
-        assert isinstance(message_name, unicode)
-        assert isinstance(text, str)
-        assert isinstance(global_time, (int, long))
-        assert isinstance(resolution, tuple)
-        assert isinstance(destination, tuple)
+        assert isinstance(message_name, unicode), type(message_name)
+        assert isinstance(text, str), type(text)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(resolution, tuple), type(resolution)
+        assert isinstance(destination, tuple), type(destination)
         meta = self._community.get_meta_message(message_name)
         return meta.impl(authentication=(self._my_member,),
                          resolution=resolution,
