@@ -10,6 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import sys
+from abc import ABCMeta, abstractmethod
 from sqlite3 import Connection, Error
 
 from .decorator import attach_runtime_statistics
@@ -57,6 +58,8 @@ class IgnoreCommits(Exception):
 
 
 class Database(object):
+
+    __metaclass__ = ABCMeta
 
     def __init__(self, file_path):
         """
@@ -399,6 +402,7 @@ class Database(object):
 
             return self._connection.commit()
 
+    @abstractmethod
     def check_database(self, database_version):
         """
         Check the database and upgrade if required.
@@ -415,7 +419,7 @@ class Database(object):
          value reverts to u'0' when the table could not be accessed.
         @type database_version: unicode
         """
-        raise NotImplementedError()
+        pass
 
     def attach_commit_callback(self, func):
         assert not func in self._commit_callbacks

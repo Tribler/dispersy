@@ -10,6 +10,7 @@ creator of this message.
 @contact: dispersy@frayja.com
 """
 
+from abc import ABCMeta, abstractproperty
 from .meta import MetaObject
 
 
@@ -25,13 +26,15 @@ class Authentication(MetaObject):
         The implementation of an Authentication policy.
         """
 
-        @property
+        __metaclass__ = ABCMeta
+
+        @abstractproperty
         def is_signed(self):
             """
             True when the message is (correctly) signed, False otherwise.
             @rtype: bool
             """
-            raise NotImplementedError()
+            pass
 
         def setup(self, message_impl):
             if __debug__:

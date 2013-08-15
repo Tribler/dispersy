@@ -1,5 +1,3 @@
-from .meta import MetaObject
-
 """
 Each Privilege can be distributed, usualy through the transfer of a message, in different ways.
 These ways are defined by DistributionMeta object that is associated to the Privilege.
@@ -16,10 +14,15 @@ LastSyncDistribution object holds additional information for this specific messa
 global_time.
 """
 
+from abc import ABCMeta, abstractmethod
+from .meta import MetaObject
+
 
 class Pruning(MetaObject):
 
     class Implementation(MetaObject.Implementation):
+
+        __metaclass__ = ABCMeta
 
         def __init__(self, meta, distribution):
             assert isinstance(distribution, SyncDistribution.Implementation), type(distribution)
@@ -35,14 +38,17 @@ class Pruning(MetaObject):
                 return "pruned"
             raise RuntimeError("Unable to obtain pruning state")
 
+        @abstractmethod
         def is_active(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
+        @abstractmethod
         def is_inactive(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
+        @abstractmethod
         def is_pruned(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
 
 class NoPruning(Pruning):

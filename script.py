@@ -1,6 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from abc import ABCMeta, abstractmethod
 from time import time
 
 from .tests.debugcommunity.community import DebugCommunity
@@ -14,6 +15,8 @@ def assert_(value, *args):
 
 
 class ScriptBase(object):
+
+    __metaclass__ = ABCMeta
 
     def __init__(self, dispersy, **kargs):
         assert isinstance(dispersy, Dispersy), type(dispersy)
@@ -57,8 +60,9 @@ class ScriptBase(object):
         logger.warning("depricated: use add_testcase instead")
         return self.add_testcase(run, args)
 
+    @abstractmethod
     def run(self):
-        raise NotImplementedError("Must implement a generator or use self.add_testcase(...)")
+        pass
 
     @property
     def enable_wait_for_wan_address(self):
@@ -190,11 +194,13 @@ class ScenarioScriptBase(ScriptBase):
     def log_desync(self, desync):
         log(self._logfile, "sleep", desync=desync, stepcount=self._stepcount)
 
+    @abstractmethod
     def join_community(self, my_member):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def execute_scenario_cmds(self, commands):
-        raise NotImplementedError()
+        pass
 
     def run(self):
         self.add_testcase(self._run)

@@ -11,7 +11,7 @@ Community instance.
 import logging
 logger = logging.getLogger(__name__)
 
-from hashlib import sha1
+from abc import ABCMeta, abstractmethod
 from itertools import islice
 from math import ceil
 from random import random, Random, randint, shuffle
@@ -49,6 +49,8 @@ class SyncCache(object):
 
 
 class Community(object):
+    __metaclass__ = ABCMeta
+
     # Probability steps to get a sync skipped if the previous one was empty
     _SKIP_CURVE_STEPS = [0, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     _SKIP_STEPS = len(_SKIP_CURVE_STEPS)
@@ -1844,6 +1846,7 @@ class Community(object):
         """
         return self._meta_messages.values()
 
+    @abstractmethod
     def initiate_meta_messages(self):
         """
         Create the meta messages for one community instance.
@@ -1857,8 +1860,9 @@ class Community(object):
         @return: The new meta messages.
         @rtype: [Message]
         """
-        raise NotImplementedError(self)
+        pass
 
+    @abstractmethod
     def initiate_conversions(self):
         """
         Create the Conversion instances for this community instance.
@@ -1871,7 +1875,7 @@ class Community(object):
 
         @rtype: [Conversion]
         """
-        raise NotImplementedError(self)
+        pass
 
 
 class HardKilledCommunity(Community):
