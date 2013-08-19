@@ -341,6 +341,9 @@ wait
 #+END_SRC
 
 With the above shell script we can run multiple peers at the same
-time.  Once all expected (i.e. 10 * 100) messages have been receive,
-the peers will stay online for little while to distribute messages to
-other peers.
+time.  Each peer will attempt to bind port =10000= (or the next one
+that is available) and will create =250= new messages.  Finally they
+will form an overlay (finding each other through the Dispersy
+bootstrap peers) and wait until they have received the expected =2500=
+messages.  The peers will stay online for little while to distribute
+messages to other peers before finishing and ending the emulation.
