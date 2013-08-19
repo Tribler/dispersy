@@ -1058,7 +1058,7 @@ class Community(object):
         The maximum number of bytes to send back per received dispersy-sync message.
         @rtype: int
         """
-        return 5 * 1025
+        return 5 * 1024
 
     @property
     def dispersy_missing_sequence_response_limit(self):
@@ -1066,7 +1066,7 @@ class Community(object):
         The maximum number of bytes to send back per received dispersy-missing-sequence message.
         @rtype: (int, int)
         """
-        return 10 * 1025
+        return 10 * 1024
 
     @property
     def dispersy_acceptable_global_time_range(self):
