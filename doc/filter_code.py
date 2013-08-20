@@ -18,6 +18,7 @@ def extract(begin, end):
 
 def main():
     mapping = {"python":("#+BEGIN_SRC python", "#+END_SRC"),
+               "bash":("#+BEGIN_SRC bash", "#+END_SRC"),
                "sh":("#+BEGIN_SRC sh", "#+END_SRC")}
 
     if len(sys.argv) >= 2 and sys.argv[1] in mapping:
@@ -25,7 +26,7 @@ def main():
         extract(begin, end)
 
     else:
-        print "Usage:", sys.argv[0], "[python|sh]"
+        print "Usage:", sys.argv[0], "[python|bash|sh]"
 
 if __name__ == "__main__":
     main()
