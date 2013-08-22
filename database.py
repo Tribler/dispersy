@@ -96,6 +96,7 @@ class Database(object):
         self._connect()
         self._initial_statements()
         self._prepare_version()
+        return True
 
     def close(self, commit=True):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
@@ -107,6 +108,7 @@ class Database(object):
         self._cursor = None
         self._connection.close()
         self._connection = None
+        return True
 
     def _connect(self):
         self._connection = Connection(self._file_path)

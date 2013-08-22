@@ -30,8 +30,10 @@ class DispersyTestFunc(TestCase):
     def on_callback_exception(self, exception, is_fatal):
         logger.exception("%s", exception)
 
-        # properly shutdown Dispersy
-        self._dispersy.stop()
+        # properly shutdown Dispersy, note that it will always return False since
+        # on_callback_exception is running on the callback thread making it impossible to have the
+        # thread closed while this call is still being performed
+        self.assertFalse(self._dispersy.stop())
         self._dispersy = None
 
         # consider every exception a fatal error
@@ -47,6 +49,7 @@ class DispersyTestFunc(TestCase):
         working_directory = u"."
         database_filename = u":memory:"
 
+        self._dispersy_stop_success = None
         self._dispersy = Dispersy(callback, endpoint, working_directory, database_filename)
         self._dispersy.start()
         self._my_member = callback.call(self._dispersy.get_new_member, (u"low",))
@@ -56,6 +59,6 @@ class DispersyTestFunc(TestCase):
         logger.debug("tearDown")
 
         if self._dispersy:
-            self._dispersy.stop()
+            self.assertTrue(self._dispersy.stop())
             self._dispersy = None
         self._my_member = None
