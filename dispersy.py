@@ -4413,6 +4413,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         2. closes endpoint
         3. closes database
         4. stops callback
+
+        Returns True when all above steps were successfully completed, otherwise False is returned.
+        Note that attempts will be made to process each step, even if one or more steps fail.  For
+        example, when 'close endpoint' reports a failure the databases and callback will still be
+        closed and stopped.
         """
         assert self._callback.is_running, "Must be called before the callback.stop()"
         assert isinstance(timeout, float), type(timeout)
@@ -4437,12 +4442,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
 
+            return True
+
         def stop():
             # unload all communities
-            ordered_unload_communities()
+            results.append(ordered_unload_communities())
+            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
 
             # stop endpoint
-            self._endpoint.close(timeout)
+            results.append(self._endpoint.close(timeout))
+            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
             while True:
@@ -4462,11 +4471,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._batch_cache.clear()
 
                 # unload all communities
-                ordered_unload_communities()
+                results.append(ordered_unload_communities())
+                assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
 
             # stop the database
-            self._database.close()
-
+            results.append(self._database.close())
+            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
 
         # output statistics before we stop
         if logger.isEnabledFor(logging.DEBUG):
@@ -4474,10 +4484,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
 
         logger.info("stopping the Dispersy core...")
+        results = []
         self._callback.call(stop, priority= -512)
-        self._callback.stop(timeout)
-        logger.info("Dispersy core stopped")
-        return True
+        results.append(self._callback.stop(timeout))
+        assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
+        logger.info("Dispersy core stopped %s", results)
+        return all(results)
 
     def _candidate_walker(self):
         """
