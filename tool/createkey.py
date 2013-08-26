@@ -15,7 +15,11 @@ import time
 from hashlib import sha1
 
 from M2Crypto import EC
-from ..crypto import _CURVES, ec_get_curves, ec_generate_key, ec_to_public_pem, ec_to_private_pem, \
+# From: http://docs.python.org/2/tutorial/modules.html#intra-package-references
+# Note that both explicit and implicit relative imports are based on the name of the current
+# module. Since the name of the main module is always "__main__", modules intended for use as the
+# main module of a Python application should always use absolute imports.
+from dispersy.crypto import _CURVES, ec_get_curves, ec_generate_key, ec_to_public_pem, ec_to_private_pem, \
     ec_to_public_bin, ec_to_private_bin, ec_signature_length
 
 def ec_name(curve):
