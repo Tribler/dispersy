@@ -432,8 +432,9 @@ class TestSync(DispersyTestFunc):
         node.init_my_member()
 
         # SELF creates 10k messages
-        for i in xrange(10000):
-            community.create_full_sync_text("test performance data #%d" % i, forward=False)
+        with self._dispersy.database:
+            for i in xrange(10000):
+                community.create_full_sync_text("test performance data #%d" % i, forward=False)
 
         # NODE creates 100 sync requests
         for i in xrange(100):
