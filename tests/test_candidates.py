@@ -341,7 +341,8 @@ class TestCandidates(DispersyTestFunc):
                 address = ("127.0.0.1", port)
                 tunnel = "t" in flags
                 yield community.create_candidate(address, tunnel, address, address, u"unknown")
-        return list(generator())
+        with community.dispersy.database:
+            return list(generator())
 
     @staticmethod
     def set_timestamps(candidates, all_flags):
