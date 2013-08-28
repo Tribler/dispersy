@@ -258,7 +258,7 @@ class ScenarioScript(ScriptBase):
                 elif selection == "divided-equally":
                     count_total, = source_database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?",
                                                            (meta.database_id,)).next()
-                    limit = int(count_total / self._kargs["peercount"])
+                    limit = int(count_total / int(self._kargs["peercount"]))
                     offset = limit * int(self._kargs["peernumber"])
                     packets = [str(packet)
                                for packet,
