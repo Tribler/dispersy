@@ -25,6 +25,7 @@ from shutil import copyfile
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersydatabase import DispersyDatabase
 from ..script import ScriptBase
+from ..tests.debugcommunity.node import DebugNode
 from .ldecoder import Parser, NextFile
 
 
@@ -224,42 +225,60 @@ class ScenarioScript(ScriptBase):
         except KeyError:
             return None
 
-    def scenario_start(self, filepath=""):
+    def scenario_start(self, filepath="", *select_methods):
         if self._my_member or self._master_member:
             raise RuntimeError("scenario_start must be called only once")
         if self._is_joined:
             raise RuntimeError("scenario_start must be called BEFORE scenario_churn")
 
+        ec = ec_generate_key(self.my_member_security)
+        self._my_member = self._dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        self._master_member = self._dispersy.get_member(self.master_member_public_key)
+
         if filepath:
-            # clone the database from filepath instead of using a new one
-            origional_database_filename = path.join(self._kargs["localcodedir"], filepath)
-            database_filename = self._dispersy.database.file_path
-            self.log("scenario-start-clone", source=origional_database_filename, destination=database_filename)
+            source_database_filename = path.join(self._kargs["localcodedir"], filepath)
+            self.log("scenario-start-copy", state="load", source=source_database_filename)
+            community = self.scenario_churn("online")
+            assert community
 
-            # HACK: close the old database, copy the original database file, and open the new file
-            self._dispersy._database.close()
-            self._dispersy._database = None
-            copyfile(origional_database_filename, database_filename)
-            self._dispersy._database = DispersyDatabase(database_filename)
+            # read all packets from the database
+            source_database = DispersyDatabase(source_database_filename)
+            source_database.open()
 
-            ec = ec_generate_key(self.my_member_security)
-            self._my_member = self._dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-            self._master_member = self._dispersy.get_member(self.master_member_public_key)
-            self._is_joined = True
+            for select_method in select_methods:
+                message_name, selection = select_method.split(":")
+                meta = community.get_meta_message(unicode(message_name))
 
-            self._dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ? AND classification = ?",
-                                            (self._my_member.database_id, self._master_member.database_id, self.community_class.get_classification()))
-            assert self._dispersy.database.changes == 1
-            community = self.community_class.load_community(self._dispersy, self._master_member, *self.community_args, **self.community_kargs)
-            community.auto_load = False
-            community.create_dispersy_identity()
-            community.unload_community()
-            self.log("scenario-start-clone-complete")
+                if selection == "all":
+                    packets = [str(packet)
+                               for packet,
+                               in source_database.execute(u"SELECT packet FROM sync WHERE meta_message = ? ORDER BY global_time",
+                                                          (meta.database_id,))]
 
-        else:
-            ec = ec_generate_key(self.my_member_security)
-            self._my_member = self._dispersy.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-            self._master_member = self._dispersy.get_member(self.master_member_public_key)
+                elif selection == "divided-equally":
+                    count_total, = source_database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?",
+                                                           (meta.database_id,)).next()
+                    limit = int(count_total / self._kargs["peercount"])
+                    offset = limit * int(self._kargs["peernumber"])
+                    packets = [str(packet)
+                               for packet,
+                               in source_database.execute(u"SELECT packet FROM sync WHERE meta_message = ? ORDER BY global_time LIMIT ? OFFSET ?",
+                                                          (meta.database_id, limit, offset))]
+
+                else:
+                    raise RuntimeError("unknown select_method \"%s\"" % select_method)
+
+            source_database.close()
+
+            # process all packets
+            self.log("scenario-start-copy", state="inject", count=len(packets))
+            node = DebugNode(community)
+            node.init_socket()
+            node.init_my_member(candidate=False)
+            node.give_packets(packets)
+
+            self.scenario_churn("offline")
+            self.log("scenario-start-copy", state="done")
 
         self.log("scenario-start", my_member=self._my_member.mid, master_member=self._master_member.mid, classification=self.community_class.get_classification())
 
@@ -309,6 +328,8 @@ class ScenarioScript(ScriptBase):
 
         else:
             raise ValueError("state must be either 'online' or 'offline'")
+
+        return community
 
 if poisson:
     class ScenarioPoisson(object):
@@ -422,9 +443,15 @@ class ScenarioParser1(Parser):
         self.peer_id = peernumber
         self.cur.execute(u"INSERT INTO peer (id, hostname) VALUES (?, ?)", (peernumber, hostname))
 
-    def scenario_start(self, timestamp, name, my_member, master_member, classification):
+    def scenario_start_helper(self, timestamp, name, my_member, master_member, classification):
         self.cur.execute(u"UPDATE peer SET mid = ? WHERE id = ?", (buffer(my_member), self.peer_id))
         raise NextFile()
+
+    def scenario_start(self, *args, **kargs):
+        try:
+            return self.scenario_start_helper(*args, **kargs)
+        except TypeError:
+            pass
 
     def parse_directory(self, *args, **kargs):
         try:
@@ -502,8 +529,14 @@ class ScenarioParser2(Parser):
         self.peer_id = peernumber
         self.bandwidth_timestamp = timestamp
 
-    def scenario_start(self, timestamp, _, my_member, master_member, classification):
+    def scenario_start_helper(self, timestamp, _, my_member, master_member, classification):
         self.mid = my_member
+
+    def scenario_start(self, *args, **kargs):
+        try:
+            return self.scenario_start_helper(*args, **kargs)
+        except TypeError:
+            pass
 
     def scenario_end(self, timestamp, _):
         if self.online_timestamp:

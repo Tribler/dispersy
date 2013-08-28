@@ -2281,7 +2281,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
         if destination.get_destination_address(self._wan_address) != destination.sock_addr:
-            logger.warning("destination address, %s should (in theory) be the sock_addr %s", destination.get_destination_address(self._wan_address), destination)
+            destination_address = destination.get_destination_address(self._wan_address)
+            logger.warning("in theory the destination address %s:%d should be the sock_addr %s", destination_address[0], destination_address[1], destination)
 
         meta_request = community.get_meta_message(u"dispersy-introduction-request")
         request = meta_request.impl(authentication=(community.my_member,),
