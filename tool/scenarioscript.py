@@ -243,7 +243,7 @@ class ScenarioScript(ScriptBase):
 
             # read all packets from the database
             source_database = DispersyDatabase(source_database_filename)
-            source_database.open()
+            source_database.open(initial_statements=False, prepare_visioning=False)
 
             for select_method in select_methods:
                 message_name, selection = select_method.split(":")

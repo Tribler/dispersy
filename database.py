@@ -87,15 +87,17 @@ class Database(object):
         if __debug__:
             self._debug_thread_ident = 0
 
-    def open(self):
+    def open(self, initial_statements=True, prepare_visioning=True):
         assert self._cursor is None, "Database.open() has already been called"
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
         logger.info("open database [%s]", self._file_path)
         self._connect()
-        self._initial_statements()
-        self._prepare_version()
+        if initial_statements:
+            self._initial_statements()
+        if prepare_visioning:
+            self._prepare_version()
         return True
 
     def close(self, commit=True):
