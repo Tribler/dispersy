@@ -2407,19 +2407,40 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # process the bloom filter part of the request
         #
 
-        # obtain all available messages for this community
-        meta_messages = [(meta.distribution.priority, -meta.distribution.synchronization_direction_value, meta) for meta in community.get_meta_messages() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32]
-        meta_messages.sort(reverse=True)
-
-        sub_selects = []
-        for _, _, meta in meta_messages:
-            sub_selects.append(u"""
+        def get_sub_select(meta):
+            direction = meta.distribution.synchronization_direction
+            if direction == u"ASC":
+                return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
-   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) %% ? = 0
-   ORDER BY sync.global_time %s)""" % (meta.distribution.synchronization_direction,))
+  (SELECT sync.packet, sync.global_time FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY sync.global_time ASC)"""
 
-        sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(sub_selects), ")"))
+            if direction == u"DESC":
+                return u"""
+ SELECT * FROM
+  (SELECT sync.packet, sync.global_time FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY sync.global_time DESC)"""
+
+            if direction == u"RANDOM":
+                return u"""
+ SELECT * FROM
+  (SELECT sync.packet, sync.global_time FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY RANDOM())"""
+
+            raise RuntimeError("Unknown synchronization_direction [%d]" % direction)
+
+        # obtain all available messages for this community
+        meta_messages = sorted([meta
+                                for meta
+                                in community.get_meta_messages()
+                                if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32],
+                               key=lambda meta: meta.distribution.priority,
+                               reverse=True)
+        # build multi-part SQL statement from meta_messages
+        sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(get_sub_select(meta) for meta in meta_messages), ")"))
         logger.debug(sql)
 
         for message in messages:
@@ -2436,7 +2457,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # sub_selects, taking into account that time_low may not be below the
                 # inactive_threshold (if given)
                 sql_arguments = []
-                for _, _, meta in meta_messages:
+                for meta in meta_messages:
                     sql_arguments.extend((meta.database_id,
                                           min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 - 1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2 ** 63 - 1),
                                           min(time_high, 2 ** 63 - 1),
