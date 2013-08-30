@@ -2412,21 +2412,21 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             if direction == u"ASC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet, sync.global_time FROM sync
+  (SELECT sync.packet FROM sync
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time ASC)"""
 
             if direction == u"DESC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet, sync.global_time FROM sync
+  (SELECT sync.packet FROM sync
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time DESC)"""
 
             if direction == u"RANDOM":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet, sync.global_time FROM sync
+  (SELECT sync.packet FROM sync
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY RANDOM())"""
 
@@ -2469,8 +2469,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 generator = ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
 
                 for packet, in payload.bloom_filter.not_filter(generator):
-                    logger.debug("found missing (%d bytes) %s for %s", len(packet), sha1(packet).digest().encode("HEX"), message.candidate)
-
                     packets.append(packet)
                     byte_limit -= len(packet)
                     if byte_limit <= 0:
