@@ -275,7 +275,15 @@ class ScenarioScript(ScriptBase):
             node = DebugNode(community)
             node.init_socket()
             node.init_my_member(candidate=False)
+
+            prev_count_sync, = self._dispersy.database.execute(u"SELECT COUNT(*) FROM sync").next()
             node.give_packets(packets)
+
+            # verify that len(PACKETS) new packets are in the database
+            count_sync, = self._dispersy.database.execute(u"SELECT COUNT(*) FROM sync").next()
+            if count_sync < prev_count_sync + len(packets):
+                raise RuntimeError("INJECTION FAILED [prev:%d; current:%d; expected:%d]" %
+                                   (prev_count_sync, count_sync, prev_count_sync + len(packets)))
 
             self.scenario_churn("offline")
             self.log("scenario-start-copy", state="done")
