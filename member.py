@@ -1,9 +1,9 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from hashlib import sha1
 
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
+from .logger import get_logger
+logger = get_logger(__name__)
+
 
 if __debug__:
     from .crypto import ec_check_public_bin, ec_check_private_bin

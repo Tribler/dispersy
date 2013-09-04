@@ -1,8 +1,6 @@
 """
 A callback thread running Dispersy.
 """
-import logging
-logger = logging.getLogger(__name__)
 
 from heapq import heappush, heappop
 from thread import get_ident
@@ -12,6 +10,9 @@ from types import GeneratorType, TupleType
 from sys import exc_info
 
 from .decorator import attach_profiler
+from .logger import get_logger
+logger = get_logger(__name__)
+
 
 if __debug__:
     from atexit import register as atexit_register

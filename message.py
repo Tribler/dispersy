@@ -1,8 +1,9 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from abc import ABCMeta, abstractmethod
+
+from .logger import get_logger
 from .meta import MetaObject
+logger = get_logger(__name__)
+
 
 #
 # Exceptions

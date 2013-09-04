@@ -19,14 +19,6 @@ Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DEST
 whenever a introduction request is received for a destroyed overlay.
 """
 
-import logging.config
-try:
-    logging.config.fileConfig("logger.conf")
-except:
-    print "Unable to load logging config from 'logger.conf' file."
-logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
-
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
     # http://www.python.org/dev/peps/pep-0328/
@@ -52,8 +44,10 @@ from ..conversion import BinaryConversion
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger
 from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
+logger = get_logger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK

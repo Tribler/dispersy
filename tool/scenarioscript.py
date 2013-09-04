@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 try:
     from scipy.stats import poisson, expon
 except ImportError:
@@ -20,13 +17,14 @@ from random import random, uniform
 from re import compile as re_compile
 from sys import maxsize
 from time import time
-from shutil import copyfile
 
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersydatabase import DispersyDatabase
+from ..logger import get_logger
 from ..script import ScriptBase
 from ..tests.debugcommunity.node import DebugNode
 from .ldecoder import Parser, NextFile
+logger = get_logger(__name__)
 
 
 class ScenarioScript(ScriptBase):

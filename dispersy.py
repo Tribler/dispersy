@@ -38,11 +38,9 @@ of, the name it uses as an internal identifier, and the class that will contain 
 """
 
 import logging
-logger = logging.getLogger(__name__)
-
+import netifaces
 import os
 import sys
-import netifaces
 
 try:
     # python 2.7 only...
@@ -65,6 +63,7 @@ from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
+from .logger import get_logger
 from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
@@ -80,6 +79,7 @@ from .payload import SignatureRequestPayload, SignatureResponsePayload
 from .requestcache import Cache, RequestCache
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
+logger = get_logger(__name__)
 
 if __debug__:
     from .callback import Callback

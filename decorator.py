@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from atexit import register as atexit_register
 from cProfile import Profile
 from collections import defaultdict
@@ -9,6 +6,9 @@ from thread import get_ident
 from threading import current_thread
 from time import time
 import sys
+
+from .logger import get_logger
+logger = get_logger(__name__)
 
 
 def documentation(documented_func):

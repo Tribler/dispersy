@@ -1,12 +1,11 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from abc import ABCMeta, abstractmethod
 from time import time
 
-from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
+from .logger import get_logger
+from .tests.debugcommunity.community import DebugCommunity
 from .tool.lencoder import log, make_valid_key
+logger = get_logger(__name__)
 
 
 def assert_(value, *args):

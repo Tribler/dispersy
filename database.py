@@ -6,14 +6,14 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
-import sys
 from abc import ABCMeta, abstractmethod
 from sqlite3 import Connection, Error
+import logging
+import sys
 
 from .decorator import attach_runtime_statistics
+from .logger import get_logger
+logger = get_logger(__name__)
 
 if __debug__:
     import thread

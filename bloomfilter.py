@@ -22,13 +22,13 @@ Ippolito <bob@redivi.com>.  Simplified, and optimized to use just python code.
 @contact: dispersy@frayja.com
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
 from hashlib import sha1, sha256, sha384, sha512, md5
 from math import ceil, log
 from struct import Struct
 from binascii import hexlify, unhexlify
+
+from .logger import get_logger
+logger = get_logger(__name__)
 
 
 class BloomFilter(object):
