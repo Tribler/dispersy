@@ -449,15 +449,9 @@ class ScenarioParser1(Parser):
         self.peer_id = peernumber
         self.cur.execute(u"INSERT INTO peer (id, hostname) VALUES (?, ?)", (peernumber, hostname))
 
-    def scenario_start_helper(self, timestamp, name, my_member, master_member, classification):
+    def scenario_start(self, timestamp, name, my_member, master_member, classification):
         self.cur.execute(u"UPDATE peer SET mid = ? WHERE id = ?", (buffer(my_member), self.peer_id))
         raise NextFile()
-
-    def scenario_start(self, *args, **kargs):
-        try:
-            return self.scenario_start_helper(*args, **kargs)
-        except TypeError:
-            pass
 
     def parse_directory(self, *args, **kargs):
         try:
@@ -535,14 +529,8 @@ class ScenarioParser2(Parser):
         self.peer_id = peernumber
         self.bandwidth_timestamp = timestamp
 
-    def scenario_start_helper(self, timestamp, _, my_member, master_member, classification):
+    def scenario_start(self, timestamp, _, my_member, master_member, classification):
         self.mid = my_member
-
-    def scenario_start(self, *args, **kargs):
-        try:
-            return self.scenario_start_helper(*args, **kargs)
-        except TypeError:
-            pass
 
     def scenario_end(self, timestamp, _):
         if self.online_timestamp:
