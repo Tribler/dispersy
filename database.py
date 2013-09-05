@@ -19,7 +19,7 @@ if __debug__:
     import thread
 
 if "--explain-query-plan" in getattr(sys, "argv", []):
-    _explain_query_plan_logger = logging.getLogger("explain-query-plan")
+    _explain_query_plan_logger = get_logger("explain-query-plan")
     _explain_query_plan = set()
 
     def attach_explain_query_plan(func):

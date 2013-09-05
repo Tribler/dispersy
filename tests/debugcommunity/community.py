@@ -1,14 +1,13 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from ...authentication import DoubleMemberAuthentication, MemberAuthentication
 from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import CommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
+from ...logger import get_logger
 from ...message import Message, DelayMessageByProof
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
+logger = get_logger(__name__)
 
 from .payload import TextPayload
 from .conversion import DebugCommunityConversion

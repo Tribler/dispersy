@@ -72,7 +72,7 @@ else:
         return func
 
 if "--runtime-statistics" in getattr(sys, "argv", []):
-    _runtime_statistics_logger = logging.getLogger("runtime-statistics")
+    _runtime_statistics_logger = get_logger("runtime-statistics")
     _runtime_statistics = defaultdict(lambda: [0, 0.0])
 
     def _output_runtime_statistics():

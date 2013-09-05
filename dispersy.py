@@ -4601,24 +4601,24 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
-        logger = logging.getLogger("dispersy-stats-detailed-candidates")
-        while logger.isEnabledFor(logging.INFO):
+        summary = get_logger("dispersy-stats-detailed-candidates")
+        while summary.isEnabledFor(logging.INFO):
             yield 5.0
             now = time()
-            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            logger.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
-                        self._statistics.walk_attempt,
-                        self._statistics.walk_success,
-                        self._statistics.walk_invalid_response_identifier,
-                        self._statistics.walk_bootstrap_attempt,
-                        self._statistics.walk_bootstrap_success,
-                        self._statistics.walk_reset)
-            logger.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                        self._statistics.walk_advice_outgoing_request,
-                        self._statistics.walk_advice_incoming_response,
-                        self._statistics.walk_advice_incoming_response_new,
-                        self._statistics.walk_advice_incoming_request,
-                        self._statistics.walk_advice_outgoing_response)
+            summary.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            summary.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
+                         self._statistics.walk_attempt,
+                         self._statistics.walk_success,
+                         self._statistics.walk_invalid_response_identifier,
+                         self._statistics.walk_bootstrap_attempt,
+                         self._statistics.walk_bootstrap_success,
+                         self._statistics.walk_reset)
+            summary.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
+                         self._statistics.walk_advice_outgoing_request,
+                         self._statistics.walk_advice_incoming_response,
+                         self._statistics.walk_advice_incoming_response_new,
+                         self._statistics.walk_advice_incoming_request,
+                         self._statistics.walk_advice_outgoing_response)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
@@ -4629,17 +4629,17 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
-                logger.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                logger.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                summary.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
+                summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                 for category, candidates in categories.iteritems():
                     aged = [(candidate.age(now), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        logger.info("%4ds %s%s%s %-7s %-13s %s",
-                                    min(age, 9999),
-                                    "O" if candidate.is_obsolete(now) else " ",
-                                    "E" if candidate.is_eligible_for_walk(now) else " ",
-                                    "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                    category,
-                                    candidate.connection_type,
-                                    candidate)
+                        summary.info("%4ds %s%s%s %-7s %-13s %s",
+                                     min(age, 9999),
+                                     "O" if candidate.is_obsolete(now) else " ",
+                                     "E" if candidate.is_eligible_for_walk(now) else " ",
+                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                     category,
+                                     candidate.connection_type,
+                                     candidate)

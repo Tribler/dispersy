@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 import socket
 from time import time, sleep
 
@@ -8,9 +5,11 @@ from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...community import Community
 from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ...logger import get_logger
 from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
+logger = get_logger(__name__)
 
 
 class DebugNode(object):

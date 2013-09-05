@@ -10,7 +10,7 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
-summary = logging.getLogger("test-overlay-summary")
+summary = get_logger("test-overlay-summary")
 
 
 class TestOverlay(DispersyTestFunc):
