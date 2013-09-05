@@ -4466,12 +4466,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         def stop():
             # unload all communities
-            results.append(ordered_unload_communities())
-            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
+            results.append((u"community", ordered_unload_communities()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
 
             # stop endpoint
-            results.append(self._endpoint.close(timeout))
-            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
+            results.append((u"endpont", self._endpoint.close(timeout)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
             while True:
@@ -4491,12 +4491,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._batch_cache.clear()
 
                 # unload all communities
-                results.append(ordered_unload_communities())
-                assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
+                results.append((u"community", ordered_unload_communities()))
+                assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
 
             # stop the database
-            results.append(self._database.close())
-            assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
+            results.append((u"database", self._database.close()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
 
         # output statistics before we stop
         if logger.isEnabledFor(logging.DEBUG):
@@ -4506,9 +4506,19 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         logger.info("stopping the Dispersy core...")
         results = []
         self._callback.call(stop, priority= -512)
-        results.append(self._callback.stop(timeout))
-        assert all(isinstance(result, bool) for result in results), [type(result) for result in results]
-        logger.info("Dispersy core stopped %s", results)
+
+        if self._callback.is_current_thread:
+            # the result from _callback.stop will always be False since it can not stop a thread
+            # that we are currently on
+            self._callback.stop(timeout)
+        else:
+            results.append(("callback", self._callback.stop(timeout)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+
+        if all(result for _, result in results):
+            logger.info("Dispersy core properly stopped")
+        else:
+            logger.error("Dispersy core unable to stop all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
         return all(results)
 
     def _candidate_walker(self):

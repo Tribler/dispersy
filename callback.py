@@ -459,7 +459,7 @@ class Callback(object):
                 container[0] = call(*args)
 
             if isinstance(container[0], GeneratorType):
-                logger.warning("using callback.call from the same thread on a generator can cause deadlocks")
+                logger.debug("using callback.call from the same thread on a generator can cause deadlocks")
                 for delay in container[0]:
                     sleep(delay)
 
