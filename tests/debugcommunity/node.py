@@ -694,3 +694,27 @@ class DebugNode(object):
         Returns a new sequence-text message.
         """
         return self._create_sequence_text(u"sequence-text", text, global_time, sequence_number)
+
+    def create_high_priority_text(self, text, global_time):
+        """
+        Returns a new high-priority-text message.
+        """
+        return self._create_text(u"high-priority-text", text, global_time)
+
+    def create_low_priority_text(self, text, global_time):
+        """
+        Returns a new low-priority-text message.
+        """
+        return self._create_text(u"low-priority-text", text, global_time)
+
+    def create_medium_priority_text(self, text, global_time):
+        """
+        Returns a new medium-priority-text message.
+        """
+        return self._create_text(u"medium-priority-text", text, global_time)
+
+    def create_random_order_text(self, text, global_time):
+        """
+        Returns a new RANDOM-text message.
+        """
+        return self._create_text(u"RANDOM-text", text, global_time)
