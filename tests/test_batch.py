@@ -1,12 +1,11 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from time import time
 
+from ..logger import get_logger
 from ..message import Message, BatchConfiguration
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
 
 
 class TestBatch(DispersyTestFunc):

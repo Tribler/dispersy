@@ -1,11 +1,10 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from unittest import TestCase
 
 from ..callback import Callback
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger
+logger = get_logger(__name__)
 
 
 def call_on_dispersy_thread(func):

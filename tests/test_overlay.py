@@ -1,7 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-summary = logging.getLogger("test-overlay-summary")
-
 from os import environ
 from pprint import pformat
 from time import time
@@ -9,9 +5,12 @@ from unittest import skipUnless
 from collections import defaultdict
 
 from ..conversion import DefaultConversion
+from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
+summary = logging.getLogger("test-overlay-summary")
 
 
 class TestOverlay(DispersyTestFunc):

@@ -1,7 +1,6 @@
-import logging
-logger = logging.getLogger(__name__)
-
+from ..logger import get_logger
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
 
 def failure_to_success(exception_class, exception_message):
     def helper1(func):

@@ -1,10 +1,9 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from time import time
 
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 from .debugcommunity.community import DebugCommunity
+from ..logger import get_logger
+logger = get_logger(__name__)
 
 class TestNATDetection(DispersyTestFunc):
     """

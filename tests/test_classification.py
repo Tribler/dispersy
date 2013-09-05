@@ -1,13 +1,12 @@
-import logging
-logger = logging.getLogger(__name__)
-
 import gc
 import inspect
 import unittest
 
+from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
 
 
 class TestClassification(DispersyTestFunc):
