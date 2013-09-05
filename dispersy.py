@@ -338,7 +338,6 @@ class Dispersy(object):
 
             self._callback.register(memory_dump)
 
-        self._callback.register(self._stats_candidates)
         self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
