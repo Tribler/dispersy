@@ -4592,34 +4592,15 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     DELAY = max(0.0, optimaltime - actualtime)
                 yield max(0.0, optimaltime - actualtime)
 
-    def _stats_candidates(self):
-        """
-        Periodically logs the number of walk and stumble candidates for all communities.
-
-        Enable this output by enabling INFO logging for a logger named "dispersy-stats-candidates".
-
-        Exception: all PreviewChannelCommunity are filter out of the results.
-        """
-        logger = logging.getLogger("dispersy-stats-candidates")
-        while logger.isEnabledFor(logging.INFO):
-            yield 5.0
-            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
-                if community.get_classification() == u"PreviewChannelCommunity":
-                    continue
-
-                candidates = sorted(community.dispersy_yield_verified_candidates())
-                logger.info(" %s %20s with %d%s candidates[:5] %s",
-                            community.cid.encode("HEX"), community.get_classification(), len(candidates),
-                            "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
-
     def _stats_detailed_candidates(self):
         """
-        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all communities.
+        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
+        communities.
 
-        Enable this output by enabling INFO logging for a logger named "dispersy-stats-detailed-candidates".
+        Enable this output by enabling INFO logging for a logger named
+        "dispersy-stats-detailed-candidates".
 
-        Exception: all PreviewChannelCommunity are filter out of the results.
+        Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
         logger = logging.getLogger("dispersy-stats-detailed-candidates")
         while logger.isEnabledFor(logging.INFO):
