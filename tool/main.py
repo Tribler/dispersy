@@ -68,7 +68,6 @@ def main_real(setup=None):
 
     # set the log identifier
     context_filter.identifier = opt.log_identifier
-    logger.info("log_identifier: %s", opt.log_identifier)
 
     # setup
     dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
