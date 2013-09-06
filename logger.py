@@ -8,16 +8,22 @@ def get_logger(name):
     logger.addFilter(_context_filter)
     return logger
 
+def get_context_filter():
+    return _context_filter
 
 class ContextFilter(logging.Filter):
-    _hostname = socket.gethostname()
+    # Note: logging.Filter is an old-style class.  Hence super(...) and @property.setter do not work
+    def __init__(self, identifier):
+        logging.Filter.__init__(self)
+        self.identifier = identifier
+
     def filter(self, record):
-        record.hostname = self._hostname
+        record.identifier = self.identifier
         return True
 
 
 # build context filter
-_context_filter = ContextFilter()
+_context_filter = ContextFilter(socket.gethostname())
 
 # use logger.conf if it exists
 if os.path.exists("logger.conf"):
