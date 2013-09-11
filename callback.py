@@ -97,7 +97,7 @@ class Callback(object):
         self._requests = []
 
         # expired requests are ordered and handled by priority
-        # (priority, root_id, None, (call, args, kargs), callback)
+        # (priority, deadline, root_id, (call, args, kargs), callback)
         self._expired = []
 
         # _requests_mirror and _expired_mirror contains the same list as _requests and _expired,
@@ -261,7 +261,6 @@ class Callback(object):
                          (-priority,
                           time(),
                           id_,
-                          None,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
             else:
@@ -324,7 +323,6 @@ class Callback(object):
                                  (-priority,
                                   time(),
                                   id_,
-                                  None,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
@@ -371,7 +369,7 @@ class Callback(object):
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
-                    self._expired_mirror[index] = (tup[0], tup[1], id_, tup[3], None, None)
+                    self._expired_mirror[index] = (tup[0], tup[1], id_, None, None)
                     logger.debug("in _expired: %s", id_)
 
             # register
@@ -380,7 +378,6 @@ class Callback(object):
                          (-priority,
                           time(),
                           id_,
-                          None,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
@@ -414,7 +411,7 @@ class Callback(object):
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
-                    self._expired_mirror[index] = (tup[0], tup[1], id_, tup[2], None, None)
+                    self._expired_mirror[index] = (tup[0], tup[1], id_, None, None)
                     logger.debug("in _expired: %s", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", include_id=False, timeout=0.0, default=None):
@@ -553,7 +550,7 @@ class Callback(object):
                 # notice that the deadline and priority entries are switched, hence, the entries in
                 # the self._EXPIRED list are ordered by priority instead of deadline
                 deadline, priority, root_id, call, callback = heappop(self._requests)
-                heappush(self._expired, (priority, deadline, root_id, None, call, callback))
+                heappush(self._expired, (priority, deadline, root_id, call, callback))
 
             if self._expired:
                 if __debug__ and len(self._expired) > 10:
@@ -561,7 +558,7 @@ class Callback(object):
                         time_since_expired = actual_time
 
                 # we need to handle the next call in line
-                priority, deadline, root_id, _, call, callback = heappop(self._expired)
+                priority, deadline, root_id, call, callback = heappop(self._expired)
                 wait = 0.0
 
                 if __debug__:
@@ -610,7 +607,7 @@ class Callback(object):
 
                     elif callback:
                         with self._lock:
-                            heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+                            heappush(self._expired, (priority, actual_time, root_id, (callback[0], (result,) + callback[1], callback[2]), None))
 
                 if isinstance(call, GeneratorType):
                     # start next generator iteration
@@ -623,7 +620,7 @@ class Callback(object):
             except StopIteration:
                 if callback:
                     with self._lock:
-                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (None,) + callback[1], callback[2]), None))
+                        heappush(self._expired, (priority, actual_time, root_id, (callback[0], (None,) + callback[1], callback[2]), None))
 
             except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
                 with self._lock:
@@ -636,7 +633,7 @@ class Callback(object):
             except Exception as exception:
                 if callback:
                     with self._lock:
-                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
+                        heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
 
                 if self._call_exception_handlers(exception, False):
                     # one or more of the exception handlers returned True, we will consider this
@@ -682,7 +679,7 @@ class Callback(object):
         # new tasks will not be accepted
         logger.debug("there are %d expired tasks", len(self._expired))
         while self._expired:
-            _, _, _, _, call, callback = heappop(self._expired)
+            _, _, _, call, callback = heappop(self._expired)
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
