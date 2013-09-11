@@ -621,11 +621,9 @@ class Callback(object):
                         heappush(self._requests, (time() + result, priority, root_id, call, callback))
 
             except StopIteration:
-                # TODO: found UnboundLocalError bug
-                result = None
                 if callback:
                     with self._lock:
-                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (None,) + callback[1], callback[2]), None))
 
             except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
                 with self._lock:
