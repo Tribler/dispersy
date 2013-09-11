@@ -446,26 +446,19 @@ class Callback(object):
 
         # result container with [RETURN-VALUE, EXC_INFO-TUPLE]
         container = [default, None]
+        event = Event()
+
+        # register the call
+        self.register(call, args, kargs, delay, priority, id_, callback, include_id=include_id)
 
         if self._thread_ident == get_ident():
-            if kargs:
-                container[0] = call(*args, **kargs)
-            else:
-                container[0] = call(*args)
-
-            if isinstance(container[0], GeneratorType):
-                logger.warning("using callback.call from the same thread on a generator can cause deadlocks")
-                for delay in container[0]:
-                    sleep(delay)
-
-                container[0] = default
+            # TODO timeout is not taken into account right now
+            while self._one_task():
+                # wait for call to finish
+                if event.is_set():
+                    break
 
         else:
-            event = Event()
-
-            # register the call
-            self.register(call, args, kargs, delay, priority, id_, callback, include_id=include_id)
-
             # wait for call to finish
             event.wait(None if timeout == 0.0 else timeout)
 
@@ -543,144 +536,145 @@ class Callback(object):
 
         self._loop()
 
-    @attach_profiler
-    def _loop(self):
+    def _one_task(self):
         if __debug__:
             time_since_expired = 0
 
-        # put some often used methods and object in the local namespace
-        actual_time = 0
-        event_clear = self._event.clear
-        event_wait = self._event.wait
-        event_is_set = self._event.isSet
-        expired = self._expired
-        get_timestamp = time
-        lock = self._lock
-        requests = self._requests
+        actual_time = time()
 
+        with self._lock:
+            # check if we should continue to run
+            if self._state != "STATE_RUNNING":
+                # break
+                return False
+
+            # move expired requests from self._REQUESTS to self._EXPIRED
+            while self._requests and self._requests[0][0] <= actual_time:
+                # notice that the deadline and priority entries are switched, hence, the entries in
+                # the self._EXPIRED list are ordered by priority instead of deadline
+                deadline, priority, root_id, call, callback = heappop(self._requests)
+                heappush(self._expired, (priority, deadline, root_id, None, call, callback))
+
+            if self._expired:
+                if __debug__ and len(self._expired) > 10:
+                    if not time_since_expired:
+                        time_since_expired = actual_time
+
+                # we need to handle the next call in line
+                priority, deadline, root_id, _, call, callback = heappop(self._expired)
+                wait = 0.0
+
+                if __debug__:
+                    self._debug_call_name = self._debug_call_to_string(call)
+
+                # ignore removed tasks
+                if call is None:
+                    # continue
+                    return True
+
+            else:
+                # there is nothing to handle
+                wait = self._requests[0][0] - actual_time if self._requests else 300.0
+                if __debug__:
+                    logger.debug("nothing to handle, wait %.2f seconds", wait)
+                    if time_since_expired:
+                        diff = actual_time - time_since_expired
+                        if diff > 1.0:
+                            logger.warning("took %.2f to process expired queue", diff)
+                        time_since_expired = 0
+
+            if self._event.is_set():
+                self._event.clear()
+
+        if wait:
+            logger.debug("wait at most %.3fs before next call, still have %d calls in queue", wait, len(self._requests))
+            self._event.wait(wait)
+
+        else:
+            if __debug__:
+                logger.debug("---- call %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
+                debug_call_start = time()
+
+            # call can be either:
+            # 1. a generator
+            # 2. a (callable, args, kargs) tuple
+
+            try:
+                if isinstance(call, TupleType):
+                    # callback
+                    result = call[0](*call[1], **call[2])
+                    if isinstance(result, GeneratorType):
+                        # we only received the generator, no actual call has been made to the
+                        # function yet, therefore we call it again immediately
+                        call = result
+
+                    elif callback:
+                        with self._lock:
+                            heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+
+                if isinstance(call, GeneratorType):
+                    # start next generator iteration
+                    result = call.next()
+                    assert isinstance(result, float), [type(result), call]
+                    assert result >= 0.0, [result, call]
+                    with self._lock:
+                        heappush(self._requests, (time() + result, priority, root_id, call, callback))
+
+            except StopIteration:
+                # TODO: found UnboundLocalError bug
+                result = None
+                if callback:
+                    with self._lock:
+                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
+
+            except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
+                with self._lock:
+                    self._state = "STATE_EXCEPTION"
+                    self._exception = exception
+                    self._exception_traceback = exc_info()[2]
+                self._call_exception_handlers(exception, True)
+                logger.exception("attempting proper shutdown")
+
+            except Exception as exception:
+                if callback:
+                    with self._lock:
+                        heappush(self._expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
+
+                if self._call_exception_handlers(exception, False):
+                    # one or more of the exception handlers returned True, we will consider this
+                    # exception to be fatal and quit
+                    logger.error("reassessing as fatal exception, attempting proper shutdown")
+                    with self._lock:
+                        self._state = "STATE_EXCEPTION"
+                        self._exception = exception
+                        self._exception_traceback = exc_info()[2]
+                else:
+                    logger.exception("keep running regardless of exception")
+
+            if __debug__:
+                debug_call_duration = time() - debug_call_start
+                if debug_call_duration > 1.0:
+                    logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                else:
+                    logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+
+        return True
+
+    @attach_profiler
+    def _loop(self):
+        # from now on we will assume GET_IDENT() is the running thread
         self._thread_ident = get_ident()
 
-        with lock:
+        with self._lock:
             if self._state == "STATE_PLEASE_RUN":
                 self._state = "STATE_RUNNING"
                 logger.debug("STATE_RUNNING")
 
-        while True:
-            actual_time = get_timestamp()
+        # handle tasks as long as possible
+        while self._one_task():
+            pass
 
-            with lock:
-                # check if we should continue to run
-                if self._state != "STATE_RUNNING":
-                    break
-
-                # move expired requests from REQUESTS to EXPIRED
-                while requests and requests[0][0] <= actual_time:
-                    # notice that the deadline and priority entries are switched, hence, the entries in
-                    # the EXPIRED list are ordered by priority instead of deadline
-                    deadline, priority, root_id, call, callback = heappop(requests)
-                    heappush(expired, (priority, deadline, root_id, None, call, callback))
-
-                if expired:
-                    if __debug__ and len(expired) > 10:
-                        if not time_since_expired:
-                            time_since_expired = actual_time
-
-                    # we need to handle the next call in line
-                    priority, deadline, root_id, _, call, callback = heappop(expired)
-                    wait = 0.0
-
-                    if __debug__:
-                        self._debug_call_name = self._debug_call_to_string(call)
-
-                    # ignore removed tasks
-                    if call is None:
-                        continue
-
-                else:
-                    # there is nothing to handle
-                    wait = requests[0][0] - actual_time if requests else 300.0
-                    if __debug__:
-                        logger.debug("nothing to handle, wait %.2f seconds", wait)
-                        if time_since_expired:
-                            diff = actual_time - time_since_expired
-                            if diff > 1.0:
-                                logger.warning("took %.2f to process expired queue", diff)
-                            time_since_expired = 0
-
-                if event_is_set():
-                    event_clear()
-
-            if wait:
-                logger.debug("wait at most %.3fs before next call, still have %d calls in queue", wait, len(requests))
-                event_wait(wait)
-
-            else:
-                if __debug__:
-                    logger.debug("---- call %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
-                    debug_call_start = time()
-
-                # call can be either:
-                # 1. a generator
-                # 2. a (callable, args, kargs) tuple
-
-                try:
-                    if isinstance(call, TupleType):
-                        # callback
-                        result = call[0](*call[1], **call[2])
-                        if isinstance(result, GeneratorType):
-                            # we only received the generator, no actual call has been made to the
-                            # function yet, therefore we call it again immediately
-                            call = result
-
-                        elif callback:
-                            with lock:
-                                heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
-
-                    if isinstance(call, GeneratorType):
-                        # start next generator iteration
-                        result = call.next()
-                        assert isinstance(result, float), [type(result), call]
-                        assert result >= 0.0, [result, call]
-                        with lock:
-                            heappush(requests, (get_timestamp() + result, priority, root_id, call, callback))
-
-                except StopIteration:
-                    if callback:
-                        with lock:
-                            heappush(expired, (priority, actual_time, root_id, None, (callback[0], (result,) + callback[1], callback[2]), None))
-
-                except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
-                    with lock:
-                        self._state = "STATE_EXCEPTION"
-                        self._exception = exception
-                        self._exception_traceback = exc_info()[2]
-                    self._call_exception_handlers(exception, True)
-                    logger.exception("attempting proper shutdown")
-
-                except Exception as exception:
-                    if callback:
-                        with lock:
-                            heappush(expired, (priority, actual_time, root_id, None, (callback[0], (exception,) + callback[1], callback[2]), None))
-
-                    if self._call_exception_handlers(exception, False):
-                        # one or more of the exception handlers returned True, we will consider this
-                        # exception to be fatal and quit
-                        logger.error("reassessing as fatal exception, attempting proper shutdown")
-                        with lock:
-                            self._state = "STATE_EXCEPTION"
-                            self._exception = exception
-                            self._exception_traceback = exc_info()[2]
-                    else:
-                        logger.exception("keep running regardless of exception")
-
-                if __debug__:
-                    debug_call_duration = time() - debug_call_start
-                    if debug_call_duration > 1.0:
-                        logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
-                    else:
-                        logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
-
-        with lock:
+        with self._lock:
             # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still
             # allow tasks to be removed
             self._requests = []
@@ -688,9 +682,9 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        logger.debug("there are %d expired tasks", len(expired))
-        while expired:
-            _, _, _, _, call, callback = heappop(expired)
+        logger.debug("there are %d expired tasks", len(self._expired))
+        while self._expired:
+            _, _, _, _, call, callback = heappop(self._expired)
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
@@ -723,9 +717,9 @@ class Callback(object):
                         logger.exception("%s", exception)
 
         # send GeneratorExit exceptions to scheduled generators
-        logger.debug("there are %d scheduled tasks", len(requests))
-        while requests:
-            _, _, _, call, callback = heappop(requests)
+        logger.debug("there are %d scheduled tasks", len(self._requests))
+        while self._requests:
+            _, _, _, call, callback = heappop(self._requests)
             if isinstance(call, GeneratorType):
                 logger.debug("raise Shutdown in %s", call)
                 try:
@@ -741,6 +735,6 @@ class Callback(object):
                     logger.exception("%s", exception)
 
         # set state to finished
-        with lock:
+        with self._lock:
             logger.debug("STATE_FINISHED")
             self._state = "STATE_FINISHED"
