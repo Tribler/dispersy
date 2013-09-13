@@ -455,15 +455,16 @@ class Callback(object):
 
         def callback(result):
             if isinstance(result, Exception):
-                container[1] = exc_info()
+                container[1] = result
+                container[2] = exc_info()
 
             else:
                 container[0] = result
 
             event.set()
 
-        # result container with [RETURN-VALUE, EXC_INFO-TUPLE]
-        container = [default, None]
+        # result container with [RETURN-VALUE, EXCEPTION-INSTANCE, EXC_INFO-TUPLE]
+        container = [default, None, None]
         event = Event()
 
         # register the call
@@ -481,8 +482,12 @@ class Callback(object):
             event.wait(None if timeout == 0.0 else timeout)
 
         if container[1]:
-            type_, value, traceback = container[1]
-            raise type_, value, traceback
+            if container[2][0] is None:
+                raise container[1]
+
+            else:
+                type_, value, traceback = container[2]
+                raise type_, value, traceback
 
         else:
             return container[0]
