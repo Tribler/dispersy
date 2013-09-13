@@ -183,13 +183,34 @@ class Callback(object):
     def _call_exception_handlers(self, exception, fatal):
         with self._lock:
             exception_handlers = self._exception_handlers[:]
+
+        force_fatal = False
         for exception_handler in exception_handlers:
             try:
                 if exception_handler(exception, fatal):
-                    fatal = True
+                    force_fatal = True
             except Exception as exception:
                 logger.exception("%s", exception)
                 assert False, "the exception handler should not cause an exception"
+
+        if fatal or force_fatal:
+            with self._lock:
+                self._state = "STATE_EXCEPTION"
+                self._exception = exception
+                self._exception_traceback = exc_info()[2]
+
+
+            if fatal:
+                logger.exception("attempting proper shutdown [%s]", exception)
+
+            else:
+                # one or more of the exception handlers returned True, we will consider this
+                # exception to be fatal and quit
+                logger.exception("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
+
+        else:
+            logger.exception("keep running regardless of exception [%s]", exception)
+
         return fatal
 
     def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", callback=None, callback_args=(), callback_kargs=None, include_id=False):
@@ -623,28 +644,14 @@ class Callback(object):
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (None,) + callback[1], callback[2]), None))
 
             except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
-                with self._lock:
-                    self._state = "STATE_EXCEPTION"
-                    self._exception = exception
-                    self._exception_traceback = exc_info()[2]
                 self._call_exception_handlers(exception, True)
-                logger.exception("attempting proper shutdown")
 
             except Exception as exception:
                 if callback:
                     with self._lock:
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
 
-                if self._call_exception_handlers(exception, False):
-                    # one or more of the exception handlers returned True, we will consider this
-                    # exception to be fatal and quit
-                    logger.error("reassessing as fatal exception, attempting proper shutdown")
-                    with self._lock:
-                        self._state = "STATE_EXCEPTION"
-                        self._exception = exception
-                        self._exception_traceback = exc_info()[2]
-                else:
-                    logger.exception("keep running regardless of exception")
+                self._call_exception_handlers(exception, False)
 
             if __debug__:
                 debug_call_duration = time() - debug_call_start
