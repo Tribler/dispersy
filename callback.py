@@ -684,9 +684,9 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        logger.debug("there are %d expired tasks", len(self._expired))
-        while self._expired:
-            _, _, _, call, callback = heappop(self._expired)
+        logger.debug("there are %d expired tasks", len(self._expired_mirror))
+        while self._expired_mirror:
+            _, _, _, call, callback = heappop(self._expired_mirror)
             if isinstance(call, TupleType):
                 try:
                     result = call[0](*call[1], **call[2])
@@ -719,9 +719,9 @@ class Callback(object):
                         logger.exception("%s", exception)
 
         # send GeneratorExit exceptions to scheduled generators
-        logger.debug("there are %d scheduled tasks", len(self._requests))
-        while self._requests:
-            _, _, _, call, callback = heappop(self._requests)
+        logger.debug("there are %d scheduled tasks", len(self._requests_mirror))
+        while self._requests_mirror:
+            _, _, _, call, callback = heappop(self._requests_mirror)
             if isinstance(call, GeneratorType):
                 logger.debug("raise Shutdown in %s", call)
                 try:
