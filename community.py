@@ -1689,9 +1689,6 @@ class Community(object):
         else:
             # modify either the senders LAN or WAN address based on how we perceive that node
             source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
-            if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
-                logger.debug("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
-                return None
 
             # check if we have this candidate registered at its sock_addr
             candidate = self.get_candidate(message.candidate.sock_addr, lan_address=source_lan_address)

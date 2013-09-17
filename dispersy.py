@@ -53,6 +53,7 @@ from hashlib import sha1
 from itertools import groupby, islice, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
+from struct import unpack_from
 from time import time
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
@@ -291,7 +292,9 @@ class Dispersy(object):
         self._connection_type = u"unknown"
 
         # our LAN and WAN addresses
-        self._lan_address = (self._guess_lan_address() or "0.0.0.0", 0)
+        self._local_interfaces = list(self._get_interface_addresses())
+        interface = self._guess_lan_address(self._local_interfaces)
+        self._lan_address = ((interface.address if interface else "0.0.0.0"), 0)
         self._wan_address = ("0.0.0.0", 0)
         self._wan_address_votes = defaultdict(set)
         logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
@@ -341,26 +344,66 @@ class Dispersy(object):
         self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
-    def _guess_lan_address():
+    def _get_interface_addresses():
         """
-        Returns the address of the first AF_INET interface it can find.
+        Yields Interface instances for each available AF_INET interface found.
+
+        An Interface instance has the following properties:
+        - name          (i.e. "eth0")
+        - address       (i.e. "10.148.3.254")
+        - netmask       (i.e. "255.255.255.0")
+        - broadcast     (i.e. "10.148.3.255")
         """
+        class Interface(object):
+            def __init__(self, name, address, netmask, broadcast):
+                self.name = name
+                self.address = address
+                self.netmask = netmask
+                self.broadcast = broadcast
+                self._l_address, = unpack_from(">L", inet_aton(address))
+                self._l_netmask, = unpack_from(">L", inet_aton(netmask))
+
+            def __contains__(self, address):
+                assert isinstance(address, str), type(address)
+                l_address, = unpack_from(">L", inet_aton(address))
+                return (l_address & self._l_netmask) == (self._l_address & self._l_netmask)
+
+            def __str__(self):
+                return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
+
+            def __repr__(self):
+                return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
+
+        for interface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(interface)
+            for option in addresses.get(netifaces.AF_INET, []):
+                yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+
+    @staticmethod
+    def _guess_lan_address(interfaces, default=None):
+        """
+        Chooses the most likely Interface instance out of INTERFACES to use as our LAN address.
+
+        INTERFACES can be obtained from _get_interface_addresses()
+        DEFAULT is used when no appropriate Interface can be found
+        """
+        assert isinstance(interfaces, list), type(interfaces)
         blacklist = ["127.0.0.1", "0.0.0.0", "255.255.255.255"]
-        for interface in netifaces.interfaces():
-            addresses = netifaces.ifaddresses(interface)
-            for option in addresses.get(netifaces.AF_INET, []):
-                if "broadcast" in option and "addr" in option and not option["addr"] in blacklist:
-                    logger.debug("interface %s address %s", interface, option["addr"])
-                    return option["addr"]
+
+        # prefer interfaces where we have a broadcast address
+        for interface in interfaces:
+            if interface.broadcast and interface.address and not interface.address in blacklist:
+                logger.debug("%s", interface)
+                return interface
+
         # Exception for virtual machines/containers
-        for interface in netifaces.interfaces():
-            addresses = netifaces.ifaddresses(interface)
-            for option in addresses.get(netifaces.AF_INET, []):
-                if "addr" in option and not option["addr"] in blacklist:
-                    logger.debug("interface %s address %s", interface, option["addr"])
-                    return option["addr"]
+        for interface in interfaces:
+            if interface.address and not interface.address in blacklist:
+                logger.debug("%s", interface)
+                return interface
+
         logger.error("Unable to find our public interface!")
-        return None
+        return default
 
     def _retry_bootstrap_candidates(self):
         """
@@ -369,10 +412,9 @@ class Dispersy(object):
         The first 30 seconds we will attempt to resolve the addresses once every second.  If we did
         not succeed after 30 seconds will will retry once every 30 seconds until we succeed.
         """
-        logger.warning("unable to resolve all bootstrap addresses")
         for counter in count(1):
+            logger.warning("unable to resolve all bootstrap addresses (attempt #%d)", counter)
             yield 1.0 if counter < 30 else 30.0
-            logger.warning("attempt #%d", counter)
             candidates = get_bootstrap_candidates(self)
             for candidate in candidates:
                 if candidate is None:
@@ -1051,12 +1093,16 @@ class Dispersy(object):
         # undo previous vote
         self.wan_address_unvote(voter)
 
-        # do vote
-        logger.debug("add vote for %s from %s", address, voter.sock_addr)
-        self._wan_address_votes[address].add(voter.sock_addr)
+        # ignore votes from addresses that we know are within any of our LAN interfaces.  peers
+        # providing these votes can not know our WAN address
+        if any(voter.sock_addr[0] in interface for interface in self._local_interfaces):
+            logger.debug("ignore vote for %s:%d from %s:%d (voter is within our LAN)",
+                         address[0], address[1], voter.sock_addr[0], voter.sock_addr[1])
+            return
 
-        # logger.info("_wan_address %s, address %s", self._wan_address, address)
-        # logger.info("len(self._wan_address_votes[address]) %d, len(self._wan_address_votes[_wan_address]) %d", len(self._wan_address_votes[address]), len(self._wan_address_votes.get(self._wan_address, ())))
+        # do vote
+        logger.debug("add vote for %s:%d from %s:%d", address[0], address[1], voter.sock_addr[0], voter.sock_addr[1])
+        self._wan_address_votes[address].add(voter.sock_addr)
 
         #
         # check self._lan_address and self._wan_address
@@ -1067,11 +1113,13 @@ class Dispersy(object):
                 set_wan_address(address):
 
             # reassessing our LAN address, perhaps we are running on a roaming device
-            lan_address = (self._guess_lan_address() or "0.0.0.0", self._lan_address[1])
+            interface = self._guess_lan_address(self._local_interfaces)
+            lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
             if not self.is_valid_address(lan_address):
                 lan_address = (self._wan_address[0], self._lan_address[1])
             set_lan_address(lan_address)
 
+            # TODO security threat!  we should never remove bootstrap candidates, for they are our safety net
             # our address may not be a bootstrap address
             if self._wan_address in self._bootstrap_candidates:
                 del self._bootstrap_candidates[self._wan_address]
@@ -2146,43 +2194,30 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         We received a message from SOCK_ADDR claiming to have LAN_ADDRESS and WAN_ADDRESS, returns
         the estimated LAN and WAN address for this node.
 
-        The returned LAN address is either ("0.0.0.0", 0) or it is not our LAN address while passing
-        is_valid_address.  Similarly, the returned WAN address is either ("0.0.0.0", 0) or it is not
-        our WAN address while passing is_valid_address.
+        The returns LAN and WAN addresses are either modified when we know they are incorrect (based
+        on the reported sock_addr) or they remain unchanged.  Hence the returned addresses may be
+        ("0.0.0.0", 0).
         """
-        if self._lan_address == lan_address or not self.is_valid_address(lan_address):
-            if lan_address != sock_addr:
-                logger.debug("estimate a different LAN address %s:%d -> %s:%d", lan_address[0], lan_address[1], sock_addr[0], sock_addr[1])
-            lan_address = sock_addr
-        if self._wan_address == wan_address or not self.is_valid_address(wan_address):
-            if wan_address != sock_addr:
-                logger.debug("estimate a different WAN address %s:%d -> %s:%d", wan_address[0], wan_address[1], sock_addr[0], sock_addr[1])
-            wan_address = sock_addr
+        assert self.is_valid_address(sock_addr), sock_addr
 
-        if sock_addr[0] == self._wan_address[0]:
-            # we have the same WAN address, we are probably behind the same NAT
-            if lan_address != sock_addr:
-                logger.debug("estimate a different LAN address %s:%d -> %s:%d", lan_address[0], lan_address[1], sock_addr[0], sock_addr[1])
-            lan_address = sock_addr
+        if any(sock_addr[0] in interface for interface in self._local_interfaces):
+            # is SOCK_ADDR is on our local LAN, hence LAN_ADDRESS should be SOCK_ADDR
+            if sock_addr != lan_address:
+                logger.warning("estimate someones LAN address is %s:%d (LAN was %s:%d, WAN stays %s:%d)",
+                               sock_addr[0], sock_addr[1], lan_address[0], lan_address[1], wan_address[0], wan_address[1])
+                lan_address = sock_addr
 
-        elif self.is_valid_address(sock_addr):
-            # we have a different WAN address and the sock address is WAN, we are probably behind a different NAT
-            if wan_address != sock_addr:
-                logger.debug("estimate a different WAN address %s:%d -> %s:%d", wan_address[0], wan_address[1], sock_addr[0], sock_addr[1])
-            wan_address = sock_addr
-
-        elif self.is_valid_address(wan_address):
-            # we have a different WAN address and the sock address is not WAN, we are probably on the same computer
-            pass
+            # any WAN address is acceptable except when it matches our WAN address
+            if wan_address == self.wan_address:
+                logger.warning("cleared someones WAN address %s:%d (this is our WAN address)", wan_address[0], wan_address[1])
+                wan_address = ("0.0.0.0", 0)
 
         else:
-            # we are unable to determine the WAN address, we are probably behind the same NAT
-            wan_address = ("0.0.0.0", 0)
-
-        assert self._lan_address != lan_address, [self.lan_address, lan_address]
-        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(lan_address), [self._lan_address, lan_address]
-        assert self._wan_address != wan_address, [self._wan_address, wan_address]
-        assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
+            # is SOCK_ADDR is outside our local LAN, hence WAN_ADDRESS should be SOCK_ADDR
+            if sock_addr != wan_address:
+                logger.warning("estimate someones WAN address is %s:%d (WAN was %s:%d, LAN stays %s:%d)",
+                               sock_addr[0], sock_addr[1], wan_address[0], wan_address[1], lan_address[0], lan_address[1])
+                wan_address = sock_addr
 
         return lan_address, wan_address
 
@@ -2279,15 +2314,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                             logger.error("%d bits in: %s", test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
-        if destination.get_destination_address(self._wan_address) != destination.sock_addr:
-            destination_address = destination.get_destination_address(self._wan_address)
-            logger.warning("in theory the destination address %s:%d should be the sock_addr %s", destination_address[0], destination_address[1], destination)
-
         meta_request = community.get_meta_message(u"dispersy-introduction-request")
         request = meta_request.impl(authentication=(community.my_member,),
                                     distribution=(community.global_time,),
                                     destination=(destination,),
-                                    payload=(destination.get_destination_address(self._wan_address), self._lan_address, self._wan_address, advice, self._connection_type, sync, identifier))
+                                    payload=(destination.sock_addr, self._lan_address, self._wan_address, advice, self._connection_type, sync, identifier))
 
         if forward:
             if sync:
@@ -2386,7 +2417,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._statistics.walk_advice_outgoing_response += 1
 
                 # create introduction response
-                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.get_destination_address(self._wan_address), self._lan_address, self._wan_address, introduced.lan_address, introduced.wan_address, self._connection_type, introduced.tunnel, payload.identifier)))
+                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._lan_address, self._wan_address, introduced.lan_address, introduced.wan_address, self._connection_type, introduced.tunnel, payload.identifier)))
 
                 # create puncture request
                 requests.append(meta_puncture_request.impl(distribution=(community.global_time,), destination=(introduced,), payload=(source_lan_address, source_wan_address, payload.identifier)))
@@ -2395,7 +2426,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 logger.debug("responding to %s without an introduction %s", candidate, type(community))
 
                 none = ("0.0.0.0", 0)
-                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.get_destination_address(self._wan_address), self._lan_address, self._wan_address, none, none, self._connection_type, False, payload.identifier)))
+                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._lan_address, self._wan_address, none, none, self._connection_type, False, payload.identifier)))
 
         if responses:
             self._forward(responses)
@@ -2411,21 +2442,21 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             if direction == u"ASC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time ASC)"""
 
             if direction == u"DESC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time DESC)"""
 
             if direction == u"RANDOM":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY RANDOM())"""
 
@@ -2444,6 +2475,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         for message in messages:
             payload = message.payload
+            if not message.candidate:
+                continue
 
             if payload.sync:
                 # we limit the response by byte_limit bytes

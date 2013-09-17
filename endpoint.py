@@ -175,10 +175,8 @@ class RawserverEndpoint(Endpoint):
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
 
-        wan_address = self._dispersy.wan_address
-
         with self._sendqueue_lock:
-            batch = [(candidate.get_destination_address(wan_address), TUNNEL_PREFIX + data if candidate.tunnel else data)
+            batch = [(candidate.sock_addr, TUNNEL_PREFIX + data if candidate.tunnel else data)
                      for candidate, data
                      in product(candidates, packets)]
 
@@ -372,24 +370,20 @@ class TunnelEndpoint(Endpoint):
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
-        wan_address = self._dispersy.wan_address
 
         self._swift.splock.acquire()
         try:
             for candidate in candidates:
-                sock_addr = candidate.get_destination_address(wan_address)
-                assert self._dispersy.is_valid_address(sock_addr), sock_addr
-
                 for data in packets:
                     if logger.isEnabledFor(logging.DEBUG):
                         try:
                             name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                         except:
                             name = "???"
-                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
+                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, candidate.sock_addr[0], candidate.sock_addr[1], len(data))
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
 
-                    self._swift.send_tunnel(self._session, sock_addr, data)
+                    self._swift.send_tunnel(self._session, candidate.sock_addr, data)
 
             # return True when something has been send
             return candidates and packets
