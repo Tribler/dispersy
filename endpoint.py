@@ -165,10 +165,10 @@ class RawserverEndpoint(Endpoint):
     def send(self, candidates, packets):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
-        assert all(isinstance(candidate, Candidate) for candidate in candidates)
+        assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
         assert isinstance(packets, (tuple, list, set)), type(packets)
-        assert all(isinstance(packet, str) for packet in packets)
-        assert all(len(packet) > 0 for packet in packets)
+        assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
+        assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
         if any(len(packet) > 2**16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
 
