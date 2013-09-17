@@ -178,6 +178,8 @@ class DebugNode(object):
         """
         assert bits is None, "The parameter bits is deprecated and must be None"
         assert sync_with_database is None, "The parameter sync_with_database is deprecated and must be None"
+        assert isinstance(candidate, bool), type(candidate)
+        assert isinstance(identity, bool), type(identity)
 
         ec = ec_generate_key(u"low")
         self._my_member = Member(self._dispersy, ec_to_public_bin(ec), ec_to_private_bin(ec))
@@ -214,7 +216,7 @@ class DebugNode(object):
         finally:
             self._community._my_member = tmp_member
 
-    def give_packet(self, packet, verbose=False, cache=False, tunnel=None):
+    def give_packet(self, packet, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give PACKET directly to Dispersy on_incoming_packets.
         Returns PACKET
@@ -223,13 +225,16 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         if verbose:
             logger.debug("giving %d bytes", len(packet))
-        candidate = Candidate(self.lan_address, self._tunnel)
+        if source_sock_addr is None:
+            source_sock_addr = self.lan_address
+        candidate = Candidate(source_sock_addr, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet)], cache=cache, timestamp=time())
         return packet
 
-    def give_packets(self, packets, verbose=False, cache=False, tunnel=None):
+    def give_packets(self, packets, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give multiple PACKETS directly to Dispersy on_incoming_packets.
         Returns PACKETS
@@ -239,13 +244,16 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         if verbose:
             logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
-        candidate = Candidate(self.lan_address, self._tunnel)
+        if source_sock_addr is None:
+            source_sock_addr = self.lan_address
+        candidate = Candidate(source_sock_addr, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
 
-    def give_message(self, message, verbose=False, cache=False, tunnel=None):
+    def give_message(self, message, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give MESSAGE directly to Dispersy on_incoming_packets after it is encoded.
         Returns MESSAGE
@@ -254,13 +262,14 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         packet = message.packet if message.packet else self.encode_message(message)
         if verbose:
             logger.debug("giving %s (%d bytes)", message.name, len(packet))
-        self.give_packet(packet, verbose=verbose, cache=cache)
+        self.give_packet(packet, verbose=verbose, cache=cache, tunnel=tunnel, source_sock_addr=source_sock_addr)
         return message
 
-    def give_messages(self, messages, verbose=False, cache=False, tunnel=None):
+    def give_messages(self, messages, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give multiple MESSAGES directly to Dispersy on_incoming_packets after they are encoded.
         Returns MESSAGES
@@ -270,10 +279,11 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
         if verbose:
             logger.debug("giving %d messages (%d bytes)", len(messages), sum(len(packet) for packet in packets))
-        self.give_packets(packets, verbose=verbose, cache=cache)
+        self.give_packets(packets, verbose=verbose, cache=cache, tunnel=tunnel, source_sock_addr=source_sock_addr)
         return messages
 
     def send_packet(self, packet, address, verbose=False):
