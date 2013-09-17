@@ -277,6 +277,15 @@ class StandaloneEndpoint(RawserverEndpoint):
         if timeout > 0.0:
             self._thread.join(timeout)
 
+            if self._thread.is_alive():
+                logger.error("the endpoint thread is still running (after waiting %f seconds)", timeout)
+                result = False
+
+        else:
+            if self._thread.is_alive():
+                logger.debug("the endpoint thread is still running (use timeout > 0.0 to ensure the thread stops)")
+                result = False
+
         try:
             self._socket.close()
         except socket.error as exception:
