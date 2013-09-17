@@ -1,16 +1,16 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from abc import ABCMeta, abstractmethod
 from itertools import product
 from select import select
 from time import time
 import errno
+import logging
 import socket
 import sys
 import threading
 
 from .candidate import Candidate
+from .logger import get_logger
+logger = get_logger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK

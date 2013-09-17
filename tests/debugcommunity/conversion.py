@@ -26,6 +26,10 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(109), community.get_meta_message(u"dynamic-resolution-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(110), community.get_meta_message(u"sequence-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(111), community.get_meta_message(u"full-sync-global-time-pruning-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(112), community.get_meta_message(u"high-priority-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(113), community.get_meta_message(u"low-priority-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(114), community.get_meta_message(u"medium-priority-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(115), community.get_meta_message(u"RANDOM-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         """

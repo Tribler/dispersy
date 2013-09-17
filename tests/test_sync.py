@@ -1,11 +1,10 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from random import random
 
+from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
 
 
 class TestSync(DispersyTestFunc):
@@ -97,11 +96,9 @@ class TestSync(DispersyTestFunc):
             self.assertEqual(message.distribution.global_time, global_time)
 
     @call_on_dispersy_thread
-    def test_mixed_order(self):
+    def test_random_order(self):
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        in_order_message = community.get_meta_message(u"ASC-text")
-        out_order_message = community.get_meta_message(u"DESC-text")
-        # random_order_message = community.get_meta_message(u"random-order-text")
+        message = community.get_meta_message(u"RANDOM-text")
 
         # create node and ensure that SELF knows the node address
         node = DebugNode(community)
@@ -109,50 +106,135 @@ class TestSync(DispersyTestFunc):
         node.init_my_member()
 
         # should be no messages from NODE yet
-        count, = self._dispersy.database.execute(u"SELECT COUNT(*) FROM sync WHERE sync.community = ? AND sync.meta_message IN (?, ?)", (community.database_id, in_order_message.database_id, out_order_message.database_id)).next()
-        self.assertEqual(count, 0)
+        times = list(self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id)))
+        self.assertEqual(times, [])
 
         # create some data
-        global_times = range(10, 25, 2)
-        in_order_times = []
-        out_order_times = []
-        # random_order_times = []
+        global_times = range(10, 20)
         for global_time in global_times:
-            in_order_times.append(global_time)
-            node.give_message(node.create_in_order_text("Message #%d" % global_time, global_time))
-            global_time += 1
-            out_order_times.append(global_time)
-            node.give_message(node.create_out_order_text("Message #%d" % global_time, global_time))
-            # global_time += 1
-            # random_order_times.append(global_time)
-            # node.give_message(node.create_random_order_text_message("Message #%d" % global_time, global_time))
-        out_order_times.sort(reverse=True)
-        logger.debug("Total ASC:%d; DESC:", len(in_order_times))
+            node.give_message(node.create_random_order_text("Message #%d" % global_time, global_time))
 
-        def get_messages_back():
-            received_times = []
-            for _ in range(len(global_times) * 2):
-                _, message = node.receive_message(message_names=[u"ASC-text", u"DESC-text"])
-                #, u"random-order-text"])
-                received_times.append(message.distribution.global_time)
+        # send an empty sync message to obtain all messages DESC
+        node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
+        yield 0.1
 
-            return received_times
+        received_times = [message.distribution.global_time
+                          for _, message
+                          in node.receive_messages(message_names=[u"RANDOM-text"])]
+        self.assertNotEqual(received_times, sorted(times))
+        self.assertNotEqual(received_times, sorted(times, reverse=True))
 
-        # lists = []
+    @call_on_dispersy_thread
+    def test_mixed_order(self):
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode(community)
+        node.init_socket()
+        node.init_my_member()
+
+        # create some data
+        in_order_messages = [node.give_message(node.create_in_order_text("Message #%d" % global_time, global_time))
+                             for global_time
+                             in reversed(xrange(10, 30, 3))]
+        out_order_messages = [node.give_message(node.create_out_order_text("Message #%d" % global_time, global_time))
+                              for global_time
+                              in xrange(11, 30, 3)]
+        random_order_messages = [node.give_message(node.create_random_order_text("Message #%d" % global_time, global_time))
+                                 for global_time
+                                 in xrange(12, 30, 3)]
+
         for _ in range(5):
-            # send an empty sync message to obtain all messages in random-order
-            node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42, max(global_times)))
+            # send an empty sync message to obtain all messages
+            node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (1, 0, 1, 0, []), 42, 42))
             yield 0.1
 
-            received_times = get_messages_back()
+            received = node.receive_messages(message_names=[u"ASC-text", u"DESC-text", "RANDOM-text"])
+            logger.debug("received: %s", ["%s@%d" % (message.name, message.distribution.global_time)
+                                          for _, message
+                                          in received])
 
-            # followed by DESC
-            received_out_times = received_times[0:len(out_order_times)]
-            self.assertEqual(out_order_times, received_out_times)
+            # ASC-text, DESC-text, and RANDOM-text have the same priority, hence a ASC-text does not
+            # need to precede DESC-text (or vice versa).
 
-            # the first items must be ASC
-            received_in_times = received_times[len(out_order_times):len(in_order_times) + len(out_order_times)]
-            self.assertEqual(in_order_times, received_in_times)
+            # all ASC-text must be received in-order of their global time (low to high)
+            self.assertEqual([message.distribution.global_time
+                              for _, message
+                              in received
+                              if message.name == u"ASC-text"],
+                             sorted(message.distribution.global_time
+                                    for message
+                                    in in_order_messages))
+
+            # all DESC-text must be received in reversed order of their global time (high to low)
+            self.assertEqual([message.distribution.global_time
+                              for _, message
+                              in received
+                              if message.name == u"DESC-text"],
+                             sorted((message.distribution.global_time
+                                     for message
+                                     in out_order_messages),
+                                    reverse=True))
+
+            # all RANDOM-text must NOT be received in (reversed) order of their global time
+            self.assertNotEqual([message.distribution.global_time
+                                 for _, message
+                                 in received
+                                 if message.name == u"RANDOM-text"],
+                                sorted(message.distribution.global_time
+                                        for message
+                                        in random_order_messages))
+            self.assertNotEqual([message.distribution.global_time
+                                 for _, message
+                                 in received
+                                 if message.name == u"RANDOM-text"],
+                                sorted((message.distribution.global_time
+                                        for message
+                                        in random_order_messages),
+                                       reverse=True))
+
+    @call_on_dispersy_thread
+    def test_priority_order(self):
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+
+        # create node and ensure that SELF knows the node address
+        node = DebugNode(community)
+        node.init_socket()
+        node.init_my_member()
+
+        # create some data
+        high_priority_messages = [node.give_message(node.create_high_priority_text("Message #%d" % global_time, global_time))
+                                  for global_time
+                                  in xrange(10, 20, 3)]
+        low_priority_messages = [node.give_message(node.create_low_priority_text("Message #%d" % global_time, global_time))
+                                 for global_time
+                                 in xrange(11, 20, 3)]
+        medium_priority_messages = [node.give_message(node.create_medium_priority_text("Message #%d" % global_time, global_time))
+                                    for global_time
+                                    in xrange(12, 20, 3)]
+
+        for _ in range(5):
+            # send an empty sync message to obtain all messages
+            node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (1, 0, 1, 0, []), 42, 42))
+            yield 0.1
+
+            received = node.receive_messages(message_names=[u"high-priority-text", u"low-priority-text", u"medium-priority-text"])
+            logger.debug("received: %s", [message.name for _, message in received])
+
+            # the first should be the high-priority-text
+            offset = 0
+            self.assertEqual([message.name for _, message in received[offset:offset + len(high_priority_messages)]],
+                             ["high-priority-text"] * len(high_priority_messages))
+
+            # the second should be the medium-priority-text
+            offset += len(high_priority_messages)
+            self.assertEqual([message.name for _, message in received[offset:offset + len(medium_priority_messages)]],
+                             ["medium-priority-text"] * len(medium_priority_messages))
+
+            # last should be the low-priority-text
+            offset += len(medium_priority_messages)
+            self.assertEqual([message.name for _, message in received[offset:offset + len(low_priority_messages)]],
+                             ["low-priority-text"] * len(low_priority_messages))
 
     @call_on_dispersy_thread
     def test_last_1(self):

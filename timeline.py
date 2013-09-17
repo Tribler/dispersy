@@ -3,13 +3,13 @@ The Timeline is an important part of Dispersy.  The Timeline can be
 queried as to who had what actions at some point in time.
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
 from itertools import count, groupby
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
+from .logger import get_logger
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
+logger = get_logger(__name__)
+
 
 
 class Timeline(object):

@@ -1,14 +1,13 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from ...authentication import DoubleMemberAuthentication, MemberAuthentication
 from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import CommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
+from ...logger import get_logger
 from ...message import Message, DelayMessageByProof
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
+logger = get_logger(__name__)
 
 from .payload import TextPayload
 from .conversion import DebugCommunityConversion
@@ -72,6 +71,10 @@ class DebugCommunity(Community):
                 Message(self, u"dynamic-resolution-text", MemberAuthentication(), DynamicResolution(PublicResolution(), LinearResolution()), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 Message(self, u"sequence-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=True, synchronization_direction=u"ASC", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
                 Message(self, u"full-sync-global-time-pruning-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128, pruning=GlobalTimePruning(10, 20)), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text, self.undo_text),
+                Message(self, u"high-priority-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=200), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
+                Message(self, u"low-priority-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=100), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
+                Message(self, u"medium-priority-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=150), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
+                Message(self, u"RANDOM-text", MemberAuthentication(), PublicResolution(), FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"RANDOM", priority=128), CommunityDestination(node_count=10), TextPayload(), self.check_text, self.on_text),
                 ]
 
     def create_full_sync_text(self, text, store=True, update=True, forward=True):

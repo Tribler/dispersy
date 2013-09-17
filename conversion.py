@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from abc import ABCMeta, abstractmethod
 from math import ceil
 from socket import inet_ntoa, inet_aton
@@ -12,8 +9,10 @@ from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
+logger = get_logger(__name__)
 
 if __debug__:
     from .authentication import Authentication

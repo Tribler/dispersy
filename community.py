@@ -8,9 +8,6 @@ Community instance.
 @contact: dispersy@frayja.com
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
 from abc import ABCMeta, abstractmethod
 from itertools import islice
 from math import ceil
@@ -29,10 +26,12 @@ from .conversion import BinaryConversion, DefaultConversion
 from .decorator import documentation, runtime_duration_warning
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning
+from .logger import get_logger
 from .member import DummyMember, Member
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
+logger = get_logger(__name__)
 
 
 class SyncCache(object):
