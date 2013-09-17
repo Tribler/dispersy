@@ -1740,7 +1740,9 @@ class Community(object):
         for other in others:
             # all except for the CANDIDATE
             if not other == candidate:
-                logger.warn("removing %s in favor of %s", other, candidate)
+                logger.warning("removing %s %s in favor of %s %s",
+                               other.sock_addr, other,
+                               candidate.sock_addr, candidate)
                 candidate.merge(other)
                 del self._candidates[other.sock_addr]
                 self.add_candidate(candidate)
