@@ -1289,22 +1289,24 @@ class Community(object):
         if self._conversions:
             return self._conversions[-1]
 
-        # for backwards compatibility we will raise a KeyError when conversion isn't found (previously self._conversions
-        # was a dictionary)
-        logger.warning("Unable to find default conversion (there are no conversions available)")
+        # for backwards compatibility we will raise a KeyError when conversion isn't found
+        # (previously self._conversions was a dictionary)
+        logger.warning("unable to find default conversion (there are no conversions available)")
         raise KeyError()
 
     def get_conversion_for_packet(self, packet):
         """
         Returns the conversion associated with PACKET.
 
-        This method returns the first available conversion that can *decode* PACKET, this is tested in reversed order
-        using conversion.can_decode_message(PACKET).  Typically a conversion can decode a string when it matches: the
-        community version, the Dispersy version, and the community identifier, and the conversion knows how to decode
-        messages types described in PACKET.
+        This method returns the first available conversion that can *decode* PACKET, this is tested
+        in reversed order using conversion.can_decode_message(PACKET).  Typically a conversion can
+        decode a string when it matches: the community version, the Dispersy version, and the
+        community identifier, and the conversion knows how to decode messages types described in
+        PACKET.
 
-        Note that only the bytes needed to determine conversion.can_decode_message(PACKET) must be given, therefore
-        PACKET is not necessarily an entire packet but can also be a the first N bytes of a packet.
+        Note that only the bytes needed to determine conversion.can_decode_message(PACKET) must be
+        given, therefore PACKET is not necessarily an entire packet but can also be a the first N
+        bytes of a packet.
 
         Raises KeyError(packet) when no conversion is available.
         """
@@ -1313,18 +1315,18 @@ class Community(object):
             if conversion.can_decode_message(packet):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is found (previously
-        # self._conversions was a dictionary)
-        logger.warning("Unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
+        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is
+        # found (previously self._conversions was a dictionary)
+        logger.warning("unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
         raise KeyError(packet)
 
     def get_conversion_for_message(self, message):
         """
         Returns the conversion associated with MESSAGE.
 
-        This method returns the first available conversion that can *encode* MESSAGE, this is tested in reversed order
-        using conversion.can_encode_message(MESSAGE).  Typically a conversion can encode a message when: the conversion
-        knows how to encode messages with MESSAGE.name.
+        This method returns the first available conversion that can *encode* MESSAGE, this is tested
+        in reversed order using conversion.can_encode_message(MESSAGE).  Typically a conversion can
+        encode a message when: the conversion knows how to encode messages with MESSAGE.name.
 
         Raises KeyError(message) when no conversion is available.
         """
@@ -1336,9 +1338,9 @@ class Community(object):
             if conversion.can_encode_message(message):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is found (previously
-        # self._conversions was a dictionary)
-        logger.warning("Unable to find conversion to encode %s in %s", message, self._conversions)
+        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is
+        # found (previously self._conversions was a dictionary)
+        logger.warning("unable to find conversion to encode %s in %s", message, self._conversions)
         raise KeyError(message)
 
     def add_conversion(self, conversion):
