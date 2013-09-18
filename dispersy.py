@@ -1113,6 +1113,7 @@ class Dispersy(object):
                 set_wan_address(address):
 
             # reassessing our LAN address, perhaps we are running on a roaming device
+            self._local_interfaces = list(self._get_interface_addresses())
             interface = self._guess_lan_address(self._local_interfaces)
             lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
             if not self.is_valid_address(lan_address):
