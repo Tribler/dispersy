@@ -2,7 +2,7 @@ import socket
 from time import time, sleep
 
 from ...bloomfilter import BloomFilter
-from ...candidate import Candidate
+from ...candidate import Candidate, WalkCandidate
 from ...community import Community
 from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ...logger import get_logger
@@ -36,6 +36,7 @@ class DebugNode(object):
         self._dispersy = community.dispersy if community else None
         self._socket = None
         self._tunnel = False
+        self._connection_type = u"unknown"
         self._my_member = None
 
     @property
@@ -95,6 +96,13 @@ class DebugNode(object):
         return (host, port)
 
     @property
+    def connection_type(self):
+        """
+        The connection type for this node.
+        """
+        return self._connection_type
+
+    @property
     def my_member(self):
         """
         The member for this node.
@@ -112,6 +120,15 @@ class DebugNode(object):
         """
         return Candidate(self.lan_address, self.tunnel)
 
+    @property
+    def walk_candidate(self):
+        """
+        A WalkCandidate instance for this node.
+
+        Will fail unless self.init_socket() has been called.
+        """
+        return WalkCandidate(self.lan_address, self.tunnel, self.lan_address, self.wan_address, self.connection_type)
+
     def set_community(self, community):
         """
         Set the community that this node is associated to.
@@ -121,7 +138,7 @@ class DebugNode(object):
         if community:
             self._dispersy = community.dispersy
 
-    def init_socket(self, tunnel=False):
+    def init_socket(self, tunnel=False, connection_type=u"unknown"):
         """
         Create a socket.socket instance for this node.
 
@@ -129,7 +146,8 @@ class DebugNode(object):
         socket.socket instances will be reused.  Hence it is possible to emulate many external
         nodes.
         """
-        assert isinstance(tunnel, bool)
+        assert isinstance(tunnel, bool), type(tunnel)
+        assert isinstance(connection_type, unicode), type(connection_type)
         assert self._socket is None
         port = self._socket_range[0] + self._socket_counter % (self._socket_range[1] - self._socket_range[0])
         type(self)._socket_counter += 1
@@ -156,6 +174,7 @@ class DebugNode(object):
 
         self._socket = self._socket_pool[port]
         self._tunnel = tunnel
+        self._connection_type = connection_type
 
     def init_my_member(self, bits=None, sync_with_database=None, candidate=True, identity=True):
         """
@@ -601,6 +620,25 @@ class DebugNode(object):
                          destination=(destination,),
                          distribution=(global_time,),
                          payload=(destination.sock_addr, source_lan, source_wan, advice, connection_type, sync, identifier))
+
+    def create_dispersy_introduction_response(self, destination, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier, global_time):
+        """
+        Returns a new dispersy-introduction-request message.
+        """
+        assert isinstance(destination, Candidate), type(destination)
+        assert isinstance(source_lan, tuple), type(source_lan)
+        assert isinstance(source_wan, tuple), type(source_wan)
+        assert isinstance(introduction_lan, tuple), type(introduction_lan)
+        assert isinstance(introduction_wan, tuple), type(introduction_wan)
+        assert isinstance(connection_type, unicode), type(connection_type)
+        assert isinstance(tunnel, bool), type(tunnel)
+        assert isinstance(identifier, int), type(identifier)
+        assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"dispersy-introduction-response")
+        return meta.impl(authentication=(self._my_member,),
+                         destination=(destination,),
+                         distribution=(global_time,),
+                         payload=(destination.sock_addr, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier))
 
     def _create_text(self, message_name, text, global_time, resolution=(), destination=()):
         assert isinstance(message_name, unicode), type(message_name)
