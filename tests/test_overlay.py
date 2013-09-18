@@ -159,23 +159,50 @@ class TestOverlay(DispersyTestFunc):
         summary.debug("\n%s", pformat(self._dispersy.statistics.get_dict()))
 
         # write graph statistics
-        handle = open("%s_connections.txt" % cid_hex, "w+")
-        handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
-        for info in history:
-            handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d\n" % (
-                    info.diff,
-                    len(info.verified_candidates),
-                    len([_ for _, category in info.candidates if category == u"walk"]),
-                    len([_ for _, category in info.candidates if category == u"stumble"]),
-                    len([_ for _, category in info.candidates if category == u"intro"]),
-                    len([_ for _, category in info.candidates if category == u"none"]),
+        with open("%s_connections.txt" % cid_hex, "w+") as handle:
+            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
+            for info in history:
+                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d\n" % (
+                        info.diff,
+                        len(info.verified_candidates),
+                        len([_ for _, category in info.candidates if category == u"walk"]),
+                        len([_ for _, category in info.candidates if category == u"stumble"]),
+                        len([_ for _, category in info.candidates if category == u"intro"]),
+                        len([_ for _, category in info.candidates if category == u"none"]),
+                        info.bootstrap_attempt,
+                        info.bootstrap_success,
+                        info.candidate_attempt,
+                        info.candidate_success,
+                        info.incoming_walks))
+
+        average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
+        average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"walk"]) for info in history) / len(history)
+        average_stumble_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"stumble"]) for info in history) / len(history)
+        average_intro_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"intro"]) for info in history) / len(history)
+        average_none_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"none"]) for info in history) / len(history)
+
+        # write results for this run
+        with open("%s_results.txt" % cid_hex, "w+") as handle:
+            # take the last history, this reflects the total bootstrap_attempts, ..., total incoming_walks
+            info = history[-1]
+            import socket
+
+            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
+            handle.write("%f \"%s\" %s %f %f %f %f %f %d %d %d %d %d\n" % (
+                    time(),
+                    socket.gethostname(),
+                    cid_hex,
+                    average_verified_candidates,
+                    average_walk_candidates,
+                    average_stumble_candidates,
+                    average_intro_candidates,
+                    average_none_candidates,
                     info.bootstrap_attempt,
                     info.bootstrap_success,
                     info.candidate_attempt,
                     info.candidate_success,
                     info.incoming_walks))
 
-        # determine test success or failure
-        average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
+        # determine test success or failure (hard coded for 10.0 or higher being a success)
         summary.debug("Average verified candidates: %.1f", average_verified_candidates)
         self.assertGreater(average_verified_candidates, 10.0)
