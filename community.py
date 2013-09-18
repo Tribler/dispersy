@@ -1401,7 +1401,9 @@ class Community(object):
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
 
-    def _iter_category(self, category):
+    def _iter_category(self, category, strict=True):
+        # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
+        # 0.0.0.0:0
         while True:
             index = 0
             has_result = False
@@ -1413,7 +1415,8 @@ class Community(object):
                 candidate = self._candidates.get(key)
 
                 if (candidate and
-                    candidate.get_category(now) == category):
+                    candidate.get_category(now) == category and
+                    not (strict and (candidate.lan_address == ("0.0.0.0", 0) or candidate.wan_address == ("0.0.0.0", 0)))):
 
                     yield candidate
                     has_result = True
