@@ -2201,23 +2201,30 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         assert self.is_valid_address(sock_addr), sock_addr
 
+        # TODO Below are a few 'info' level logs, they should become 'debug' level once this code is
+        # stable.
+
         if any(sock_addr[0] in interface for interface in self._local_interfaces):
             # is SOCK_ADDR is on our local LAN, hence LAN_ADDRESS should be SOCK_ADDR
             if sock_addr != lan_address:
-                logger.warning("estimate someones LAN address is %s:%d (LAN was %s:%d, WAN stays %s:%d)",
-                               sock_addr[0], sock_addr[1], lan_address[0], lan_address[1], wan_address[0], wan_address[1])
+                logger.info("estimate someones LAN address is %s:%d (LAN was %s:%d, WAN stays %s:%d)",
+                            sock_addr[0], sock_addr[1], lan_address[0], lan_address[1], wan_address[0], wan_address[1])
                 lan_address = sock_addr
 
+            # it is possible that the WAN address that someone claims to have is correct, while the
+            # WAN address that we believe we have is not.  it is not a problem to have candidates
+            # with the same WAN address as us
+            #
             # any WAN address is acceptable except when it matches our WAN address
-            if wan_address == self.wan_address:
-                logger.warning("cleared someones WAN address %s:%d (this is our WAN address)", wan_address[0], wan_address[1])
-                wan_address = ("0.0.0.0", 0)
+            # if wan_address == self.wan_address:
+            #     logger.info("cleared someones WAN address %s:%d (this is our WAN address)", wan_address[0], wan_address[1])
+            #     wan_address = ("0.0.0.0", 0)
 
         else:
             # is SOCK_ADDR is outside our local LAN, hence WAN_ADDRESS should be SOCK_ADDR
             if sock_addr != wan_address:
-                logger.warning("estimate someones WAN address is %s:%d (WAN was %s:%d, LAN stays %s:%d)",
-                               sock_addr[0], sock_addr[1], wan_address[0], wan_address[1], lan_address[0], lan_address[1])
+                logger.info("estimate someones WAN address is %s:%d (WAN was %s:%d, LAN stays %s:%d)",
+                            sock_addr[0], sock_addr[1], wan_address[0], wan_address[1], lan_address[0], lan_address[1])
                 wan_address = sock_addr
 
         return lan_address, wan_address
