@@ -1,18 +1,15 @@
-import logging
-logger = logging.getLogger(__name__)
-summary = logging.getLogger("test-bootstrap-summary")
-
 from os import environ
 from unittest import skip, skipUnless
 from time import time
 from socket import getfqdn
 
 from ..candidate import BootstrapCandidate
+from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
-
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
-
+logger = get_logger(__name__)
+summary = get_logger("test-bootstrap-summary")
 
 class TestBootstrapServers(DispersyTestFunc):
 

@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from atexit import register as atexit_register
 from cProfile import Profile
 from collections import defaultdict
@@ -9,6 +6,9 @@ from thread import get_ident
 from threading import current_thread
 from time import time
 import sys
+
+from .logger import get_logger
+logger = get_logger(__name__)
 
 
 def documentation(documented_func):
@@ -72,7 +72,7 @@ else:
         return func
 
 if "--runtime-statistics" in getattr(sys, "argv", []):
-    _runtime_statistics_logger = logging.getLogger("runtime-statistics")
+    _runtime_statistics_logger = get_logger("runtime-statistics")
     _runtime_statistics = defaultdict(lambda: [0, 0.0])
 
     def _output_runtime_statistics():

@@ -190,7 +190,7 @@ class SyncDistribution(Distribution):
         # note: the priority has precedence over the global_time based ordering.
         # note: the default priority should be 127, use higher or lowe values when needed.
         assert isinstance(synchronization_direction, unicode)
-        assert synchronization_direction in (u"ASC", u"DESC")
+        assert synchronization_direction in (u"ASC", u"DESC", u"RANDOM")
         assert isinstance(priority, int)
         assert 0 <= priority <= 255
         assert isinstance(pruning, Pruning), type(pruning)
@@ -210,7 +210,7 @@ class SyncDistribution(Distribution):
 
     @property
     def synchronization_direction_value(self):
-        return -1 if self._synchronization_direction == u"DESC" else 1
+        return {u"ASC":1, u"DESC":-1, u"RANDOM":0}[self._synchronization_direction]
 
     @property
     def priority(self):

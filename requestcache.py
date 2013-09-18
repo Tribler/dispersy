@@ -1,7 +1,7 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from random import random
+
+from .logger import get_logger
+logger = get_logger(__name__)
 
 
 def identifier_to_string(identifier):

@@ -6,15 +6,14 @@ This module provides an interface to the Dispersy database.
 @contact: dispersy@frayja.com
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
 from itertools import groupby
+import sys
 
 from .database import Database
 from .distribution import FullSyncDistribution
+from .logger import get_logger
+logger = get_logger(__name__)
 
-import sys
 if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
 

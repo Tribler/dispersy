@@ -1,11 +1,10 @@
-import logging
-logger = logging.getLogger(__name__)
-
 from unittest import TestCase
 
 from ..callback import Callback
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger
+logger = get_logger(__name__)
 
 
 def call_on_dispersy_thread(func):
@@ -32,10 +31,7 @@ class DispersyTestFunc(TestCase):
         logger.debug("%s (fatal: %s, strict: %s)", exception, is_fatal, self.enable_strict)
 
         if self.enable_strict and self._dispersy:
-            # properly shutdown Dispersy, note that it will always return False since
-            # on_callback_exception is running on the callback thread making it impossible to have
-            # the thread closed while this call is still being performed
-            self.assertFalse(self._dispersy.stop())
+            self._dispersy.stop()
             self._dispersy = None
 
         # consider every exception a fatal error when 'strict' is enabled

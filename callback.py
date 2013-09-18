@@ -1,8 +1,6 @@
 """
 A callback thread running Dispersy.
 """
-import logging
-logger = logging.getLogger(__name__)
 
 from heapq import heappush, heappop
 from thread import get_ident
@@ -12,6 +10,9 @@ from types import GeneratorType, TupleType
 from sys import exc_info
 
 from .decorator import attach_profiler
+from .logger import get_logger
+logger = get_logger(__name__)
+
 
 if __debug__:
     from atexit import register as atexit_register
@@ -60,6 +61,10 @@ class Callback(object):
 
         # _lock is used to protect variables that are written to on multiple threads
         self._lock = Lock()
+
+        # _thread contains the actual Thread object
+        self._thread = Thread(target=self._loop, name=self._name)
+        self._thread.daemon = True
 
         # _thread_ident is used to detect when methods are called from the same thread
         self._thread_ident = 0
@@ -504,9 +509,7 @@ class Callback(object):
             self._state = "STATE_PLEASE_RUN"
             logger.debug("STATE_PLEASE_RUN")
 
-        thread = Thread(target=self._loop, name=self._name)
-        thread.daemon = True
-        thread.start()
+        self._thread.start()
 
         if wait:
             # Wait until the thread has started
@@ -538,7 +541,10 @@ class Callback(object):
 
         # 05/04/13 Boudewijn: we must also wait when self._state != RUNNING.  This can occur when
         # stop() has already been called from SELF._THREAD_IDENT, changing the state to PLEASE_STOP.
-        if not self._thread_ident == get_ident():
+        if self._thread_ident == get_ident():
+            logger.debug("using callback.stop from the same thread will not allow us to wait until the callback has finished")
+
+        else:
             while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
                 sleep(0.01)
                 timeout -= 0.01
@@ -546,6 +552,12 @@ class Callback(object):
             if not self.is_finished:
                 logger.warning("unable to stop the callback within the allowed time")
 
+        return self.is_finished
+
+    def join(self, timeout=0.0):
+        assert isinstance(timeout, float), type(timeout)
+        assert timeout >= 0.0, timeout
+        self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
 
     def loop(self):

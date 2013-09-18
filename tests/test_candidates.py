@@ -7,17 +7,16 @@
 # disable C0301, Line too long.  the auto generated tests do not conform to this rule.
 # pylint: disable=C0301
 
-import logging
-logger = logging.getLogger(__name__)
-
 from fractions import gcd
 from itertools import combinations, islice
 from time import time
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
+from ..logger import get_logger
 from ..tool.tracker import TrackerCommunity
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
 
 
 def print_unittest_combinations():
