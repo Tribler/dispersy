@@ -25,9 +25,9 @@ CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
  public_key BLOB,                               -- member public key
- tags TEXT DEFAULT '',                          -- comma separated tags: store, ignore, and blacklist
- UNIQUE(public_key));
+ tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
 CREATE INDEX member_mid_index ON member(mid);
+-- TODO update database schema of older clients
 
 CREATE TABLE private_key(
  member INTEGER PRIMARY KEY REFERENCES member(id),
