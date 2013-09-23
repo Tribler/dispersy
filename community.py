@@ -735,7 +735,7 @@ class Community(object):
             return (time_low, time_high, 1, 0, bloom)
         return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
-    # instead of pivot + capacity, divide capacity to have 50/50 divivion around pivot
+    # instead of pivot + capacity, divide capacity to have 50/50 division around pivot
     @runtime_duration_warning(0.5)
     def dispersy_claim_sync_bloom_filter_50_50(self):
         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
