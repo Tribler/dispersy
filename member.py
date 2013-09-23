@@ -127,23 +127,19 @@ class Member(DummyMember):
                 break
 
             if public_key_from_db == "":
-                def update_public_key():
-                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
-                update_public_key()
+                database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
                 break
 
             logger.warning("multiple public keys having the same SHA1 digest.  this is very unlikely to occur [%s] [%s]", public_key.encode("HEX"), public_key_from_db.encode("HEX"))
 
         else:
             # did not break, hence the public key is not yet in the database
-            def insert_public_key():
-                database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-            insert_public_key()
+            database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
             database_id = database.last_insert_rowid
             tags = u""
 
         try:
-            private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ?", (database_id,)).next()
+            private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
             private_key_from_db = str(private_key_from_db)
             assert ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
@@ -151,9 +147,7 @@ class Member(DummyMember):
             private_key_from_db = ""
 
         if private_key and not private_key_from_db:
-            def insert_private_key():
-                database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
-            insert_private_key()
+            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
 
         elif private_key_from_db:
             private_key = private_key_from_db
