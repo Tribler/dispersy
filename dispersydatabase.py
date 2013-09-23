@@ -18,7 +18,7 @@ if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
 
 
-LATEST_VERSION = 16
+LATEST_VERSION = 17
 
 schema = u"""
 CREATE TABLE member(
@@ -27,7 +27,6 @@ CREATE TABLE member(
  public_key BLOB,                               -- member public key
  tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
 CREATE INDEX member_mid_index ON member(mid);
--- TODO update database schema of older clients
 
 CREATE TABLE private_key(
  member INTEGER PRIMARY KEY REFERENCES member(id),
@@ -352,11 +351,40 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
 
             # upgrade from version 16 to version 17
             if database_version < 17:
-                # there is no version 17 yet...
-                # logger.debug("upgrade database %d -> %d", database_version, 17)
-                # self.executescript(u"""UPDATE option SET value = '17' WHERE key = 'database_version';""")
+                # 23/09/13 Boudewijn: by rewriting the Member constructor to find the member using
+                # the mid instead of the public_key, we no longer need to have an index on the
+                # public_key column.  this greatly reduces the bytes written when creating new
+                # Member instances.  unfortunately this requires the removal of the UNIQUE clause,
+                # however, the python code already guarantees that the public_key remains unique.
+                logger.info("upgrade database %d -> %d", database_version, 17)
+                self.executescript(u"""
+-- move / remove old member table
+DROP INDEX IF EXISTS member_mid_index;
+ALTER TABLE member RENAME TO old_member;
+-- create new member table
+CREATE TABLE member(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB,                               -- member public key
+ tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
+CREATE INDEX member_mid_index ON member(mid);
+-- fill new member table with old data
+INSERT INTO member (id, mid, public_key, tags) SELECT id, mid, public_key, tags FROM old_member;
+-- remove old member table
+DROP TABLE old_member;
+-- update database version
+UPDATE option SET value = '17' WHERE key = 'database_version';
+""")
+                self.commit()
+                logger.info("upgrade database %d -> %d (done)", database_version, 17)
+
+            # upgrade from version 17 to version 18
+            if database_version < 18:
+                # there is no version 18 yet...
+                # logger.debug("upgrade database %d -> %d", database_version, 18)
+                # self.executescript(u"""UPDATE option SET value = '18' WHERE key = 'database_version';""")
                 # self.commit()
-                # logger.debug("upgrade database %d -> %d (done)", database_version, 17)
+                # logger.debug("upgrade database %d -> %d (done)", database_version, 18)
                 pass
 
         return LATEST_VERSION
