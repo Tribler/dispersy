@@ -322,8 +322,6 @@ class Community(object):
 
         # sync range bloom filters
         self._sync_cache = None
-        self._dispersy_sync_cache_enable = True
-        self._dispersy_sync_skip_enable = True
         self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
@@ -573,7 +571,11 @@ class Community(object):
 
     @property
     def dispersy_sync_skip_enable(self):
-        return self._dispersy_sync_skip_enable
+        return True #_sync_skip_
+
+    @property
+    def dispersy_sync_cache_enable(self):
+        return True #_cache_enable_
 
     def dispersy_store(self, messages):
         """
@@ -609,11 +611,11 @@ class Community(object):
         """
         if self._sync_cache:
             if self._sync_cache.responses_received > 0:
-                if self._dispersy_sync_skip_enable:
+                if self.dispersy_sync_skip_enable:
                     # We have received data, reset skip counter
                     self._sync_cache_skip_count = 0
 
-                if self._dispersy_sync_cache_enable and self._sync_cache.times_used < 100:
+                if self.dispersy_sync_cache_enable and self._sync_cache.times_used < 100:
                     self._statistics.sync_bloom_reuse += 1
                     self._statistics.sync_bloom_send += 1
                     cache = self._sync_cache
