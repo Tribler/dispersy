@@ -322,6 +322,7 @@ class Community(object):
 
         # sync range bloom filters
         self._sync_cache = None
+        self._dispersy_sync_cache_enable = True
         self._dispersy_sync_skip_enable = True
         self._sync_cache_skip_count = 0
         if __debug__:
@@ -612,7 +613,7 @@ class Community(object):
                     # We have received data, reset skip counter
                     self._sync_cache_skip_count = 0
 
-                if self._sync_cache.times_used < 100:
+                if self._dispersy_sync_cache_enable and self._sync_cache.times_used < 100:
                     self._statistics.sync_bloom_reuse += 1
                     self._statistics.sync_bloom_send += 1
                     cache = self._sync_cache
