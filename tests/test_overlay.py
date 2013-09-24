@@ -115,6 +115,9 @@ class TestOverlay(DispersyTestFunc):
             info.candidate_success = self._dispersy.statistics.walk_success - self._dispersy.statistics.walk_bootstrap_success
             info.candidate_ratio = 100.0 * info.candidate_success / info.candidate_attempt if info.candidate_attempt else 0.0
             info.incoming_walks = self._dispersy.statistics.walk_advice_incoming_request
+            info.lan_address = self._dispersy.lan_address
+            info.wan_address = self._dispersy.wan_address
+            info.connection_type = self._dispersy.connection_type
             history.append(info)
 
             summary.info("after %.1f seconds there are %d verified candidates [w%d:s%d:i%d:n%d]",
@@ -160,9 +163,9 @@ class TestOverlay(DispersyTestFunc):
 
         # write graph statistics
         with open("%s_connections.txt" % cid_hex, "w+") as handle:
-            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
+            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
             for info in history:
-                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d\n" % (
+                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
                         info.diff,
                         len(info.verified_candidates),
                         len([_ for _, category in info.candidates if category == u"walk"]),
@@ -173,7 +176,10 @@ class TestOverlay(DispersyTestFunc):
                         info.bootstrap_success,
                         info.candidate_attempt,
                         info.candidate_success,
-                        info.incoming_walks))
+                        info.incoming_walks,
+                        "%s:%d" % info.lan_address,
+                        "%s:%d" % info.wan_address,
+                        info.connection_type))
 
         average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
         average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"walk"]) for info in history) / len(history)
@@ -187,8 +193,8 @@ class TestOverlay(DispersyTestFunc):
             info = history[-1]
             import socket
 
-            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
-            handle.write("%f \"%s\" %s %f %f %f %f %f %d %d %d %d %d\n" % (
+            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
+            handle.write("%f \"%s\" %s %f %f %f %f %f %d %d %d %d %d %s %s \"%s\"\n" % (
                     time(),
                     socket.gethostname(),
                     cid_hex,
@@ -201,7 +207,10 @@ class TestOverlay(DispersyTestFunc):
                     info.bootstrap_success,
                     info.candidate_attempt,
                     info.candidate_success,
-                    info.incoming_walks))
+                    info.incoming_walks,
+                    "%s:%d" % info.lan_address,
+                    "%s:%d" % info.wan_address,
+                    info.connection_type))
 
         # determine test success or failure (hard coded for 10.0 or higher being a success)
         summary.debug("Average verified candidates: %.1f", average_verified_candidates)
