@@ -20,4 +20,4 @@ class MainThreadCallback(Callback):
         currentThread().setName(name)
 
     def start(self, *args, **kargs):
-        return True
+        return self.is_running

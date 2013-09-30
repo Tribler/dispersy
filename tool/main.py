@@ -98,7 +98,8 @@ def main_real(setup=None):
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
-    dispersy.start()
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
     dispersy.callback.loop()
     return dispersy.callback
 

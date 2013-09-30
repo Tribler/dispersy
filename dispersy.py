@@ -4410,16 +4410,31 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         def start():
             assert self._callback.is_current_thread, "Must be called from the callback thread"
-            self._database.open()
-            self._endpoint.open(self)
+
+            results.append((u"database", self._database.open()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
+            results.append((u"endpoint", self._endpoint.open(self)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
             self._endpoint_ready()
 
         # start
         logger.info("starting the Dispersy core...")
-        self._callback.start()
+        results = []
+
+        results.append((u"callback", self._callback.start()))
+        assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
         self._callback.call(start)
-        logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
-        return True
+
+        # log and return the result
+        if all(result for _, result in results):
+            logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
+            return True
+
+        else:
+            logger.error("Dispersy core unable to start all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
+            return False
 
     def stop(self, timeout=10.0):
         """
@@ -4466,11 +4481,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         def stop():
             # unload all communities
             results.append((u"community", ordered_unload_communities()))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # stop endpoint
             results.append((u"endpont", self._endpoint.close(timeout)))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
             while True:
@@ -4491,11 +4506,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
                 # unload all communities
                 results.append((u"community", ordered_unload_communities()))
-                assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+                assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # stop the database
             results.append((u"database", self._database.close()))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # output statistics before we stop
         if logger.isEnabledFor(logging.DEBUG):
@@ -4511,14 +4526,17 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # that we are currently on
             self._callback.stop(timeout)
         else:
-            results.append(("callback", self._callback.stop(timeout)))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for result in results]
+            results.append((u"callback", self._callback.stop(timeout)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
+        # log and return the result
         if all(result for _, result in results):
             logger.info("Dispersy core properly stopped")
+            return True
+
         else:
             logger.error("Dispersy core unable to stop all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
-        return all(results)
+            return False
 
     def _candidate_walker(self):
         """
