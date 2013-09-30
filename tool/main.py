@@ -93,13 +93,15 @@ def main_real(setup=None):
     dispersy.callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
-        print "Received", sig, "signal in", frame
-        dispersy.stop()
+        print "Received signal '", sig, "' in", frame, "(shutting down)"
+        dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
 
     # start
     if not dispersy.start():
         raise RuntimeError("Unable to start Dispersy")
+
+    # wait forever
     dispersy.callback.loop()
     return dispersy.callback
 

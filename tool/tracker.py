@@ -366,11 +366,6 @@ class TrackerDispersy(Dispersy):
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
 
-def setup_dispersy(dispersy):
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
-
-
 def main():
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
@@ -383,15 +378,19 @@ def main():
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
 
-    # start Dispersy
+    # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
-    dispersy.callback.register(setup_dispersy, (dispersy,))
-    dispersy.start()
+    dispersy.define_auto_load(TrackerCommunity)
+    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
         print "Received signal '", sig, "' in", frame, "(shutting down)"
         dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+
+    # start
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
     dispersy.callback.loop()
