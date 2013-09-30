@@ -1059,6 +1059,7 @@ class Dispersy(object):
         assert isinstance(voter, Candidate), type(voter)
 
         def set_lan_address(address):
+            " Set LAN address when ADDRESS is different from self._LAN_ADDRESS. "
             if self._lan_address == address:
                 return False
             else:
@@ -1067,6 +1068,7 @@ class Dispersy(object):
                 return True
 
         def set_wan_address(address):
+            " Set WAN address when ADDRESS is different from self._WAN_ADDRESS. "
             if self._wan_address == address:
                 return False
             else:
@@ -1075,6 +1077,7 @@ class Dispersy(object):
                 return True
 
         def set_connection_type(connection_type):
+            " Set connection type when CONNECTION_TYPE is different from self._CONNECTION_TYPE. "
             if self._connection_type == connection_type:
                 return False
             else:
@@ -1082,33 +1085,29 @@ class Dispersy(object):
                 self._connection_type = connection_type
                 return True
 
-        if self._wan_address[0] in (voter.wan_address[0], voter.sock_addr[0]):
-            logger.debug("ignoring vote from candidate on the same LAN")
-            return
-
-        if not self.is_valid_address(address):
-            logger.debug("got invalid external vote from %s received %s:%s", voter, address[0], address[1])
-            return
-
         # undo previous vote
         self.wan_address_unvote(voter)
 
-        # ignore votes from addresses that we know are within any of our LAN interfaces.  peers
-        # providing these votes can not know our WAN address
+        # ensure ADDRESS is valid
+        if not self.is_valid_address(address):
+            logger.debug("ignore vote for %s from %s (address is invalid)", address, voter.sock_addr)
+            return
+
+        # ignore votes from voters that we know are within any of our LAN interfaces.  these voters
+        # can not know our WAN address
         if any(voter.sock_addr[0] in interface for interface in self._local_interfaces):
-            logger.debug("ignore vote for %s:%d from %s:%d (voter is within our LAN)",
-                         address[0], address[1], voter.sock_addr[0], voter.sock_addr[1])
+            logger.debug("ignore vote for %s from %s (voter is within our LAN)", address, voter.sock_addr)
             return
 
         # do vote
-        logger.debug("add vote for %s:%d from %s:%d", address[0], address[1], voter.sock_addr[0], voter.sock_addr[1])
+        logger.debug("add vote for %s from %s", address, voter.sock_addr)
         self._wan_address_votes[address].add(voter.sock_addr)
 
         #
         # check self._lan_address and self._wan_address
         #
 
-        # change when new vote count equal or higher than old address vote count
+        # change when new vote count is equal or higher than old address vote count
         if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
                 set_wan_address(address):
 
@@ -1120,13 +1119,16 @@ class Dispersy(object):
                 lan_address = (self._wan_address[0], self._lan_address[1])
             set_lan_address(lan_address)
 
-            # TODO security threat!  we should never remove bootstrap candidates, for they are our safety net
-            # our address may not be a bootstrap address
+            # TODO security threat!  we should never remove bootstrap candidates, for they are our
+            # safety net our address may not be a bootstrap address
             if self._wan_address in self._bootstrap_candidates:
                 del self._bootstrap_candidates[self._wan_address]
             if self._lan_address in self._bootstrap_candidates:
                 del self._bootstrap_candidates[self._lan_address]
 
+            # TODO security threat!  we should not remove candidates based on the votes we obtain,
+            # this can be easily misused.  leaving this code to prevent a node talking with itself
+            #
             # our address may not be a candidate
             for community in self._communities.itervalues():
                 community.candidates.pop(self._wan_address, None)
@@ -1140,16 +1142,19 @@ class Dispersy(object):
         #
 
         if len(self._wan_address_votes) == 1 and self._lan_address == self._wan_address:
-            # external peers are reporting the same WAN address that happens to be our LAN address as well
+            # external peers are reporting the same WAN address that happens to be our LAN address
+            # as well
             set_connection_type(u"public")
 
         elif len(self._wan_address_votes) > 1:
-            # external peers are reporting multiple WAN addresses (most likely the same IP with different port numbers)
+            # external peers are reporting multiple WAN addresses (most likely the same IP with
+            # different port numbers)
             set_connection_type(u"symmetric-NAT")
 
         else:
-            # it is possible that, for some time after the WAN address changes, we will believe that the connection type
-            # is symmetric NAT.  once votes have been pruned we may find that we are no longer behind a symmetric-NAT
+            # it is possible that, for some time after the WAN address changes, we will believe that
+            # the connection type is symmetric NAT.  once votes have been pruned we may find that we
+            # are no longer behind a symmetric-NAT
             set_connection_type(u"unknown")
 
     def _is_duplicate_sync_message(self, message):
@@ -2201,30 +2206,18 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         assert self.is_valid_address(sock_addr), sock_addr
 
-        # TODO Below are a few 'info' level logs, they should become 'debug' level once this code is
-        # stable.
-
         if any(sock_addr[0] in interface for interface in self._local_interfaces):
             # is SOCK_ADDR is on our local LAN, hence LAN_ADDRESS should be SOCK_ADDR
             if sock_addr != lan_address:
-                logger.info("estimate someones LAN address is %s:%d (LAN was %s:%d, WAN stays %s:%d)",
-                            sock_addr[0], sock_addr[1], lan_address[0], lan_address[1], wan_address[0], wan_address[1])
+                logger.debug("estimate someones LAN address is %s (LAN was %s, WAN stays %s)",
+                             sock_addr, lan_address, wan_address)
                 lan_address = sock_addr
-
-            # it is possible that the WAN address that someone claims to have is correct, while the
-            # WAN address that we believe we have is not.  it is not a problem to have candidates
-            # with the same WAN address as us
-            #
-            # any WAN address is acceptable except when it matches our WAN address
-            # if wan_address == self.wan_address:
-            #     logger.info("cleared someones WAN address %s:%d (this is our WAN address)", wan_address[0], wan_address[1])
-            #     wan_address = ("0.0.0.0", 0)
 
         else:
             # is SOCK_ADDR is outside our local LAN, hence WAN_ADDRESS should be SOCK_ADDR
             if sock_addr != wan_address:
-                logger.info("estimate someones WAN address is %s:%d (WAN was %s:%d, LAN stays %s:%d)",
-                            sock_addr[0], sock_addr[1], wan_address[0], wan_address[1], lan_address[0], lan_address[1])
+                logger.info("estimate someones WAN address is %s (WAN was %s, LAN stays %s)",
+                            sock_addr, wan_address, lan_address)
                 wan_address = sock_addr
 
         return lan_address, wan_address
