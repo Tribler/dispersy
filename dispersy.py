@@ -4425,7 +4425,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         results.append((u"callback", self._callback.start()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
-        self._callback.call(start)
+        self._callback.call(start, priority=512)
 
         # log and return the result
         if all(result for _, result in results):
