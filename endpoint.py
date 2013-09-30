@@ -103,7 +103,7 @@ class RawserverEndpoint(Endpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _SOCKET are set during open(...)
+        # _SOCKET is set during open(...)
         self._socket = None
 
     def open(self, dispersy):
@@ -247,8 +247,9 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _THREAD are set during open(...)
+        # _THREAD and _THREAD are set during open(...)
         self._thread = None
+        self._socket = None
 
     def open(self, dispersy):
         # do NOT call RawserverEndpoint.open!
