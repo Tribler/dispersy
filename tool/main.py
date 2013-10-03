@@ -92,20 +92,21 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(start_script, (dispersy, opt))
+    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
         dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # start
     if not dispersy.start():
         raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
-    dispersy.callback.loop()
-    return dispersy.callback
+    callback.loop()
+    return callback
 
 
 def main(setup=None):

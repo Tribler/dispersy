@@ -44,7 +44,7 @@ from ..conversion import BinaryConversion
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
-from ..logger import get_logger
+from ..logger import get_logger, get_context_filter
 from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
 logger = get_logger(__name__)
@@ -375,8 +375,14 @@ def main():
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
 
+    context_filter = get_context_filter()
+    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
+
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
+
+    # set the log identifier
+    context_filter.identifier = opt.log_identifier
 
     # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
@@ -384,9 +390,10 @@ def main():
     dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
-        print "Received signal '", sig, "' in", frame, "(shutting down)"
+        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
         dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # start
     if not dispersy.start():
@@ -394,3 +401,6 @@ def main():
 
     # wait forever
     dispersy.callback.loop()
+
+    # return 1 on exception, otherwise 0
+    exit(1 if dispersy.callback.exception else 0)

@@ -2406,6 +2406,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # process the bloom filter part of the request
         #
 
+        if not any(message.payload.sync for message in messages):
+            # no sync needed
+            return
+
         def get_sub_select(meta):
             direction = meta.distribution.synchronization_direction
             if direction == u"ASC":
