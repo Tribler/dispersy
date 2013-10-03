@@ -38,11 +38,9 @@ of, the name it uses as an internal identifier, and the class that will contain 
 """
 
 import logging
-logger = logging.getLogger(__name__)
-
+import netifaces
 import os
 import sys
-import netifaces
 
 try:
     # python 2.7 only...
@@ -65,6 +63,7 @@ from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
+from .logger import get_logger
 from .member import DummyMember, Member
 from .message import BatchConfiguration, Packet, Message
 from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
@@ -80,6 +79,7 @@ from .payload import SignatureRequestPayload, SignatureResponsePayload
 from .requestcache import Cache, NumberCache
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
+logger = get_logger(__name__)
 
 if __debug__:
     from .callback import Callback
@@ -318,10 +318,10 @@ class Dispersy(object):
         # our LAN and WAN addresses
         self._lan_address = (self._guess_lan_address() or "0.0.0.0", 0)
         self._wan_address = ("0.0.0.0", 0)
-        self._wan_address_votes = {}
-        if __debug__:
-            logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
-            logger.debug("my WAN address is %s:%d", self._wan_address[0], self._wan_address[1])
+        self._wan_address_votes = defaultdict(set)
+        logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
+        logger.debug("my WAN address is %s:%d", self._wan_address[0], self._wan_address[1])
+        logger.debug("my connection type is %s", self._connection_type)
 
         # bootstrap peers
         bootstrap_candidates = get_bootstrap_candidates(self)
@@ -363,7 +363,6 @@ class Dispersy(object):
 
             self._callback.register(memory_dump)
 
-        self._callback.register(self._stats_candidates)
         self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
@@ -431,21 +430,21 @@ class Dispersy(object):
         This method is called immediately after endpoint.start finishes.
         """
         host, port = self._endpoint.get_address()
-        logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
+        logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
         self._lan_address = (self._lan_address[0], port)
 
         # at this point we do not yet have a WAN address, set it to the LAN address to ensure we
         # have something
         assert self._wan_address == ("0.0.0.0", 0)
-        logger.warn("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
+        logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
         self._wan_address = self._lan_address
 
         if not self.is_valid_address(self._lan_address):
-            logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
+            logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
             self._lan_address = (host, self._lan_address[1])
 
             if not self.is_valid_address(self._lan_address):
-                logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
+                logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
                 self._lan_address = (self._wan_address[0], self._lan_address[1])
 
         # our address may not be a bootstrap address
@@ -1032,6 +1031,31 @@ class Dispersy(object):
         assert isinstance(address[0], str)
         assert isinstance(address[1], int)
         assert isinstance(voter, Candidate), type(voter)
+
+        def set_lan_address(address):
+            if self._lan_address == address:
+                return False
+            else:
+                logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], address[0], address[1])
+                self._lan_address = address
+                return True
+
+        def set_wan_address(address):
+            if self._wan_address == address:
+                return False
+            else:
+                logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], address[0], address[1])
+                self._wan_address = address
+                return True
+
+        def set_connection_type(connection_type):
+            if self._connection_type == connection_type:
+                return False
+            else:
+                logger.info("update connection type %s -> %s", self._connection_type, connection_type)
+                self._connection_type = connection_type
+                return True
+
         if self._wan_address[0] in (voter.wan_address[0], voter.sock_addr[0]):
             logger.debug("ignoring vote from candidate on the same LAN")
             return
@@ -1040,55 +1064,60 @@ class Dispersy(object):
             logger.debug("got invalid external vote from %s received %s:%s", voter, address[0], address[1])
             return
 
-        if __debug__:
-            debug_previous_connection_type = self._connection_type
-
         # undo previous vote
         self.wan_address_unvote(voter)
 
         # do vote
-        votes = self._wan_address_votes
-        if not address in votes:
-            votes[address] = set()
-        votes[address].add(voter.sock_addr)
+        logger.debug("add vote for %s from %s", address, voter.sock_addr)
+        self._wan_address_votes[address].add(voter.sock_addr)
+
+        # logger.info("_wan_address %s, address %s", self._wan_address, address)
+        # logger.info("len(self._wan_address_votes[address]) %d, len(self._wan_address_votes[_wan_address]) %d", len(self._wan_address_votes[address]), len(self._wan_address_votes.get(self._wan_address, ())))
+
+        #
+        # check self._lan_address and self._wan_address
+        #
 
         # change when new vote count equal or higher than old address vote count
-        if self._wan_address != address and len(votes[address]) >= len(votes.get(self._wan_address, ())):
-            if len(votes) > 1:
-                logger.debug("not updating WAN address, suspect symmetric NAT",)
-                self._connection_type = u"symmetric-NAT"
+        if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
+                set_wan_address(address):
 
-            else:
-                # it is possible that, for some time after the WAN address changes, we will believe
-                # that the connection type is symmetric NAT.  once votes have been pruned we may
-                # find that we are no longer behind a symmetric-NAT
-                if self._connection_type == u"symmetric-NAT":
-                    self._connection_type = u"unknown"
+            # reassessing our LAN address, perhaps we are running on a roaming device
+            lan_address = (self._guess_lan_address() or "0.0.0.0", self._lan_address[1])
+            if not self.is_valid_address(lan_address):
+                lan_address = (self._wan_address[0], self._lan_address[1])
+            set_lan_address(lan_address)
 
-                logger.warn("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], address[0], address[1])
-                self._wan_address = address
+            # our address may not be a bootstrap address
+            if self._wan_address in self._bootstrap_candidates:
+                del self._bootstrap_candidates[self._wan_address]
+            if self._lan_address in self._bootstrap_candidates:
+                del self._bootstrap_candidates[self._lan_address]
 
-                if not self.is_valid_address(self._lan_address):
-                    logger.warn("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
-                    self._lan_address = (self._wan_address[0], self._lan_address[1])
+            # our address may not be a candidate
+            for community in self._communities.itervalues():
+                community.candidates.pop(self._wan_address, None)
+                community.candidates.pop(self._lan_address, None)
 
-                # our address may not be a bootstrap address
-                if self._wan_address in self._bootstrap_candidates:
-                    del self._bootstrap_candidates[self._wan_address]
+                for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
+                    community.candidates.pop(candidate.sock_addr, None)
 
-                # our address may not be a candidate
-                for community in self._communities.itervalues():
-                    community.candidates.pop(self._wan_address, None)
+        #
+        # check self._connection_type
+        #
 
-                    for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
-                        community.candidates.pop(candidate.sock_addr, None)
+        if len(self._wan_address_votes) == 1 and self._lan_address == self._wan_address:
+            # external peers are reporting the same WAN address that happens to be our LAN address as well
+            set_connection_type(u"public")
 
-        if self._connection_type == u"unknown" and self._lan_address == self._wan_address:
-            self._connection_type = u"public"
+        elif len(self._wan_address_votes) > 1:
+            # external peers are reporting multiple WAN addresses (most likely the same IP with different port numbers)
+            set_connection_type(u"symmetric-NAT")
 
-        if __debug__:
-            if not debug_previous_connection_type == self._connection_type:
-                logger.warn("update connection type %s -> %s", debug_previous_connection_type, self._connection_type)
+        else:
+            # it is possible that, for some time after the WAN address changes, we will believe that the connection type
+            # is symmetric NAT.  once votes have been pruned we may find that we are no longer behind a symmetric-NAT
+            set_connection_type(u"unknown")
 
     def _is_duplicate_sync_message(self, message):
         """
@@ -2247,13 +2276,14 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     test_bloom_filter.clear()
                     test_bloom_filter.add_keys(packets)
                     if not bloom_filter.bytes == bloom_filter.bytes:
-                        if bloom_filter.get_bits_checked() < test_bloom_filter.get_bits_checked():
-                            logger.error("%d bits in: %s", bloom_filter.get_bits_checked(), bloom_filter.bytes.encode("HEX"))
-                            logger.error("%d bits in: %s", test_bloom_filter.get_bits_checked(), test_bloom_filter.bytes.encode("HEX"))
+                        if bloom_filter.bits_checked < test_bloom_filter.bits_checked:
+                            logger.error("%d bits in: %s", bloom_filter.bits_checked, bloom_filter.bytes.encode("HEX"))
+                            logger.error("%d bits in: %s", test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
         if destination.get_destination_address(self._wan_address) != destination.sock_addr:
-            logger.warning("destination address, %s should (in theory) be the sock_addr %s", destination.get_destination_address(self._wan_address), destination)
+            destination_address = destination.get_destination_address(self._wan_address)
+            logger.warning("in theory the destination address %s:%d should be the sock_addr %s", destination_address[0], destination_address[1], destination)
 
         meta_request = community.get_meta_message(u"dispersy-introduction-request")
         request = meta_request.impl(authentication=(community.my_member,),
@@ -2380,19 +2410,44 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # process the bloom filter part of the request
         #
 
-        # obtain all available messages for this community
-        meta_messages = [(meta.distribution.priority, -meta.distribution.synchronization_direction_value, meta) for meta in community.get_meta_messages() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32]
-        meta_messages.sort(reverse=True)
+        if not any(message.payload.sync for message in messages):
+            # no sync needed
+            return
 
-        sub_selects = []
-        for _, _, meta in meta_messages:
-            sub_selects.append(u"""
+        def get_sub_select(meta):
+            direction = meta.distribution.synchronization_direction
+            if direction == u"ASC":
+                return u"""
  SELECT * FROM
   (SELECT sync.packet FROM sync
-   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) %% ? = 0
-   ORDER BY sync.global_time %s)""" % (meta.distribution.synchronization_direction,))
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY sync.global_time ASC)"""
 
-        sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(sub_selects), ")"))
+            if direction == u"DESC":
+                return u"""
+ SELECT * FROM
+  (SELECT sync.packet FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY sync.global_time DESC)"""
+
+            if direction == u"RANDOM":
+                return u"""
+ SELECT * FROM
+  (SELECT sync.packet FROM sync
+   WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
+   ORDER BY RANDOM())"""
+
+            raise RuntimeError("Unknown synchronization_direction [%d]" % direction)
+
+        # obtain all available messages for this community
+        meta_messages = sorted([meta
+                                for meta
+                                in community.get_meta_messages()
+                                if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32],
+                               key=lambda meta: meta.distribution.priority,
+                               reverse=True)
+        # build multi-part SQL statement from meta_messages
+        sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(get_sub_select(meta) for meta in meta_messages), ")"))
         logger.debug(sql)
 
         for message in messages:
@@ -2409,7 +2464,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # sub_selects, taking into account that time_low may not be below the
                 # inactive_threshold (if given)
                 sql_arguments = []
-                for _, _, meta in meta_messages:
+                for meta in meta_messages:
                     sql_arguments.extend((meta.database_id,
                                           min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 - 1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2 ** 63 - 1),
                                           min(time_high, 2 ** 63 - 1),
@@ -2421,8 +2476,6 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 generator = ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
 
                 for packet, in payload.bloom_filter.not_filter(generator):
-                    logger.debug("found missing (%d bytes) %s for %s", len(packet), sha1(packet).digest().encode("HEX"), message.candidate)
-
                     packets.append(packet)
                     byte_limit -= len(packet)
                     if byte_limit <= 0:
@@ -3103,19 +3156,27 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         @param messages: The dispersy-identity message.
         @type messages: [Message.Implementation]
         """
-        meta = messages[0].community.get_meta_message(u"dispersy-identity")
-        for message in messages:
-            # we are assuming that no more than 10 members have the same sha1 digest.
-            sql = u"SELECT packet FROM sync JOIN member ON member.id = sync.member WHERE sync.community = ? AND sync.meta_message = ? AND member.mid = ? LIMIT 10"
-            packets = [str(packet) for packet, in self._database.execute(sql, (message.community.database_id, meta.database_id, buffer(message.payload.mid)))]
-            if packets:
-                logger.debug("responding with %d identity messages", len(packets))
-                self._statistics.dict_inc(self._statistics.outgoing, u"-dispersy-identity", len(packets))
-                self._endpoint.send([message.candidate], packets)
+        meta_id = messages[0].community.get_meta_message(u"dispersy-identity").database_id
+        sql_member = u"SELECT id FROM member WHERE mid = ? LIMIT 10"
+        sql_packet = u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? LIMIT 1"
 
-            else:
-                assert not message.payload.mid == message.community.my_member.mid, "we should always have our own dispersy-identity"
-                logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", message.payload.mid.encode("HEX"), message.community.my_member.mid.encode("HEX"), message.community.cid.encode("HEX"))
+        for message in messages:
+            mid = message.payload.mid
+            community_id = message.community.database_id
+
+            # we are assuming that no more than 10 members have the same sha1 digest.
+            for member_id in [member_id for member_id, in self._database.execute(sql_member, (buffer(mid),))]:
+                packets = [str(packet) for packet, in self._database.execute(sql_packet,
+                                                                             (community_id, member_id, meta_id))]
+
+                if packets:
+                    logger.debug("responding with %d identity messages", len(packets))
+                    self._statistics.dict_inc(self._statistics.outgoing, u"-dispersy-identity", len(packets))
+                    self._endpoint.send([message.candidate], packets)
+
+                else:
+                    assert not message.payload.mid == message.community.my_member.mid, "we should always have our own dispersy-identity"
+                    logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", mid.encode("HEX"), message.community.my_member.mid.encode("HEX"), message.community.cid.encode("HEX"))
 
     def create_signature_request(self, community, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
@@ -4355,16 +4416,31 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         def start():
             assert self._callback.is_current_thread, "Must be called from the callback thread"
-            self._database.open()
-            self._endpoint.open(self)
+
+            results.append((u"database", self._database.open()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
+            results.append((u"endpoint", self._endpoint.open(self)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
             self._endpoint_ready()
 
         # start
         logger.info("starting the Dispersy core...")
-        self._callback.start()
-        self._callback.call(start)
-        logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
-        return True
+        results = []
+
+        results.append((u"callback", self._callback.start()))
+        assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
+        self._callback.call(start, priority=512)
+
+        # log and return the result
+        if all(result for _, result in results):
+            logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
+            return True
+
+        else:
+            logger.error("Dispersy core unable to start all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
+            return False
 
     def stop(self, timeout=10.0):
         """
@@ -4377,6 +4453,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         2. closes endpoint
         3. closes database
         4. stops callback
+
+        Returns True when all above steps were successfully completed, otherwise False is returned.
+        Note that attempts will be made to process each step, even if one or more steps fail.  For
+        example, when 'close endpoint' reports a failure the databases and callback will still be
+        closed and stopped.
         """
         assert self._callback.is_running, "Must be called before the callback.stop()"
         assert isinstance(timeout, float), type(timeout)
@@ -4401,12 +4482,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
 
+            return True
+
         def stop():
             # unload all communities
-            ordered_unload_communities()
+            results.append((u"community", ordered_unload_communities()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # stop endpoint
-            self._endpoint.close(timeout)
+            results.append((u"endpont", self._endpoint.close(timeout)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # Murphy tells us that endpoint just added tasks that caused new communities to load
             while True:
@@ -4426,11 +4511,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 self._batch_cache.clear()
 
                 # unload all communities
-                ordered_unload_communities()
+                results.append((u"community", ordered_unload_communities()))
+                assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
             # stop the database
-            self._database.close()
-
+            results.append((u"database", self._database.close()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # output statistics before we stop
         if logger.isEnabledFor(logging.DEBUG):
@@ -4438,10 +4524,25 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
 
         logger.info("stopping the Dispersy core...")
+        results = []
         self._callback.call(stop, priority= -512)
-        self._callback.stop(timeout)
-        logger.info("Dispersy core stopped")
-        return True
+
+        if self._callback.is_current_thread:
+            # the result from _callback.stop will always be False since it can not stop a thread
+            # that we are currently on
+            self._callback.stop(timeout)
+        else:
+            results.append((u"callback", self._callback.stop(timeout)))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
+        # log and return the result
+        if all(result for _, result in results):
+            logger.info("Dispersy core properly stopped")
+            return True
+
+        else:
+            logger.error("Dispersy core unable to stop all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
+            return False
 
     def _candidate_walker(self):
         """
@@ -4514,53 +4615,34 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     DELAY = max(0.0, optimaltime - actualtime)
                 yield max(0.0, optimaltime - actualtime)
 
-    def _stats_candidates(self):
-        """
-        Periodically logs the number of walk and stumble candidates for all communities.
-
-        Enable this output by enabling INFO logging for a logger named "dispersy-stats-candidates".
-
-        Exception: all PreviewChannelCommunity are filter out of the results.
-        """
-        logger = logging.getLogger("dispersy-stats-candidates")
-        while logger.isEnabledFor(logging.INFO):
-            yield 5.0
-            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
-                if community.get_classification() == u"PreviewChannelCommunity":
-                    continue
-
-                candidates = sorted(community.dispersy_yield_verified_candidates())
-                logger.info(" %s %20s with %d%s candidates[:5] %s",
-                            community.cid.encode("HEX"), community.get_classification(), len(candidates),
-                            "" if community.dispersy_enable_candidate_walker else "*", ", ".join(str(candidate) for candidate in candidates[:5]))
-
     def _stats_detailed_candidates(self):
         """
-        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all communities.
+        Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
+        communities.
 
-        Enable this output by enabling INFO logging for a logger named "dispersy-stats-detailed-candidates".
+        Enable this output by enabling INFO logging for a logger named
+        "dispersy-stats-detailed-candidates".
 
-        Exception: all PreviewChannelCommunity are filter out of the results.
+        Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
-        logger = logging.getLogger("dispersy-stats-detailed-candidates")
-        while logger.isEnabledFor(logging.INFO):
+        summary = get_logger("dispersy-stats-detailed-candidates")
+        while summary.isEnabledFor(logging.INFO):
             yield 5.0
             now = time()
-            logger.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            logger.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
-                        self._statistics.walk_attempt,
-                        self._statistics.walk_success,
-                        self._statistics.walk_invalid_response_identifier,
-                        self._statistics.walk_bootstrap_attempt,
-                        self._statistics.walk_bootstrap_success,
-                        self._statistics.walk_reset)
-            logger.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                        self._statistics.walk_advice_outgoing_request,
-                        self._statistics.walk_advice_incoming_response,
-                        self._statistics.walk_advice_incoming_response_new,
-                        self._statistics.walk_advice_incoming_request,
-                        self._statistics.walk_advice_outgoing_response)
+            summary.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            summary.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
+                         self._statistics.walk_attempt,
+                         self._statistics.walk_success,
+                         self._statistics.walk_invalid_response_identifier,
+                         self._statistics.walk_bootstrap_attempt,
+                         self._statistics.walk_bootstrap_success,
+                         self._statistics.walk_reset)
+            summary.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
+                         self._statistics.walk_advice_outgoing_request,
+                         self._statistics.walk_advice_incoming_response,
+                         self._statistics.walk_advice_incoming_response_new,
+                         self._statistics.walk_advice_incoming_request,
+                         self._statistics.walk_advice_outgoing_response)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
@@ -4571,17 +4653,17 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
-                logger.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                logger.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                summary.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
+                summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                 for category, candidates in categories.iteritems():
                     aged = [(candidate.age(now), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        logger.info("%4ds %s%s%s %-7s %-13s %s",
-                                    min(age, 9999),
-                                    "O" if candidate.is_obsolete(now) else " ",
-                                    "E" if candidate.is_eligible_for_walk(now) else " ",
-                                    "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                    category,
-                                    candidate.connection_type,
-                                    candidate)
+                        summary.info("%4ds %s%s%s %-7s %-13s %s",
+                                     min(age, 9999),
+                                     "O" if candidate.is_obsolete(now) else " ",
+                                     "E" if candidate.is_eligible_for_walk(now) else " ",
+                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                     category,
+                                     candidate.connection_type,
+                                     candidate)

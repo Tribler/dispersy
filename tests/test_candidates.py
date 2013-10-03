@@ -1,15 +1,49 @@
-import logging
-logger = logging.getLogger(__name__)
+# disable C0111, Missing docstring.  the auto generated tests do not conform to this rule.
+# pylint: disable=C0111
+
+# disable C0321, More than one statement on a single line.  the auto generated tests do not conform to this rule.
+# pylint: disable=C0321
+
+# disable C0301, Line too long.  the auto generated tests do not conform to this rule.
+# pylint: disable=C0301
 
 from fractions import gcd
 from itertools import combinations, islice
 from time import time
-from unittest import skip
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
+from ..logger import get_logger
 from ..tool.tracker import TrackerCommunity
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
+
+
+def print_unittest_combinations():
+    """
+    Prints combinations of unit tests.
+    """
+    print "    def test_no_candidates(self): return self.check_candidates([])"
+    flags = "twresi"
+    options = []
+    for length in xrange(len(flags)):
+        for string in combinations(flags, length):
+            s_func = "_" + "".join(string) if string else ""
+            s_args = '"%s"' % "".join(string)
+            s_opt = "".join(string)
+            options.append(s_opt)
+
+            print "    def test_one%s_candidate(self): return self.check_candidates([%s])" % \
+                (s_func, s_args)
+            print "    def test_two%s_candidates(self): return self.check_candidates([%s, %s])" % \
+                (s_func, s_args, s_args)
+            print "    def test_many%s_candidates(self): return self.check_candidates([%s] * 22)" % \
+                (s_func, s_args)
+
+    for length in xrange(1, len(options) + 1):
+        print "    def test_mixed_%d_candidates(self): return self.check_candidates(%s)" % \
+            (length, options[:length])
+
 
 class NoBootstrapDebugCommunity(DebugCommunity):
 
@@ -40,30 +74,8 @@ class TestCandidates(DispersyTestFunc):
     - s: SELF has received an incoming walk from the candidate
     - i: SELF has been introduced to the candidate
 
-    Note that many variations of flags exist, multiple variations are generated using test_print_unittest_combinations.
+    Note that many variations of flags exist, multiple variations are generated using print_unittest_combinations.
     """
-
-    @skip("This test is needed to setup all possible candidate combinations for unit tests")
-    def test_print_unittest_combinations(self):
-        """
-        Prints combinations of unit tests.
-        """
-        print "    def test_no_candidates(self): return self.check_candidates([])"
-        flags = "twresi"
-        options = []
-        for length in xrange(len(flags)):
-            for s in combinations(flags, length):
-                s_func = "_" + "".join(s) if s else ""
-                s_args = '"%s"' % "".join(s)
-                s_opt = "".join(s)
-                options.append(s_opt)
-
-                print "    def test_one%s_candidate(self): return self.check_candidates([%s])" % (s_func, s_args)
-                print "    def test_two%s_candidates(self): return self.check_candidates([%s, %s])" % (s_func, s_args, s_args)
-                print "    def test_many%s_candidates(self): return self.check_candidates([%s] * 22)" % (s_func, s_args)
-
-        for length in xrange(1, len(options) + 1):
-            print "    def test_mixed_%d_candidates(self): return self.check_candidates(%s)" % (length, options[:length])
 
     def test_no_candidates(self): return self.check_candidates([])
     def test_one_candidate(self): return self.check_candidates([""])
@@ -319,7 +331,8 @@ class TestCandidates(DispersyTestFunc):
     def test_mixed_62_candidates(self): return self.check_candidates(['', 't', 'w', 'r', 'e', 's', 'i', 'tw', 'tr', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 're', 'rs', 'ri', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tre', 'trs', 'tri', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'res', 'rei', 'rsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tres', 'trei', 'trsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'resi', 'twres', 'twrei', 'twrsi', 'twesi', 'tresi'])
     def test_mixed_63_candidates(self): return self.check_candidates(['', 't', 'w', 'r', 'e', 's', 'i', 'tw', 'tr', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 're', 'rs', 'ri', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tre', 'trs', 'tri', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'res', 'rei', 'rsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tres', 'trei', 'trsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'resi', 'twres', 'twrei', 'twrsi', 'twesi', 'tresi', 'wresi'])
 
-    def create_candidates(self, community, all_flags):
+    @staticmethod
+    def create_candidates(community, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
         def generator():
@@ -327,9 +340,11 @@ class TestCandidates(DispersyTestFunc):
                 address = ("127.0.0.1", port)
                 tunnel = "t" in flags
                 yield community.create_candidate(address, tunnel, address, address, u"unknown")
-        return list(generator())
+        with community.dispersy.database:
+            return list(generator())
 
-    def set_timestamps(self, community, candidates, all_flags):
+    @staticmethod
+    def set_timestamps(candidates, all_flags):
         assert isinstance(candidates, list)
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
@@ -354,7 +369,8 @@ class TestCandidates(DispersyTestFunc):
 
         return now
 
-    def select_candidates(self, candidates, all_flags):
+    @staticmethod
+    def select_candidates(candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -367,7 +383,8 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    def select_verified_candidates(self, candidates, all_flags):
+    @staticmethod
+    def select_verified_candidates(candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -379,7 +396,8 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    def select_walk_candidates(self, candidates, all_flags):
+    @staticmethod
+    def select_walk_candidates(candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -404,7 +422,8 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    def select_introduce_candidates(self, candidates, all_flags, exclude_candidate=None):
+    @staticmethod
+    def select_introduce_candidates(candidates, all_flags, exclude_candidate=None):
         def filter_func(flags, candidate):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -426,21 +445,21 @@ class TestCandidates(DispersyTestFunc):
         # introduce candidates are chosen from two pools, W and S.  With both pools chosen equally often, regardless of
         # the size of the pools.  Hence, candidates in smaller pools will be represented more often in the result.
 
-        W = [candidate
-             for flags, candidate
-             in zip(all_flags, candidates)
-             if filter_func(flags, candidate) == "w"]
+        walk = [candidate
+                for flags, candidate
+                in zip(all_flags, candidates)
+                if filter_func(flags, candidate) == "w"]
 
-        S = [candidate
-             for flags, candidate
-             in zip(all_flags, candidates)
-             if filter_func(flags, candidate) == "s"]
+        stumble = [candidate
+                   for flags, candidate
+                   in zip(all_flags, candidates)
+                   if filter_func(flags, candidate) == "s"]
 
-        if W and S:
-            factor = gcd(len(S), len(W))
-            pool = (W * (len(S) / factor)) + (S * (len(W) / factor))
+        if walk and stumble:
+            factor = gcd(len(stumble), len(walk))
+            pool = (walk * (len(stumble) / factor)) + (stumble * (len(walk) / factor))
         else:
-            pool = W + S
+            pool = walk + stumble
 
         return sorted(pool)
 
@@ -460,66 +479,66 @@ class TestCandidates(DispersyTestFunc):
                 print "ACTUAL", actual
                 raise
 
-        # IC determines the number of times that an interface method is called, it should be more than zero and the
-        # length of ALL_FLAGS to ensure the tests can succeed
-        ic = max(10, len(all_flags) * 2)
-        # IIC determined the number of iterations that an iterator interface method is used, it can be very large since
-        # the iterators should end way before this number is reached
-        iic = 666
+        # MAX_CALLS determines the number of times that an interface method is called, it should be more than zero and
+        # the length of ALL_FLAGS to ensure the tests can succeed
+        max_calls = max(10, len(all_flags) * 2)
+        # MAX_ITERATIONS determined the number of iterations that an iterator interface method is used, it can be very
+        # large since the iterators should end way before this number is reached
+        max_iterations = 666
 
-        assert isinstance(ic, int)
-        assert isinstance(iic, int)
-        assert len(all_flags) < iic
+        assert isinstance(max_calls, int)
+        assert isinstance(max_iterations, int)
+        assert len(all_flags) < max_iterations
         community = NoBootstrapDebugCommunity.create_community(self._dispersy, self._my_member)
         candidates = self.create_candidates(community, all_flags)
 
         # yield_candidates
-        self.set_timestamps(community, candidates, all_flags)
+        self.set_timestamps(candidates, all_flags)
         selection = self.select_candidates(candidates, all_flags)
-        actual_list = [islice(community.dispersy_yield_candidates(), iic) for _ in xrange(ic)]
-        logger.debug("A] candidates:  %s", map(str, candidates))
-        logger.debug("A] selection:   %s", map(str, selection))
-        logger.debug("A] actual_list: %s", map(str, actual_list))
+        actual_list = [islice(community.dispersy_yield_candidates(), max_iterations) for _ in xrange(max_calls)]
+        logger.debug("A] candidates:  %s", [str(candidate) for candidate in candidates])
+        logger.debug("A] selection:   %s", [str(candidate) for candidate in selection])
+        logger.debug("A] actual_list: %s", [str(candidate) for candidate in actual_list])
         for actual in actual_list:
             compare(selection, actual)
 
         # yield_verified_candidates
-        self.set_timestamps(community, candidates, all_flags)
+        self.set_timestamps(candidates, all_flags)
         selection = self.select_verified_candidates(candidates, all_flags)
-        actual_list = [islice(community.dispersy_yield_verified_candidates(), iic) for _ in xrange(ic)]
-        logger.debug("B] candidates:  %s", map(str, candidates))
-        logger.debug("B] selection:   %s", map(str, selection))
-        logger.debug("B] actual_list: %s", map(str, actual_list))
+        actual_list = [islice(community.dispersy_yield_verified_candidates(), max_iterations) for _ in xrange(max_calls)]
+        logger.debug("B] candidates:  %s", [str(candidate) for candidate in candidates])
+        logger.debug("B] selection:   %s", [str(candidate) for candidate in selection])
+        logger.debug("B] actual_list: %s", [str(candidate) for candidate in actual_list])
         for actual in actual_list:
             compare(selection, actual)
 
         # get_introduce_candidate (no exclusion)
-        self.set_timestamps(community, candidates, all_flags)
+        self.set_timestamps(candidates, all_flags)
         selection = self.select_introduce_candidates(candidates, all_flags) or [None]
-        actual = [community.dispersy_get_introduce_candidate() for _ in xrange(ic)]
-        logger.debug("D] candidates:  %s", map(str, candidates))
-        logger.debug("D] selection:   %s", map(str, selection))
-        logger.debug("D] actual:      %s", map(str, actual))
+        actual = [community.dispersy_get_introduce_candidate() for _ in xrange(max_calls)]
+        logger.debug("C] candidates:  %s", [str(candidate) for candidate in candidates])
+        logger.debug("C] selection:   %s", [str(candidate) for candidate in selection])
+        logger.debug("C] actual_list: %s", [str(candidate) for candidate in actual_list])
         compare(selection, actual)
 
         # get_introduce_candidate (with exclusion)
-        self.set_timestamps(community, candidates, all_flags)
+        self.set_timestamps(candidates, all_flags)
         for candidate in candidates:
             selection = self.select_introduce_candidates(candidates, all_flags, candidate) or [None]
-            actual = [community.dispersy_get_introduce_candidate(candidate) for _ in xrange(ic)]
-            logger.debug("E] exclude:     %s", str(candidate))
-            logger.debug("E] candidates:  %s", map(str, candidates))
-            logger.debug("E] selection: %s", map(str, selection))
-            logger.debug("E] actual: %s", map(str, actual))
+            actual = [community.dispersy_get_introduce_candidate(candidate) for _ in xrange(max_calls)]
+            logger.debug("D] exclude:     %s", str(candidate))
+            logger.debug("D] candidates:  %s", [str(candidate) for candidate in candidates])
+            logger.debug("D] selection:   %s", [str(candidate) for candidate in selection])
+            logger.debug("D] actual_list: %s", [str(candidate) for candidate in actual])
             compare(selection, actual)
 
         # get_walk_candidate
         # Note that we must perform the CANDIDATE.WALK to ensure this candidate is not iterated again.  Because of this,
         # this test must be done last.
-        self.set_timestamps(community, candidates, all_flags)
+        self.set_timestamps(candidates, all_flags)
         selection = self.select_walk_candidates(candidates, all_flags)
-        logger.debug("C] candidates:  %s", map(str, candidates))
-        logger.debug("C] selection:   %s", map(str, selection))
+        logger.debug("E] candidates:  %s", [str(candidate) for candidate in candidates])
+        logger.debug("E] selection:   %s", [str(candidate) for candidate in selection])
         for _ in xrange(len(selection)):
             candidate = community.dispersy_get_walk_candidate()
             self.assertNotEquals(candidate, None)
@@ -588,12 +607,12 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_walk_probabilities(self):
-        c = DebugCommunity.create_community(self._dispersy, self._my_member)
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         candidates = []
         for i in range(3):
             address = ("127.0.0.1", i + 1)
-            candidate = c.create_candidate(address, False, address, address, u"unknown")
+            candidate = community.create_candidate(address, False, address, address, u"unknown")
             candidates.append(candidate)
 
         # mark 1 candidate as walk, 1 as stumble
@@ -611,7 +630,7 @@ class TestCandidates(DispersyTestFunc):
         returned_intro_candidate = 0
         expected_intro_range = range(1975, 2975)
         for i in xrange(10000):
-            candidate = c.dispersy_get_walk_candidate()
+            candidate = community.dispersy_get_walk_candidate()
 
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
             returned_stumble_candidate += 1 if candidate.sock_addr[1] == 2 else 0
@@ -623,21 +642,21 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_merge_candidates(self):
-        c = DebugCommunity.create_community(self._dispersy, self._my_member)
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         # let's make a list of all possible combinations which should be merged into one candidate
         candidates = []
-        candidates.append(c.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1), ("1.1.1.1", 1), u"unknown"))
-        candidates.append(c.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1), ("1.1.1.1", 2), u"symmetric-NAT"))
-        candidates.append(c.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
-        candidates.append(c.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
+        candidates.append(community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1), ("1.1.1.1", 1), u"unknown"))
+        candidates.append(community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1), ("1.1.1.1", 2), u"symmetric-NAT"))
+        candidates.append(community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
+        candidates.append(community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
 
-        c.filter_duplicate_candidate(candidates[0])
+        community.filter_duplicate_candidate(candidates[0])
 
         expected = [candidates[0].wan_address]
 
         got = []
-        for candidate in c._candidates.itervalues():
+        for candidate in community._candidates.itervalues():
             got.append(candidate.wan_address)
 
         self.assertEquals(expected, got)

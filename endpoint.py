@@ -1,15 +1,16 @@
-import logging
-logger = logging.getLogger(__name__)
-
+from abc import ABCMeta, abstractmethod
 from itertools import product
 from select import select
 from time import time
 import errno
+import logging
 import socket
 import sys
 import threading
 
 from .candidate import Candidate
+from .logger import get_logger
+logger = get_logger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
@@ -20,6 +21,7 @@ TUNNEL_PREFIX = "ffffffff".decode("HEX")
 
 
 class Endpoint(object):
+    __metaclass__ = ABCMeta
 
     def __init__(self):
         self._dispersy = None
@@ -50,18 +52,22 @@ class Endpoint(object):
         self._total_send = 0
         self._cur_sendqueue = 0
 
+    @abstractmethod
     def get_address(self):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def send(self, candidates, packets):
-        raise NotImplementedError()
+        pass
 
     def open(self, dispersy):
         self._dispersy = dispersy
+        return True
 
     def close(self, timeout=0.0):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(timeout, float), type(timeout)
+        return True
 
 
 class NullEndpoint(Endpoint):
@@ -97,7 +103,7 @@ class RawserverEndpoint(Endpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _SOCKET are set during open(...)
+        # _SOCKET is set during open(...)
         self._socket = None
 
     def open(self, dispersy):
@@ -112,10 +118,11 @@ class RawserverEndpoint(Endpoint):
                 continue
             break
         self._rawserver.start_listening_udp(self._socket, self)
+        return True
 
     def close(self, timeout=0.0):
         self._rawserver.stop_listening_udp(self._socket)
-        super(RawserverEndpoint, self).close(timeout)
+        return super(RawserverEndpoint, self).close(timeout)
 
     def get_address(self):
         assert self._dispersy, "Should not be called before open(...)"
@@ -240,8 +247,9 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _THREAD are set during open(...)
+        # _THREAD and _THREAD are set during open(...)
         self._thread = None
+        self._socket = None
 
     def open(self, dispersy):
         # do NOT call RawserverEndpoint.open!
@@ -263,9 +271,12 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._thread = threading.Thread(name="StandaloneEndpoint", target=self._loop)
         self._thread.daemon = True
         self._thread.start()
+        return True
 
     def close(self, timeout=10.0):
         self._running = False
+        result = True
+
         if timeout > 0.0:
             self._thread.join(timeout)
 
@@ -273,9 +284,10 @@ class StandaloneEndpoint(RawserverEndpoint):
             self._socket.close()
         except socket.error as exception:
             logger.exception("%s", exception)
+            result = False
 
         # do NOT call RawserverEndpoint.open!
-        Endpoint.close(self, timeout)
+        return Endpoint.close(self, timeout) and result
 
     def _loop(self):
         assert self._dispersy, "Should not be called before open(...)"
@@ -324,10 +336,11 @@ class TunnelEndpoint(Endpoint):
     def open(self, dispersy):
         super(TunnelEndpoint, self).open(dispersy)
         self._swift.add_download(self)
+        return True
 
     def close(self, timeout=0.0):
         self._swift.remove_download(self, True, True)
-        super(TunnelEndpoint, self).close(timeout)
+        return super(TunnelEndpoint, self).close(timeout)
 
     def get_def(self):
         class DummyDef(object):

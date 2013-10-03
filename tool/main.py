@@ -2,18 +2,15 @@
 Run Dispersy in standalone mode.
 """
 
-import logging
-import logging.config
-logging.config.fileConfig("logger.conf")
-logger = logging.getLogger(__name__)
-
 # optparse is deprecated since python 2.7
 import optparse
 import signal
 
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger, get_context_filter
 from .mainthreadcallback import MainThreadCallback
+logger = get_logger(__name__)
 
 
 def start_script(dispersy, opt):
@@ -40,6 +37,7 @@ def start_script(dispersy, opt):
 
 def main_real(setup=None):
     assert setup is None or callable(setup)
+    context_filter = get_context_filter()
 
     # define options
     command_line_parser = optparse.OptionParser()
@@ -53,6 +51,7 @@ def main_real(setup=None):
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
     command_line_parser.add_option("--strict", action="store_true", help="Exit on any exception", default=False)
+    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
     # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
@@ -67,16 +66,21 @@ def main_real(setup=None):
         command_line_parser.print_help()
         exit(1)
 
-    # setup
-    dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
-    dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
+    # set the log identifier
+    context_filter.identifier = opt.log_identifier
 
+    # setup callback
+    def exception_handler(exception, fatal):
+        logger.error("An exception occurred.  Quitting because we are running with --strict enabled.")
+        # return fatal=True
+        return True
+    callback = MainThreadCallback("Dispersy")
     if opt.strict:
-        def exception_handler(exception, fatal):
-            print "An exception occurred.  Quitting because we are running with --strict enabled."
-            # return fatal=True
-            return True
-        dispersy.callback.attach_exception_handler(exception_handler)
+        callback.attach_exception_handler(exception_handler)
+
+    # setup
+    dispersy = Dispersy(callback, StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
 
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
@@ -88,17 +92,21 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(start_script, (dispersy, opt))
+    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
-        print "Received", sig, "signal in", frame
-        dispersy.stop()
+        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
+        dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # start
-    dispersy.start()
-    dispersy.callback.loop()
-    return dispersy.callback
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
+
+    # wait forever
+    callback.loop()
+    return callback
 
 
 def main(setup=None):

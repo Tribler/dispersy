@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 import socket
 from time import time, sleep
 
@@ -8,9 +5,11 @@ from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...community import Community
 from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ...logger import get_logger
 from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
+logger = get_logger(__name__)
 
 
 class DebugNode(object):
@@ -158,6 +157,8 @@ class DebugNode(object):
         self._socket = self._socket_pool[port]
         self._tunnel = tunnel
 
+        return self
+
     def init_my_member(self, bits=None, sync_with_database=None, candidate=True, identity=True):
         """
         Create a Member instance for this node.
@@ -202,6 +203,8 @@ class DebugNode(object):
             self.give_message(message)
             sleep(0.1)
             self.receive_message(message_names=[u"dispersy-introduction-response"])
+
+        return self
 
     def encode_message(self, message):
         """
@@ -341,7 +344,7 @@ class DebugNode(object):
             try:
                 packet, address = self._socket.recvfrom(10240)
             except:
-                logger.debug("No more packets")
+                logger.debug("No more packets on %s", self.wan_address)
                 raise
 
             if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
@@ -382,7 +385,7 @@ class DebugNode(object):
                 break
         return packets_
 
-    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None):
         """
         Returns the first matching (candidate, message) tuple from incoming UDP packets.
 
@@ -394,20 +397,28 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
 
         Will raise a socket exception when no matching packets are available.
         """
+        if names is None:
+            # TODO remove this backwards compatibility with the MESSAGE_NAMES parameter
+            names = message_names
+            message_names = None
+
         assert timeout is None, "The parameter TIMEOUT is deprecated and must be None"
-        assert isinstance(message_names, (type(None), list))
+        assert names is None or isinstance(names, list), type(names)
+        assert names is None or all(isinstance(name, unicode) for name in names), [type(name) for name in names]
         assert payload_types is None, "The parameter PAYLOAD_TYPES is deprecated and must be None"
         assert distributions is None, "The parameter DISTRIBUTIONS is deprecated and must be None"
         assert destinations is None, "The parameter DESTINATIONS is deprecated and must be None"
+        assert message_names is None, "The parameter MESSAGE_NAMES is deprecated use NAMES instead"
 
         while True:
             candidate, packet = self.receive_packet(timeout, addresses, packets)
@@ -418,14 +429,14 @@ class DebugNode(object):
                 logger.exception("Ignored %s", exception)
                 continue
 
-            if not (message_names is None or message.name in message_names):
+            if not (names is None or message.name in names):
                 logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
                 continue
 
             logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             return candidate, message
 
-    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None, counts=None):
         """
         Returns a list with (candidate, message) tuples from all matching incoming UDP packets.
 
@@ -437,19 +448,30 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
+
+        COUNTS must be None or a list of acceptable message counts.  When it is a list of counts an
+        assert is raised when the number of acceptable messages is different than one of the
+        acceptable message counts.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
         """
+        assert counts is None or isinstance(counts, list), type(counts)
+        assert counts is None or all(isinstance(count, int) for count in counts), [type(count) for count in counts]
+
         messages = []
         while True:
             try:
-                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations))
+                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations, names))
             except socket.error:
                 break
+
+        if counts and not len(messages) in counts:
+            raise AssertionError("Received %d messages while expecting %s messages" % (len(messages), counts))
         return messages
 
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):
@@ -488,6 +510,18 @@ class DebugNode(object):
         return meta.impl(authentication=(self._my_member,),
                          distribution=(global_time, sequence_number),
                          payload=(message.authentication.member, message.distribution.global_time, message))
+
+    def create_dispersy_missing_identity(self, dummy_member, global_time, destination_candidate):
+        """
+        Returns a new dispersy-missing-identity message.
+        """
+        assert isinstance(dummy_member, Member), type(dummy_member)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(destination_candidate, Candidate), type(destination_candidate)
+        meta = self._community.get_meta_message(u"dispersy-missing-identity")
+        return meta.impl(distribution=(global_time,),
+                         destination=(destination_candidate,),
+                         payload=(dummy_member.mid,))
 
     def create_dispersy_missing_sequence(self, missing_member, missing_message, missing_sequence_low, missing_sequence_high, global_time, destination_candidate):
         """
@@ -582,11 +616,11 @@ class DebugNode(object):
                          payload=(destination.sock_addr, source_lan, source_wan, advice, connection_type, sync, identifier))
 
     def _create_text(self, message_name, text, global_time, resolution=(), destination=()):
-        assert isinstance(message_name, unicode)
-        assert isinstance(text, str)
-        assert isinstance(global_time, (int, long))
-        assert isinstance(resolution, tuple)
-        assert isinstance(destination, tuple)
+        assert isinstance(message_name, unicode), type(message_name)
+        assert isinstance(text, str), type(text)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(resolution, tuple), type(resolution)
+        assert isinstance(destination, tuple), type(destination)
         meta = self._community.get_meta_message(message_name)
         return meta.impl(authentication=(self._my_member,),
                          resolution=resolution,
@@ -682,3 +716,27 @@ class DebugNode(object):
         Returns a new sequence-text message.
         """
         return self._create_sequence_text(u"sequence-text", text, global_time, sequence_number)
+
+    def create_high_priority_text(self, text, global_time):
+        """
+        Returns a new high-priority-text message.
+        """
+        return self._create_text(u"high-priority-text", text, global_time)
+
+    def create_low_priority_text(self, text, global_time):
+        """
+        Returns a new low-priority-text message.
+        """
+        return self._create_text(u"low-priority-text", text, global_time)
+
+    def create_medium_priority_text(self, text, global_time):
+        """
+        Returns a new medium-priority-text message.
+        """
+        return self._create_text(u"medium-priority-text", text, global_time)
+
+    def create_random_order_text(self, text, global_time):
+        """
+        Returns a new RANDOM-text message.
+        """
+        return self._create_text(u"RANDOM-text", text, global_time)

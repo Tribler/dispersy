@@ -1,16 +1,20 @@
+from abc import ABCMeta, abstractmethod
 from time import time
 from collections import defaultdict
 
 
 class Statistics(object):
 
+    __metaclass__ = ABCMeta
+
     @staticmethod
     def dict_inc(dictionary, key, value=1):
         if dictionary != None:
             dictionary[key] += value
 
+    @abstractmethod
     def update(self):
-        raise NotImplementedError()
+        pass
 
     def get_dict(self):
         """

@@ -27,10 +27,11 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         node.init_my_member()
 
         # MSGS[GLOBAL-TIME][SEQUENCE-NUMBER]
-        msgs = defaultdict(dict)
-        for i in xrange(1, 10):
-            for j in xrange(1, 10):
-                msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
+        with self._dispersy.database:
+            msgs = defaultdict(dict)
+            for i in xrange(1, 10):
+                for j in xrange(1, 10):
+                    msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
 
         community.delete_messages(meta.name)
         # SELF must accept M@6#1
@@ -327,18 +328,19 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         SELF generates messages with sequence [1:MESSAGE_COUNT].
         """
         def on_dispersy_thread():
-            self._community = DebugCommunity.create_community(self._dispersy, self._my_member)
-            self._nodes = [DebugNode(self._community) for _ in xrange(3)]
-            for node in self._nodes:
-                node.init_socket()
-                node.init_my_member()
+            with self._dispersy.database:
+                self._community = DebugCommunity.create_community(self._dispersy, self._my_member)
+                self._nodes = [DebugNode(self._community) for _ in xrange(3)]
+                for node in self._nodes:
+                    node.init_socket()
+                    node.init_my_member()
 
-            # create messages
-            self._messages = []
-            for i in xrange(1, 11):
-                message = self._community.create_sequence_text("Sequence message #%d" % i)
-                assert message.distribution.sequence_number == i
-                self._messages.append(message)
+                # create messages
+                self._messages = []
+                for i in xrange(1, 11):
+                    message = self._community.create_sequence_text("Sequence message #%d" % i)
+                    assert message.distribution.sequence_number == i
+                    self._messages.append(message)
 
         super(TestIncomingMissingSequence, self).setUp()
         self._dispersy.callback.call(on_dispersy_thread)

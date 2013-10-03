@@ -96,10 +96,10 @@ class IntroductionRequestPayload(Payload):
                 assert 0 < self._time_low
                 assert isinstance(self._time_high, (int, long))
                 assert self._time_high == 0 or self._time_low <= self._time_high
-                assert isinstance(self._modulo, int)
-                assert 0 < self._modulo < 2 ** 16
-                assert isinstance(self._offset, int)
-                assert 0 <= self._offset < self._modulo
+                assert isinstance(self._modulo, int), type(self._modulo)
+                assert 0 < self._modulo < 2 ** 16, self._modulo
+                assert isinstance(self._offset, int), type(self._offset)
+                assert 0 <= self._offset < self._modulo, [self._offset, self._modulo]
                 assert isinstance(self._bloom_filter, BloomFilter)
             else:
                 self._time_low, self._time_high, self._modulo, self._offset, self._bloom_filter = 0, 0, 1, 0, None

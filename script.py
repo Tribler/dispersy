@@ -1,11 +1,11 @@
-import logging
-logger = logging.getLogger(__name__)
-
+from abc import ABCMeta, abstractmethod
 from time import time
 
-from .tests.debugcommunity.community import DebugCommunity
 from .dispersy import Dispersy
+from .logger import get_logger
+from .tests.debugcommunity.community import DebugCommunity
 from .tool.lencoder import log, make_valid_key
+logger = get_logger(__name__)
 
 
 def assert_(value, *args):
@@ -14,6 +14,8 @@ def assert_(value, *args):
 
 
 class ScriptBase(object):
+
+    __metaclass__ = ABCMeta
 
     def __init__(self, dispersy, **kargs):
         assert isinstance(dispersy, Dispersy), type(dispersy)
@@ -35,8 +37,8 @@ class ScriptBase(object):
 
     def next_testcase(self, result=None):
         if isinstance(result, Exception):
-            logger.error("exception! shutdown")
-            self._dispersy.callback.stop(timeout=0.0, exception=result)
+            logger.exception("%s", result)
+            self._dispersy.stop()
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
@@ -49,7 +51,7 @@ class ScriptBase(object):
 
         else:
             logger.debug("shutdown")
-            self._dispersy.callback.stop(timeout=0.0)
+            self._dispersy.stop()
 
     def caller(self, run, args=()):
         assert callable(run)
@@ -57,8 +59,9 @@ class ScriptBase(object):
         logger.warning("depricated: use add_testcase instead")
         return self.add_testcase(run, args)
 
+    @abstractmethod
     def run(self):
-        raise NotImplementedError("Must implement a generator or use self.add_testcase(...)")
+        pass
 
     @property
     def enable_wait_for_wan_address(self):
@@ -190,11 +193,13 @@ class ScenarioScriptBase(ScriptBase):
     def log_desync(self, desync):
         log(self._logfile, "sleep", desync=desync, stepcount=self._stepcount)
 
+    @abstractmethod
     def join_community(self, my_member):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def execute_scenario_cmds(self, commands):
-        raise NotImplementedError()
+        pass
 
     def run(self):
         self.add_testcase(self._run)

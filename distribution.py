@@ -1,5 +1,3 @@
-from .meta import MetaObject
-
 """
 Each Privilege can be distributed, usualy through the transfer of a message, in different ways.
 These ways are defined by DistributionMeta object that is associated to the Privilege.
@@ -16,10 +14,15 @@ LastSyncDistribution object holds additional information for this specific messa
 global_time.
 """
 
+from abc import ABCMeta, abstractmethod
+from .meta import MetaObject
+
 
 class Pruning(MetaObject):
 
     class Implementation(MetaObject.Implementation):
+
+        __metaclass__ = ABCMeta
 
         def __init__(self, meta, distribution):
             assert isinstance(distribution, SyncDistribution.Implementation), type(distribution)
@@ -35,14 +38,17 @@ class Pruning(MetaObject):
                 return "pruned"
             raise RuntimeError("Unable to obtain pruning state")
 
+        @abstractmethod
         def is_active(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
+        @abstractmethod
         def is_inactive(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
+        @abstractmethod
         def is_pruned(self):
-            raise NotImplementedError("missing implementation")
+            pass
 
 
 class NoPruning(Pruning):
@@ -184,7 +190,7 @@ class SyncDistribution(Distribution):
         # note: the priority has precedence over the global_time based ordering.
         # note: the default priority should be 127, use higher or lowe values when needed.
         assert isinstance(synchronization_direction, unicode)
-        assert synchronization_direction in (u"ASC", u"DESC")
+        assert synchronization_direction in (u"ASC", u"DESC", u"RANDOM")
         assert isinstance(priority, int)
         assert 0 <= priority <= 255
         assert isinstance(pruning, Pruning), type(pruning)
@@ -204,7 +210,7 @@ class SyncDistribution(Distribution):
 
     @property
     def synchronization_direction_value(self):
-        return -1 if self._synchronization_direction == u"DESC" else 1
+        return {u"ASC":1, u"DESC":-1, u"RANDOM":0}[self._synchronization_direction]
 
     @property
     def priority(self):

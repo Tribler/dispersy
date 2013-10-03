@@ -2,6 +2,8 @@ from thread import get_ident
 from threading import currentThread
 
 from ..callback import Callback
+from ..logger import get_logger
+logger = get_logger(__name__)
 
 
 class MainThreadCallback(Callback):
@@ -20,4 +22,8 @@ class MainThreadCallback(Callback):
         currentThread().setName(name)
 
     def start(self, *args, **kargs):
-        return True
+        with self._lock:
+            self._state = "STATE_RUNNING"
+            logger.debug("STATE_RUNNING")
+
+        return self.is_running

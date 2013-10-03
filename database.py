@@ -6,19 +6,20 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
-import sys
+from abc import ABCMeta, abstractmethod
 from sqlite3 import Connection, Error
+import logging
+import sys
 
 from .decorator import attach_runtime_statistics
+from .logger import get_logger
+logger = get_logger(__name__)
 
 if __debug__:
     import thread
 
 if "--explain-query-plan" in getattr(sys, "argv", []):
-    _explain_query_plan_logger = logging.getLogger("explain-query-plan")
+    _explain_query_plan_logger = get_logger("explain-query-plan")
     _explain_query_plan = set()
 
     def attach_explain_query_plan(func):
@@ -58,6 +59,8 @@ class IgnoreCommits(Exception):
 
 class Database(object):
 
+    __metaclass__ = ABCMeta
+
     def __init__(self, file_path):
         """
         Initialize a new Database instance.
@@ -84,15 +87,18 @@ class Database(object):
         if __debug__:
             self._debug_thread_ident = 0
 
-    def open(self):
+    def open(self, initial_statements=True, prepare_visioning=True):
         assert self._cursor is None, "Database.open() has already been called"
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
         logger.info("open database [%s]", self._file_path)
         self._connect()
-        self._initial_statements()
-        self._prepare_version()
+        if initial_statements:
+            self._initial_statements()
+        if prepare_visioning:
+            self._prepare_version()
+        return True
 
     def close(self, commit=True):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
@@ -104,6 +110,7 @@ class Database(object):
         self._cursor = None
         self._connection.close()
         self._connection = None
+        return True
 
     def _connect(self):
         self._connection = Connection(self._file_path)
@@ -399,6 +406,7 @@ class Database(object):
 
             return self._connection.commit()
 
+    @abstractmethod
     def check_database(self, database_version):
         """
         Check the database and upgrade if required.
@@ -415,7 +423,7 @@ class Database(object):
          value reverts to u'0' when the table could not be accessed.
         @type database_version: unicode
         """
-        raise NotImplementedError()
+        pass
 
     def attach_commit_callback(self, func):
         assert not func in self._commit_callbacks

@@ -19,9 +19,6 @@ Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DEST
 whenever a introduction request is received for a destroyed overlay.
 """
 
-import logging
-logger = logging.getLogger(__name__)
-
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
     # http://www.python.org/dev/peps/pep-0328/
@@ -47,8 +44,10 @@ from ..conversion import BinaryConversion
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger, get_context_filter
 from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
+logger = get_logger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
@@ -156,7 +155,7 @@ class TrackerCommunity(Community):
                 self.add_conversion(BinaryConversion(self, packet[1]))
 
             # try again
-            return super(TrackerCommunity, self).get_conversion(packet)
+            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
     def dispersy_cleanup_community(self, message):
         # since the trackers use in-memory databases, we need to store the destroy-community
@@ -367,11 +366,6 @@ class TrackerDispersy(Dispersy):
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
 
-def setup_dispersy(dispersy):
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
-
-
 def main():
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
@@ -381,18 +375,32 @@ def main():
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
 
+    context_filter = get_context_filter()
+    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
+
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
 
-    # start Dispersy
+    # set the log identifier
+    context_filter.identifier = opt.log_identifier
+
+    # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
-    dispersy.callback.register(setup_dispersy, (dispersy,))
-    dispersy.start()
+    dispersy.define_auto_load(TrackerCommunity)
+    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
-        print "Received signal '", sig, "' in", frame, "(shutting down)"
+        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
         dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # start
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
     dispersy.callback.loop()
+
+    # return 1 on exception, otherwise 0
+    exit(1 if dispersy.callback.exception else 0)

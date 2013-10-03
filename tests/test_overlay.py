@@ -1,7 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-summary = logging.getLogger("test-overlay-summary")
-
 from os import environ
 from pprint import pformat
 from time import time
@@ -9,9 +5,12 @@ from unittest import skipUnless
 from collections import defaultdict
 
 from ..conversion import DefaultConversion
+from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+logger = get_logger(__name__)
+summary = get_logger("test-overlay-summary")
 
 
 class TestOverlay(DispersyTestFunc):
@@ -116,6 +115,9 @@ class TestOverlay(DispersyTestFunc):
             info.candidate_success = self._dispersy.statistics.walk_success - self._dispersy.statistics.walk_bootstrap_success
             info.candidate_ratio = 100.0 * info.candidate_success / info.candidate_attempt if info.candidate_attempt else 0.0
             info.incoming_walks = self._dispersy.statistics.walk_advice_incoming_request
+            info.lan_address = self._dispersy.lan_address
+            info.wan_address = self._dispersy.wan_address
+            info.connection_type = self._dispersy.connection_type
             history.append(info)
 
             summary.info("after %.1f seconds there are %d verified candidates [w%d:s%d:i%d:n%d]",
@@ -160,23 +162,56 @@ class TestOverlay(DispersyTestFunc):
         summary.debug("\n%s", pformat(self._dispersy.statistics.get_dict()))
 
         # write graph statistics
-        handle = open("%s_connections.txt" % cid_hex, "w+")
-        handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS\n")
-        for info in history:
-            handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d\n" % (
-                    info.diff,
-                    len(info.verified_candidates),
-                    len([_ for _, category in info.candidates if category == u"walk"]),
-                    len([_ for _, category in info.candidates if category == u"stumble"]),
-                    len([_ for _, category in info.candidates if category == u"intro"]),
-                    len([_ for _, category in info.candidates if category == u"none"]),
+        with open("%s_connections.txt" % cid_hex, "w+") as handle:
+            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
+            for info in history:
+                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
+                        info.diff,
+                        len(info.verified_candidates),
+                        len([_ for _, category in info.candidates if category == u"walk"]),
+                        len([_ for _, category in info.candidates if category == u"stumble"]),
+                        len([_ for _, category in info.candidates if category == u"intro"]),
+                        len([_ for _, category in info.candidates if category == u"none"]),
+                        info.bootstrap_attempt,
+                        info.bootstrap_success,
+                        info.candidate_attempt,
+                        info.candidate_success,
+                        info.incoming_walks,
+                        "%s:%d" % info.lan_address,
+                        "%s:%d" % info.wan_address,
+                        info.connection_type))
+
+        average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
+        average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"walk"]) for info in history) / len(history)
+        average_stumble_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"stumble"]) for info in history) / len(history)
+        average_intro_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"intro"]) for info in history) / len(history)
+        average_none_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"none"]) for info in history) / len(history)
+
+        # write results for this run
+        with open("%s_results.txt" % cid_hex, "w+") as handle:
+            # take the last history, this reflects the total bootstrap_attempts, ..., total incoming_walks
+            info = history[-1]
+            import socket
+
+            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
+            handle.write("%f \"%s\" %s %f %f %f %f %f %d %d %d %d %d %s %s \"%s\"\n" % (
+                    time(),
+                    socket.gethostname(),
+                    cid_hex,
+                    average_verified_candidates,
+                    average_walk_candidates,
+                    average_stumble_candidates,
+                    average_intro_candidates,
+                    average_none_candidates,
                     info.bootstrap_attempt,
                     info.bootstrap_success,
                     info.candidate_attempt,
                     info.candidate_success,
-                    info.incoming_walks))
+                    info.incoming_walks,
+                    "%s:%d" % info.lan_address,
+                    "%s:%d" % info.wan_address,
+                    info.connection_type))
 
-        # determine test success or failure
-        average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
+        # determine test success or failure (hard coded for 10.0 or higher being a success)
         summary.debug("Average verified candidates: %.1f", average_verified_candidates)
         self.assertGreater(average_verified_candidates, 10.0)
