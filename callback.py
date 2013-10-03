@@ -63,7 +63,7 @@ class Callback(object):
         self._lock = Lock()
 
         # _thread contains the actual Thread object
-        self._thread = Thread(target=self._loop, name=self._name)
+        self._thread = Thread(target=self.loop, name=self._name)
         self._thread.daemon = True
 
         # _thread_ident is used to detect when methods are called from the same thread
@@ -501,7 +501,7 @@ class Callback(object):
         """
         Start the asynchronous thread.
 
-        Creates a new thread and calls the _loop() method.
+        Creates a new thread and calls the loop() method.
         """
         assert self._state == "STATE_INIT", "Already (done) running"
         assert isinstance(wait, bool), "WAIT has invalid type: %s" % type(wait)
@@ -559,17 +559,6 @@ class Callback(object):
         assert timeout >= 0.0, timeout
         self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
-
-    def loop(self):
-        """
-        Use the calling thread for this Callback instance.
-        """
-
-        with self._lock:
-            self._state = "STATE_PLEASE_RUN"
-            logger.debug("STATE_PLEASE_RUN")
-
-        self._loop()
 
     def _one_task(self):
         if __debug__:
@@ -680,7 +669,7 @@ class Callback(object):
         return True
 
     @attach_profiler
-    def _loop(self):
+    def loop(self):
         # from now on we will assume GET_IDENT() is the running thread
         self._thread_ident = get_ident()
 
