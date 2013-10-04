@@ -93,6 +93,7 @@ class SignatureRequestCache(NumberCache):
 
     @staticmethod
     def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
         return u"request-cache:signature-request:%d" % (number,)
 
     def __init__(self, request_cache, members, response_func, response_args, timeout):
@@ -122,6 +123,7 @@ class SignatureRequestCache(NumberCache):
 class IntroductionRequestCache(NumberCache):
     @staticmethod
     def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
         return u"request-cache:introduction-request:%d" % (number,)
 
     @property
@@ -192,6 +194,11 @@ class MissingMessageCache(MissingSomethingCache):
         assert isinstance(global_time, (int, long)), type(global_time)
         return u"request-cache:missing-message:%s:%d" % (member.mid.encode("HEX"), global_time)
 
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier(message.authentication.member, message.distribution.global_time)
+
 
 class MissingLastMessageCache(MissingSomethingCache):
 
@@ -210,6 +217,7 @@ class MissingProofCache(MissingSomethingCache):
 
     @classmethod
     def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
         return cls.create_identifier()
 
     def __init__(self, timeout):
@@ -256,6 +264,7 @@ class MissingSequenceCache(MissingSomethingCache):
 
     @classmethod
     def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
         return cls.create_identifier(message.authentication.member, message, message.distribution.sequence_number)
 
 
