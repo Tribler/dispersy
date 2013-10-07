@@ -119,33 +119,38 @@ class Member(DummyMember):
         assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
 
         database = dispersy.database
+        mid = sha1(public_key).digest()
 
-        try:
-            database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
+        for database_id, public_key_from_db, tags in database.execute(u"SELECT id, public_key, tags FROM member WHERE mid = ?", (buffer(mid),)):
+            public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+            if public_key_from_db == public_key:
+                break
 
-        except StopIteration:
-            mid = sha1(public_key).digest()
-            private_key_from_db = None
-            try:
-                database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
-
-            except StopIteration:
-                database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-                database_id = database.last_insert_rowid
-                tags = u""
-
-            else:
+            if public_key_from_db == "":
                 database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
+                break
+
+            logger.warning("multiple public keys having the same SHA1 digest.  this is very unlikely to occur [%s] [%s]", public_key.encode("HEX"), public_key_from_db.encode("HEX"))
 
         else:
-            mid = str(mid)
-            private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
-            assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+            # did not break, hence the public key is not yet in the database
+            database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
+            database_id = database.last_insert_rowid
+            tags = u""
 
-        if private_key_from_db:
-            private_key = private_key_from_db
-        elif private_key:
+        try:
+            private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
+            private_key_from_db = str(private_key_from_db)
+            assert ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+
+        except StopIteration:
+            private_key_from_db = ""
+
+        if private_key and not private_key_from_db:
             database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
+
+        elif private_key_from_db:
+            private_key = private_key_from_db
 
         self._database = database
         self._database_id = database_id

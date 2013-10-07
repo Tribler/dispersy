@@ -176,6 +176,8 @@ class DebugNode(object):
         self._tunnel = tunnel
         self._connection_type = connection_type
 
+        return self
+
     def init_my_member(self, bits=None, sync_with_database=None, candidate=True, identity=True):
         """
         Create a Member instance for this node.
@@ -222,6 +224,8 @@ class DebugNode(object):
             self.give_message(message)
             sleep(0.1)
             self.receive_message(message_names=[u"dispersy-introduction-response"])
+
+        return self
 
     def encode_message(self, message):
         """
@@ -369,7 +373,7 @@ class DebugNode(object):
             try:
                 packet, address = self._socket.recvfrom(10240)
             except:
-                logger.debug("No more packets")
+                logger.debug("No more packets on %s", self.wan_address)
                 raise
 
             if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
@@ -410,7 +414,7 @@ class DebugNode(object):
                 break
         return packets_
 
-    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None):
         """
         Returns the first matching (candidate, message) tuple from incoming UDP packets.
 
@@ -422,20 +426,28 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
 
         Will raise a socket exception when no matching packets are available.
         """
+        if names is None:
+            # TODO remove this backwards compatibility with the MESSAGE_NAMES parameter
+            names = message_names
+            message_names = None
+
         assert timeout is None, "The parameter TIMEOUT is deprecated and must be None"
-        assert isinstance(message_names, (type(None), list))
+        assert names is None or isinstance(names, list), type(names)
+        assert names is None or all(isinstance(name, unicode) for name in names), [type(name) for name in names]
         assert payload_types is None, "The parameter PAYLOAD_TYPES is deprecated and must be None"
         assert distributions is None, "The parameter DISTRIBUTIONS is deprecated and must be None"
         assert destinations is None, "The parameter DESTINATIONS is deprecated and must be None"
+        assert message_names is None, "The parameter MESSAGE_NAMES is deprecated use NAMES instead"
 
         while True:
             candidate, packet = self.receive_packet(timeout, addresses, packets)
@@ -446,14 +458,14 @@ class DebugNode(object):
                 logger.exception("Ignored %s", exception)
                 continue
 
-            if not (message_names is None or message.name in message_names):
+            if not (names is None or message.name in names):
                 logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
                 continue
 
             logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             return candidate, message
 
-    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None, counts=None):
         """
         Returns a list with (candidate, message) tuples from all matching incoming UDP packets.
 
@@ -465,19 +477,30 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
+
+        COUNTS must be None or a list of acceptable message counts.  When it is a list of counts an
+        assert is raised when the number of acceptable messages is different than one of the
+        acceptable message counts.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
         """
+        assert counts is None or isinstance(counts, list), type(counts)
+        assert counts is None or all(isinstance(count, int) for count in counts), [type(count) for count in counts]
+
         messages = []
         while True:
             try:
-                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations))
+                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations, names))
             except socket.error:
                 break
+
+        if counts and not len(messages) in counts:
+            raise AssertionError("Received %d messages while expecting %s messages" % (len(messages), counts))
         return messages
 
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):

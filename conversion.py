@@ -1116,9 +1116,7 @@ class BinaryConversion(Conversion):
         # sign
         packet = encode_functions.signature(container, message, sign)
 
-        if len(packet) > 1500 - 60 - 8:
-            logger.warning("Packet size for %s exceeds MTU - IP header - UDP header (%d bytes)", message.name, len(packet))
-
+        logger.debug("created message %s (%d bytes)", message.name, len(packet))
         return packet
 
     #

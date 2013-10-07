@@ -69,16 +69,18 @@ def main_real(setup=None):
     # set the log identifier
     context_filter.identifier = opt.log_identifier
 
-    # setup
-    dispersy = Dispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
-    dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
-
+    # setup callback
+    def exception_handler(exception, fatal):
+        logger.error("An exception occurred.  Quitting because we are running with --strict enabled.")
+        # return fatal=True
+        return True
+    callback = MainThreadCallback("Dispersy")
     if opt.strict:
-        def exception_handler(exception, fatal):
-            print "An exception occurred.  Quitting because we are running with --strict enabled."
-            # return fatal=True
-            return True
-        dispersy.callback.attach_exception_handler(exception_handler)
+        callback.attach_exception_handler(exception_handler)
+
+    # setup
+    dispersy = Dispersy(callback, StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
 
     # if opt.swiftproc:
     #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
@@ -90,17 +92,21 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(start_script, (dispersy, opt))
+    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
-        print "Received", sig, "signal in", frame
-        dispersy.stop()
+        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
+        dispersy.stop(timeout=0.0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # start
-    dispersy.start()
-    dispersy.callback.loop()
-    return dispersy.callback
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
+
+    # wait forever
+    callback.loop()
+    return callback
 
 
 def main(setup=None):

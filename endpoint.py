@@ -103,7 +103,7 @@ class RawserverEndpoint(Endpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _SOCKET are set during open(...)
+        # _SOCKET is set during open(...)
         self._socket = None
 
     def open(self, dispersy):
@@ -118,6 +118,7 @@ class RawserverEndpoint(Endpoint):
                 continue
             break
         self._rawserver.start_listening_udp(self._socket, self)
+        return True
 
     def close(self, timeout=0.0):
         self._rawserver.stop_listening_udp(self._socket)
@@ -244,8 +245,9 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        # _DISPERSY and _THREAD are set during open(...)
+        # _THREAD and _THREAD are set during open(...)
         self._thread = None
+        self._socket = None
 
     def open(self, dispersy):
         # do NOT call RawserverEndpoint.open!
@@ -267,6 +269,7 @@ class StandaloneEndpoint(RawserverEndpoint):
         self._thread = threading.Thread(name="StandaloneEndpoint", target=self._loop)
         self._thread.daemon = True
         self._thread.start()
+        return True
 
     def close(self, timeout=10.0):
         self._running = False
@@ -340,6 +343,7 @@ class TunnelEndpoint(Endpoint):
     def open(self, dispersy):
         super(TunnelEndpoint, self).open(dispersy)
         self._swift.add_download(self)
+        return True
 
     def close(self, timeout=0.0):
         self._swift.remove_download(self, True, True)

@@ -322,7 +322,6 @@ class Community(object):
 
         # sync range bloom filters
         self._sync_cache = None
-        self._dispersy_sync_skip_enable = True
         self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
@@ -572,7 +571,11 @@ class Community(object):
 
     @property
     def dispersy_sync_skip_enable(self):
-        return self._dispersy_sync_skip_enable
+        return True #_sync_skip_
+
+    @property
+    def dispersy_sync_cache_enable(self):
+        return True #_cache_enable_
 
     def dispersy_store(self, messages):
         """
@@ -608,11 +611,11 @@ class Community(object):
         """
         if self._sync_cache:
             if self._sync_cache.responses_received > 0:
-                if self._dispersy_sync_skip_enable:
+                if self.dispersy_sync_skip_enable:
                     # We have received data, reset skip counter
                     self._sync_cache_skip_count = 0
 
-                if self._sync_cache.times_used < 100:
+                if self.dispersy_sync_cache_enable and self._sync_cache.times_used < 100:
                     self._statistics.sync_bloom_reuse += 1
                     self._statistics.sync_bloom_send += 1
                     cache = self._sync_cache
@@ -735,7 +738,7 @@ class Community(object):
             return (time_low, time_high, 1, 0, bloom)
         return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
-    # instead of pivot + capacity, divide capacity to have 50/50 divivion around pivot
+    # instead of pivot + capacity, divide capacity to have 50/50 division around pivot
     @runtime_duration_warning(0.5)
     def dispersy_claim_sync_bloom_filter_50_50(self):
         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
@@ -975,82 +978,6 @@ class Community(object):
 
         return bloomfilter_range, data
 
-    # def dispersy_claim_sync_bloom_filter(self, identifier):
-    #     """
-    #     Returns a (time_low, time_high, bloom_filter) tuple or None.
-    #     """
-    #     count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32", (self._database_id,)).next()
-    #     if count:
-    #         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
-    #         capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
-    #         ranges = int(ceil(1.0 * count / capacity))
-
-    #         desired_mean = ranges / 2.0
-    #         lambd = 1.0 / desired_mean
-    #         range_ = ranges - int(ceil(expovariate(lambd)))
-    # RANGE_ < 0 is possible when the exponential function returns a very large number (least likely)
-    # RANGE_ = 0 is the oldest time bloomfilter_range (less likely)
-    # RANGE_ = RANGES - 1 is the highest time bloomfilter_range (more likely)
-
-    #         if range_ < 0:
-    # pick uniform randomly
-    #             range_ = int(random() * ranges)
-
-    #         if range_ == ranges - 1:
-    # the chosen bloomfilter_range is to small to fill an entire bloom filter.  adjust the offset
-    # accordingly
-    #             offset = max(0, count - capacity + 1)
-
-    #         else:
-    #             offset = range_ * capacity
-
-    # get the time bloomfilter_range associated to the offset
-    #         try:
-    #             time_low, time_high = self._dispersy.database.execute(u"SELECT MIN(sync.global_time), MAX(sync.global_time) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32 ORDER BY sync.global_time LIMIT ? OFFSET ?",
-    #                                                                   (self._database_id, capacity, offset)).next()
-    #         except:
-    #             dprint("count: ", count, " capacity: ", capacity, " bloomfilter_range: ", range_, " ranges: ", ranges, " offset: ", offset, force=True)
-    #             assert False
-
-    #         if __debug__ and self.get_classification() == u"ChannelCommunity":
-    #             low, high = self._dispersy.database.execute(u"SELECT MIN(sync.global_time), MAX(sync.global_time) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32",
-    #                                                         (self._database_id,)).next()
-    #             dprint("bloomfilter_range: ", range_, " ranges: ", ranges, " offset: ", offset, " time: [", time_low, ":", time_high, "] in-db: [", low, ":", high, "]", force=True)
-
-    #         assert isinstance(time_low, (int, long))
-    #         assert isinstance(time_high, (int, long))
-
-    #         assert 0 < ranges
-    #         assert 0 <= range_ < ranges
-    #         assert ranges == 1 and range_ == 0 or ranges > 1
-    #         assert 0 <= offset
-
-    # get all the data associated to the time bloomfilter_range
-    #         counter = 0
-    #         for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32 AND sync.global_time BETWEEN ? AND ?",
-    #                                                        (self._database_id, time_low, time_high)):
-    #             bloom.add(str(packet))
-    #             counter += 1
-
-    #         if range_ == 0:
-    #             time_low = 1
-
-    #         if range_ == ranges - 1:
-    #             time_high = 0
-
-    #         if __debug__ and self.get_classification() == u"ChannelCommunity":
-    #             dprint("off: ", offset, " cap: ", capacity, " count: ", counter, "/", count, " time: [", time_low, ":", time_high, "]", force=True)
-
-    # if __debug__:
-    # if len(data) > 1:
-    # low, high = self._dispersy.database.execute(u"SELECT MIN(sync.global_time), MAX(sync.global_time) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32",
-    # (self._database_id,)).next()
-    # dprint(self.cid.encode("HEX"), " syncing <<", data[0][0], " <", data[1][0], "-", data[-2][0], "> ", data[-1][0], ">> sync:[", time_low, ":", time_high, "] db:[", low, ":", high, "] len:", len(data), " cap:", capacity)
-
-    #         return (time_low, time_high, bloom)
-
-    #     return (1, 0, BloomFilter(8, 0.1, prefix='\x00'))
-
     @property
     def dispersy_sync_response_limit(self):
         """
@@ -1214,7 +1141,7 @@ class Community(object):
         for meta in self._meta_messages.itervalues():
             if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
                 # TODO: some messages should support a notifier when a message is pruned
-                # if __debug__: dprint("checking pruning for ", meta.name, " @", self._global_time, force=1)
+                # logger.debug("checking pruning for %s @%d", meta.name, self._global_time)
                 # packets = [str(packet)
                 #            for packet,
                 #            in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? AND global_time <= ?",

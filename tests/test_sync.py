@@ -149,7 +149,7 @@ class TestSync(DispersyTestFunc):
             node.give_message(node.create_dispersy_introduction_request(community.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (1, 0, 1, 0, []), 42, 42))
             yield 0.1
 
-            received = node.receive_messages(message_names=[u"ASC-text", u"DESC-text", "RANDOM-text"])
+            received = node.receive_messages(message_names=[u"ASC-text", u"DESC-text", u"RANDOM-text"])
             logger.debug("received: %s", ["%s@%d" % (message.name, message.distribution.global_time)
                                           for _, message
                                           in received])
