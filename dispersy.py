@@ -77,7 +77,7 @@ from .payload import IntroductionRequestPayload, IntroductionResponsePayload, Pu
 from .payload import MissingMessagePayload, MissingLastMessagePayload
 from .payload import MissingSequencePayload, MissingProofPayload
 from .payload import SignatureRequestPayload, SignatureResponsePayload
-from .requestcache import Cache, RequestCache
+from .requestcache import Cache, NumberCache
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
 logger = get_logger(__name__)
@@ -90,10 +90,15 @@ if __debug__:
 CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
 
 
-class SignatureRequestCache(Cache):
-    cleanup_delay = 0.0
+class SignatureRequestCache(NumberCache):
 
-    def __init__(self, members, response_func, response_args, timeout):
+    @staticmethod
+    def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
+        return u"request-cache:signature-request:%d" % (number,)
+
+    def __init__(self, request_cache, members, response_func, response_args, timeout):
+        super(SignatureRequestCache, self).__init__(request_cache)
         self.request = None
         # MEMBERS is a list containing all the members that should add their signature.  currently
         # we only support double signed messages, hence MEMBERS contains only a single Member
@@ -101,21 +106,40 @@ class SignatureRequestCache(Cache):
         self.members = members
         self.response_func = response_func
         self.response_args = response_args
-        self.timeout_delay = timeout
+        self._timeout_delay = timeout
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         logger.debug("signature timeout")
         self.response_func(self, None, True, *self.response_args)
 
 
-class IntroductionRequestCache(Cache):
-    # we will accept the response at most 10.5 seconds after our request
-    timeout_delay = 10.5
-    # the cache remains available at most 4.5 after receiving the response.  this gives some time to
-    # receive the puncture message
-    cleanup_delay = 4.5
+class IntroductionRequestCache(NumberCache):
+    @staticmethod
+    def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
+        return u"request-cache:introduction-request:%d" % (number,)
+
+    @property
+    def timeout_delay(self):
+        # we will accept the response at most 10.5 seconds after our request
+        return 10.5
+
+    @property
+    def cleanup_delay(self):
+        # the cache remains available at most 4.5 after receiving the response.  this gives some time to receive the
+        # puncture message
+        return 4.5
 
     def __init__(self, community, helper_candidate):
+        super(IntroductionRequestCache, self).__init__(community.request_cache)
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None
@@ -134,61 +158,68 @@ class IntroductionRequestCache(Cache):
 
 
 class MissingSomethingCache(Cache):
-    cleanup_delay = 0.0
 
-    def __init__(self, timeout):
-        logger.debug("%s: waiting for %f seconds", self.__class__.__name__, timeout)
-        self.timeout_delay = timeout
+    def __init__(self, timeout, *create_identifier_args):
+        super(MissingSomethingCache, self).__init__(self.create_identifier(*create_identifier_args))
+        logger.debug("%s: waiting for %.1f seconds", self.__class__.__name__, timeout)
+        self._timeout_delay = timeout
         self.callbacks = []
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         logger.debug("%s: timeout on %d callbacks", self.__class__.__name__, len(self.callbacks))
         for func, args in self.callbacks:
             func(None, *args)
 
-    @staticmethod
-    def properties_to_identifier(*args):
-        raise NotImplementedError()
-
-    @staticmethod
-    def message_to_identifier(message):
-        raise NotImplementedError()
-
 
 class MissingMemberCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member):
-        return "-missing-member-%s-%s-" % (community.cid, member.mid)
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-member-%s-%s-" % (message.community.cid, message.authentication.member.mid)
+    def create_identifier(member):
+        assert isinstance(member, DummyMember), type(member)
+        return u"request-cache:missing-member:%s" % (member.mid.encode("HEX"),)
 
 
 class MissingMessageCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, global_time):
-        return "-missing-message-%s-%s-%d-" % (community.cid, member.mid, global_time)
+    def create_identifier(member, global_time):
+        assert isinstance(member, DummyMember), type(member)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        return u"request-cache:missing-message:%s:%d" % (member.mid.encode("HEX"), global_time)
 
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-message-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.distribution.global_time)
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier(message.authentication.member, message.distribution.global_time)
 
 
 class MissingLastMessageCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, message):
-        return "-missing-last-message-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-last-message-%s-%s-%s-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"))
+    def create_identifier(member, message):
+        assert isinstance(member, DummyMember), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        return u"request-cache:missing-last-message:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
 
 
 class MissingProofCache(MissingSomethingCache):
+
+    @staticmethod
+    def create_identifier():
+        return u"request-cache:missing-proof"
+
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier()
 
     def __init__(self, timeout):
         super(MissingProofCache, self).__init__(timeout)
@@ -197,39 +228,45 @@ class MissingProofCache(MissingSomethingCache):
         # proof, this allows us send fewer duplicate requests
         self.duplicates = []
 
-    @staticmethod
-    def properties_to_identifier(community):
-        return "-missing-proof-%s-" % (community.cid,)
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-proof-%s-" % (message.community.cid,)
-
 
 class MissingSequenceOverviewCache(Cache):
-    cleanup_delay = 0.0
 
-    def __init__(self, timeout):
-        self.timeout_delay = timeout
+    @staticmethod
+    def create_identifier(member, message):
+        assert isinstance(member, Member), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        return u"request-cache:missing-sequence-overview:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
+
+    def __init__(self, timeout, *create_identifier_args):
+        super(MissingSequenceOverviewCache, self).__init__(self.create_identifier(*create_identifier_args))
+        self._timeout_delay = timeout
         self.missing_high = 0
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         pass
-
-    @staticmethod
-    def properties_to_identifier(community, member, message):
-        return "-missing-sequence-overview-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
 
 
 class MissingSequenceCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, message, missing_high):
-        return "-missing-sequence-%s-%s-%s-%d-" % (community.cid, member.mid, message.name.encode("UTF-8"), missing_high)
+    def create_identifier(member, message, missing_global_time_high):
+        assert isinstance(member, Member), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        assert isinstance(missing_global_time_high, (int, long)), type(missing_global_time_high)
+        return u"request-cache:missing-sequence:%s:%s:%d" % (member.mid.encode("HEX"), message.name.encode("UTF-8"), missing_global_time_high)
 
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier(message.authentication.member, message, message.distribution.sequence_number)
 
 
 class Dispersy(object):
@@ -283,9 +320,6 @@ class Dispersy(object):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
         self._database = DispersyDatabase(database_filename)
-
-        # assigns temporary cache objects to unique identifiers
-        self._request_cache = RequestCache(self._callback)
 
         # indicates what our connection type is.  currently it can be u"unknown", u"public", or
         # u"symmetric-NAT"
@@ -527,15 +561,6 @@ class Dispersy(object):
         @rtype: DispersyDatabase
         """
         return self._database
-
-    @property
-    def request_cache(self):
-        """
-        The request cache instance responsible for maintaining identifiers and timeouts for
-        outstanding requests.
-        @rtype: RequestCache
-        """
-        return self._request_cache
 
     @property
     def statistics(self):
@@ -2234,26 +2259,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("%s %s no candidate to take step", community.cid.encode("HEX"), community.get_classification())
                 return False
 
-    def handle_missing_messages(self, messages, *classes):
-        assert all(isinstance(message, Message.Implementation) for message in messages)
-        assert all(issubclass(cls, MissingSomethingCache) for cls in classes)
-        for message in messages:
-            for cls in classes:
-                cache = self._request_cache.pop(cls.message_to_identifier(message), cls)
-                if cache:
-                    logger.debug("found request cache for %s", message)
-                    for response_func, response_args in cache.callbacks:
-                        response_func(message, *response_args)
-
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
-        cache = IntroductionRequestCache(community, destination)
+        cache = community.request_cache.add(IntroductionRequestCache(community, destination))
         destination.walk(time(), cache.timeout_delay)
         community.add_candidate(destination)
-
-        # temporary cache object
-        identifier = self._request_cache.claim(cache)
 
         # decide if the requested node should introduce us to someone else
         # advice = random() < 0.5 or len(community.candidates) <= 5
@@ -2319,7 +2330,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         request = meta_request.impl(authentication=(community.my_member,),
                                     distribution=(community.global_time,),
                                     destination=(destination,),
-                                    payload=(destination.sock_addr, self._lan_address, self._wan_address, advice, self._connection_type, sync, identifier))
+                                    payload=(destination.sock_addr, self._lan_address, self._wan_address, advice, self._connection_type, sync, cache.number))
 
         if forward:
             if sync:
@@ -2343,6 +2354,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         """
         We received a dispersy-introduction-request message.
         """
+        community = messages[0].community
         for message in messages:
             # 25/01/12 Boudewijn: during all DAS2 NAT node314 often sends requests to herself.  This
             # results in more candidates (all pointing to herself) being added to the candidate
@@ -2352,9 +2364,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             # to each other is relatively small.
             # 30/10/12 Niels: additionally check if both our lan_addresses are the same. They should
             # be if we're sending it to ourself. Not checking wan_address as that is subject to change.
-            if self._request_cache.has(message.payload.identifier, IntroductionRequestCache) and self._lan_address == message.payload.source_lan_address:
+            if community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)) and \
+                    self._lan_address == message.payload.source_lan_address:
                 logger.debug("dropping dispersy-introduction-request, this identifier is already in use.")
-                yield DropMessage(message, "Duplicate identifier from %s (most likely received from ourself)" % str(message.candidate))
+                yield DropMessage(message, "Duplicate identifier from %s (most likely received from our self)" % str(message.candidate))
                 continue
 
             logger.debug("accepting dispersy-introduction-request from %s", message.candidate)
@@ -2518,8 +2531,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     self._endpoint.send([message.candidate], packets)
 
     def check_introduction_response(self, messages):
+        community = messages[0].community
         for message in messages:
-            if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+            if not community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
                 self._statistics.walk_invalid_response_identifier += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
@@ -2586,7 +2600,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._statistics.dict_inc(self._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
-            cache = self._request_cache.pop(payload.identifier, IntroductionRequestCache)
+            cache = community.request_cache.pop(IntroductionRequestCache.create_identifier(message.payload.identifier))
 
             # handle the introduction
             lan_introduction_address = payload.lan_introduction_address
@@ -2686,8 +2700,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         self._forward(punctures)
 
     def check_puncture(self, messages):
+        community = messages[0].community
         for message in messages:
-            if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+            if not community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2699,7 +2714,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         for message in messages:
             # get cache object linked to this request but does NOT stop timeout from occurring
-            cache = self._request_cache.get(message.payload.identifier, IntroductionRequestCache)
+            cache = community.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
 
             # when the sender is behind a symmetric NAT and we are not, we will not be able to get
             # through using the port that the helper node gave us (symmetric NAT will give a
@@ -2969,12 +2984,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         sendRequest = False
 
-        identifier = MissingMessageCache.properties_to_identifier(community, member, global_time)
-        cache = self._request_cache.get(identifier, MissingMessageCache)
+        cache = community.request_cache.get(MissingMessageCache.create_identifier(member, global_time))
         if not cache:
-            logger.debug("%s", identifier)
-            cache = MissingMessageCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingMessageCache(timeout, member, global_time))
+            logger.debug("new cache: %s", cache)
 
             meta = community.get_meta_message(u"dispersy-missing-message")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, [global_time]))
@@ -3023,11 +3036,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         sendRequest = False
 
-        identifier = MissingLastMessageCache.properties_to_identifier(community, member, message)
-        cache = self._request_cache.get(identifier, MissingLastMessageCache)
+        cache = community.request_cache.get(MissingLastMessageCache.create_identifier(member, message))
         if not cache:
-            cache = MissingLastMessageCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingLastMessageCache(timeout, member, message))
+            logger.debug("new cache: %s", cache)
 
             meta = community.get_meta_message(u"dispersy-missing-last-message")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, message, count_))
@@ -3131,10 +3143,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         """
         We received a dispersy-identity message.
         """
+        community = messages[0].community
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            identifier = MissingMemberCache.message_to_identifier(message)
-            cache = self._request_cache.pop(identifier, MissingMemberCache)
+            cache = community.request_cache.pop(MissingMemberCache.create_identifier(message.authentication.member))
             if cache:
                 for func, args in cache.callbacks:
                     func(message, *args)
@@ -3161,13 +3173,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         sendRequest = False
 
-        identifier = MissingMemberCache.properties_to_identifier(community, dummy_member)
-        cache = self._request_cache.get(identifier, MissingMemberCache)
+        cache = community.request_cache.get(MissingMemberCache.create_identifier(dummy_member))
         if not cache:
-            cache = MissingMemberCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingMemberCache(timeout, dummy_member))
+            logger.debug("new cache: %s", cache)
 
-            logger.debug("%s sending missing-identity %s", candidate, dummy_member.mid.encode("HEX"))
             meta = community.get_meta_message(u"dispersy-missing-identity")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
             self._forward([request])
@@ -3275,15 +3285,15 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         assert len(members) == 1
 
         # temporary cache object
-        cache = SignatureRequestCache(members, response_func, response_args, timeout)
-        identifier = self._request_cache.claim(cache)
+        cache = community.request_cache.add(SignatureRequestCache(community.request_cache, members, response_func, response_args, timeout))
+        logger.debug("new cache: %s", cache)
 
         # the dispersy-signature-request message that will hold the
         # message that should obtain more signatures
         meta = community.get_meta_message(u"dispersy-signature-request")
         cache.request = meta.impl(distribution=(community.global_time,),
                                   destination=(candidate,),
-                                  payload=(identifier, message))
+                                  payload=(cache.number, message))
 
         logger.debug("asking %s", [member.mid.encode("HEX") for member in members])
         self._forward([cache.request])
@@ -3371,15 +3381,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
     def check_signature_response(self, messages):
         unique = set()
+        community = messages[0].community
 
         for message in messages:
-            if message.payload.identifier in unique:
-                yield DropMessage(message, "duplicate identifier in batch")
-                continue
-
-            cache = self._request_cache.get(message.payload.identifier, SignatureRequestCache)
+            cache = community.request_cache.get(SignatureRequestCache.create_identifier(message.payload.identifier))
             if not cache:
                 yield DropMessage(message, "invalid response identifier")
+                continue
+
+            if cache.identifier in unique:
+                yield DropMessage(message, "duplicate identifier in batch")
                 continue
 
             old_submsg = cache.request.payload.message
@@ -3397,7 +3408,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 yield DropMessage(message, "global time may not change")
                 continue
 
-            unique.add(message.payload.identifier)
+            unique.add(cache.identifier)
             yield message
 
     def on_signature_response(self, messages):
@@ -3412,9 +3423,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         Note that response_func is also called when the sub-message does not yet contain all the
         signatures.  This can be checked using sub-message.authentication.is_signed.
         """
+        community = messages[0].community
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            cache = self._request_cache.pop(message.payload.identifier, SignatureRequestCache)
+            cache = community.request_cache.pop(SignatureRequestCache.create_identifier(message.payload.identifier))
 
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
@@ -3440,21 +3452,19 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         sendRequest = False
 
         # the MissingSequenceCache allows us to match the missing_high to the response_func
-        identifier = MissingSequenceCache.properties_to_identifier(community, member, message, missing_high)
-        cache = self._request_cache.get(identifier, MissingSequenceCache)
+        cache = community.request_cache.get(MissingSequenceCache.create_identifier(member, message, missing_high))
         if not cache:
-            cache = MissingSequenceCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingSequenceCache(timeout, member, message, missing_high))
+            logger.debug("new cache: %s", cache)
 
         if response_func:
             cache.callbacks.append((response_func, response_args))
 
         # the MissingSequenceOverviewCache ensures that we do not request duplicate ranges
-        identifier = MissingSequenceOverviewCache.properties_to_identifier(community, member, message)
-        overview = self._request_cache.get(identifier, MissingSequenceOverviewCache)
+        overview = community.request_cache.get(MissingSequenceOverviewCache.create_identifier(member, message))
         if not overview:
-            overview = MissingSequenceOverviewCache(timeout)
-            self._request_cache.set(identifier, overview)
+            overview = community.request_cache.add(MissingSequenceOverviewCache(timeout, member, message))
+            logger.debug("new cache: %s", cache)
 
         if overview.missing_high == 0 or missing_high > overview.missing_high:
             missing_low = max(overview.missing_high, missing_low)
@@ -3558,12 +3568,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         # handle_missing_messages(messages, MissingProofCache)
 
         sendRequest = False
-        identifier = MissingProofCache.properties_to_identifier(community)
-        cache = self._request_cache.get(identifier, MissingProofCache)
+        cache = community.request_cache.get(MissingProofCache.create_identifier())
         if not cache:
-            logger.debug("%s", identifier)
-            cache = MissingProofCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingProofCache(timeout))
+            logger.debug("new cache: %s", cache)
 
         key = (message.meta, message.authentication.member)
         if not key in cache.duplicates:
@@ -3694,12 +3702,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
          message immediately.
         """
+        community = messages[0].community
         for message in messages:
             logger.debug("%s", message)
-            message.community.timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
+            community.timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
 
         # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
     def create_revoke(self, community, permission_triplets, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3778,11 +3787,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
          message immediately.
         """
+        community = messages[0].community
         for message in messages:
-            message.community.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
+            community.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
 
         # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingSequenceCache)
 
     def create_undo(self, community, message, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3966,17 +3976,18 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         """
         assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
 
+        community = messages[0].community
         self._database.executemany(u"UPDATE sync SET undone = ? WHERE community = ? AND member = ? AND global_time = ?",
-                                   ((message.packet_id, message.community.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
+                                   ((message.packet_id, community.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
         for meta, iterator in groupby(messages, key=lambda x: x.payload.packet.meta):
             sub_messages = list(iterator)
             meta.undo_callback([(message.payload.member, message.payload.global_time, message.payload.packet) for message in sub_messages])
 
             # notify that global times have changed
-            # meta.community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
+            # community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
 
         # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingSequenceCache)
 
     def create_destroy_community(self, community, degree, sign_with_master=False, store=True, update=True, forward=True):
         if __debug__:
@@ -3996,7 +4007,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         self._forward([message])
 
         # now store and update without forwarding.  forwarding now will result in new entries in our
-        # candidate table that we just cleane.
+        # candidate table that we just clean.
         self.store_update_forward([message], store, update, False)
         return message
 
@@ -4159,7 +4170,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     # meta.community.update_sync_range(meta, [message.distribution.global_time for message in redo])
 
         # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
     def sanity_check(self, community, test_identity=True, test_undo_other=True, test_binary=False, test_sequence_number=True, test_last_sync=True):
         """

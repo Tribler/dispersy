@@ -223,6 +223,8 @@ class WalkCandidate(Candidate):
         Returns the category (u"walk", u"stumble", u"intro", or u"none") depending on the current
         time NOW.
         """
+        assert isinstance(now, float), type(now)
+
         if self._last_walk + self._timeout_adjustment <= now < self._last_walk + CANDIDATE_WALK_LIFETIME:
             return u"walk"
 
@@ -238,6 +240,8 @@ class WalkCandidate(Candidate):
         """
         Called when we are about to send an introduction-request to this candidate.
         """
+        assert isinstance(now, float), type(now)
+        assert isinstance(timeout_adjustment, float), type(timeout_adjustment)
         self._last_walk = now
         self._timeout_adjustment = timeout_adjustment
 
@@ -251,12 +255,14 @@ class WalkCandidate(Candidate):
         """
         Called when we receive an introduction-request from this candidate.
         """
+        assert isinstance(now, float), type(now)
         self._last_stumble = now
 
     def intro(self, now):
         """
         Called when we receive an introduction-response introducing this candidate.
         """
+        assert isinstance(now, float), type(now)
         self._last_intro = now
 
     def update(self, tunnel, lan_address, wan_address, connection_type):
