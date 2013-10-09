@@ -352,9 +352,6 @@ class Dispersy(object):
         # progress handlers (used to notify the user when something will take a long time)
         self._progress_handlers = []
 
-        # commit changes to the database periodically
-        self._callback.register(self._watchdog)
-
         # statistics...
         self._statistics = DispersyStatistics(self)
 
@@ -4393,10 +4390,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         Periodically called to commit database changes to disk.
         """
         while True:
-            try:
-                # Arno, 2012-07-12: apswtrace detects 7 s commits with yield 5 min, so reduce
-                yield 60.0
+            # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
+            # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
+            # exception is raised when the _watchdog generator is closed)
+            yield 60.0
 
+            try:
                 # flush changes to disk every 1 minutes
                 self._database.commit()
 
@@ -4404,6 +4403,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # OperationalError: database is locked
                 logger.exception("%s", exception)
 
+    # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
+    # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
     def _commit_now(self):
         """
         Flush changes to disk.
@@ -4432,6 +4433,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             results.append((u"endpoint", self._endpoint.open(self)))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
             self._endpoint_ready()
+
+            # commit changes to the database periodically
+            self._callback.register(self._watchdog, id_=u"dispersy-watchdog")
 
         # start
         logger.info("starting the Dispersy core...")
@@ -4494,6 +4498,9 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             return True
 
         def stop():
+            # stop the watchdog
+            self._callback.unregister(u"dispersy-watchdog")
+
             # unload all communities
             results.append((u"community", ordered_unload_communities()))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
