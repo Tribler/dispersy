@@ -36,8 +36,12 @@ class TestBootstrapServers(DispersyTestFunc):
                 "--statedir", ".",
                 "--port", str(tracker_address[1]),
                 "--log-identifier", "tracker"]
-        logger.debug("start tracker")
+        logger.debug("start tracker %s", args)
         tracker = Popen(args, cwd=tracker_path)
+
+        # can take a few seconds to start on older machines (or when running on a remote file
+        # system)
+        yield 5.0
 
         class Community(DebugCommunity):
             @property
@@ -50,7 +54,6 @@ class TestBootstrapServers(DispersyTestFunc):
         nodes = [DebugNode(community).init_socket().init_my_member(candidate=False, identity=False) for _ in xrange(1)]
 
         # nodes send introduction request
-        yield 1.0
         for node in nodes:
             node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
                                                                         node.lan_address,
