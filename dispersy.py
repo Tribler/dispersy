@@ -85,9 +85,6 @@ if __debug__:
     from .callback import Callback
     from .endpoint import Endpoint
 
-# the callback identifier for the task that periodically takes a step
-CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
-
 
 class SignatureRequestCache(NumberCache):
 
@@ -308,6 +305,13 @@ class Dispersy(object):
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
 
+        # _pending_callbacks contains all id's for registered calls that should be removed when the
+        # Dispersy is stopped.  most of the time this contains all the generators that are used
+        self._pending_callbacks = {}
+        # add id(self) into the callback identifier to ensure multiple Dispersy instances can use
+        # the same Callback instance
+        self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
+
         self._member_cache_by_public_key = OrderedDict()
         self._member_cache_by_hash = dict()
         self._member_cache_by_database_id = dict()
@@ -368,8 +372,6 @@ class Dispersy(object):
                     scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start))
 
             self._callback.register(memory_dump)
-
-        self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
     def _guess_lan_address():
@@ -794,7 +796,7 @@ class Dispersy(object):
         if community.dispersy_enable_candidate_walker:
             self._walker_commmunities.insert(0, community)
             # restart walker scheduler
-            self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+            self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
 
         # count the number of times that a community was attached
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
@@ -834,10 +836,10 @@ class Dispersy(object):
             self._walker_commmunities.remove(community)
             if self._walker_commmunities:
                 # restart walker scheduler
-                self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+                self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
             else:
                 # stop walker scheduler
-                self._callback.unregister(CANDIDATE_WALKER_CALLBACK_ID)
+                self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
 
         # remove any items that are left in the cache
         for meta in community.get_meta_messages():
@@ -4435,7 +4437,11 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             self._endpoint_ready()
 
             # commit changes to the database periodically
-            self._callback.register(self._watchdog, id_=u"dispersy-watchdog")
+            id_ = u"dispersy-watchdog-%d" % (id(self),)
+            self._pending_callbacks["watchdog"] = self._callback.register(self._watchdog, id_=id_)
+            # output candidate statistics
+            id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
+            self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
 
         # start
         logger.info("starting the Dispersy core...")
@@ -4495,11 +4501,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
 
+            # stop walking (this should not be necessary, but bugs may cause the walker to keep
+            # running and/or be re-started when a community is loaded)
+            self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
+
             return True
 
         def stop():
-            # stop the watchdog
-            self._callback.unregister(u"dispersy-watchdog")
+            # stop periodic tasks
+            for callback_id in self._pending_callbacks.itervalues():
+                self._callback.unregister(callback_id)
 
             # unload all communities
             results.append((u"community", ordered_unload_communities()))
