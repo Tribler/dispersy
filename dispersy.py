@@ -4666,10 +4666,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                 for category, candidates in categories.iteritems():
-                    aged = [(candidate.age(now), candidate) for candidate in candidates]
+                    aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        summary.info("%4ds %s%s%s %-7s %-13s %s",
-                                     min(age, 9999),
+                        summary.info("%5.1fs %s%s%s %-7s %-13s %s",
+                                     min(age, 999.0),
                                      "O" if candidate.is_obsolete(now) else " ",
                                      "E" if candidate.is_eligible_for_walk(now) else " ",
                                      "B" if isinstance(candidate, BootstrapCandidate) else " ",
