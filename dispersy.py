@@ -4665,14 +4665,16 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 summary.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
                 summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
+                loggers = {u"walk": summary.info, u"stumble": summary.info, u"intro": summary.info, u"none": summary.debug}
                 for category, candidates in categories.iteritems():
+                    log = loggers[category]
                     aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        summary.info("%5.1fs %s%s%s %-7s %-13s %s",
-                                     min(age, 999.0),
-                                     "O" if candidate.is_obsolete(now) else " ",
-                                     "E" if candidate.is_eligible_for_walk(now) else " ",
-                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                     category,
-                                     candidate.connection_type,
-                                     candidate)
+                        log("%5.1fs %s%s%s %-7s %-13s %s",
+                            min(age, 999.0),
+                            "O" if candidate.is_obsolete(now) else " ",
+                            "E" if candidate.is_eligible_for_walk(now) else " ",
+                            "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                            category,
+                            candidate.connection_type,
+                            candidate)
