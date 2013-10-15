@@ -86,9 +86,6 @@ if __debug__:
     from .callback import Callback
     from .endpoint import Endpoint
 
-# the callback identifier for the task that periodically takes a step
-CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
-
 
 class SignatureRequestCache(NumberCache):
 
@@ -309,6 +306,13 @@ class Dispersy(object):
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
 
+        # _pending_callbacks contains all id's for registered calls that should be removed when the
+        # Dispersy is stopped.  most of the time this contains all the generators that are used
+        self._pending_callbacks = {}
+        # add id(self) into the callback identifier to ensure multiple Dispersy instances can use
+        # the same Callback instance
+        self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
+
         self._member_cache_by_public_key = OrderedDict()
         self._member_cache_by_hash = dict()
         self._member_cache_by_database_id = dict()
@@ -355,9 +359,6 @@ class Dispersy(object):
         # progress handlers (used to notify the user when something will take a long time)
         self._progress_handlers = []
 
-        # commit changes to the database periodically
-        self._callback.register(self._watchdog)
-
         # statistics...
         self._statistics = DispersyStatistics(self)
 
@@ -374,8 +375,6 @@ class Dispersy(object):
                     scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start))
 
             self._callback.register(memory_dump)
-
-        self._callback.register(self._stats_detailed_candidates)
 
     @staticmethod
     def _get_interface_addresses():
@@ -839,7 +838,7 @@ class Dispersy(object):
         if community.dispersy_enable_candidate_walker:
             self._walker_commmunities.insert(0, community)
             # restart walker scheduler
-            self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+            self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
 
         # count the number of times that a community was attached
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
@@ -879,10 +878,10 @@ class Dispersy(object):
             self._walker_commmunities.remove(community)
             if self._walker_commmunities:
                 # restart walker scheduler
-                self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+                self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
             else:
                 # stop walker scheduler
-                self._callback.unregister(CANDIDATE_WALKER_CALLBACK_ID)
+                self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
 
         # remove any items that are left in the cache
         for meta in community.get_meta_messages():
@@ -4427,10 +4426,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         Periodically called to commit database changes to disk.
         """
         while True:
-            try:
-                # Arno, 2012-07-12: apswtrace detects 7 s commits with yield 5 min, so reduce
-                yield 60.0
+            # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
+            # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
+            # exception is raised when the _watchdog generator is closed)
+            yield 60.0
 
+            try:
                 # flush changes to disk every 1 minutes
                 self._database.commit()
 
@@ -4438,6 +4439,8 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                 # OperationalError: database is locked
                 logger.exception("%s", exception)
 
+    # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
+    # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
     def _commit_now(self):
         """
         Flush changes to disk.
@@ -4466,6 +4469,13 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
             results.append((u"endpoint", self._endpoint.open(self)))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
             self._endpoint_ready()
+
+            # commit changes to the database periodically
+            id_ = u"dispersy-watchdog-%d" % (id(self),)
+            self._pending_callbacks["watchdog"] = self._callback.register(self._watchdog, id_=id_)
+            # output candidate statistics
+            id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
+            self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
 
         # start
         logger.info("starting the Dispersy core...")
@@ -4525,9 +4535,17 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
 
+            # stop walking (this should not be necessary, but bugs may cause the walker to keep
+            # running and/or be re-started when a community is loaded)
+            self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
+
             return True
 
         def stop():
+            # stop periodic tasks
+            for callback_id in self._pending_callbacks.itervalues():
+                self._callback.unregister(callback_id)
+
             # unload all communities
             results.append((u"community", ordered_unload_communities()))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
