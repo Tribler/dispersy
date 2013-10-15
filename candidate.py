@@ -171,11 +171,28 @@ class WalkCandidate(Candidate):
         """
         return max(self._last_walk, self._last_stumble, self._last_intro) + CANDIDATE_LIFETIME < now
 
-    def age(self, now):
+    def age(self, now, category=u""):
         """
-        Returns the time between NOW and the most recent walk or stumble.
+        Returns the time between NOW and the most recent walk, stumble, or intro (depending on
+        CATEGORY).
+
+        When CATEGORY is an empty string candidate.get_category(NOW) will be used to obtain it.
+
+        For the following CATEGORY values it will return the equivalent:
+        - walk :: NOW - candidate.last_walk
+        - stumble :: NOW - candidate.last_stumble
+        - intro :: NOW - candidate.last_intro
+        - none :: NOW - max(candidate.last_walk, candidate.last_stumble, candidate.last_intro)
         """
-        return now - max(self._last_walk, self._last_stumble)
+        if not category:
+            category = self.get_category(now)
+
+        mapping = {u"walk": now - self._last_walk,
+                   u"stumble": now - self._last_stumble,
+                   u"intro": now - self._last_intro,
+                   u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
+
+        return mapping[category]
 
     def inactive(self, now):
         """
