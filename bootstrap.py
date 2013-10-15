@@ -1,7 +1,10 @@
-import os
+from os import path
 from socket import gethostbyname
+from threading import Thread, Lock, Event
 
 from .candidate import BootstrapCandidate
+from .logger import get_logger
+logger = get_logger(__name__)
 
 _trackers = [(u"dispersy1.tribler.org", 6421),
              (u"dispersy2.tribler.org", 6422),
@@ -21,8 +24,6 @@ _trackers = [(u"dispersy1.tribler.org", 6421),
              (u"dispersy7b.tribler.org", 6427),
              (u"dispersy8b.tribler.org", 6428)]
 
-# _trackers = [(u"kayapo.tribler.org", 6431)]
-
 
 def get_bootstrap_hosts(working_directory):
     """
@@ -30,7 +31,7 @@ def get_bootstrap_hosts(working_directory):
     returns _TRACKERS.
     """
     trackers = []
-    filename = os.path.join(working_directory, "bootstraptribler.txt")
+    filename = path.join(working_directory, "bootstraptribler.txt")
     try:
         for line in open(filename, "r"):
             line = line.strip()
@@ -46,7 +47,7 @@ def get_bootstrap_hosts(working_directory):
         return _trackers
 
 
-def get_bootstrap_candidates(dispersy):
+def get_bootstrap_candidates(dispersy, timeout=1.0):
     """
     Returns a list with all known bootstrap peers.
 
@@ -56,10 +57,44 @@ def get_bootstrap_candidates(dispersy):
     Each bootstrap peer gives either None or a Candidate.  None values can be caused by
     malfunctioning DNS.
     """
-    def get_candidate(host, port):
-        try:
-            return BootstrapCandidate((gethostbyname(host), port), False)
-        except:
-            return None
+    assert isinstance(timeout, float), type(timeout)
+    assert timeout > 0.0, timeout
 
-    return [get_candidate(host, port) for host, port in get_bootstrap_hosts(dispersy.working_directory)]
+    def gethostbyname_in_parallel():
+        for host, port in hosts:
+            if event.is_set():
+                # timeout
+                break
+
+            try:
+                candidate = BootstrapCandidate((gethostbyname(host), port), False)
+
+            except:
+                logger.exception("unable to obtain BootstrapCandidate(%s, %d)", host, port)
+                candidate = None
+
+            with lock:
+                results.append(candidate)
+
+        # indicate results are ready
+        event.set()
+
+    lock = Lock()
+    event = Event()
+    results = []
+    hosts = get_bootstrap_hosts(dispersy.working_directory)
+    logger.debug("obtaining %d BootstrapCandidates", len(hosts))
+
+    # start thread
+    thread = Thread(target=gethostbyname_in_parallel, name="Get-Bootstrap-Candidates")
+    thread.damon = True
+    thread.start()
+
+    # wait for results
+    event.wait(timeout)
+    event.set()
+
+    # return results
+    with lock:
+        logger.debug("returning %d/%d BootstrapCandidates", len([result for result in results if result]), len(hosts))
+        return results[:]
