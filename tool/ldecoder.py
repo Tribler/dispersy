@@ -340,6 +340,21 @@ class Parser(object):
         if self.verbose:
             print "#", self.progress, self.filename, "->", lineno, "lines"
 
+    def parse_file(self, filename, bzip2=False, unknown=False):
+        parser = bz2parse if bzip2 else parse
+        interests = () if unknown else set(self.mapping.keys())
+        unknown = [self.unknown]
+
+        self.start_parser(filename)
+        lineno = 0
+        try:
+            for lineno, timestamp, name, kargs in parser(filename, interests):
+                for func in self.mapping.get(name, unknown):
+                    func(timestamp, name, **kargs)
+        except NextFile:
+            pass
+        self.stop_parser(lineno)
+
     def parse_directory(self, directory, filename, bzip2=False, unknown=False):
         parser = bz2parse if bzip2 else parse
         interests = () if unknown else set(self.mapping.keys())
