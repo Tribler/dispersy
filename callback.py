@@ -9,6 +9,12 @@ from time import sleep, time
 from types import GeneratorType, TupleType
 from sys import exc_info
 
+try:
+    from prctl import set_name
+except ImportError:
+    def set_name(_):
+        pass
+
 from .decorator import attach_profiler
 from .logger import get_logger
 logger = get_logger(__name__)
@@ -670,6 +676,9 @@ class Callback(object):
 
     @attach_profiler
     def loop(self):
+        # set thread name (visible from ps and top)
+        set_name(self._name[:16])
+
         # from now on we will assume GET_IDENT() is the running thread
         self._thread_ident = get_ident()
 

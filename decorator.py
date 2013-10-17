@@ -64,6 +64,7 @@ if "--profiler" in getattr(sys, "argv", []):
             finally:
                 logger.debug("profiler results [%s]", filename)
                 profiler.dump_stats(filename)
+                _profiled_threads.remove(filename)
 
         return helper
 

@@ -1648,6 +1648,17 @@ class Community(object):
                 self._candidates[candidate.sock_addr] = candidate
                 self._dispersy.statistics.total_candidates_discovered += 1
 
+    def update_bootstrap_candidates(self, candidates):
+        """
+        Informs the community that BootstrapCandidate instances are available.
+
+        This method will ensure that none of the self._candidates point to a known
+        BootstrapCandidate.
+        """
+        for candidate in candidates:
+            self._candidates.pop(candidate.sock_addr, None)
+        assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+
     def get_candidate_mid(self, mid):
         members = self._dispersy.get_members_from_id(mid)
         if members:
