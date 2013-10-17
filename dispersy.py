@@ -4524,10 +4524,12 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         self._callback.call(start, priority=512)
 
-        # wait until bootstrap progress reports that the addresses have been resolved
-        event.wait(timeout)
-        results.append((u"resolve-bootstrap", event.is_set()))
-        assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+        # blocking is not an option when we are running on the same thread
+        if not self._callback.is_current_thread:
+            # wait until bootstrap progress reports that the addresses have been resolved
+            event.wait(timeout)
+            results.append((u"resolve-bootstrap", event.is_set()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # log and return the result
         if all(result for _, result in results):
