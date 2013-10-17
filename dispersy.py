@@ -463,7 +463,7 @@ class Dispersy(object):
                 logger.debug("resolved all bootstrap addresses")
 
             else:
-                delay = 30.0 if container["attempt_counter"] < 30 else 300.0
+                delay = 0.0 if container["attempt_counter"] == 1 else 300.0
                 logger.warning("unable to resolve all bootstrap addresses.  waiting %.1fs before next attempt (attempt #%d)",
                                container["attempt_counter"], delay)
                 self._callback.register(retry, delay=delay)
@@ -474,7 +474,7 @@ class Dispersy(object):
 
         def retry():
             container["attempt_counter"] += 1
-            timeout = 10.0 if container["attempt_counter"] else 300.0
+            timeout = 1.0 if container["attempt_counter"] == 1 else 300.0
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
             bootstrap.resolve(on_results, timeout)
 
@@ -4491,7 +4491,10 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         assert timeout >= 0.0, timeout
 
         def bootstrap_progress(_, resolved, total):
-            if resolved == total:
+            # we are happy starting with just 50% of the available BootstrapCandidates,
+            # i.e. Dispersy will still start quickly, even if a small subset of the addresses no
+            # longer resolves
+            if resolved >= total * 0.5:
                 event.set()
 
         def start():

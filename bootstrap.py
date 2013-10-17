@@ -25,6 +25,8 @@ _DEFAULT_ADDRESSES = ((u"dispersy1.tribler.org", 6421),
                       (u"dispersy7b.tribler.org", 6427),
                       (u"dispersy8b.tribler.org", 6428))
 
+# _DEFAULT_ADDRESSES = _DEFAULT_ADDRESSES + tuple((u"rotten.dns.entry%d.org" % i, 1234) for i in xrange(8))
+
 
 class Bootstrap(object):
 
