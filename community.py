@@ -1228,22 +1228,24 @@ class Community(object):
         if self._conversions:
             return self._conversions[-1]
 
-        # for backwards compatibility we will raise a KeyError when conversion isn't found (previously self._conversions
-        # was a dictionary)
-        logger.warning("Unable to find default conversion (there are no conversions available)")
+        # for backwards compatibility we will raise a KeyError when conversion isn't found
+        # (previously self._conversions was a dictionary)
+        logger.warning("unable to find default conversion (there are no conversions available)")
         raise KeyError()
 
     def get_conversion_for_packet(self, packet):
         """
         Returns the conversion associated with PACKET.
 
-        This method returns the first available conversion that can *decode* PACKET, this is tested in reversed order
-        using conversion.can_decode_message(PACKET).  Typically a conversion can decode a string when it matches: the
-        community version, the Dispersy version, and the community identifier, and the conversion knows how to decode
-        messages types described in PACKET.
+        This method returns the first available conversion that can *decode* PACKET, this is tested
+        in reversed order using conversion.can_decode_message(PACKET).  Typically a conversion can
+        decode a string when it matches: the community version, the Dispersy version, and the
+        community identifier, and the conversion knows how to decode messages types described in
+        PACKET.
 
-        Note that only the bytes needed to determine conversion.can_decode_message(PACKET) must be given, therefore
-        PACKET is not necessarily an entire packet but can also be a the first N bytes of a packet.
+        Note that only the bytes needed to determine conversion.can_decode_message(PACKET) must be
+        given, therefore PACKET is not necessarily an entire packet but can also be a the first N
+        bytes of a packet.
 
         Raises KeyError(packet) when no conversion is available.
         """
@@ -1252,18 +1254,18 @@ class Community(object):
             if conversion.can_decode_message(packet):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is found (previously
-        # self._conversions was a dictionary)
-        logger.warning("Unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
+        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is
+        # found (previously self._conversions was a dictionary)
+        logger.warning("unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
         raise KeyError(packet)
 
     def get_conversion_for_message(self, message):
         """
         Returns the conversion associated with MESSAGE.
 
-        This method returns the first available conversion that can *encode* MESSAGE, this is tested in reversed order
-        using conversion.can_encode_message(MESSAGE).  Typically a conversion can encode a message when: the conversion
-        knows how to encode messages with MESSAGE.name.
+        This method returns the first available conversion that can *encode* MESSAGE, this is tested
+        in reversed order using conversion.can_encode_message(MESSAGE).  Typically a conversion can
+        encode a message when: the conversion knows how to encode messages with MESSAGE.name.
 
         Raises KeyError(message) when no conversion is available.
         """
@@ -1275,9 +1277,9 @@ class Community(object):
             if conversion.can_encode_message(message):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is found (previously
-        # self._conversions was a dictionary)
-        logger.warning("Unable to find conversion to encode %s in %s", message, self._conversions)
+        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is
+        # found (previously self._conversions was a dictionary)
+        logger.warning("unable to find conversion to encode %s in %s", message, self._conversions)
         raise KeyError(message)
 
     def add_conversion(self, conversion):
@@ -1338,7 +1340,9 @@ class Community(object):
     def dispersy_on_dynamic_settings(self, messages, initializing=False):
         return self._dispersy.on_dynamic_settings(self, messages, initializing)
 
-    def _iter_category(self, category):
+    def _iter_category(self, category, strict=True):
+        # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
+        # 0.0.0.0:0
         while True:
             index = 0
             has_result = False
@@ -1350,7 +1354,8 @@ class Community(object):
                 candidate = self._candidates.get(key)
 
                 if (candidate and
-                    candidate.get_category(now) == category):
+                    candidate.get_category(now) == category and
+                    not (strict and (candidate.lan_address == ("0.0.0.0", 0) or candidate.wan_address == ("0.0.0.0", 0)))):
 
                     yield candidate
                     has_result = True
@@ -1628,9 +1633,6 @@ class Community(object):
         else:
             # modify either the senders LAN or WAN address based on how we perceive that node
             source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
-            if source_lan_address == ("0.0.0.0", 0) or source_wan_address == ("0.0.0.0", 0):
-                logger.debug("problems determining source LAN or WAN address, can neither introduce nor convert candidate to WalkCandidate")
-                return None
 
             # check if we have this candidate registered at its sock_addr
             candidate = self.get_candidate(message.candidate.sock_addr, lan_address=source_lan_address)
@@ -1690,7 +1692,9 @@ class Community(object):
         for other in others:
             # all except for the CANDIDATE
             if not other == candidate:
-                logger.warn("removing %s in favor of %s", other, candidate)
+                logger.warning("removing %s %s in favor of %s %s",
+                               other.sock_addr, other,
+                               candidate.sock_addr, candidate)
                 candidate.merge(other)
                 del self._candidates[other.sock_addr]
                 self.add_candidate(candidate)

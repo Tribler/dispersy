@@ -9,7 +9,6 @@ if __debug__:
         assert len(address) == 2, len(address)
         assert isinstance(address[0], str), type(address[0])
         assert address[0], address[0]
-        assert not address[0] == "0.0.0.0", address
         assert isinstance(address[1], int), type(address[1])
         assert address[1] >= 0, address[1]
         return True
@@ -54,7 +53,7 @@ class Candidate(object):
         return self._tunnel
 
     def get_destination_address(self, wan_address):
-        assert is_address(wan_address), wan_address
+        logger.debug("deprecated.  use candidate.sock_addr instead")
         return self._sock_addr
 
     def __str__(self):
@@ -121,10 +120,6 @@ class WalkCandidate(Candidate):
     def connection_type(self):
         return self._connection_type
 
-    def get_destination_address(self, wan_address):
-        assert is_address(wan_address), wan_address
-        return self._lan_address if wan_address[0] == self._wan_address[0] else self._wan_address
-
     def merge(self, other):
         assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
@@ -176,11 +171,28 @@ class WalkCandidate(Candidate):
         """
         return max(self._last_walk, self._last_stumble, self._last_intro) + CANDIDATE_LIFETIME < now
 
-    def age(self, now):
+    def age(self, now, category=u""):
         """
-        Returns the time between NOW and the most recent walk or stumble.
+        Returns the time between NOW and the most recent walk, stumble, or intro (depending on
+        CATEGORY).
+
+        When CATEGORY is an empty string candidate.get_category(NOW) will be used to obtain it.
+
+        For the following CATEGORY values it will return the equivalent:
+        - walk :: NOW - candidate.last_walk
+        - stumble :: NOW - candidate.last_stumble
+        - intro :: NOW - candidate.last_intro
+        - none :: NOW - max(candidate.last_walk, candidate.last_stumble, candidate.last_intro)
         """
-        return now - max(self._last_walk, self._last_stumble)
+        if not category:
+            category = self.get_category(now)
+
+        mapping = {u"walk": now - self._last_walk,
+                   u"stumble": now - self._last_stumble,
+                   u"intro": now - self._last_intro,
+                   u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
+
+        return mapping[category]
 
     def inactive(self, now):
         """
