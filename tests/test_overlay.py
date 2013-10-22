@@ -45,7 +45,8 @@ class TestOverlay(DispersyTestFunc):
         class Community(DebugCommunity):
             def __init__(self, dispersy, master):
                 super(Community, self).__init__(dispersy, master)
-                self.dispersy.callback.register(self.fast_walker)
+                if enable_fast_walker:
+                    self.dispersy.callback.register(self.fast_walker)
 
             def initiate_conversions(self):
                 return [DefaultConversion(self), Conversion(self, version)]
