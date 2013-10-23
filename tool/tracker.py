@@ -391,7 +391,7 @@ def main():
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
-        dispersy.stop(timeout=0.0)
+        dispersy.stop()
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 

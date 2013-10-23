@@ -4681,29 +4681,29 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
         communities.
 
-        Enable this output by enabling INFO logging for a logger named
+        Enable this output by enabling DEBUG logging for a logger named
         "dispersy-stats-detailed-candidates".
 
         Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
         summary = get_logger("dispersy-stats-detailed-candidates")
-        while summary.isEnabledFor(logging.INFO):
+        while summary.isEnabledFor(logging.DEBUG):
             yield 5.0
             now = time()
-            summary.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            summary.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
-                         self._statistics.walk_attempt,
-                         self._statistics.walk_success,
-                         self._statistics.walk_invalid_response_identifier,
-                         self._statistics.walk_bootstrap_attempt,
-                         self._statistics.walk_bootstrap_success,
-                         self._statistics.walk_reset)
-            summary.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                         self._statistics.walk_advice_outgoing_request,
-                         self._statistics.walk_advice_incoming_response,
-                         self._statistics.walk_advice_incoming_response_new,
-                         self._statistics.walk_advice_incoming_request,
-                         self._statistics.walk_advice_outgoing_response)
+            summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
+                          self._statistics.walk_attempt,
+                          self._statistics.walk_success,
+                          self._statistics.walk_invalid_response_identifier,
+                          self._statistics.walk_bootstrap_attempt,
+                          self._statistics.walk_bootstrap_success,
+                          self._statistics.walk_reset)
+            summary.debug("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
+                          self._statistics.walk_advice_outgoing_request,
+                          self._statistics.walk_advice_incoming_response,
+                          self._statistics.walk_advice_incoming_response_new,
+                          self._statistics.walk_advice_incoming_request,
+                          self._statistics.walk_advice_outgoing_response)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
@@ -4714,19 +4714,17 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
-                summary.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                summary.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
+                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
-                loggers = {u"walk": summary.info, u"stumble": summary.info, u"intro": summary.info, u"none": summary.debug}
                 for category, candidates in categories.iteritems():
-                    log = loggers[category]
                     aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        log("%5.1fs %s%s%s %-7s %-13s %s",
-                            min(age, 999.0),
-                            "O" if candidate.is_obsolete(now) else " ",
-                            "E" if candidate.is_eligible_for_walk(now) else " ",
-                            "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                            category,
-                            candidate.connection_type,
-                            candidate)
+                        summary.debug("%5.1fs %s%s%s %-7s %-13s %s",
+                                      min(age, 999.0),
+                                      "O" if candidate.is_obsolete(now) else " ",
+                                      "E" if candidate.is_eligible_for_walk(now) else " ",
+                                      "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                      category,
+                                      candidate.connection_type,
+                                      candidate)
