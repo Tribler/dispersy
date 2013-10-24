@@ -1659,7 +1659,9 @@ class Community(object):
         """
         for candidate in candidates:
             self._candidates.pop(candidate.sock_addr, None)
-        assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+
+        assert len(set(self._candidates.iterkeys()) & set(bsc.sock_addr for bsc in self._dispersy.bootstrap_candidates)) == 0,\
+                   "candidates and bootstrap candidates must be separate"
 
     def get_candidate_mid(self, mid):
         members = self._dispersy.get_members_from_id(mid)

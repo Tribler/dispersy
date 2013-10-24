@@ -204,7 +204,7 @@ class Callback(object):
                 if exception_handler(exception, fatal):
                     force_fatal = True
             except Exception as exception:
-                logger.exception("%s", exception)
+                logger.exception("%s in %s", exception, exception_handler)
                 assert False, "the exception handler should not cause an exception"
 
         if fatal or force_fatal:
@@ -213,17 +213,16 @@ class Callback(object):
                 self._exception = exception
                 self._exception_traceback = exc_info()[2]
 
-
             if fatal:
-                logger.exception("attempting proper shutdown [%s]", exception)
+                logger.warning("attempting proper shutdown [%s]", exception)
 
             else:
                 # one or more of the exception handlers returned True, we will consider this
                 # exception to be fatal and quit
-                logger.exception("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
+                logger.warning("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
 
         else:
-            logger.exception("keep running regardless of exception [%s]", exception)
+            logger.warning("keep running regardless of exception [%s]", exception)
 
         return fatal
 

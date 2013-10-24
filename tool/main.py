@@ -71,7 +71,7 @@ def main_real(setup=None):
 
     # setup callback
     def exception_handler(exception, fatal):
-        logger.error("An exception occurred.  Quitting because we are running with --strict enabled.")
+        logger.exception("An exception occurred.  Quitting because we are running with --strict enabled.")
         # return fatal=True
         return True
     callback = MainThreadCallback("Dispersy")
