@@ -30,13 +30,22 @@ if __name__ == "__main__":
     print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
     exit(1)
 
+
 from time import time
-import os
 import errno
+import logging.config
 # optparse is deprecated since python 2.7
 import optparse
+import os
 import signal
 import sys
+
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
