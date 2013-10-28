@@ -54,11 +54,12 @@ from itertools import groupby, islice, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
 from struct import unpack_from
+from threading import Event
 from time import time
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .bootstrap import get_bootstrap_candidates
+from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination
@@ -340,10 +341,7 @@ class Dispersy(object):
         logger.debug("my connection type is %s", self._connection_type)
 
         # bootstrap peers
-        bootstrap_candidates = get_bootstrap_candidates(self)
-        if not all(bootstrap_candidates):
-            self._callback.register(self._retry_bootstrap_candidates)
-        self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in bootstrap_candidates if candidate)
+        self._bootstrap_candidates = dict()
 
         # communities that can be auto loaded.  classification:(cls, args, kargs) pairs.
         self._auto_load_communities = OrderedDict()
@@ -438,24 +436,53 @@ class Dispersy(object):
         logger.error("Unable to find our public interface!")
         return default
 
-    def _retry_bootstrap_candidates(self):
+    def _resolve_bootstrap_candidates(self, func):
         """
-        One or more bootstrap addresses could not be retrieved.
+        Resolve bootstrap candidates.
 
-        The first 30 seconds we will attempt to resolve the addresses once every second.  If we did
-        not succeed after 30 seconds will will retry once every 30 seconds until we succeed.
+        FUNC(attempt_counter, resolved, total) is called periodically until all addresses are
+        resolved.
         """
-        for counter in count(1):
-            logger.warning("unable to resolve all bootstrap addresses (attempt #%d)", counter)
-            yield 1.0 if counter < 30 else 30.0
-            candidates = get_bootstrap_candidates(self)
-            for candidate in candidates:
-                if candidate is None:
-                    break
-            else:
+        assert self._callback.is_current_thread
+        assert callable(func)
+
+        def on_results(success):
+            assert self._callback.is_current_thread
+            assert isinstance(success, bool), type(success)
+
+            # even when success is False it is still possible that *some* addresses were resolved
+            self._bootstrap_candidates.update((candidate.sock_addr, candidate) for candidate in bootstrap.candidates)
+            logger.debug("there are %d available bootstrap candidates", len(self._bootstrap_candidates))
+
+            # ensure none of the current candidates in Community._candidates point to bootstrap
+            # candidates
+            for community in self._communities.itervalues():
+                community.update_bootstrap_candidates(self._bootstrap_candidates.itervalues())
+
+            if success:
                 logger.debug("resolved all bootstrap addresses")
-                self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in candidates if candidate)
-                break
+
+            else:
+                delay = 0.0 if container["attempt_counter"] == 1 else 300.0
+                logger.warning("unable to resolve all bootstrap addresses.  waiting %.1fs before next attempt (attempt #%d)",
+                               container["attempt_counter"], delay)
+                self._callback.register(retry, delay=delay)
+
+            # feedback
+            resolved, total = bootstrap.progress
+            func(container["attempt_counter"], resolved, total)
+
+        def retry():
+            container["attempt_counter"] += 1
+            timeout = 1.0 if container["attempt_counter"] == 1 else 300.0
+            logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
+            bootstrap.resolve(on_results, timeout)
+
+        container = {"attempt_counter":0}
+        alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
+        default_addresses = Bootstrap.get_default_addresses()
+        bootstrap = Bootstrap(self._callback, alternate_addresses or default_addresses)
+        retry()
 
     @property
     def working_directory(self):
@@ -4447,21 +4474,34 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         """
         self._database.commit()
 
-    def start(self):
+    def start(self, timeout=10.0):
         """
         Starts Dispersy.
 
         This method is thread safe.
 
         1. starts callback
-        2. opens database
-        3. opens endpoint
+        2. resolve bootstrap candidates (done in parallel)
+        3. opens database
+        4. opens endpoint
         """
 
         assert not self._callback.is_running, "Must be called before callback.start()"
+        assert isinstance(timeout, float), type(timeout)
+        assert timeout >= 0.0, timeout
+
+        def bootstrap_progress(_, resolved, total):
+            # we are happy starting with just 50% of the available BootstrapCandidates,
+            # i.e. Dispersy will still start quickly, even if a small subset of the addresses no
+            # longer resolves
+            if resolved >= total * 0.5:
+                event.set()
 
         def start():
             assert self._callback.is_current_thread, "Must be called from the callback thread"
+
+            # resolving the bootstrap candidates is performed in parallel
+            self._resolve_bootstrap_candidates(bootstrap_progress)
 
             results.append((u"database", self._database.open()))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
@@ -4479,12 +4519,20 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
 
         # start
         logger.info("starting the Dispersy core...")
+        event = Event()
         results = []
 
         results.append((u"callback", self._callback.start()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         self._callback.call(start, priority=512)
+
+        # blocking is not an option when we are running on the same thread
+        if not self._callback.is_current_thread:
+            # wait until bootstrap progress reports that the addresses have been resolved
+            event.wait(timeout)
+            results.append((u"resolve-bootstrap", event.is_set()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # log and return the result
         if all(result for _, result in results):

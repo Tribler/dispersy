@@ -28,7 +28,7 @@ class DispersyTestFunc(TestCase):
     """
 
     def on_callback_exception(self, exception, is_fatal):
-        logger.debug("%s (fatal: %s, strict: %s)", exception, is_fatal, self.enable_strict)
+        logger.exception("%s (fatal: %s, strict: %s)", exception, is_fatal, self.enable_strict)
 
         if self.enable_strict and self._dispersy:
             self._dispersy.stop()

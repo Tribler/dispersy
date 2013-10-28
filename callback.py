@@ -9,6 +9,12 @@ from time import sleep, time
 from types import GeneratorType, TupleType
 from sys import exc_info
 
+try:
+    from prctl import set_name
+except ImportError:
+    def set_name(_):
+        pass
+
 from .decorator import attach_profiler
 from .logger import get_logger
 logger = get_logger(__name__)
@@ -115,9 +121,12 @@ class Callback(object):
 
         if __debug__:
             def must_close(callback):
-                assert callback.is_finished
+                assert callback.is_finished, self
             atexit_register(must_close, self)
             self._debug_call_name = None
+
+    def __str__(self):
+        return "<%s %s %d>" % (self.__class__.__name__, self._name, self._thread_ident)
 
     @property
     def ident(self):
@@ -195,7 +204,7 @@ class Callback(object):
                 if exception_handler(exception, fatal):
                     force_fatal = True
             except Exception as exception:
-                logger.exception("%s", exception)
+                logger.exception("%s in %s", exception, exception_handler)
                 assert False, "the exception handler should not cause an exception"
 
         if fatal or force_fatal:
@@ -204,17 +213,16 @@ class Callback(object):
                 self._exception = exception
                 self._exception_traceback = exc_info()[2]
 
-
             if fatal:
-                logger.exception("attempting proper shutdown [%s]", exception)
+                logger.warning("attempting proper shutdown [%s]", exception)
 
             else:
                 # one or more of the exception handlers returned True, we will consider this
                 # exception to be fatal and quit
-                logger.exception("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
+                logger.warning("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
 
         else:
-            logger.exception("keep running regardless of exception [%s]", exception)
+            logger.warning("keep running regardless of exception [%s]", exception)
 
         return fatal
 
@@ -384,19 +392,19 @@ class Callback(object):
         assert isinstance(callback_args, tuple), "CALLBACK_ARGS has invalid type: %s" % type(callback_args)
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
-        logger.debug("replace register %s after %.2f seconds", call, delay)
+        logger.debug("replace register %s after %.2f seconds (priority:%d, id:%s)", call, delay, priority, id_)
 
         with self._lock:
             # un-register
             for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
                     self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    logger.debug("in _requests: %s", id_)
+                    logger.debug("unregistered %s from _requests", id_)
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
                     self._expired_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    logger.debug("in _expired: %s", id_)
+                    logger.debug("unregistered %s from _expired", id_)
 
             # register
             if delay <= 0.0:
@@ -433,12 +441,12 @@ class Callback(object):
             for index, tup in enumerate(self._requests_mirror):
                 if tup[2] == id_:
                     self._requests_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    logger.debug("in _requests: %s", id_)
+                    logger.debug("unregistered %s from _requests", id_)
 
             for index, tup in enumerate(self._expired_mirror):
                 if tup[2] == id_:
                     self._expired_mirror[index] = (tup[0], tup[1], id_, None, None)
-                    logger.debug("in _expired: %s", id_)
+                    logger.debug("unregistered %s from _expired", id_)
 
     def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", include_id=False, timeout=0.0, default=None):
         """
@@ -670,6 +678,9 @@ class Callback(object):
 
     @attach_profiler
     def loop(self):
+        # set thread name (visible from ps and top)
+        set_name(self._name[:16])
+
         # from now on we will assume GET_IDENT() is the running thread
         self._thread_ident = get_ident()
 
