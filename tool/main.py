@@ -2,9 +2,18 @@
 Run Dispersy in standalone mode.
 """
 
+import logging.config
 # optparse is deprecated since python 2.7
 import optparse
+import os
 import signal
+
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
