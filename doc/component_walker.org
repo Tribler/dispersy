@@ -59,7 +59,7 @@ The remainder of this document will explain the walker design in
 detail and gives the reasoning behind design choices.
 - Section [[IP addresses and member identities]] explains how we handle
   addresses and identities using candidates;
-- Section [[Who to walk towards]] explains how peer A chooses from its
+- Section [[Who to walk to]] explains how peer A chooses from its
   neighbourhood;
 - Section [[Who to introduce]] explains how peer B chooses from its
   neighbourhood;
@@ -268,10 +268,12 @@ process.  Otherwise there is a 0.5% chance each step to visit a
 bootstrap peer and not get any new data (since the bootstrap peers do
 not participate in data dissemination).
 
-Approximately 500 * 15 * 60 / 5 bootstrap peers will be unnecessarily
-visited in a 15 minute experiment where 500 peers disseminate data.
-When this is undesirable, perhaps because you do not want to explain
-why certain steps do not yield any new data, you can apply the diff in
+Approximately 450[fn:: one peer takes 12 steps per minute, 500 peers
+take 90,000 steps in 15 minutes, 0.5% will be towards bootstrap peers,
+i.e. 450 steps.] bootstrap peers will be unnecessarily visited in a 15
+minute experiment where 500 peers disseminate data.  When this is
+undesirable, perhaps because you do not want to explain why certain
+steps do not yield any new data, you can apply the diff in
 [[./minimal_bootstrap.diff]].  This will result in the combinations shown
 in Table [[tbl:suggested who to walk towards]].
 
