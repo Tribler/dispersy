@@ -6,15 +6,22 @@
 #+latex_header: \setlist{nolistsep}
 
 * Concept
-The /Dispersy walker/ is one of the core components that make up the
-Dispersy library.  We designed the walker to provide NAT resilient
-peer discovery, allowing Dispersy to build a semi-random neighbourhood
-within common real world environments.
+This technical report is part of a series that covers Dispersy, a
+library designed for Tribler with the purpose of maintaining a
+distributed overlay with peer discovery, message synchronisation, and
+rights management.  This document focuses on peer discovery using what
+we call the /Dispersy walker/.
 
-The walker works by periodically asking known neighbours to introduce
-them to a new neighbour, we call this /taking a step/.  Performing
-multiple steps allows peers to build their own neighbourhood, we call
-this /walking/.
+We designed the walker with the following problems in mind:
+- approximately 64% of computers are behind a NAT[fn::
+  http://pds.twi.tudelft.nl/reports/2010/PDS-2010-007.pdf];
+- distributed systems allow malicious DDoS attacks[fn::
+  http://events.ccc.de/congress/2010/Fahrplan/events/4210.en.html].
+
+Furthermore, we wanted the following features:
+- resilient to churn;
+- require little or no state;
+- small bandwidth overhead.
 
 #+begin_src ditaa :file image/walk.png
  /-------\     1. Introduction request     /-------\
@@ -31,18 +38,22 @@ this /walking/.
                       \-------/
 #+end_src
 
-The figure above shows a schematic representation of peer A performing
-a single step towards peer B and peer B introduces it to peer C.  Each
-step contains the following phases:
-- phase 1. :: peer A chooses a known peer B from its neighbourhood and
-              sends it an introduction-request;
-- phase 2. :: Peer B chooses a known peer C from its neighbourhood and
-              sends peer A an introduction-response containing the
-              address of peer C;
+This resulted in peer discovery as shown in the figure above, with the
+following phases take place:
+- phase 1. :: peer A chooses peer B from its neighbourhood and sends
+              it an introduction-request;
+- phase 2. :: Peer B chooses peer C from its neighbourhood and sends
+              peer A an introduction-response containing the address
+              of peer C;
 - phase 3. :: peer B sends peer C a puncture-request containing the
               address of peer A;
 - phase 4. :: peer C sends peer A a puncture message to puncture a
               hole in its own NAT.
+
+We call these four phases /taking a step/, and when we take multiple
+steps we call this /walking/.  Walking is the Dispersy strategy of
+peer discovery and gives each peer a set of known peers which we call
+its /neighbourhood/.
 
 The remainder of this document will explain the walker design in
 detail and gives the reasoning behind design choices.
@@ -52,45 +63,62 @@ detail and gives the reasoning behind design choices.
   neighbourhood;
 - Section [[Who to introduce]] explains how peer B chooses from its
   neighbourhood;
-- Section [[LAN and WAN address estimation]] explains how peer B may
-  influence peer A's LAN and WAN address;
-- Section [[WAN address voting]] explains how peer A estimates its own WAN
-  address;
-- Section [[Transferring the public key]] explains public key exchange;
+- Section [[LAN and WAN address]] explains how peer B determines peer A's
+  LAN and WAN address;
+- Section [[WAN address voting]] explains how peer A determines its own
+  WAN address;
 - Section [[The 5 second rule]] explains how the walker trues to follow
   the 5 second rule;
+- Section [[Transferring the public key]] explains public key exchange;
 - And finally Section [[Debug output]] explains what to debug output to
   expect.
 
 * IP addresses and member identities
-We designed Dispersy with a social overlay in mind, it uses
-public/private key pairs to prove the identities of participating
-peers.  A key pair represents a single Member instance which we use to
-sign our messages and verify messages created by other peers.
+We designed Dispersy with rights management in mind, therefore peers
+need to be able to verify their identity.  To this end we use
+public/private key pairs to allow peers to cryptographically identify
+themselves.  A key pair represents a single Member instance which we
+use to sign our messages and verify messages created by other peers.
 
-However, we can not assume that a member will keep using the same IP
-address (i.e. IP addresses may change between sessions) or even that
-someones IP address is the same for everyone else in the overlay
-(i.e. someone behind a symmetric NAT will use different ports for
-communication with other peers).
+Ideally we want assign one IP address to each member, and have this
+mapping be the same for every peer in the system.  However, we can not
+assume that this IP address will remain the same (i.e. IP addresses
+may change between sessions) or even that every peer will assign the
+same IP address to a member (i.e. someone behind a symmetric NAT will
+use different ports for communication with other peers).
 
-Because of this we use Candidate instances to represent IP addresses.
-A Candidate instance maintains a list of Member instances that might
-be available at its IP/port combination, furthermore, the Candidate
-maintains time stamps to determine a category which determines how we
-can use it while building the neighbourhood.
+Because of this we distinct between Members and Candidates.  Where a
+member (i.e. a cryptographic key) uniquely identifies each peer
+throughout the system and a candidate is temporary pointer to an IP
+address.
+
+Once find a Member at a specific address we add this member to the
+associated Candidate, this gives every Candidate a list of Member
+instances that we have seen at this address.  Providing a temporary
+mapping between Members and Candidates.
 
 ** Candidate categories
-A Candidate is always in one of the following four categories:
-- walk: :: when we received an introduction-response in response to
-           sending an introduction-request to this Candidate no more
-           than /walk lifetime/ seconds ago;
-- stumble: :: when the category is /not walk/ and we received an
-              introduction-request from this Candidate no more than
-              /stumble lifetime/ seconds ago;
-- intro: :: when the category is /neither walk nor stumble/ and the
-            introduction to this Candidate was no more than /intro
-            lifetime/ seconds ago;
+A Candidate maintains time stamps for events that take place during
+walking, i.e. last time we sent an introduction-request.  Using these
+time stamps we assign a candidate with a category, which determines
+how we can use it while walking.
+
+ Candidate is always assigned one of the following four categories,
+ although this changes over time.  The following is from peer A's
+ point of view:
+- walk: :: peer B is a walk-Candidate when peer A receives an
+           introduction-response from peer B no more than /walk
+           lifetime/ seconds ago (note that peer A will only accept an
+           introduction-response from peer B shortly after sending an
+           introduction-request to peer B);
+- stumble: :: peer B is a stumble-Candidate when it is /not/ a
+              walk-Candidate and peer A receives an
+              introduction-request from peer B no more than /stumble
+              lifetime/ seconds ago;
+- intro: :: peer C is an intro-Candidate when it is neither a walk nor
+            a stumble-Candidate, and peer A receives an
+            introduction-response from peer B with an introduction to
+            peer C no more than /intro lifetime/ seconds ago;
 - none: :: in all other cases.
 
 Walk lifetime and stumble lifetime are both set to 57.5 seconds.  We
@@ -99,10 +127,12 @@ punctured 'hole' 60 seconds after receiving the last packet.
 
 We have chosen 27.5 seconds for the intro lifetime with regard to most
 NAT boxes closing a punctured 'hole' 30 seconds after puncturing the
-hole without receiving any packets though it.
+hole without receiving any packets through it[fn::
+http://pds.twi.tudelft.nl/reports/2010/PDS-2010-007.pdf].
 
 ** (Un)verified candidates
-There are two main methods to obtain available Candidate instances:
+The Dispersy code provides two main methods to obtain available
+Candidate instances:
 - =dispersy_yield_candidates= :: returns an iterator with all walk,
      stumble, and intro-Candidate instances, in a randomised order.
      Note that intro-Candidates are /unverified/, i.e. we have only
@@ -112,10 +142,10 @@ There are two main methods to obtain available Candidate instances:
      walk and stumble-Candidate instances, in a randomised order.  In
      most cases verified candidates are better than unverified ones.
 
-** Being eligible for walk
-It is not always allowed to send an introduction request to a
-Candidate.  We call this being /eligible/ for a walk.  A Candidate is
-eligible for a walk when it meets the following two criteria:
+** Candidates we can walk towards
+We are only allowed to walk towards a Candidate when it meets the two
+criteria described below.  A candidate that meets these criteria is
+/eligible/ for a walk.
 1. the category is either walk, stumble, or intro, and
 2. the previous walk to this candidate was more than /eligible delay/
    seconds ago.
@@ -123,7 +153,8 @@ eligible for a walk when it meets the following two criteria:
 We have chosen 27.5 seconds for the eligible delay, with the exception
 of bootstrap candidates which require a 57.5 seconds delay.  This
 delay ensures that (bootstrap) peers are not contacted to frequently.
-This feature was initially introduced to prevent 'tracker hammering'.
+This feature was initially introduced to reduce the numbers of walks
+towards trackers in overlays with no or few other peers.
 
 # - explain the timeout adjustment mechanism
 
@@ -135,7 +166,7 @@ This feature was initially introduced to prevent 'tracker hammering'.
 
 ** References to the source code
 The file [[../candidate.py][dispersy/candidate.py]] defines the delay and lifetime values
-discussed in this section, aswell as the Candidate class which
+discussed in this section, as well as the Candidate class which
 provides methods to determine and influence the category, see below:
 
 #+BEGIN_SRC python
@@ -165,37 +196,30 @@ class Community(object):
     def dispersy_yield_verified_candidates(self): pass
 #+end_src
 
-* Who to walk towards
+* Who to walk to
 In *phase 1* of the walk schema (see Section [[Concept]]) peer A chooses a
 known peer B from its neighbourhood and sends it an
 introduction-request.  Method =dispersy_get_walk_candidate()= chooses
 peer B and returns a Candidate instance pointing to it, or it returns
 None when no eligible candidates are available.
 
-Choosing a Candidate to walk towards heavily influences how large your
+Choosing a Candidate to walk to heavily influences how large your
 neighbourhood will be.  Based on your walks alone you will know
-approximately 11 Candidates, since 11 walks take place within the 57.5
-seconds /walk lifetime/ window.  However, incoming walks from unknown
-peers also increase your neighbourhood, based on the number of peers
-choosing to walk towards you within the 57.5 seconds /stumble
-lifetime/ window.
-
-We designed the default =dispersy_get_walk_candidate()= to return a
-semi-random (un)verified candidate while taking into account that
-malicious peers can easily pollute our neighbourhood by walking
-towards us from multiple distinct addresses, effectively adding an
-arbitrary number of stumble-Candidates to our neighbourhood.
+approximately 11 Candidates (assuming you take one step every 5
+seconds, see section [[The 5 second rule]]), since at most 11 steps can
+fit within the 57.5 seconds /walk lifetime/ window.  At the same time
+other peers may chose you to walk to, hence incoming walks from unmet
+peers also increase your neighbourhood by the number of incoming unmet
+walks within the 57.5 seconds /stumble lifetime/ window.
 
 When we assume that there is at least one eligible Candidate in every
 category we can give the following simplified representation of the
 selection strategy:
-1. remove all /non-eligible/ (bootstrap) Candidates;
-2. group all remaining Candidates by their category;
-3. select a Candidate based on the following distribution:
-   - 49.75% chance to revisit the /oldest/ walk-Candidate;
-   - 24.825% chance for the /oldest/ stumble-Candidate;
-   - 24.825% chance for the /oldest/ intro-Candidate;
-   - 0.5% chance for a /random/ bootstrap-Candidate.
+- 49.75% chance to revisit the /oldest/ eligible walk-Candidate;
+- 24.825% chance to visit the /oldest/ eligible stumble-Candidate;
+- 24.825% chance to visit the /oldest/ eligible intro-Candidate;
+- 0.5% chance to visit a /random/ eligible Candidate from the
+  predefined list of bootstrap candidates.
 
 Table [[tbl:who to walk towards]] contains all possible combinations, the
 first column /has-WSIB/ specifies if there is at least one walk,
@@ -227,14 +251,29 @@ return a walk-candidate.
 | 1101 | 49.75% |  49.75% |         | 0.5% |      |
 | 1111 | 49.75% | 24.825% | 24.825% | 0.5% |      |
 
+This design takes into account that malicious peers can easily pollute
+our neighbourhood by walking towards us from multiple distinct
+addresses, effectively adding an arbitrary number of
+stumble-Candidates to our neighbourhood.  Therefore, we assume that a
+successfully visited peer is safe, hence, half of the time we revisit
+such a peer (i.e. from the walk category) while the remaining 50% is
+evenly spread between the intro category and the risky stumble
+category.  Method =dispersy_get_walk_candidate()= implements this
+design.
+
 ** Dissemination experiments
-During experiments where dissemination speed is important, we suggest
-to only visit bootstrap-Candidates during the bootstrap process.
-Otherwise there is a 0.5% chance each step to visit a bootstrap peer
-and not get any new data (since the bootstrap peers do not participate
-in data dissemination).  This would result in the combinations shown
-in Table [[tbl:suggested who to walk towards]].  The diff in
-[[./minimal_bootstrap.diff]] accomplishes this.
+During experiments that want to focus on dissemination speed, it is
+possible to only visit bootstrap-Candidates during the bootstrap
+process.  Otherwise there is a 0.5% chance each step to visit a
+bootstrap peer and not get any new data (since the bootstrap peers do
+not participate in data dissemination).
+
+Approximately 500 * 15 * 60 / 5 bootstrap peers will be unnecessarily
+visited in a 15 minute experiment where 500 peers disseminate data.
+When this is undesirable, perhaps because you do not want to explain
+why certain steps do not yield any new data, you can apply the diff in
+[[./minimal_bootstrap.diff]].  This will result in the combinations shown
+in Table [[tbl:suggested who to walk towards]].
 
 #+caption: Suggested chance to select a category based depending on which categories has eligible candidates.
 #+name: tbl:suggested who to walk towards
@@ -326,16 +365,22 @@ cases we can simplify it as follows:
 
 ** Candidate exclusion
 There are reasons why we can not introduce one candidate to another.
-We can not introduce peer C to A when:
+Peer B can not introduce peer C to A when:
 - when C and A are the same Candidate;
 
 - when C is behind a tunnel while A is not behind a tunnel;
 
-  At the end of 2012 we introduced the ability for Dispersy to
-  recognise the =FFFFFFFF= tunnel prefix, older Dispersy clients will
-  believe the prefix is part of the message, making them unable to
-  decode it.  Because we can not distinguish between older and newer
-  code we are currently assuming all code is 'old'.
+  Peer C is behind a tunnel when all messages it sends have a
+  =FFFFFFFF= prefix and it can only receive messages with this prefix.
+  We introduced tunnelling at the end of 2012 to allow all Dispersy
+  traffic to be send through libswift.  We introduced the ability for
+  Dispersy to recognise the =FFFFFFFF= prefix without using libswift,
+  while older Dispersy clients will believe the prefix is part of the
+  message, making them unable to decode it.  Because we can not
+  distinguish between older and newer code we are currently assuming
+  all code is 'old'.
+
+  /TODO add a picture to clarify/
 
 - when C and A are both behind a NAT that changes the outgoing port
   number and they are not within the same LAN.
@@ -349,14 +394,14 @@ class Community(object):
     def dispersy_get_introduce_candidate(self, exclude_candidate): pass
 #+end_src
 
-* LAN and WAN address estimation
+* LAN and WAN address
 In *phase 2* of the walk schema (see Section [[Concept]]) peer B tries to
-estimate the LAN and WAN address of peer A, it does this using the
+determine the LAN and WAN address of peer A, it does this using the
 address reported in the UDP header (i.e. the =sock_addr=) of the
 incoming introduction-request combined with the WAN and LAN address
 that A reports that it has.  We follow the schema shown below:
 
-#+begin_src ditaa :file image/lan-wan-estimation.png
+#+begin_src ditaa :file image/determine-lan-wan.png
                +-------------+
                |Incoming from|
                |  sock_addr  |
@@ -369,20 +414,21 @@ that A reports that it has.  We follow the schema shown below:
        |         +---------+         |
        v                             v
 +---------------+           +---------------+
-|Estimate       |           |Estimate       |
 |LAN=sock_addr  |           |LAN=as reported|
 |WAN=as reported|           |WAN=sock_addr  |
 +---------------+           +---------------+
 #+end_src
 
-The estimation takes place in the
-=estimate_lan_and_wan_addresses(sock_addr, lan_addr, wan_addr)= method
-and uses a simple assumption: when peer B sees that the message
-originated from within the same LAN it will assume that peer A's LAN
-address is the =sock_addr=.  But when the message originated from
-outside its LAN then peer A's WAN address is the =sock_addr=.
+We implement this in method =estimate_lan_and_wan_addresses(sock_addr,
+lan_addr, wan_addr)=[fn:: The word estimate is used as historically
+this code was not able to make this decision as cleanly as is
+described here.] which uses a simple assumption: when peer B sees that
+the message originated from within the same LAN it will assume that
+peer A's LAN address is the =sock_addr=.  But when the message
+originated from outside its LAN then peer A's WAN address is the
+=sock_addr=.
 
-Dispersy determines weather an address is within its own LAN by
+Dispersy determines whether an address is within its own LAN by
 checking if it corresponds with one of its local interfaces, with
 regards to its netmask.  We do this using the method
 =_get_interface_addresses()= and the =Interface= instances that it
@@ -401,16 +447,32 @@ section, see below:
 #+begin_src python
 class Dispersy(object):
     @staticmethod
-    def _get_interface_addresses():
-    def estimate_lan_and_wan_addresses(self, sock_addr, lan_address, wan_address): pass
+    def _get_interface_addresses(): pass
+    def estimate_lan_and_wan_addresses(self, sock_addr, lan_address,
+                                       wan_address): pass
 #+end_src
 
 * WAN address voting
 In *phase 2* of the walk schema (see Section [[Concept]]) peer A receives
 an introduction-response containing the LAN and WAN address that peer
 B believes it has.  This /dial back/ allows peer A to determine how
-other peers perceive it, and thereby weather a NAT is affecting its
+other peers perceive it, and thereby whether a NAT is affecting its
 address.
+
+When peer A is not affected by a NAT the voting will provide it with
+its own address.  This is useful when peer A and B are both within the
+same LAN while peer C is not.  In this case peer A will send an
+introduction-request (which includes the WAN address determined by
+voting) to peer B, peer B will inform peer C of both A's LAN (as
+determined by the UDP header) and WAN address (as reported by A),
+allowing peer C to determine that peer A is not within its LAN
+address, hence it will use peer A's reported WAN address to puncture
+its own NAT.
+
+When a NAT affects peer A the voting will provide information about
+the type of NAT, i.e. the connection type, that it is behind, as
+described below.  This connection type effects who a peer introduces
+when receiving an introduction-request, see section [[Who to introduce]].
 
 Most of the magic happens in the method =wan_address_vote(address,
 B)= and goes roughly as follows:
@@ -430,7 +492,9 @@ B)= and goes roughly as follows:
    - unknown :: in all other cases.
 
 ** Cleanup old voting data
-Eventually we must remove old votes.  Dispersy does this by
+To allow for changes in the connectivity, i.e. when running on a
+roaming machine that changes IP addresses periodically, we must remove
+older votes that may no longer apply.  Dispersy does this by
 periodically /(every five minutes)/ checking for obsolete Candidate
 instances.  Where we consider a Candidate to be obsolete when the last
 walk, stumble, or intro was more than /lifetime/ seconds ago, where
@@ -452,8 +516,12 @@ class Dispersy(object):
 * The 5 second rule
 When we decided on the design of the walker we took into account the
 following factors:
-1. a significant number of NAT devices close a port after 60 seconds;
-2. taking a step involves performing the bloom filter synchronisation;
+1. a significant number of NAT devices close a port 60 seconds after
+   receiving the last packet though it[fn:: Do not confuse with NAT
+   devices closing a port 30 seconds after puncturing it /without/
+   receiving any packets through it];
+2. taking a step involves performing the bloom filter synchronisation,
+   see [[./component_synchronization.org][component_synchronization.org]];
 
 Obviously when we take more steps the neighbourhood will contain more
 walk and intro-Candidates (and since other peers also take more steps
@@ -462,38 +530,40 @@ stumble-Candidates).  This would advocate taking as many steps as
 possible.
 
 However, every step also has a cost associated to it, the majority
-being in the bloom filter synchronisation.  At the time Dispersy we
-wanted every step to perform a synchronisation, and given that some
-peers might receive multiple incoming walks around the same time, we
-decided on a reserved value of 5 seconds.  We expect this to be
-sufficient to perform one synchronisation for ourselves and, in the
-worst case, multiple incoming synchronisations.
+being in the bloom filter synchronisation.  At the time we wanted
+every step to perform a synchronisation, and given that some peers
+might receive multiple incoming steps around the same time, we decided
+on a reserved value of 5 seconds.  We expect this to be sufficient to
+perform one synchronisation for ourselves and, in the worst case,
+multiple incoming synchronisations.
 
 Nowadays we have introduced mechanisms to reduce the workload by not
-always performing a bloom filter synchronisation, hence the 5 second
-rule is not strictly necessary anymore, however, the code contains
-constants derived from 5 seconds, making it difficult to change (see
-[[Walk multiplier]]).
+always performing a bloom filter synchronisation (see
+[[./component_synchronization.org][component_synchronization.org]]), hence the 5 second rule is not
+strictly necessary anymore, however, the code contains constants
+derived from 5 seconds, making it difficult to change (see [[Walk
+multiplier]]).
 
 ** Walking in a single overlay
-Doing a step usually includes creating a bloom filter, therefore this
-can be one of the most CPU intensive parts of Dispersy.  Below we show
-a naive approach, where we simply schedule each walk 5 seconds after
-the last completed.  For the purpose of simplicity we will assume that
-it takes 1 second to create a bloom filter.  This example holds
-choosing a more realistic value.
+In the worst case a step includes creating a bloom filter making it
+one of the most CPU intensive parts of Dispersy.  Below we show a
+naive approach, where we simply schedule 5 seconds between each step.
+For the purpose of simplicity we will assume that it takes 1 second to
+create a bloom filter.  This example holds choosing a more realistic
+value.
 
-The schematic below shows that creating the bloom filter is causing
-walk /X/ to take a step once every 6 seconds instead of every 5
-seconds.  Furthermore, a large delay caused by task T is increasing
-the gap between walks even further, resulting in only 7 walks instead
-of the expected 10.
+The schematic below shows a time line with /+/ every 5 seconds when a
+step should take place.  It shows that creating the bloom filter is
+causing walker /X/ to take a step once every 6 seconds instead of
+every 5 seconds.  Furthermore, a large delay caused by task T is
+increasing the gap between steps even further, resulting in only 7
+steps instead of the expected 10.
 
 #+begin_example
-       ever widening gaps between steps
+                delayed steps
 +----+----+----+----+----+----+----+----+----+  (time line)
             TT            TT            TT      (task T)
-X     X       X     X       X     X       X     (walk overlay X)
+X     X       X     X       X     X       X     (steps overlay X)
 #+end_example
 
 ** Walking in multiple overlays
@@ -504,32 +574,31 @@ time.  In this case the naive approach would result in both overlays
 CPU traffic, as seen in the schematic below.
 
 #+begin_example
-   ever widening gaps with multiple overlays
+     delayed steps with multiple overlays
 +----+----+----+----+----+----+----+----+----+  (time line)
             TT            TT            TT      (task T)
-X     X       X     X       X     X       X     (walk overlay X)
-   Y     Y     Y     Y       Y     Y       Y    (walk overlay Y)
+X     X       X     X       X     X       X     (steps overlay X)
+   Y     Y     Y     Y       Y     Y       Y    (steps overlay Y)
 #+end_example
 
 We address both of these problems by what we call a /self healing
 walker/, implemented in the =_candidate_walker= method.  This walker
 takes into account both the number of overlays and the time between
-walks in individual overlays.  It results in the following schematic.
+walks in individual overlays.  The self healing walker has two major
+features:
+- predicting the time when the next walk should occur to remove the
+  delays the naive approach would introduce;
+- allowing more than one step in a single overlay within 5 seconds, as
+  seen in the schematic below where the lower letter /x/ and /y/ are
+  within 5 seconds of the previous step taken in its overlay.
 
 #+begin_example
               self healing walker
 +----+----+----+----+----+----+----+----+----+  (time line)
           TT             TT             TT      (task T)
-X    X      X  x    X      X  x    X      X  x  (walk overlay X)
-   Y     Y    Y   y    Y     Y   y    Y     Y   (walk overlay Y)
+X    X      X  x    X      X  x    X      X  x  (steps overlay X)
+   Y     Y    Y   y    Y     Y   y    Y     Y   (steps overlay Y)
 #+end_example
-
-The self healing walker has two major features:
-- predicting the time when the next walk should occur to remove the
-  ever widening gaps of the naive approach;
-- allowing more than one step in a single overlay within 5 seconds, as
-  seen in the above schematic where the lower letter /x/ and /y/ are
-  within 5 seconds of the previous step taken in its overlay.
 
 To preserve resources Dispersy will tell a community not to perform a
 bloom filter synchronisation when the previous step was less than 4.5
@@ -538,10 +607,10 @@ is the most expensive part of taking a step.
 
 When we detect that the previous walk in an overlay was more than 5
 seconds ago, a /walk reset/ will occur to ensure we do not walk to
-often.  This is especially usefull when a computer running Dispersy
+often.  This is especially useful when a computer running Dispersy
 goes into sleep mode, when it wakes up the walk may be hours behind,
 the walk reset will ensure that Dispersy doesn't try to catch up with
-the sleeping time by performing thousands of steps.
+the sleeping time by taking thousands of steps.
 
 ** Walk multiplier
 Sometimes it can be useful to change the 5 seconds delay between steps
