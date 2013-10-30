@@ -67,10 +67,10 @@ detail and gives the reasoning behind design choices.
   LAN and WAN address;
 - Section [[WAN address voting]] explains how peer A determines its own
   WAN address;
-- Section [[The 5 second rule]] explains how the walker trues to follow
+- Section [[The 5 second rule]] explains how the walker tries to follow
   the 5 second rule;
 - Section [[Transferring the public key]] explains public key exchange;
-- And finally Section [[Debug output]] explains what to debug output to
+- And finally Section [[Debug output]] explains what debug output to
   expect.
 
 * IP addresses and member identities
@@ -122,12 +122,12 @@ how we can use it while walking.
 - none: :: in all other cases.
 
 Walk lifetime and stumble lifetime are both set to 57.5 seconds.  We
-have chosen this value with regard to most NAT boxes closing a
-punctured 'hole' 60 seconds after receiving the last packet.
+have chosen this value because most NAT boxes close a punctured 'hole'
+60 seconds after receiving the last packet.
 
-We have chosen 27.5 seconds for the intro lifetime with regard to most
-NAT boxes closing a punctured 'hole' 30 seconds after puncturing the
-hole without receiving any packets through it[fn::
+We have chosen 27.5 seconds for the intro lifetime because most NAT
+boxes close a punctured 'hole' 30 seconds when no packets are received
+through it[fn::
 http://pds.twi.tudelft.nl/reports/2010/PDS-2010-007.pdf].
 
 ** (Un)verified candidates
@@ -713,7 +713,7 @@ dispersy-introduction-response <-    74.96.92.***:7759   144 bytes
 #+END_EXAMPLE
 
 ** Candidate statistics
-Dispersy provides the a logger with the name
+Dispersy provides a logger with the name
 =dispersy-stats-detailed-candidates=.  When enabling INFO level
 messages this logger will output a summary of its neighbourhood every
 five seconds.  The example below is the summary as seen shortly after
