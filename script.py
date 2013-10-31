@@ -37,8 +37,16 @@ class ScriptBase(object):
 
     def next_testcase(self, result=None):
         if isinstance(result, Exception):
-            logger.exception("%s", result)
-            self._dispersy.stop()
+            if isinstance(result, RuntimeError) and str(result) == "Early shutdown":
+                # killed by the process guard
+                logger.warning("%s", result)
+
+            else:
+                logger.exception("%s", result)
+
+            # only stop Dispersy when the callback is running
+            if self._dispersy.callback.is_running:
+                self._dispersy.stop()
 
         elif self._testcases:
             call, args = self._testcases.pop(0)
