@@ -87,7 +87,7 @@ class NullEndpoint(Endpoint):
 
     def send(self, candidates, packets):
         if any(len(packet) > 2**16 - 60 for packet in packets):
-            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
+            raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
         self._total_up += sum(len(packet) for packet in packets) * len(candidates)
 
 
