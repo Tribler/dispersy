@@ -7,6 +7,7 @@ from random import choice
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
+from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .logger import get_logger
@@ -1090,6 +1091,7 @@ class BinaryConversion(Conversion):
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         return message.name in self._encode_message_map
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.name}")
     def encode_message(self, message, sign=True):
         assert isinstance(message, Message.Implementation), message
         assert message.name in self._encode_message_map, message.name
@@ -1431,6 +1433,7 @@ class BinaryConversion(Conversion):
 
         return decode_functions.meta
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
     def decode_message(self, candidate, data, verify=True):
         """
         Decode a binary string into a Message.Implementation structure.

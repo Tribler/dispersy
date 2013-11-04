@@ -135,33 +135,39 @@ def attach_runtime_statistics(format_):
     Runtime statistics will only be collected when sys.argv contains '--runtime-statistics'.
     Otherwise the decorator will not influence the runtime in any way.
 
-    FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.
-    FORMAT_ uses the format mini language and has access to all the arguments and keyword
-    arguments of the function.  Furthermore, the function name is available as a keyword
-    argument called 'function_name'.  The python format mini language is described at:
+    FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.  FORMAT_
+    uses the format mini language and has access to all the arguments and keyword arguments of the
+    function.  The python format mini language is described at:
     http://docs.python.org/2/library/string.html#format-specification-mini-language.
 
-       @attach_runtime_statistics("{function_name} bar={1}, moo={moo}")
+    Furthermore, two keyword arguments are provided:
+    - function_name: is set to the func.__name__, and
+    - return_value: is set to the value returned by func
+
+       @attach_runtime_statistics("{function_name} bar={1}, moo={moo} returns={return_value}")
        def foo(self, bar, moo='milk'):
-           pass
+           return bar + 40
 
        foo(1)
        foo(2)
        foo(2)
 
     After running the above example, the statistics will show that:
-    - 'foo bar=1 moo=milk' was called once
-    - 'foo bar=2 moo=milk' was called twice
+    - 'foo bar=1 moo=milk returns=41' was called once
+    - 'foo bar=2 moo=milk returns=42' was called twice
     """
+    assert isinstance(format_, basestring), type(format_)
     def helper(func):
         @wraps(func)
         def wrapper(*args, **kargs):
+            return_value = None
             start = time()
             try:
-                return func(*args, **kargs)
+                return_value = func(*args, **kargs)
+                return return_value
             finally:
                 end = time()
-                entry = format_.format(function_name=func.__name__, *args, **kargs)
+                entry = format_.format(function_name=func.__name__, return_value=return_value, *args, **kargs)
                 _runtime_statistics[entry].increment(end - start)
         return wrapper
     return helper
