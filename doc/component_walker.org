@@ -386,6 +386,16 @@ Peer B can not introduce peer C to A when:
 
 - when C and A are both behind a NAT that changes the outgoing port
   number and they are not within the same LAN.
+
+** Duplicate candidates
+It is possible that peer B introduces a peer that peer A already
+knows.  We could have solved this by having peer A include a list of
+known peers that peer B can exclude.  However, we decided not to do
+this because:
+1. it would increase the size of the introduction-request,
+2. it would give peer B information about peer A, and
+3. the larger the overlay, the smaller the chance that peer B will
+   introduce a peer that peer A already knows.
   
 ** References to the source code
 The file [[../community.py][dispersy/community.py]] defines the method discussed in this
