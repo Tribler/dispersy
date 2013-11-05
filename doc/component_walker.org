@@ -6,22 +6,22 @@
 #+latex_header: \setlist{nolistsep}
 
 * Concept
-This technical report is part of a series that covers Dispersy, a
-library designed for Tribler with the purpose of maintaining a
-distributed overlay with peer discovery, message synchronisation, and
-rights management.  This document focuses on peer discovery using what
-we call the /Dispersy walker/.
+This technical report is part of a series describing Dispersy, a
+library designed to maintain a distributed overlay with peer
+discovery, message synchronisation, and rights management.  Currently,
+Dispersy is the peer discovery mechanism of our BiTorrent-based
+client, Tribler. This document describes the peer discovery process
+using the /Dispersy walker/.
 
-We designed the walker with the following problems in mind:
+We designed Dispersy walker taking into consideration the challenges
+for peer discovery in P2P systems which are:
 - approximately 64% of computers are behind a NAT[fn::
-  http://pds.twi.tudelft.nl/reports/2010/PDS-2010-007.pdf];
+  http://pds.twi.tudelft.nl/reports/2010/PDS-2010-007.pdf]
 - distributed systems allow malicious DDoS attacks[fn::
-  http://events.ccc.de/congress/2010/Fahrplan/events/4210.en.html].
-
-Furthermore, we wanted the following features:
-- resilient to churn;
-- require little or no state;
-- small bandwidth overhead.
+  http://events.ccc.de/congress/2010/Fahrplan/events/4210.en.html]
+- high churn rate
+- requirement of little or no state
+- limited bandwidth resources.
 
 #+begin_src ditaa :file image/walk.png
  /-------\     1. Introduction request     /-------\
@@ -38,38 +38,37 @@ Furthermore, we wanted the following features:
                       \-------/
 #+end_src
 
-This resulted in peer discovery as shown in the figure above, with the
-following phases take place:
-- phase 1. :: peer A chooses peer B from its neighbourhood and sends
-              it an introduction-request;
-- phase 2. :: Peer B chooses peer C from its neighbourhood and sends
+Our peer discovery mechanism illustrated in the figure above consists
+of four phases:
+- phase 1. :: Peer A chooses a peer B from its neighbourhood and it sends
+              to peer B an introduction-request.
+- phase 2. :: Peer B chooses a peer C from its neighbourhood and sends
               peer A an introduction-response containing the address
-              of peer C;
-- phase 3. :: peer B sends peer C a puncture-request containing the
-              address of peer A;
-- phase 4. :: peer C sends peer A a puncture message to puncture a
+              of peer C.
+- phase 3. :: Peer B sends to peer C a puncture-request containing the
+              address of peer A.
+- phase 4. :: Peer C sends peer A a puncture message to puncture a
               hole in its own NAT.
 
-We call these four phases /taking a step/, and when we take multiple
-steps we call this /walking/.  Walking is the Dispersy strategy of
-peer discovery and gives each peer a set of known peers which we call
-its /neighbourhood/.
+These four phases constitute /a step/, and multiple steps constitute a
+/walk/.  By walking, each peer discovers a set of known peers which we
+define as its /neighbourhood/.
 
-The remainder of this document will explain the walker design in
-detail and gives the reasoning behind design choices.
+The remainder of this document explains the walker mechanism in detail
+and gives the reasoning behind our design choices.
 - Section [[IP addresses and member identities]] explains how we handle
-  addresses and identities using candidates;
-- Section [[Who to walk to]] explains how peer A chooses from its
-  neighbourhood;
-- Section [[Who to introduce]] explains how peer B chooses from its
-  neighbourhood;
+  addresses and identities using candidates.
+- Section [[Who to walk to]] explains how peer A chooses another peer from
+  its neighbourhood.
+- Section [[Who to introduce]] explains how peer B chooses another peer
+  from its neighbourhood.
 - Section [[LAN and WAN address]] explains how peer B determines peer A's
-  LAN and WAN address;
+  LAN and WAN address.
 - Section [[WAN address voting]] explains how peer A determines its own
-  WAN address;
+  WAN address.
 - Section [[The 5 second rule]] explains how the walker tries to follow
-  the 5 second rule;
-- Section [[Transferring the public key]] explains public key exchange;
+  the 5 second rule.
+- Section [[Transferring the public key]] explains public key exchange.
 - And finally Section [[Debug output]] explains what debug output to
   expect.
 
