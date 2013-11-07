@@ -276,26 +276,49 @@ class Member(DummyMember):
 
         DATA is the signed data and the signature concatenated.
         OFFSET is the offset for the signed data.
-        LENGTH is the length of the signature and the data, in bytes.
+        LENGTH is the number of bytes, starting at OFFSET, to be verified.  When this value is 0 it
+               is set to len(data) - OFFSET.
 
         Returns True or False.
         """
-        assert isinstance(data, str)
-        assert isinstance(signature, str)
-        assert isinstance(offset, (int, long))
-        assert isinstance(length, (int, long))
+        assert isinstance(data, str), type(data)
+        assert isinstance(signature, str), type(signature)
+        assert isinstance(offset, (int, long)), type(offset)
+        assert isinstance(length, (int, long)), type(length)
+
+        if length == 0:
+            # default LENGTH is len(DATA[OFFSET:])
+            length = len(data) - offset
+
+        elif len(data) < offset + length:
+            # DATA is to small, we expect len(DATA[OFFSET:OFFSET+LENGTH]) to be LENGTH
+            return False
+
         return self._public_key and \
             self._signature_length == len(signature) \
-            and ec_verify(self._ec, sha1(data[offset:offset + (length or len(data))]).digest(), signature)
+            and ec_verify(self._ec, sha1(data[offset:offset + length]).digest(), signature)
 
     def sign(self, data, offset=0, length=0):
         """
         Returns the signature of DATA, starting at OFFSET up to LENGTH bytes.
 
+        Will raise a ValueError when len(DATA) < offset + length
         Will raise a RuntimeError when this we do not have the private key.
         """
+        assert isinstance(data, str), type(data)
+        assert isinstance(offset, (int, long)), type(offset)
+        assert isinstance(length, (int, long)), type(length)
+
+        if length == 0:
+            # default LENGTH is len(DATA[OFFSET:])
+            length = len(data) - offset
+
+        elif len(data) < offset + length:
+            # DATA is to small, we expect len(DATA[OFFSET:OFFSET+LENGTH]) to be LENGTH
+            raise ValueError("LENGTH is larger than the available DATA")
+
         if self._private_key:
-            return ec_sign(self._ec, sha1(data[offset:length or len(data)]).digest())
+            return ec_sign(self._ec, sha1(data[offset:offset + length]).digest())
         else:
             raise RuntimeError("unable to sign data without the private key")
 
