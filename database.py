@@ -92,7 +92,7 @@ class Database(object):
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
-        logger.info("open database [%s]", self._file_path)
+        logger.debug("open database [%s]", self._file_path)
         self._connect()
         if initial_statements:
             self._initial_statements()
@@ -105,7 +105,7 @@ class Database(object):
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         if commit:
             self.commit(exiting=True)
-        logger.info("close database [%s]", self._file_path)
+        logger.debug("close database [%s]", self._file_path)
         self._cursor.close()
         self._cursor = None
         self._connection.close()
@@ -270,7 +270,6 @@ class Database(object):
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._cursor.rowcount
-        # return self._connection.changes()
 
     @attach_explain_query_plan
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
