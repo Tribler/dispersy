@@ -2251,7 +2251,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
                     # verify that the bloom filter is correct
                     try:
-                        _, packets = self._get_packets_for_bloomfilters([[None, time_low, community.global_time if time_high == 0 else time_high, offset, modulo]], include_inactive=True).next()
+                        _, packets = self._get_packets_for_bloomfilters(community, [[None, time_low, community.global_time if time_high == 0 else time_high, offset, modulo]], include_inactive=True).next()
                         packets = list(packets)
 
                     except OverflowError:
@@ -2415,26 +2415,27 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 offset = long(payload.offset)
                 modulo = long(payload.modulo)
 
-                messages_with_sync.append((message, time_low, time_high, offset, modulo))
+                messages_with_sync.append((community, message, time_low, time_high, offset, modulo))
 
-        for message, generator in self._get_packets_for_bloomfilters(messages_with_sync, include_inactive=False):
-            # we limit the response by byte_limit bytes
-            byte_limit = community.dispersy_sync_response_limit
+        if messages_with_sync:
+            for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
+                # we limit the response by byte_limit bytes
+                byte_limit = community.dispersy_sync_response_limit
 
-            packets = []
-            for packet, in payload.bloom_filter.not_filter(generator):
-                packets.append(packet)
-                byte_limit -= len(packet)
-                if byte_limit <= 0:
-                    logger.debug("bandwidth throttle")
-                    break
+                packets = []
+                for packet, in payload.bloom_filter.not_filter(generator):
+                    packets.append(packet)
+                    byte_limit -= len(packet)
+                    if byte_limit <= 0:
+                        logger.debug("bandwidth throttle")
+                        break
 
-            if packets:
-                logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
-                self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
-                self._endpoint.send([message.candidate], packets)
+                if packets:
+                    logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
+                    self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
+                    self._endpoint.send([message.candidate], packets)
 
-    def _get_packets_for_bloomfilters(self, requests, include_inactive=True):
+    def _get_packets_for_bloomfilters(self, community, requests, include_inactive=True):
         assert isinstance(requests, list)
         assert all(isinstance(list, tuple) for request in requests)
         assert all(len(request) == 5 for request in requests)
