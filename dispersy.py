@@ -2415,7 +2415,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 offset = long(payload.offset)
                 modulo = long(payload.modulo)
 
-                messages_with_sync.append((community, message, time_low, time_high, offset, modulo))
+                messages_with_sync.append((message, time_low, time_high, offset, modulo))
 
         if messages_with_sync:
             for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
