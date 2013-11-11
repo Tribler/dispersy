@@ -304,7 +304,7 @@ class Database(object):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        assert all(not isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
 
         logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
         return self._cursor.execute(statement, bindings)
@@ -436,7 +436,7 @@ class APSWDatabase(Database):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
         assert isinstance(bindings, (tuple, list, dict)), "The bindings must be a tuple, list, or dictionary"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        assert all(not isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
 
         logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
         return self._cursor.execute(statement, bindings)
