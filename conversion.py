@@ -135,8 +135,7 @@ class Conversion(object):
     def __repr__(self):
         return str(self)
 
-
-class BinaryConversion(Conversion):
+class NoDefBinaryConversion(Conversion):
 
     """
     On-The-Wire binary version
@@ -144,6 +143,7 @@ class BinaryConversion(Conversion):
     This conversion is intended to be as space efficient as possible.
     All data is encoded in a binary form.
     """
+
     class Placeholder(object):
         __slots__ = ["candidate", "meta", "offset", "data", "authentication", "resolution", "first_signature_offset", "destination", "distribution", "payload", "verify", "allow_empty_signature"]
 
@@ -184,7 +184,7 @@ class BinaryConversion(Conversion):
             self.destination = destination
             self.payload = payload
 
-    def __init__(self, community, community_version):
+    def __init__(self, community, commnity_version):
         Conversion.__init__(self, community, "\x00", community_version)
 
         self._struct_B = Struct(">B")
@@ -217,44 +217,6 @@ class BinaryConversion(Conversion):
         # reserve 7th and 8th bits for connection type
         self._encode_connection_type_map = {u"unknown": int("00000000", 2), u"public": int("10000000", 2), u"symmetric-NAT": int("11000000", 2)}
         self._decode_connection_type_map = dict((value, key) for key, value in self._encode_connection_type_map.iteritems())
-
-        def define(value, name, encode, decode):
-            try:
-                meta = community.get_meta_message(name)
-            except KeyError:
-                if __debug__:
-                    debug_non_available.append(name)
-            else:
-                self.define_meta_message(chr(value), meta, encode, decode)
-
-        if __debug__:
-            debug_non_available = []
-
-        # 255 is reserved
-        define(254, u"dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
-        define(253, u"dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
-        define(252, u"dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
-        define(251, u"dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
-        define(250, u"dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
-        define(249, u"dispersy-puncture", self._encode_puncture, self._decode_puncture)
-        define(248, u"dispersy-identity", self._encode_identity, self._decode_identity)
-        define(247, u"dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
-        define(246, u"dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
-        define(245, u"dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
-        define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
-        define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
-        define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
-        # 241 for obsolete dispersy-subjective-set
-        # 240 for obsolete dispersy-missing-subjective-set
-        define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
-        define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
-        define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
-        define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
-        define(235, u"dispersy-missing-last-message", self._encode_missing_last_message, self._decode_missing_last_message)
-
-        if __debug__:
-            if debug_non_available:
-                logger.debug("unable to define non-available messages %s", debug_non_available)
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -1443,6 +1405,52 @@ class BinaryConversion(Conversion):
     def __str__(self):
         return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
 
+class BinaryConversion(StructConversion):
+
+    """
+    Extends NoDefBinaryConversion and will define all standard dispersy messages
+    """
+
+    def __init__(self, community, community_version):
+        NoDefBinaryConversion.__init__(self, community, "\x00", community_version)
+
+        def define(value, name, encode, decode):
+            try:
+                meta = community.get_meta_message(name)
+            except KeyError:
+                if __debug__:
+                    debug_non_available.append(name)
+            else:
+                self.define_meta_message(chr(value), meta, encode, decode)
+
+        if __debug__:
+            debug_non_available = []
+
+        # 255 is reserved
+        define(254, u"dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
+        define(253, u"dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
+        define(252, u"dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
+        define(251, u"dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
+        define(250, u"dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
+        define(249, u"dispersy-puncture", self._encode_puncture, self._decode_puncture)
+        define(248, u"dispersy-identity", self._encode_identity, self._decode_identity)
+        define(247, u"dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
+        define(246, u"dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
+        define(245, u"dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
+        define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
+        define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
+        define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
+        # 241 for obsolete dispersy-subjective-set
+        # 240 for obsolete dispersy-missing-subjective-set
+        define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
+        define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
+        define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
+        define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
+        define(235, u"dispersy-missing-last-message", self._encode_missing_last_message, self._decode_missing_last_message)
+
+        if __debug__:
+            if debug_non_available:
+                logger.debug("unable to define non-available messages %s", debug_non_available)
 
 class DefaultConversion(BinaryConversion):
 
