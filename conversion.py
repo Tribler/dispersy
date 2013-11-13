@@ -184,7 +184,7 @@ class NoDefBinaryConversion(Conversion):
             self.destination = destination
             self.payload = payload
 
-    def __init__(self, community, commnity_version):
+    def __init__(self, community, community_version):
         Conversion.__init__(self, community, "\x00", community_version)
 
         self._struct_B = Struct(">B")
