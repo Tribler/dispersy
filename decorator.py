@@ -132,9 +132,6 @@ def attach_runtime_statistics(format_):
     """
     Keep track of how often and how long a function was called.
 
-    Runtime statistics will only be collected when sys.argv contains '--runtime-statistics'.
-    Otherwise the decorator will not influence the runtime in any way.
-
     FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.  FORMAT_
     uses the format mini language and has access to all the arguments and keyword arguments of the
     function.  The python format mini language is described at:
@@ -155,6 +152,10 @@ def attach_runtime_statistics(format_):
     After running the above example, the statistics will show that:
     - 'foo bar=1 moo=milk returns=41' was called once
     - 'foo bar=2 moo=milk returns=42' was called twice
+
+    Updated runtime information is available from Dispersy.statistics.runtime after calling
+    Dispersy.statistics.update().  Statistics.runtime is a list (in no particular order) containing
+    dictionaries with the keys: count, duration, average, and entry.
     """
     assert isinstance(format_, basestring), type(format_)
     def helper(func):
