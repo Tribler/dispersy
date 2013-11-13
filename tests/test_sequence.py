@@ -5,7 +5,7 @@ from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class TestSequence(DispersyTestFunc):
+class TestIncomingMissingSequence(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def incoming_simple_conflict_different_global_time(self):
@@ -342,14 +342,14 @@ class TestSequence(DispersyTestFunc):
                     assert message.distribution.sequence_number == i
                     self._messages.append(message)
 
-        super(TestSequence, self).setUp()
+        super(TestIncomingMissingSequence, self).setUp()
         self._dispersy.callback.call(on_dispersy_thread)
 
     @call_on_dispersy_thread
     def requests(self, node_count, responses, *pairs):
         """
-        NODE1 and NODE2 requests (non)overlapping sequences, SELF should send back the requested
-        messages only once.
+        NODE1 through NODE<NODE_COUNT> requests (non)overlapping sequences, SELF should send back the requested messages
+        only once.
         """
         community = self._community
         nodes = self._nodes[:node_count]
@@ -382,3 +382,57 @@ class TestSequence(DispersyTestFunc):
         # there should not be any no further responses
         for node in nodes:
             self.assertEqual(node.receive_messages(message_names=[meta.name]), [], "should not yet have any responses")
+
+class TestOutgoingMissingSequence(DispersyTestFunc):
+
+    @call_on_dispersy_thread
+    def test_missing(self):
+        """
+        NODE sends message while SELF doesn't have the prior sequence numbers, SELF should request these messages.
+        """
+        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+        node = DebugNode(community)
+        node.init_socket()
+        node.init_my_member()
+
+        messages = [node.create_sequence_text("Sequence message #%d" % sequence, sequence + 10, sequence)
+                    for sequence
+                    in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]
+
+        # NODE gives #5, hence SELF will request [#1:#4]
+        node.give_message(messages[4])
+        requests = node.receive_messages(message_names=[u"dispersy-missing-sequence"])
+        self.assertEqual(len(requests), 1)
+        _, request = requests[0]
+
+        self.assertEqual(request.payload.member.public_key, node.my_member.public_key)
+        self.assertEqual(request.payload.message.name, u"sequence-text")
+        self.assertEqual(request.payload.missing_low, 1)
+        self.assertEqual(request.payload.missing_high, 4)
+
+        # NODE gives the missing packets, database should now contain [#1:#5]
+        node.give_messages(messages[0:4])
+        yield 0.11
+        packets = community.fetch_packets(u"sequence-text")
+        self.assertEqual(packets, [message.packet for message in messages[0:5]])
+
+        #
+        # Lets give the following range and test if it works when there are already (a few) messages in the database
+        #
+
+        # NODE gives #10, hence SELF will request [#6:#9]
+        node.give_message(messages[9])
+        requests = node.receive_messages(message_names=[u"dispersy-missing-sequence"])
+        self.assertEqual(len(requests), 1)
+        _, request = requests[0]
+
+        self.assertEqual(request.payload.member.public_key, node.my_member.public_key)
+        self.assertEqual(request.payload.message.name, u"sequence-text")
+        self.assertEqual(request.payload.missing_low, 6)
+        self.assertEqual(request.payload.missing_high, 9)
+
+        # NODE gives the missing packets, database should now contain [#1:#5]
+        node.give_messages(messages[5:9])
+        yield 0.11
+        packets = community.fetch_packets(u"sequence-text")
+        self.assertEqual(packets, [message.packet for message in messages])

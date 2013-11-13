@@ -2,9 +2,18 @@
 Run Dispersy in standalone mode.
 """
 
+import logging.config
 # optparse is deprecated since python 2.7
 import optparse
+import os
 import signal
+
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
@@ -71,7 +80,7 @@ def main_real(setup=None):
 
     # setup callback
     def exception_handler(exception, fatal):
-        logger.error("An exception occurred.  Quitting because we are running with --strict enabled.")
+        logger.exception("An exception occurred.  Quitting because we are running with --strict enabled.")
         # return fatal=True
         return True
     callback = MainThreadCallback("Dispersy")
@@ -92,20 +101,21 @@ def main_real(setup=None):
     # else:
 
     # register tasks
-    dispersy.callback.register(start_script, (dispersy, opt))
+    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
-        dispersy.stop(timeout=0.0)
+        dispersy.stop()
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # start
     if not dispersy.start():
         raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
-    dispersy.callback.loop()
-    return dispersy.callback
+    callback.loop()
+    return callback
 
 
 def main(setup=None):

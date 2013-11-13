@@ -2,7 +2,7 @@ import socket
 from time import time, sleep
 
 from ...bloomfilter import BloomFilter
-from ...candidate import Candidate
+from ...candidate import Candidate, WalkCandidate
 from ...community import Community
 from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ...logger import get_logger
@@ -36,6 +36,7 @@ class DebugNode(object):
         self._dispersy = community.dispersy if community else None
         self._socket = None
         self._tunnel = False
+        self._connection_type = u"unknown"
         self._my_member = None
 
     @property
@@ -95,6 +96,13 @@ class DebugNode(object):
         return (host, port)
 
     @property
+    def connection_type(self):
+        """
+        The connection type for this node.
+        """
+        return self._connection_type
+
+    @property
     def my_member(self):
         """
         The member for this node.
@@ -112,6 +120,15 @@ class DebugNode(object):
         """
         return Candidate(self.lan_address, self.tunnel)
 
+    @property
+    def walk_candidate(self):
+        """
+        A WalkCandidate instance for this node.
+
+        Will fail unless self.init_socket() has been called.
+        """
+        return WalkCandidate(self.lan_address, self.tunnel, self.lan_address, self.wan_address, self.connection_type)
+
     def set_community(self, community):
         """
         Set the community that this node is associated to.
@@ -121,7 +138,7 @@ class DebugNode(object):
         if community:
             self._dispersy = community.dispersy
 
-    def init_socket(self, tunnel=False):
+    def init_socket(self, tunnel=False, connection_type=u"unknown"):
         """
         Create a socket.socket instance for this node.
 
@@ -129,7 +146,8 @@ class DebugNode(object):
         socket.socket instances will be reused.  Hence it is possible to emulate many external
         nodes.
         """
-        assert isinstance(tunnel, bool)
+        assert isinstance(tunnel, bool), type(tunnel)
+        assert isinstance(connection_type, unicode), type(connection_type)
         assert self._socket is None
         port = self._socket_range[0] + self._socket_counter % (self._socket_range[1] - self._socket_range[0])
         type(self)._socket_counter += 1
@@ -156,6 +174,9 @@ class DebugNode(object):
 
         self._socket = self._socket_pool[port]
         self._tunnel = tunnel
+        self._connection_type = connection_type
+
+        return self
 
     def init_my_member(self, bits=None, sync_with_database=None, candidate=True, identity=True):
         """
@@ -178,6 +199,8 @@ class DebugNode(object):
         """
         assert bits is None, "The parameter bits is deprecated and must be None"
         assert sync_with_database is None, "The parameter sync_with_database is deprecated and must be None"
+        assert isinstance(candidate, bool), type(candidate)
+        assert isinstance(identity, bool), type(identity)
 
         ec = ec_generate_key(u"low")
         self._my_member = Member(self._dispersy, ec_to_public_bin(ec), ec_to_private_bin(ec))
@@ -202,6 +225,8 @@ class DebugNode(object):
             sleep(0.1)
             self.receive_message(message_names=[u"dispersy-introduction-response"])
 
+        return self
+
     def encode_message(self, message):
         """
         Returns the raw packet after MESSAGE is encoded using the associated community.
@@ -214,7 +239,7 @@ class DebugNode(object):
         finally:
             self._community._my_member = tmp_member
 
-    def give_packet(self, packet, verbose=False, cache=False, tunnel=None):
+    def give_packet(self, packet, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give PACKET directly to Dispersy on_incoming_packets.
         Returns PACKET
@@ -223,13 +248,16 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         if verbose:
             logger.debug("giving %d bytes", len(packet))
-        candidate = Candidate(self.lan_address, self._tunnel)
+        if source_sock_addr is None:
+            source_sock_addr = self.lan_address
+        candidate = Candidate(source_sock_addr, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet)], cache=cache, timestamp=time())
         return packet
 
-    def give_packets(self, packets, verbose=False, cache=False, tunnel=None):
+    def give_packets(self, packets, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give multiple PACKETS directly to Dispersy on_incoming_packets.
         Returns PACKETS
@@ -239,13 +267,16 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         if verbose:
             logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
-        candidate = Candidate(self.lan_address, self._tunnel)
+        if source_sock_addr is None:
+            source_sock_addr = self.lan_address
+        candidate = Candidate(source_sock_addr, self._tunnel)
         self._dispersy.on_incoming_packets([(candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
 
-    def give_message(self, message, verbose=False, cache=False, tunnel=None):
+    def give_message(self, message, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give MESSAGE directly to Dispersy on_incoming_packets after it is encoded.
         Returns MESSAGE
@@ -254,13 +285,14 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         packet = message.packet if message.packet else self.encode_message(message)
         if verbose:
             logger.debug("giving %s (%d bytes)", message.name, len(packet))
-        self.give_packet(packet, verbose=verbose, cache=cache)
+        self.give_packet(packet, verbose=verbose, cache=cache, tunnel=tunnel, source_sock_addr=source_sock_addr)
         return message
 
-    def give_messages(self, messages, verbose=False, cache=False, tunnel=None):
+    def give_messages(self, messages, verbose=False, cache=False, tunnel=None, source_sock_addr=None):
         """
         Give multiple MESSAGES directly to Dispersy on_incoming_packets after they are encoded.
         Returns MESSAGES
@@ -270,10 +302,11 @@ class DebugNode(object):
         assert isinstance(verbose, bool)
         assert isinstance(cache, bool)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+        assert source_sock_addr is None or isinstance(source_sock_addr, tuple), type(source_sock_addr)
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
         if verbose:
             logger.debug("giving %d messages (%d bytes)", len(messages), sum(len(packet) for packet in packets))
-        self.give_packets(packets, verbose=verbose, cache=cache)
+        self.give_packets(packets, verbose=verbose, cache=cache, tunnel=tunnel, source_sock_addr=source_sock_addr)
         return messages
 
     def send_packet(self, packet, address, verbose=False):
@@ -340,7 +373,7 @@ class DebugNode(object):
             try:
                 packet, address = self._socket.recvfrom(10240)
             except:
-                logger.debug("No more packets")
+                logger.debug("No more packets on %s", self.wan_address)
                 raise
 
             if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
@@ -381,7 +414,7 @@ class DebugNode(object):
                 break
         return packets_
 
-    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_message(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None):
         """
         Returns the first matching (candidate, message) tuple from incoming UDP packets.
 
@@ -393,20 +426,28 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
 
         Will raise a socket exception when no matching packets are available.
         """
+        if names is None:
+            # TODO remove this backwards compatibility with the MESSAGE_NAMES parameter
+            names = message_names
+            message_names = None
+
         assert timeout is None, "The parameter TIMEOUT is deprecated and must be None"
-        assert isinstance(message_names, (type(None), list))
+        assert names is None or isinstance(names, list), type(names)
+        assert names is None or all(isinstance(name, unicode) for name in names), [type(name) for name in names]
         assert payload_types is None, "The parameter PAYLOAD_TYPES is deprecated and must be None"
         assert distributions is None, "The parameter DISTRIBUTIONS is deprecated and must be None"
         assert destinations is None, "The parameter DESTINATIONS is deprecated and must be None"
+        assert message_names is None, "The parameter MESSAGE_NAMES is deprecated use NAMES instead"
 
         while True:
             candidate, packet = self.receive_packet(timeout, addresses, packets)
@@ -417,14 +458,14 @@ class DebugNode(object):
                 logger.exception("Ignored %s", exception)
                 continue
 
-            if not (message_names is None or message.name in message_names):
+            if not (names is None or message.name in names):
                 logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
                 continue
 
             logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             return candidate, message
 
-    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None):
+    def receive_messages(self, timeout=None, addresses=None, packets=None, message_names=None, payload_types=None, distributions=None, destinations=None, names=None, counts=None):
         """
         Returns a list with (candidate, message) tuples from all matching incoming UDP packets.
 
@@ -436,19 +477,30 @@ class DebugNode(object):
         PACKETS must be None or a list of packets.  When it is a list of packets, only those PACKETS
         will be returned.
 
-        MESSAGE_NAMES must be None or a list of message names.  When it is a list of names, only
-        messages with this name will be returned.
+        NAMES must be None or a list of message names.  When it is a list of names, only messages
+        with this name will be returned.
+
+        COUNTS must be None or a list of acceptable message counts.  When it is a list of counts an
+        assert is raised when the number of acceptable messages is different than one of the
+        acceptable message counts.
 
         PAYLOAD_TYPES is deprecated and should no longer be used.
         DISTRIBUTIONS is deprecated and should no longer be used.
         DESTINATIONS is deprecated and should no longer be used.
+        MESSAGE_NAMES is deprecated use NAMES instead.
         """
+        assert counts is None or isinstance(counts, list), type(counts)
+        assert counts is None or all(isinstance(count, int) for count in counts), [type(count) for count in counts]
+
         messages = []
         while True:
             try:
-                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations))
+                messages.append(self.receive_message(timeout, addresses, packets, message_names, payload_types, distributions, destinations, names))
             except socket.error:
                 break
+
+        if counts and not len(messages) in counts:
+            raise AssertionError("Received %d messages while expecting %s messages" % (len(messages), counts))
         return messages
 
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):
@@ -591,6 +643,25 @@ class DebugNode(object):
                          destination=(destination,),
                          distribution=(global_time,),
                          payload=(destination.sock_addr, source_lan, source_wan, advice, connection_type, sync, identifier))
+
+    def create_dispersy_introduction_response(self, destination, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier, global_time):
+        """
+        Returns a new dispersy-introduction-request message.
+        """
+        assert isinstance(destination, Candidate), type(destination)
+        assert isinstance(source_lan, tuple), type(source_lan)
+        assert isinstance(source_wan, tuple), type(source_wan)
+        assert isinstance(introduction_lan, tuple), type(introduction_lan)
+        assert isinstance(introduction_wan, tuple), type(introduction_wan)
+        assert isinstance(connection_type, unicode), type(connection_type)
+        assert isinstance(tunnel, bool), type(tunnel)
+        assert isinstance(identifier, int), type(identifier)
+        assert isinstance(global_time, (int, long))
+        meta = self._community.get_meta_message(u"dispersy-introduction-response")
+        return meta.impl(authentication=(self._my_member,),
+                         destination=(destination,),
+                         distribution=(global_time,),
+                         payload=(destination.sock_addr, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier))
 
     def _create_text(self, message_name, text, global_time, resolution=(), destination=()):
         assert isinstance(message_name, unicode), type(message_name)

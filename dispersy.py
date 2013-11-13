@@ -53,11 +53,13 @@ from hashlib import sha1
 from itertools import groupby, islice, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
+from struct import unpack_from
+from threading import Event
 from time import time
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .bootstrap import get_bootstrap_candidates
+from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from .destination import CommunityDestination, CandidateDestination
@@ -76,7 +78,7 @@ from .payload import IntroductionRequestPayload, IntroductionResponsePayload, Pu
 from .payload import MissingMessagePayload, MissingLastMessagePayload
 from .payload import MissingSequencePayload, MissingProofPayload
 from .payload import SignatureRequestPayload, SignatureResponsePayload
-from .requestcache import Cache, RequestCache
+from .requestcache import Cache, NumberCache
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
 logger = get_logger(__name__)
@@ -85,14 +87,16 @@ if __debug__:
     from .callback import Callback
     from .endpoint import Endpoint
 
-# the callback identifier for the task that periodically takes a step
-CANDIDATE_WALKER_CALLBACK_ID = u"dispersy-candidate-walker"
 
+class SignatureRequestCache(NumberCache):
 
-class SignatureRequestCache(Cache):
-    cleanup_delay = 0.0
+    @staticmethod
+    def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
+        return u"request-cache:signature-request:%d" % (number,)
 
-    def __init__(self, members, response_func, response_args, timeout):
+    def __init__(self, request_cache, members, response_func, response_args, timeout):
+        super(SignatureRequestCache, self).__init__(request_cache)
         self.request = None
         # MEMBERS is a list containing all the members that should add their signature.  currently
         # we only support double signed messages, hence MEMBERS contains only a single Member
@@ -100,21 +104,40 @@ class SignatureRequestCache(Cache):
         self.members = members
         self.response_func = response_func
         self.response_args = response_args
-        self.timeout_delay = timeout
+        self._timeout_delay = timeout
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         logger.debug("signature timeout")
         self.response_func(self, None, True, *self.response_args)
 
 
-class IntroductionRequestCache(Cache):
-    # we will accept the response at most 10.5 seconds after our request
-    timeout_delay = 10.5
-    # the cache remains available at most 4.5 after receiving the response.  this gives some time to
-    # receive the puncture message
-    cleanup_delay = 4.5
+class IntroductionRequestCache(NumberCache):
+    @staticmethod
+    def create_identifier(number):
+        assert isinstance(number, (int, long)), type(number)
+        return u"request-cache:introduction-request:%d" % (number,)
+
+    @property
+    def timeout_delay(self):
+        # we will accept the response at most 10.5 seconds after our request
+        return 10.5
+
+    @property
+    def cleanup_delay(self):
+        # the cache remains available at most 4.5 after receiving the response.  this gives some time to receive the
+        # puncture message
+        return 4.5
 
     def __init__(self, community, helper_candidate):
+        super(IntroductionRequestCache, self).__init__(community.request_cache)
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None
@@ -133,61 +156,68 @@ class IntroductionRequestCache(Cache):
 
 
 class MissingSomethingCache(Cache):
-    cleanup_delay = 0.0
 
-    def __init__(self, timeout):
-        logger.debug("%s: waiting for %f seconds", self.__class__.__name__, timeout)
-        self.timeout_delay = timeout
+    def __init__(self, timeout, *create_identifier_args):
+        super(MissingSomethingCache, self).__init__(self.create_identifier(*create_identifier_args))
+        logger.debug("%s: waiting for %.1f seconds", self.__class__.__name__, timeout)
+        self._timeout_delay = timeout
         self.callbacks = []
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         logger.debug("%s: timeout on %d callbacks", self.__class__.__name__, len(self.callbacks))
         for func, args in self.callbacks:
             func(None, *args)
 
-    @staticmethod
-    def properties_to_identifier(*args):
-        raise NotImplementedError()
-
-    @staticmethod
-    def message_to_identifier(message):
-        raise NotImplementedError()
-
 
 class MissingMemberCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member):
-        return "-missing-member-%s-%s-" % (community.cid, member.mid)
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-member-%s-%s-" % (message.community.cid, message.authentication.member.mid)
+    def create_identifier(member):
+        assert isinstance(member, DummyMember), type(member)
+        return u"request-cache:missing-member:%s" % (member.mid.encode("HEX"),)
 
 
 class MissingMessageCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, global_time):
-        return "-missing-message-%s-%s-%d-" % (community.cid, member.mid, global_time)
+    def create_identifier(member, global_time):
+        assert isinstance(member, DummyMember), type(member)
+        assert isinstance(global_time, (int, long)), type(global_time)
+        return u"request-cache:missing-message:%s:%d" % (member.mid.encode("HEX"), global_time)
 
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-message-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.distribution.global_time)
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier(message.authentication.member, message.distribution.global_time)
 
 
 class MissingLastMessageCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, message):
-        return "-missing-last-message-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-last-message-%s-%s-%s-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"))
+    def create_identifier(member, message):
+        assert isinstance(member, DummyMember), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        return u"request-cache:missing-last-message:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
 
 
 class MissingProofCache(MissingSomethingCache):
+
+    @staticmethod
+    def create_identifier():
+        return u"request-cache:missing-proof"
+
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier()
 
     def __init__(self, timeout):
         super(MissingProofCache, self).__init__(timeout)
@@ -196,39 +226,45 @@ class MissingProofCache(MissingSomethingCache):
         # proof, this allows us send fewer duplicate requests
         self.duplicates = []
 
-    @staticmethod
-    def properties_to_identifier(community):
-        return "-missing-proof-%s-" % (community.cid,)
-
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-proof-%s-" % (message.community.cid,)
-
 
 class MissingSequenceOverviewCache(Cache):
-    cleanup_delay = 0.0
 
-    def __init__(self, timeout):
-        self.timeout_delay = timeout
+    @staticmethod
+    def create_identifier(member, message):
+        assert isinstance(member, Member), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        return u"request-cache:missing-sequence-overview:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
+
+    def __init__(self, timeout, *create_identifier_args):
+        super(MissingSequenceOverviewCache, self).__init__(self.create_identifier(*create_identifier_args))
+        self._timeout_delay = timeout
         self.missing_high = 0
+
+    @property
+    def timeout_delay(self):
+        return self._timeout_delay
+
+    @property
+    def cleanup_delay(self):
+        return 0.0
 
     def on_timeout(self):
         pass
-
-    @staticmethod
-    def properties_to_identifier(community, member, message):
-        return "-missing-sequence-overview-%s-%s-%s-" % (community.cid, member.mid, message.name.encode("UTF-8"))
 
 
 class MissingSequenceCache(MissingSomethingCache):
 
     @staticmethod
-    def properties_to_identifier(community, member, message, missing_high):
-        return "-missing-sequence-%s-%s-%s-%d-" % (community.cid, member.mid, message.name.encode("UTF-8"), missing_high)
+    def create_identifier(member, message, missing_global_time_high):
+        assert isinstance(member, Member), type(member)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        assert isinstance(missing_global_time_high, (int, long)), type(missing_global_time_high)
+        return u"request-cache:missing-sequence:%s:%s:%d" % (member.mid.encode("HEX"), message.name.encode("UTF-8"), missing_global_time_high)
 
-    @staticmethod
-    def message_to_identifier(message):
-        return "-missing-sequence-%s-%s-%s-%d-" % (message.community.cid, message.authentication.member.mid, message.name.encode("UTF-8"), message.distribution.sequence_number)
+    @classmethod
+    def create_identifier_from_message(cls, message):
+        assert isinstance(message, Message.Implementation), type(message)
+        return cls.create_identifier(message.authentication.member, message, message.distribution.sequence_number)
 
 
 class Dispersy(object):
@@ -271,6 +307,13 @@ class Dispersy(object):
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
 
+        # _pending_callbacks contains all id's for registered calls that should be removed when the
+        # Dispersy is stopped.  most of the time this contains all the generators that are used
+        self._pending_callbacks = {}
+        # add id(self) into the callback identifier to ensure multiple Dispersy instances can use
+        # the same Callback instance
+        self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
+
         self._member_cache_by_public_key = OrderedDict()
         self._member_cache_by_hash = dict()
         self._member_cache_by_database_id = dict()
@@ -283,15 +326,14 @@ class Dispersy(object):
             database_filename = os.path.join(database_directory, database_filename)
         self._database = DispersyDatabase(database_filename)
 
-        # assigns temporary cache objects to unique identifiers
-        self._request_cache = RequestCache(self._callback)
-
         # indicates what our connection type is.  currently it can be u"unknown", u"public", or
         # u"symmetric-NAT"
         self._connection_type = u"unknown"
 
         # our LAN and WAN addresses
-        self._lan_address = (self._guess_lan_address() or "0.0.0.0", 0)
+        self._local_interfaces = list(self._get_interface_addresses())
+        interface = self._guess_lan_address(self._local_interfaces)
+        self._lan_address = ((interface.address if interface else "0.0.0.0"), 0)
         self._wan_address = ("0.0.0.0", 0)
         self._wan_address_votes = defaultdict(set)
         logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
@@ -299,10 +341,7 @@ class Dispersy(object):
         logger.debug("my connection type is %s", self._connection_type)
 
         # bootstrap peers
-        bootstrap_candidates = get_bootstrap_candidates(self)
-        if not all(bootstrap_candidates):
-            self._callback.register(self._retry_bootstrap_candidates)
-        self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in bootstrap_candidates if candidate)
+        self._bootstrap_candidates = dict()
 
         # communities that can be auto loaded.  classification:(cls, args, kargs) pairs.
         self._auto_load_communities = OrderedDict()
@@ -317,9 +356,6 @@ class Dispersy(object):
 
         # progress handlers (used to notify the user when something will take a long time)
         self._progress_handlers = []
-
-        # commit changes to the database periodically
-        self._callback.register(self._watchdog)
 
         # statistics...
         self._statistics = DispersyStatistics(self)
@@ -338,49 +374,115 @@ class Dispersy(object):
 
             self._callback.register(memory_dump)
 
-        self._callback.register(self._stats_detailed_candidates)
+    @staticmethod
+    def _get_interface_addresses():
+        """
+        Yields Interface instances for each available AF_INET interface found.
+
+        An Interface instance has the following properties:
+        - name          (i.e. "eth0")
+        - address       (i.e. "10.148.3.254")
+        - netmask       (i.e. "255.255.255.0")
+        - broadcast     (i.e. "10.148.3.255")
+        """
+        class Interface(object):
+            def __init__(self, name, address, netmask, broadcast):
+                self.name = name
+                self.address = address
+                self.netmask = netmask
+                self.broadcast = broadcast
+                self._l_address, = unpack_from(">L", inet_aton(address))
+                self._l_netmask, = unpack_from(">L", inet_aton(netmask))
+
+            def __contains__(self, address):
+                assert isinstance(address, str), type(address)
+                l_address, = unpack_from(">L", inet_aton(address))
+                return (l_address & self._l_netmask) == (self._l_address & self._l_netmask)
+
+            def __str__(self):
+                return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
+
+            def __repr__(self):
+                return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
+
+        for interface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(interface)
+            for option in addresses.get(netifaces.AF_INET, []):
+                yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
 
     @staticmethod
-    def _guess_lan_address():
+    def _guess_lan_address(interfaces, default=None):
         """
-        Returns the address of the first AF_INET interface it can find.
+        Chooses the most likely Interface instance out of INTERFACES to use as our LAN address.
+
+        INTERFACES can be obtained from _get_interface_addresses()
+        DEFAULT is used when no appropriate Interface can be found
         """
+        assert isinstance(interfaces, list), type(interfaces)
         blacklist = ["127.0.0.1", "0.0.0.0", "255.255.255.255"]
-        for interface in netifaces.interfaces():
-            addresses = netifaces.ifaddresses(interface)
-            for option in addresses.get(netifaces.AF_INET, []):
-                if "broadcast" in option and "addr" in option and not option["addr"] in blacklist:
-                    logger.debug("interface %s address %s", interface, option["addr"])
-                    return option["addr"]
+
+        # prefer interfaces where we have a broadcast address
+        for interface in interfaces:
+            if interface.broadcast and interface.address and not interface.address in blacklist:
+                logger.debug("%s", interface)
+                return interface
+
         # Exception for virtual machines/containers
-        for interface in netifaces.interfaces():
-            addresses = netifaces.ifaddresses(interface)
-            for option in addresses.get(netifaces.AF_INET, []):
-                if "addr" in option and not option["addr"] in blacklist:
-                    logger.debug("interface %s address %s", interface, option["addr"])
-                    return option["addr"]
+        for interface in interfaces:
+            if interface.address and not interface.address in blacklist:
+                logger.debug("%s", interface)
+                return interface
+
         logger.error("Unable to find our public interface!")
-        return None
+        return default
 
-    def _retry_bootstrap_candidates(self):
+    def _resolve_bootstrap_candidates(self, func):
         """
-        One or more bootstrap addresses could not be retrieved.
+        Resolve bootstrap candidates.
 
-        The first 30 seconds we will attempt to resolve the addresses once every second.  If we did
-        not succeed after 30 seconds will will retry once every 30 seconds until we succeed.
+        FUNC(attempt_counter, resolved, total) is called periodically until all addresses are
+        resolved.
         """
-        logger.warning("unable to resolve all bootstrap addresses")
-        for counter in count(1):
-            yield 1.0 if counter < 30 else 30.0
-            logger.warning("attempt #%d", counter)
-            candidates = get_bootstrap_candidates(self)
-            for candidate in candidates:
-                if candidate is None:
-                    break
-            else:
+        assert self._callback.is_current_thread
+        assert callable(func)
+
+        def on_results(success):
+            assert self._callback.is_current_thread
+            assert isinstance(success, bool), type(success)
+
+            # even when success is False it is still possible that *some* addresses were resolved
+            self._bootstrap_candidates.update((candidate.sock_addr, candidate) for candidate in bootstrap.candidates)
+            logger.debug("there are %d available bootstrap candidates", len(self._bootstrap_candidates))
+
+            # ensure none of the current candidates in Community._candidates point to bootstrap
+            # candidates
+            for community in self._communities.itervalues():
+                community.update_bootstrap_candidates(self._bootstrap_candidates.itervalues())
+
+            if success:
                 logger.debug("resolved all bootstrap addresses")
-                self._bootstrap_candidates = dict((candidate.sock_addr, candidate) for candidate in candidates if candidate)
-                break
+
+            else:
+                delay = 0.0 if container["attempt_counter"] == 1 else 300.0
+                logger.warning("unable to resolve all bootstrap addresses.  waiting %.1fs before next attempt (attempt #%d)",
+                               container["attempt_counter"], delay)
+                self._callback.register(retry, delay=delay)
+
+            # feedback
+            resolved, total = bootstrap.progress
+            func(container["attempt_counter"], resolved, total)
+
+        def retry():
+            container["attempt_counter"] += 1
+            timeout = 1.0 if container["attempt_counter"] == 1 else 300.0
+            logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
+            bootstrap.resolve(on_results, timeout)
+
+        container = {"attempt_counter":0}
+        alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
+        default_addresses = Bootstrap.get_default_addresses()
+        bootstrap = Bootstrap(self._callback, alternate_addresses or default_addresses)
+        retry()
 
     @property
     def working_directory(self):
@@ -485,15 +587,6 @@ class Dispersy(object):
         @rtype: DispersyDatabase
         """
         return self._database
-
-    @property
-    def request_cache(self):
-        """
-        The request cache instance responsible for maintaining identifiers and timeouts for
-        outstanding requests.
-        @rtype: RequestCache
-        """
-        return self._request_cache
 
     @property
     def statistics(self):
@@ -772,7 +865,7 @@ class Dispersy(object):
         if community.dispersy_enable_candidate_walker:
             self._walker_commmunities.insert(0, community)
             # restart walker scheduler
-            self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+            self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
 
         # count the number of times that a community was attached
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
@@ -812,10 +905,10 @@ class Dispersy(object):
             self._walker_commmunities.remove(community)
             if self._walker_commmunities:
                 # restart walker scheduler
-                self._callback.replace_register(CANDIDATE_WALKER_CALLBACK_ID, self._candidate_walker)
+                self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
             else:
                 # stop walker scheduler
-                self._callback.unregister(CANDIDATE_WALKER_CALLBACK_ID)
+                self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
 
         # remove any items that are left in the cache
         for meta in community.get_meta_messages():
@@ -1017,6 +1110,7 @@ class Dispersy(object):
         assert isinstance(voter, Candidate), type(voter)
 
         def set_lan_address(address):
+            " Set LAN address when ADDRESS is different from self._LAN_ADDRESS. "
             if self._lan_address == address:
                 return False
             else:
@@ -1025,6 +1119,7 @@ class Dispersy(object):
                 return True
 
         def set_wan_address(address):
+            " Set WAN address when ADDRESS is different from self._WAN_ADDRESS. "
             if self._wan_address == address:
                 return False
             else:
@@ -1033,6 +1128,7 @@ class Dispersy(object):
                 return True
 
         def set_connection_type(connection_type):
+            " Set connection type when CONNECTION_TYPE is different from self._CONNECTION_TYPE. "
             if self._connection_type == connection_type:
                 return False
             else:
@@ -1040,44 +1136,50 @@ class Dispersy(object):
                 self._connection_type = connection_type
                 return True
 
-        if self._wan_address[0] in (voter.wan_address[0], voter.sock_addr[0]):
-            logger.debug("ignoring vote from candidate on the same LAN")
-            return
-
-        if not self.is_valid_address(address):
-            logger.debug("got invalid external vote from %s received %s:%s", voter, address[0], address[1])
-            return
-
         # undo previous vote
         self.wan_address_unvote(voter)
+
+        # ensure ADDRESS is valid
+        if not self.is_valid_address(address):
+            logger.debug("ignore vote for %s from %s (address is invalid)", address, voter.sock_addr)
+            return
+
+        # ignore votes from voters that we know are within any of our LAN interfaces.  these voters
+        # can not know our WAN address
+        if any(voter.sock_addr[0] in interface for interface in self._local_interfaces):
+            logger.debug("ignore vote for %s from %s (voter is within our LAN)", address, voter.sock_addr)
+            return
 
         # do vote
         logger.debug("add vote for %s from %s", address, voter.sock_addr)
         self._wan_address_votes[address].add(voter.sock_addr)
 
-        # logger.info("_wan_address %s, address %s", self._wan_address, address)
-        # logger.info("len(self._wan_address_votes[address]) %d, len(self._wan_address_votes[_wan_address]) %d", len(self._wan_address_votes[address]), len(self._wan_address_votes.get(self._wan_address, ())))
-
         #
         # check self._lan_address and self._wan_address
         #
 
-        # change when new vote count equal or higher than old address vote count
+        # change when new vote count is equal or higher than old address vote count
         if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
                 set_wan_address(address):
 
             # reassessing our LAN address, perhaps we are running on a roaming device
-            lan_address = (self._guess_lan_address() or "0.0.0.0", self._lan_address[1])
+            self._local_interfaces = list(self._get_interface_addresses())
+            interface = self._guess_lan_address(self._local_interfaces)
+            lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
             if not self.is_valid_address(lan_address):
                 lan_address = (self._wan_address[0], self._lan_address[1])
             set_lan_address(lan_address)
 
-            # our address may not be a bootstrap address
+            # TODO security threat!  we should never remove bootstrap candidates, for they are our
+            # safety net our address may not be a bootstrap address
             if self._wan_address in self._bootstrap_candidates:
                 del self._bootstrap_candidates[self._wan_address]
             if self._lan_address in self._bootstrap_candidates:
                 del self._bootstrap_candidates[self._lan_address]
 
+            # TODO security threat!  we should not remove candidates based on the votes we obtain,
+            # this can be easily misused.  leaving this code to prevent a node talking with itself
+            #
             # our address may not be a candidate
             for community in self._communities.itervalues():
                 community.candidates.pop(self._wan_address, None)
@@ -1091,16 +1193,19 @@ class Dispersy(object):
         #
 
         if len(self._wan_address_votes) == 1 and self._lan_address == self._wan_address:
-            # external peers are reporting the same WAN address that happens to be our LAN address as well
+            # external peers are reporting the same WAN address that happens to be our LAN address
+            # as well
             set_connection_type(u"public")
 
         elif len(self._wan_address_votes) > 1:
-            # external peers are reporting multiple WAN addresses (most likely the same IP with different port numbers)
+            # external peers are reporting multiple WAN addresses (most likely the same IP with
+            # different port numbers)
             set_connection_type(u"symmetric-NAT")
 
         else:
-            # it is possible that, for some time after the WAN address changes, we will believe that the connection type
-            # is symmetric NAT.  once votes have been pruned we may find that we are no longer behind a symmetric-NAT
+            # it is possible that, for some time after the WAN address changes, we will believe that
+            # the connection type is symmetric NAT.  once votes have been pruned we may find that we
+            # are no longer behind a symmetric-NAT
             set_connection_type(u"unknown")
 
     def _is_duplicate_sync_message(self, message):
@@ -2146,43 +2251,25 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         We received a message from SOCK_ADDR claiming to have LAN_ADDRESS and WAN_ADDRESS, returns
         the estimated LAN and WAN address for this node.
 
-        The returned LAN address is either ("0.0.0.0", 0) or it is not our LAN address while passing
-        is_valid_address.  Similarly, the returned WAN address is either ("0.0.0.0", 0) or it is not
-        our WAN address while passing is_valid_address.
+        The returns LAN and WAN addresses are either modified when we know they are incorrect (based
+        on the reported sock_addr) or they remain unchanged.  Hence the returned addresses may be
+        ("0.0.0.0", 0).
         """
-        if self._lan_address == lan_address or not self.is_valid_address(lan_address):
-            if lan_address != sock_addr:
-                logger.debug("estimate a different LAN address %s:%d -> %s:%d", lan_address[0], lan_address[1], sock_addr[0], sock_addr[1])
-            lan_address = sock_addr
-        if self._wan_address == wan_address or not self.is_valid_address(wan_address):
-            if wan_address != sock_addr:
-                logger.debug("estimate a different WAN address %s:%d -> %s:%d", wan_address[0], wan_address[1], sock_addr[0], sock_addr[1])
-            wan_address = sock_addr
+        assert self.is_valid_address(sock_addr), sock_addr
 
-        if sock_addr[0] == self._wan_address[0]:
-            # we have the same WAN address, we are probably behind the same NAT
-            if lan_address != sock_addr:
-                logger.debug("estimate a different LAN address %s:%d -> %s:%d", lan_address[0], lan_address[1], sock_addr[0], sock_addr[1])
-            lan_address = sock_addr
-
-        elif self.is_valid_address(sock_addr):
-            # we have a different WAN address and the sock address is WAN, we are probably behind a different NAT
-            if wan_address != sock_addr:
-                logger.debug("estimate a different WAN address %s:%d -> %s:%d", wan_address[0], wan_address[1], sock_addr[0], sock_addr[1])
-            wan_address = sock_addr
-
-        elif self.is_valid_address(wan_address):
-            # we have a different WAN address and the sock address is not WAN, we are probably on the same computer
-            pass
+        if any(sock_addr[0] in interface for interface in self._local_interfaces):
+            # is SOCK_ADDR is on our local LAN, hence LAN_ADDRESS should be SOCK_ADDR
+            if sock_addr != lan_address:
+                logger.debug("estimate someones LAN address is %s (LAN was %s, WAN stays %s)",
+                             sock_addr, lan_address, wan_address)
+                lan_address = sock_addr
 
         else:
-            # we are unable to determine the WAN address, we are probably behind the same NAT
-            wan_address = ("0.0.0.0", 0)
-
-        assert self._lan_address != lan_address, [self.lan_address, lan_address]
-        assert lan_address == ("0.0.0.0", 0) or self.is_valid_address(lan_address), [self._lan_address, lan_address]
-        assert self._wan_address != wan_address, [self._wan_address, wan_address]
-        assert wan_address == ("0.0.0.0", 0) or self.is_valid_address(wan_address), [self._wan_address, wan_address]
+            # is SOCK_ADDR is outside our local LAN, hence WAN_ADDRESS should be SOCK_ADDR
+            if sock_addr != wan_address:
+                logger.info("estimate someones WAN address is %s (WAN was %s, LAN stays %s)",
+                            sock_addr, wan_address, lan_address)
+                wan_address = sock_addr
 
         return lan_address, wan_address
 
@@ -2198,26 +2285,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("%s %s no candidate to take step", community.cid.encode("HEX"), community.get_classification())
                 return False
 
-    def handle_missing_messages(self, messages, *classes):
-        assert all(isinstance(message, Message.Implementation) for message in messages)
-        assert all(issubclass(cls, MissingSomethingCache) for cls in classes)
-        for message in messages:
-            for cls in classes:
-                cache = self._request_cache.pop(cls.message_to_identifier(message), cls)
-                if cache:
-                    logger.debug("found request cache for %s", message)
-                    for response_func, response_args in cache.callbacks:
-                        response_func(message, *response_args)
-
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
-        cache = IntroductionRequestCache(community, destination)
+        cache = community.request_cache.add(IntroductionRequestCache(community, destination))
         destination.walk(time(), cache.timeout_delay)
         community.add_candidate(destination)
-
-        # temporary cache object
-        identifier = self._request_cache.claim(cache)
 
         # decide if the requested node should introduce us to someone else
         # advice = random() < 0.5 or len(community.candidates) <= 5
@@ -2276,15 +2349,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                             logger.error("%d bits in: %s", test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
-        if destination.get_destination_address(self._wan_address) != destination.sock_addr:
-            destination_address = destination.get_destination_address(self._wan_address)
-            logger.warning("in theory the destination address %s:%d should be the sock_addr %s", destination_address[0], destination_address[1], destination)
-
         meta_request = community.get_meta_message(u"dispersy-introduction-request")
         request = meta_request.impl(authentication=(community.my_member,),
                                     distribution=(community.global_time,),
                                     destination=(destination,),
-                                    payload=(destination.get_destination_address(self._wan_address), self._lan_address, self._wan_address, advice, self._connection_type, sync, identifier))
+                                    payload=(destination.sock_addr, self._lan_address, self._wan_address, advice, self._connection_type, sync, cache.number))
 
         if forward:
             if sync:
@@ -2308,6 +2377,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         We received a dispersy-introduction-request message.
         """
+        community = messages[0].community
         for message in messages:
             # 25/01/12 Boudewijn: during all DAS2 NAT node314 often sends requests to herself.  This
             # results in more candidates (all pointing to herself) being added to the candidate
@@ -2317,9 +2387,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # to each other is relatively small.
             # 30/10/12 Niels: additionally check if both our lan_addresses are the same. They should
             # be if we're sending it to ourself. Not checking wan_address as that is subject to change.
-            if self._request_cache.has(message.payload.identifier, IntroductionRequestCache) and self._lan_address == message.payload.source_lan_address:
+            if community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)) and \
+                    self._lan_address == message.payload.source_lan_address:
                 logger.debug("dropping dispersy-introduction-request, this identifier is already in use.")
-                yield DropMessage(message, "Duplicate identifier from %s (most likely received from ourself)" % str(message.candidate))
+                yield DropMessage(message, "Duplicate identifier from %s (most likely received from our self)" % str(message.candidate))
                 continue
 
             logger.debug("accepting dispersy-introduction-request from %s", message.candidate)
@@ -2383,7 +2454,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 self._statistics.walk_advice_outgoing_response += 1
 
                 # create introduction response
-                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.get_destination_address(self._wan_address), self._lan_address, self._wan_address, introduced.lan_address, introduced.wan_address, self._connection_type, introduced.tunnel, payload.identifier)))
+                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._lan_address, self._wan_address, introduced.lan_address, introduced.wan_address, self._connection_type, introduced.tunnel, payload.identifier)))
 
                 # create puncture request
                 requests.append(meta_puncture_request.impl(distribution=(community.global_time,), destination=(introduced,), payload=(source_lan_address, source_wan_address, payload.identifier)))
@@ -2392,7 +2463,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("responding to %s without an introduction %s", candidate, type(community))
 
                 none = ("0.0.0.0", 0)
-                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.get_destination_address(self._wan_address), self._lan_address, self._wan_address, none, none, self._connection_type, False, payload.identifier)))
+                responses.append(meta_introduction_response.impl(authentication=(community.my_member,), distribution=(community.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._lan_address, self._wan_address, none, none, self._connection_type, False, payload.identifier)))
 
         if responses:
             self._forward(responses)
@@ -2405,11 +2476,14 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         messages_with_sync = []
         for message in messages:
             payload = message.payload
+            candidate = message.candidate
+            if not candidate:
+                continue
 
             if payload.sync:
                 # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause
                 # overflow exceptions in the sqlite3 wrapper
-                
+
                 # 11/11/13 Niels: according to http://www.sqlite.org/datatype3.html integers are signed and max
                 # 8 bytes, hence the max value is 2 ** 63 - 1 as one bit is used for the sign
                 time_low = min(payload.time_low, 2 ** 63 - 1)
@@ -2443,26 +2517,30 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert all(isinstance(list, tuple) for request in requests)
         assert all(len(request) == 5 for request in requests)
 
+        if not any(message.payload.sync for message in messages):
+            # no sync needed
+            return
+
         def get_sub_select(meta):
             direction = meta.distribution.synchronization_direction
             if direction == u"ASC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time ASC)"""
 
             if direction == u"DESC":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY sync.global_time DESC)"""
 
             if direction == u"RANDOM":
                 return u"""
  SELECT * FROM
-  (SELECT sync.packet FROM sync
+  (SELECT sync.packet FROM sync    -- """ + meta.name + """
    WHERE sync.meta_message = ? AND sync.undone = 0 AND sync.global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0
    ORDER BY RANDOM())"""
 
@@ -2494,8 +2572,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             yield message, ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
 
     def check_introduction_response(self, messages):
+        community = messages[0].community
         for message in messages:
-            if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+            if not community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
                 self._statistics.walk_invalid_response_identifier += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
@@ -2562,7 +2641,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._statistics.dict_inc(self._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
-            cache = self._request_cache.pop(payload.identifier, IntroductionRequestCache)
+            cache = community.request_cache.pop(IntroductionRequestCache.create_identifier(message.payload.identifier))
 
             # handle the introduction
             lan_introduction_address = payload.lan_introduction_address
@@ -2662,8 +2741,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         self._forward(punctures)
 
     def check_puncture(self, messages):
+        community = messages[0].community
         for message in messages:
-            if not self._request_cache.has(message.payload.identifier, IntroductionRequestCache):
+            if not community.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2675,7 +2755,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         for message in messages:
             # get cache object linked to this request but does NOT stop timeout from occurring
-            cache = self._request_cache.get(message.payload.identifier, IntroductionRequestCache)
+            cache = community.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
 
             # when the sender is behind a symmetric NAT and we are not, we will not be able to get
             # through using the port that the helper node gave us (symmetric NAT will give a
@@ -2945,12 +3025,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         sendRequest = False
 
-        identifier = MissingMessageCache.properties_to_identifier(community, member, global_time)
-        cache = self._request_cache.get(identifier, MissingMessageCache)
+        cache = community.request_cache.get(MissingMessageCache.create_identifier(member, global_time))
         if not cache:
-            logger.debug("%s", identifier)
-            cache = MissingMessageCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingMessageCache(timeout, member, global_time))
+            logger.debug("new cache: %s", cache)
 
             meta = community.get_meta_message(u"dispersy-missing-message")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, [global_time]))
@@ -2999,11 +3077,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         sendRequest = False
 
-        identifier = MissingLastMessageCache.properties_to_identifier(community, member, message)
-        cache = self._request_cache.get(identifier, MissingLastMessageCache)
+        cache = community.request_cache.get(MissingLastMessageCache.create_identifier(member, message))
         if not cache:
-            cache = MissingLastMessageCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingLastMessageCache(timeout, member, message))
+            logger.debug("new cache: %s", cache)
 
             meta = community.get_meta_message(u"dispersy-missing-last-message")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(member, message, count_))
@@ -3107,10 +3184,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         We received a dispersy-identity message.
         """
+        community = messages[0].community
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            identifier = MissingMemberCache.message_to_identifier(message)
-            cache = self._request_cache.pop(identifier, MissingMemberCache)
+            cache = community.request_cache.pop(MissingMemberCache.create_identifier(message.authentication.member))
             if cache:
                 for func, args in cache.callbacks:
                     func(message, *args)
@@ -3137,13 +3214,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         sendRequest = False
 
-        identifier = MissingMemberCache.properties_to_identifier(community, dummy_member)
-        cache = self._request_cache.get(identifier, MissingMemberCache)
+        cache = community.request_cache.get(MissingMemberCache.create_identifier(dummy_member))
         if not cache:
-            cache = MissingMemberCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingMemberCache(timeout, dummy_member))
+            logger.debug("new cache: %s", cache)
 
-            logger.debug("%s sending missing-identity %s", candidate, dummy_member.mid.encode("HEX"))
             meta = community.get_meta_message(u"dispersy-missing-identity")
             request = meta.impl(distribution=(community.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
             self._forward([request])
@@ -3251,15 +3326,15 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert len(members) == 1
 
         # temporary cache object
-        cache = SignatureRequestCache(members, response_func, response_args, timeout)
-        identifier = self._request_cache.claim(cache)
+        cache = community.request_cache.add(SignatureRequestCache(community.request_cache, members, response_func, response_args, timeout))
+        logger.debug("new cache: %s", cache)
 
         # the dispersy-signature-request message that will hold the
         # message that should obtain more signatures
         meta = community.get_meta_message(u"dispersy-signature-request")
         cache.request = meta.impl(distribution=(community.global_time,),
                                   destination=(candidate,),
-                                  payload=(identifier, message))
+                                  payload=(cache.number, message))
 
         logger.debug("asking %s", [member.mid.encode("HEX") for member in members])
         self._forward([cache.request])
@@ -3347,15 +3422,16 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     def check_signature_response(self, messages):
         unique = set()
+        community = messages[0].community
 
         for message in messages:
-            if message.payload.identifier in unique:
-                yield DropMessage(message, "duplicate identifier in batch")
-                continue
-
-            cache = self._request_cache.get(message.payload.identifier, SignatureRequestCache)
+            cache = community.request_cache.get(SignatureRequestCache.create_identifier(message.payload.identifier))
             if not cache:
                 yield DropMessage(message, "invalid response identifier")
+                continue
+
+            if cache.identifier in unique:
+                yield DropMessage(message, "duplicate identifier in batch")
                 continue
 
             old_submsg = cache.request.payload.message
@@ -3373,7 +3449,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 yield DropMessage(message, "global time may not change")
                 continue
 
-            unique.add(message.payload.identifier)
+            unique.add(cache.identifier)
             yield message
 
     def on_signature_response(self, messages):
@@ -3388,9 +3464,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Note that response_func is also called when the sub-message does not yet contain all the
         signatures.  This can be checked using sub-message.authentication.is_signed.
         """
+        community = messages[0].community
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            cache = self._request_cache.pop(message.payload.identifier, SignatureRequestCache)
+            cache = community.request_cache.pop(SignatureRequestCache.create_identifier(message.payload.identifier))
 
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
@@ -3416,21 +3493,19 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         sendRequest = False
 
         # the MissingSequenceCache allows us to match the missing_high to the response_func
-        identifier = MissingSequenceCache.properties_to_identifier(community, member, message, missing_high)
-        cache = self._request_cache.get(identifier, MissingSequenceCache)
+        cache = community.request_cache.get(MissingSequenceCache.create_identifier(member, message, missing_high))
         if not cache:
-            cache = MissingSequenceCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingSequenceCache(timeout, member, message, missing_high))
+            logger.debug("new cache: %s", cache)
 
         if response_func:
             cache.callbacks.append((response_func, response_args))
 
         # the MissingSequenceOverviewCache ensures that we do not request duplicate ranges
-        identifier = MissingSequenceOverviewCache.properties_to_identifier(community, member, message)
-        overview = self._request_cache.get(identifier, MissingSequenceOverviewCache)
+        overview = community.request_cache.get(MissingSequenceOverviewCache.create_identifier(member, message))
         if not overview:
-            overview = MissingSequenceOverviewCache(timeout)
-            self._request_cache.set(identifier, overview)
+            overview = community.request_cache.add(MissingSequenceOverviewCache(timeout, member, message))
+            logger.debug("new cache: %s", cache)
 
         if overview.missing_high == 0 or missing_high > overview.missing_high:
             missing_low = max(overview.missing_high, missing_low)
@@ -3534,12 +3609,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         # handle_missing_messages(messages, MissingProofCache)
 
         sendRequest = False
-        identifier = MissingProofCache.properties_to_identifier(community)
-        cache = self._request_cache.get(identifier, MissingProofCache)
+        cache = community.request_cache.get(MissingProofCache.create_identifier())
         if not cache:
-            logger.debug("%s", identifier)
-            cache = MissingProofCache(timeout)
-            self._request_cache.set(identifier, cache)
+            cache = community.request_cache.add(MissingProofCache(timeout))
+            logger.debug("new cache: %s", cache)
 
         key = (message.meta, message.authentication.member)
         if not key in cache.duplicates:
@@ -3670,12 +3743,13 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
          message immediately.
         """
+        community = messages[0].community
         for message in messages:
             logger.debug("%s", message)
-            message.community.timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
+            community.timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
 
         # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
     def create_revoke(self, community, permission_triplets, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3754,11 +3828,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
          message immediately.
         """
+        community = messages[0].community
         for message in messages:
-            message.community.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
+            community.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
 
         # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingSequenceCache)
 
     def create_undo(self, community, message, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3942,17 +4017,18 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
 
+        community = messages[0].community
         self._database.executemany(u"UPDATE sync SET undone = ? WHERE community = ? AND member = ? AND global_time = ?",
-                                   ((message.packet_id, message.community.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
+                                   ((message.packet_id, community.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
         for meta, iterator in groupby(messages, key=lambda x: x.payload.packet.meta):
             sub_messages = list(iterator)
             meta.undo_callback([(message.payload.member, message.payload.global_time, message.payload.packet) for message in sub_messages])
 
             # notify that global times have changed
-            # meta.community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
+            # community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
 
         # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingSequenceCache)
 
     def create_destroy_community(self, community, degree, sign_with_master=False, store=True, update=True, forward=True):
         if __debug__:
@@ -3972,7 +4048,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         self._forward([message])
 
         # now store and update without forwarding.  forwarding now will result in new entries in our
-        # candidate table that we just cleane.
+        # candidate table that we just clean.
         self.store_update_forward([message], store, update, False)
         return message
 
@@ -4135,7 +4211,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     # meta.community.update_sync_range(meta, [message.distribution.global_time for message in redo])
 
         # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
+        community.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
     def sanity_check(self, community, test_identity=True, test_undo_other=True, test_binary=False, test_sequence_number=True, test_last_sync=True):
         """
@@ -4392,10 +4468,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Periodically called to commit database changes to disk.
         """
         while True:
-            try:
-                # Arno, 2012-07-12: apswtrace detects 7 s commits with yield 5 min, so reduce
-                yield 60.0
+            # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
+            # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
+            # exception is raised when the _watchdog generator is closed)
+            yield 60.0
 
+            try:
                 # flush changes to disk every 1 minutes
                 self._database.commit()
 
@@ -4403,27 +4481,42 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 # OperationalError: database is locked
                 logger.exception("%s", exception)
 
+    # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
+    # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
     def _commit_now(self):
         """
         Flush changes to disk.
         """
         self._database.commit()
 
-    def start(self):
+    def start(self, timeout=10.0):
         """
         Starts Dispersy.
 
         This method is thread safe.
 
         1. starts callback
-        2. opens database
-        3. opens endpoint
+        2. resolve bootstrap candidates (done in parallel)
+        3. opens database
+        4. opens endpoint
         """
 
         assert not self._callback.is_running, "Must be called before callback.start()"
+        assert isinstance(timeout, float), type(timeout)
+        assert timeout >= 0.0, timeout
+
+        def bootstrap_progress(_, resolved, total):
+            # we are happy starting with just 50% of the available BootstrapCandidates,
+            # i.e. Dispersy will still start quickly, even if a small subset of the addresses no
+            # longer resolves
+            if resolved >= total * 0.5:
+                event.set()
 
         def start():
             assert self._callback.is_current_thread, "Must be called from the callback thread"
+
+            # resolving the bootstrap candidates is performed in parallel
+            self._resolve_bootstrap_candidates(bootstrap_progress)
 
             results.append((u"database", self._database.open()))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
@@ -4432,14 +4525,29 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
             self._endpoint_ready()
 
+            # commit changes to the database periodically
+            id_ = u"dispersy-watchdog-%d" % (id(self),)
+            self._pending_callbacks["watchdog"] = self._callback.register(self._watchdog, id_=id_)
+            # output candidate statistics
+            id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
+            self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
+
         # start
         logger.info("starting the Dispersy core...")
+        event = Event()
         results = []
 
         results.append((u"callback", self._callback.start()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         self._callback.call(start, priority=512)
+
+        # blocking is not an option when we are running on the same thread
+        if not self._callback.is_current_thread:
+            # wait until bootstrap progress reports that the addresses have been resolved
+            event.wait(timeout)
+            results.append((u"resolve-bootstrap", event.is_set()))
+            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # log and return the result
         if all(result for _, result in results):
@@ -4490,9 +4598,17 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
 
+            # stop walking (this should not be necessary, but bugs may cause the walker to keep
+            # running and/or be re-started when a community is loaded)
+            self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
+
             return True
 
         def stop():
+            # stop periodic tasks
+            for callback_id in self._pending_callbacks.itervalues():
+                self._callback.unregister(callback_id)
+
             # unload all communities
             results.append((u"community", ordered_unload_communities()))
             assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
@@ -4628,29 +4744,29 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
         communities.
 
-        Enable this output by enabling INFO logging for a logger named
+        Enable this output by enabling DEBUG logging for a logger named
         "dispersy-stats-detailed-candidates".
 
         Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
         summary = get_logger("dispersy-stats-detailed-candidates")
-        while summary.isEnabledFor(logging.INFO):
+        while summary.isEnabledFor(logging.DEBUG):
             yield 5.0
             now = time()
-            summary.info("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            summary.info("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
-                         self._statistics.walk_attempt,
-                         self._statistics.walk_success,
-                         self._statistics.walk_invalid_response_identifier,
-                         self._statistics.walk_bootstrap_attempt,
-                         self._statistics.walk_bootstrap_success,
-                         self._statistics.walk_reset)
-            summary.info("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                         self._statistics.walk_advice_outgoing_request,
-                         self._statistics.walk_advice_incoming_response,
-                         self._statistics.walk_advice_incoming_response_new,
-                         self._statistics.walk_advice_incoming_request,
-                         self._statistics.walk_advice_outgoing_response)
+            summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
+            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
+                          self._statistics.walk_attempt,
+                          self._statistics.walk_success,
+                          self._statistics.walk_invalid_response_identifier,
+                          self._statistics.walk_bootstrap_attempt,
+                          self._statistics.walk_bootstrap_success,
+                          self._statistics.walk_reset)
+            summary.debug("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
+                          self._statistics.walk_advice_outgoing_request,
+                          self._statistics.walk_advice_incoming_response,
+                          self._statistics.walk_advice_incoming_response_new,
+                          self._statistics.walk_advice_incoming_request,
+                          self._statistics.walk_advice_outgoing_response)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
@@ -4661,17 +4777,17 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
-                summary.info("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                summary.info("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                summary.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
+                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
 
                 for category, candidates in categories.iteritems():
-                    aged = [(candidate.age(now), candidate) for candidate in candidates]
+                    aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        summary.info("%4ds %s%s%s %-7s %-13s %s",
-                                     min(age, 9999),
-                                     "O" if candidate.is_obsolete(now) else " ",
-                                     "E" if candidate.is_eligible_for_walk(now) else " ",
-                                     "B" if isinstance(candidate, BootstrapCandidate) else " ",
-                                     category,
-                                     candidate.connection_type,
-                                     candidate)
+                        summary.debug("%5.1fs %s%s%s %-7s %-13s %s",
+                                      min(age, 999.0),
+                                      "O" if candidate.is_obsolete(now) else " ",
+                                      "E" if candidate.is_eligible_for_walk(now) else " ",
+                                      "B" if isinstance(candidate, BootstrapCandidate) else " ",
+                                      category,
+                                      candidate.connection_type,
+                                      candidate)

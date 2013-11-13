@@ -1,17 +1,83 @@
-from os import environ
-from unittest import skip, skipUnless
-from time import time
+from os import environ, getcwd, path
 from socket import getfqdn
+from subprocess import Popen
+from time import time
+from unittest import skip, skipUnless
 
 from ..candidate import BootstrapCandidate
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
 
 class TestBootstrapServers(DispersyTestFunc):
+
+
+    @call_on_dispersy_thread
+    def test_bootstrap_server(self):
+        """
+        Runs tracker.py and connects to it.
+        """
+        tracker_file = "dispersy/tool/tracker.py"
+        tracker_path = getcwd()
+        while tracker_path:
+            logger.debug("looking for %s in %s", tracker_file, tracker_path)
+            if path.isfile(path.join(tracker_path, tracker_file)):
+                break
+            tracker_path = path.dirname(tracker_path)
+        logger.debug("using tracker cwd \"%s\"", tracker_path)
+
+        tracker_address = (self._dispersy.wan_address[0], 14242)
+        args = ["python",
+                "-c", "from dispersy.tool.tracker import main; main()",
+                "--statedir", ".",
+                "--port", str(tracker_address[1]),
+                "--log-identifier", "tracker"]
+        logger.debug("start tracker %s", args)
+        tracker = Popen(args, cwd=tracker_path)
+
+        # can take a few seconds to start on older machines (or when running on a remote file
+        # system)
+        yield 5.0
+
+        try:
+            class Community(DebugCommunity):
+                @property
+                def dispersy_enable_candidate_walker(self):
+                    return False
+                @property
+                def dispersy_enable_candidate_walker_responses(self):
+                    return True
+            community = Community.create_community(self._dispersy, self._my_member)
+            nodes = [DebugNode(community).init_socket().init_my_member(candidate=False, identity=False) for _ in xrange(1)]
+
+            # nodes send introduction request
+            for node in nodes:
+                node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
+                                                                            node.lan_address,
+                                                                            node.wan_address,
+                                                                            True,
+                                                                            u"unknown",
+                                                                            None,
+                                                                            4242,
+                                                                            42), tracker_address)
+
+            # nodes receive missing identity
+            yield 1.0
+            for node in nodes:
+                (_, message), = node.receive_messages(names=[u"dispersy-missing-identity"], counts=[1])
+                self.assertEqual(message.payload.mid, node.my_member.mid)
+                node.send_message(node.create_dispersy_identity(2), tracker_address)
+
+        finally:
+            yield 0.1
+            logger.debug("terminate tracker")
+            tracker.terminate() # sends SIGTERM
+            tracker.wait()
+            self.assertEqual(tracker.returncode, 0)
 
     @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     @call_on_dispersy_thread
@@ -109,8 +175,8 @@ class TestBootstrapServers(DispersyTestFunc):
                 handle.close()
 
                 for sock_addr, rtts in self._summary.iteritems():
-                    test.assertLess(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
-                    test.assertLess(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
+                    test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
+                    test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
         community = PingCommunity.create_community(self._dispersy, self._my_member)
 

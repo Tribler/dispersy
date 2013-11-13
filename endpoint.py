@@ -87,7 +87,7 @@ class NullEndpoint(Endpoint):
 
     def send(self, candidates, packets):
         if any(len(packet) > 2**16 - 60 for packet in packets):
-            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
+            raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
         self._total_up += sum(len(packet) for packet in packets) * len(candidates)
 
 
@@ -166,20 +166,18 @@ class RawserverEndpoint(Endpoint):
     def send(self, candidates, packets):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
-        assert all(isinstance(candidate, Candidate) for candidate in candidates)
+        assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
         assert isinstance(packets, (tuple, list, set)), type(packets)
-        assert all(isinstance(packet, str) for packet in packets)
-        assert all(len(packet) > 0 for packet in packets)
+        assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
+        assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
         if any(len(packet) > 2**16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
 
-        wan_address = self._dispersy.wan_address
-
         with self._sendqueue_lock:
-            batch = [(candidate.get_destination_address(wan_address), TUNNEL_PREFIX + data if candidate.tunnel else data)
+            batch = [(candidate.sock_addr, TUNNEL_PREFIX + data if candidate.tunnel else data)
                      for candidate, data
                      in product(candidates, packets)]
 
@@ -280,6 +278,15 @@ class StandaloneEndpoint(RawserverEndpoint):
         if timeout > 0.0:
             self._thread.join(timeout)
 
+            if self._thread.is_alive():
+                logger.error("the endpoint thread is still running (after waiting %f seconds)", timeout)
+                result = False
+
+        else:
+            if self._thread.is_alive():
+                logger.debug("the endpoint thread is still running (use timeout > 0.0 to ensure the thread stops)")
+                result = False
+
         try:
             self._socket.close()
         except socket.error as exception:
@@ -367,24 +374,20 @@ class TunnelEndpoint(Endpoint):
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
-        wan_address = self._dispersy.wan_address
 
         self._swift.splock.acquire()
         try:
             for candidate in candidates:
-                sock_addr = candidate.get_destination_address(wan_address)
-                assert self._dispersy.is_valid_address(sock_addr), sock_addr
-
                 for data in packets:
                     if logger.isEnabledFor(logging.DEBUG):
                         try:
                             name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
                         except:
                             name = "???"
-                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
+                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, candidate.sock_addr[0], candidate.sock_addr[1], len(data))
                         self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
 
-                    self._swift.send_tunnel(self._session, sock_addr, data)
+                    self._swift.send_tunnel(self._session, candidate.sock_addr, data)
 
             # return True when something has been send
             return candidates and packets

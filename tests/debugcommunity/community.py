@@ -3,6 +3,7 @@ from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import CommunityDestination
+from ...dispersy import MissingSequenceCache
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...logger import get_logger
 from ...message import Message, DelayMessageByProof
@@ -171,9 +172,14 @@ class DebugCommunity(Community):
         """
         Received a text message.
         """
+        meta = messages[0].meta
+
         for message in messages:
             if not "Dprint=False" in message.payload.text:
                 logger.debug("%s \"%s\" @%d", message, message.payload.text, message.distribution.global_time)
+
+        if isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number:
+            self.handle_missing_messages(messages, MissingSequenceCache)
 
     def undo_text(self, descriptors):
         """

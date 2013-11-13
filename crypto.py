@@ -157,6 +157,7 @@ def ec_sign(ec, digest):
     """
     Returns the signature of DIGEST made using EC.
     """
+    assert isinstance(digest, str), type(digest)
     length = int(ceil(len(ec) / 8.0))
 
     mpi_r, mpi_s = ec.sign_dsa(digest)
@@ -171,6 +172,8 @@ def ec_verify(ec, digest, signature):
     """
     Returns True when SIGNATURE matches the DIGEST made using EC.
     """
+    assert isinstance(digest, str), type(digest)
+    assert isinstance(signature, str), type(signature)
     assert len(signature) == ec_signature_length(ec), [len(signature), ec_signature_length(ec)]
     length = len(signature) / 2
     try:

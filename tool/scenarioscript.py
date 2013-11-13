@@ -382,7 +382,7 @@ if poisson:
             self.__poisson_online_mu = float(online_mu)
             self.__poisson_offline_mu = float(offline_mu)
             self.log("scenario-poisson-churn", online_mu=self.__poisson_online_mu, offline_mu=self.__poisson_offline_mu)
-            self._dispersy.callback.persistent_register("scenario-poisson-identifier", self.__poisson_churn)
+            self._dispersy.callback.persistent_register(u"scenario-poisson-identifier", self.__poisson_churn)
 
 if expon:
     class ScenarioExpon(object):
@@ -421,7 +421,7 @@ if expon:
             self.__expon_min_offline = float("5.0" if min_offline == "DEF" else min_offline)
             self.__expon_max_offline = float(maxsize if max_offline == "DEF" else max_offline)
             self.log("scenario-expon-churn", online_beta=self.__expon_online_beta, offline_beta=self.__expon_offline_beta, online_threshold=self.__expon_online_threshold, min_online=self.__expon_min_online, max_online=self.__expon_max_online, offline_threshold=self.__expon_offline_threshold, min_offline=self.__expon_min_offline, max_offline=self.__expon_max_offline)
-            self._dispersy.callback.persistent_register("scenario-expon-identifier", self.__expon_churn)
+            self._dispersy.callback.persistent_register(u"scenario-expon-identifier", self.__expon_churn)
 
 class ScenarioUniform(object):
     def __init__(self, *args, **kargs):
@@ -451,7 +451,7 @@ class ScenarioUniform(object):
         self.__uniform_offline_low = offline_mean * (1.0 - offline_mod)
         self.__uniform_offline_high = offline_mean * (1.0 + offline_mod)
         self.log("scenario-uniform-churn", online_low=self.__uniform_online_low, online_high=self.__uniform_online_high, offline_low=self.__uniform_offline_low, offline_high=self.__uniform_offline_high)
-        self._dispersy.callback.persistent_register("scenario-uniform-identifier", self.__uniform_churn)
+        self._dispersy.callback.persistent_register(u"scenario-uniform-identifier", self.__uniform_churn)
 
 class ScenarioPredefined(object):
     """
