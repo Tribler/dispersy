@@ -59,6 +59,20 @@ class Candidate(object):
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
 
+    def __eq__(self, other):
+        """
+        True when OTHER is a Candidate instance and self.sock_addr == other.sock_addr, otherwise
+        False.
+        """
+        return isinstance(other, Candidate) and self._sock_addr == other.sock_addr
+
+    def __ne__(self, other):
+        """
+        False when OTHER is a Candidate instance and self.sock_addr == other.sock_addr, otherwise
+        True.
+        """
+        return not (isinstance(other, Candidate) and self._sock_addr == other.sock_addr)
+
 
 class WalkCandidate(Candidate):
 
