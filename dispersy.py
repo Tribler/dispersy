@@ -2517,10 +2517,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert all(isinstance(list, tuple) for request in requests)
         assert all(len(request) == 5 for request in requests)
 
-        if not any(message.payload.sync for message in messages):
-            # no sync needed
-            return
-
         def get_sub_select(meta):
             direction = meta.distribution.synchronization_direction
             if direction == u"ASC":
