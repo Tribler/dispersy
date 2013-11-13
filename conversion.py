@@ -1412,7 +1412,7 @@ class BinaryConversion(NoDefBinaryConversion):
     """
 
     def __init__(self, community, community_version):
-        NoDefBinaryConversion.__init__(self, community, "\x00", community_version)
+        NoDefBinaryConversion.__init__(self, community, community_version)
 
         def define(value, name, encode, decode):
             try:
