@@ -347,9 +347,11 @@ class Database(object):
         @param statement: the SQL statement that is to be executed.
         @type statement: unicode
 
-        @param sequenceofbindings: a list, tuple or set of bindings, where every binding contains
-        the values that must be set to the placeholders in statement.
-        @type bindings: list, tuple or set
+        @param sequenceofbindings: a list, tuple, set, or generator of bindings, where every binding
+                                   contains the values that must be set to the placeholders in
+                                   statement.
+
+        @type sequenceofbindings: list, tuple, set or generator
 
         @returns: unknown
         @raise sqlite.Error: unknown
