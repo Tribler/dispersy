@@ -1405,7 +1405,7 @@ class NoDefBinaryConversion(Conversion):
     def __str__(self):
         return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
 
-class BinaryConversion(StructConversion):
+class BinaryConversion(NoDefBinaryConversion):
 
     """
     Extends NoDefBinaryConversion and will define all standard dispersy messages
