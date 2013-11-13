@@ -2514,7 +2514,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     def _get_packets_for_bloomfilters(self, community, requests, include_inactive=True):
         assert isinstance(requests, list)
-        assert all(isinstance(list, tuple) for request in requests)
+        assert all(isinstance(request, (list, tuple)) for request in requests)
         assert all(len(request) == 5 for request in requests)
 
         def get_sub_select(meta):
