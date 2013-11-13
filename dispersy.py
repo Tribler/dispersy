@@ -2409,13 +2409,16 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             if payload.sync:
                 # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause
                 # overflow exceptions in the sqlite3 wrapper
+                
+                # 11/11/13 Niels: according to http://www.sqlite.org/datatype3.html integers are signed and max
+                # 8 bytes, hence the max value is 2 ** 63 - 1 as one bit is used for the sign
                 time_low = min(payload.time_low, 2 ** 63 - 1)
                 time_high = min(payload.time_high if payload.has_time_high else community.global_time, 2 ** 63 - 1)
 
                 offset = long(payload.offset)
                 modulo = long(payload.modulo)
 
-                messages_with_sync.append((community, message, time_low, time_high, offset, modulo))
+                messages_with_sync.append((message, time_low, time_high, offset, modulo))
 
         if messages_with_sync:
             for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
