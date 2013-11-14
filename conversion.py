@@ -7,6 +7,7 @@ from random import choice
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
+from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .logger import get_logger
@@ -1058,6 +1059,7 @@ class BinaryConversion(Conversion):
     def _encode_no_authentication_signature(self, container, message, sign):
         return "".join(container)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_member_authentication_signature(self, container, message, sign):
         assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
         if sign:
@@ -1069,6 +1071,7 @@ class BinaryConversion(Conversion):
         else:
             return data + "\x00" * message.authentication.member.signature_length
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_double_member_authentication_signature(self, container, message, sign):
         data = "".join(container)
         signatures = []
@@ -1090,6 +1093,7 @@ class BinaryConversion(Conversion):
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         return message.name in self._encode_message_map
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.name}")
     def encode_message(self, message, sign=True):
         assert isinstance(message, Message.Implementation), message
         assert message.name in self._encode_message_map, message.name
@@ -1180,6 +1184,7 @@ class BinaryConversion(Conversion):
         placeholder.first_signature_offset = len(placeholder.data)
         placeholder.authentication = NoAuthentication.Implementation(placeholder.meta.authentication)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
@@ -1239,6 +1244,7 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError(authentication.encoding)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_double_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
@@ -1341,6 +1347,7 @@ class BinaryConversion(Conversion):
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
     def _decode_message(self, candidate, data, verify, allow_empty_signature):
         """
         Decode a binary string into a Message structure, with some

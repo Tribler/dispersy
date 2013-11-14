@@ -1,10 +1,12 @@
 from atexit import register as atexit_register
 from cProfile import Profile
 from collections import defaultdict
+from functools import wraps
 from hashlib import sha1
 from thread import get_ident
 from threading import current_thread
 from time import time
+import logging
 import sys
 
 from .logger import get_logger
@@ -72,64 +74,102 @@ else:
     def attach_profiler(func):
         return func
 
-if "--runtime-statistics" in getattr(sys, "argv", []):
-    _runtime_statistics_logger = get_logger("runtime-statistics")
-    _runtime_statistics = defaultdict(lambda: [0, 0.0])
+class RuntimeStatistic(object):
+    def __init__(self):
+        self._count = 0
+        self._duration = 0.0
 
+    @property
+    def count(self):
+        " Returns the number of times a method was called. "
+        return self._count
+
+    @property
+    def duration(self):
+        " Returns the cumulative time spent in a method. "
+        return self._duration
+
+    @property
+    def average(self):
+        " Returns the average time spent in a method. "
+        return self._duration / self._count
+
+    def increment(self, duration):
+        " Increase self.count with 1 and self.duration with DURATION. "
+        assert isinstance(duration, float), type(duration)
+        self._duration += duration
+        self._count += 1
+
+    def get_dict(self, **kargs):
+        " Returns a dictionary with the statistics. "
+        return dict(count=self.count, duration=self.duration, average=self.average, **kargs)
+
+_runtime_statistics = defaultdict(RuntimeStatistic)
+_runtime_statistics_logger = get_logger("runtime-statistics")
+
+if _runtime_statistics_logger.isEnabledFor(logging.DEBUG):
     def _output_runtime_statistics():
-        entries = sorted([(stats[0], stats[1], entry) for entry, stats in _runtime_statistics.iteritems()])
-        for count, duration, entry in entries:
+        log = _runtime_statistics_logger.debug
+        items = sorted((item for item in _runtime_statistics.iteritems()), key=lambda item: item[1].time)
+        for entry, statistic in items:
             if "\n" in entry:
-                _runtime_statistics_logger.info("<<<%s %dx %.2fs %.2fs\n%s\n>>>", sha1(entry).digest().encode("HEX"), count, duration, duration / count, entry)
+                log("<<<%s %dx %.2fs %.2fs\n%s\n>>>",
+                    sha1(entry).digest().encode("HEX"),
+                    statistic.count,
+                    statistic.duration,
+                    statistic.average,
+                    entry)
 
-        _runtime_statistics_logger.info(" COUNT      SUM      AVG  ENTRY")
-        for count, duration, entry in entries:
-            _runtime_statistics_logger.info("%5dx %7.2fs %7.2fs  %s", count, duration, duration / count, entry.strip().split("\n")[0])
+        log(" COUNT      DURATION      AVG  ENTRY")
+        for entry, statistic in items:
+            log("%5dx %7.2fs %7.2fs  %s",
+                statistic.count,
+                statistic.duration,
+                statistic.average,
+                entry.strip().split("\n")[0])
     atexit_register(_output_runtime_statistics)
 
-    def attach_runtime_statistics(format_):
-        def helper(func):
-            def attach_runtime_statistics_helper(*args, **kargs):
-                start = time()
-                try:
-                    return func(*args, **kargs)
-                finally:
-                    end = time()
-                    entry = format_.format(function_name=func.__name__, *args, **kargs)
-                    _runtime_statistics_logger.debug(entry)
-                    stats = _runtime_statistics[entry]
-                    stats[0] += 1
-                    stats[1] += (end - start)
-            attach_runtime_statistics_helper.__name__ = func.__name__
-            return attach_runtime_statistics_helper
-        return helper
+def attach_runtime_statistics(format_):
+    """
+    Keep track of how often and how long a function was called.
 
-else:
-    def attach_runtime_statistics(format_):
-        """
-        Keep track of how often and how long a function was called.
+    FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.  FORMAT_
+    uses the format mini language and has access to all the arguments and keyword arguments of the
+    function.  The python format mini language is described at:
+    http://docs.python.org/2/library/string.html#format-specification-mini-language.
 
-        Runtime statistics will only be collected when sys.argv contains '--runtime-statistics'.
-        Otherwise the decorator will not influence the runtime in any way.
+    Furthermore, two keyword arguments are provided:
+    - function_name: is set to the func.__name__, and
+    - return_value: is set to the value returned by func
 
-        FORMAT_ must be a (unicode)string.  Each unique string tracks individual statistics.
-        FORMAT_ uses the format mini language and has access to all the arguments and keyword
-        arguments of the function.  Furthermore, the function name is available as a keyword
-        argument called 'function_name'.  The python format mini language is described at:
-        http://docs.python.org/2/library/string.html#format-specification-mini-language.
+       @attach_runtime_statistics("{function_name} bar={1}, moo={moo} returns={return_value}")
+       def foo(self, bar, moo='milk'):
+           return bar + 40
 
-           @attach_runtime_statistics("{function_name} bar={1}, moo={moo}")
-           def foo(self, bar, moo='milk'):
-               pass
+       foo(1)
+       foo(2)
+       foo(2)
 
-           foo(1)
-           foo(2)
-           foo(2)
+    After running the above example, the statistics will show that:
+    - 'foo bar=1 moo=milk returns=41' was called once
+    - 'foo bar=2 moo=milk returns=42' was called twice
 
-        After running the above example, the statistics will show that:
-        - 'foo bar=1 moo=milk' was called once
-        - 'foo bar=2 moo=milk' was called twice
-        """
-        def helper(func):
-            return func
-        return helper
+    Updated runtime information is available from Dispersy.statistics.runtime after calling
+    Dispersy.statistics.update().  Statistics.runtime is a list (in no particular order) containing
+    dictionaries with the keys: count, duration, average, and entry.
+    """
+    assert isinstance(format_, basestring), type(format_)
+    def helper(func):
+        @wraps(func)
+        def wrapper(*args, **kargs):
+            return_value = None
+            start = time()
+            try:
+                return_value = func(*args, **kargs)
+                return return_value
+            finally:
+                end = time()
+                entry = format_.format(function_name=func.__name__, return_value=return_value, *args, **kargs)
+                _runtime_statistics[entry].increment(end - start)
+        return wrapper
+    return helper

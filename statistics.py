@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
-from time import time
 from collections import defaultdict
+from time import time
+
+from .decorator import attach_runtime_statistics, _runtime_statistics
 
 
 class Statistics(object):
@@ -105,6 +107,11 @@ class DispersyStatistics(Statistics):
         self.walk_advice_outgoing_response = 0
 
         self.wan_address = None
+
+        # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
+        # represents a key from the attach_runtime_statistics decorator
+        self.runtime = None
+
         self.update()
 
         self.enable_debug_statistics(__debug__)
@@ -166,6 +173,10 @@ class DispersyStatistics(Statistics):
         self.communities = [community.statistics for community in self._dispersy.get_communities()]
         for community in self.communities:
             community.update(database=database)
+
+        # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
+        # represents a key from the attach_runtime_statistics decorator
+        self.runtime = [statistic.get_dict(entry=entry) for entry, statistic in _runtime_statistics.iteritems()]
 
     def reset(self):
         self.success_count = 0

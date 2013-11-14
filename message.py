@@ -449,7 +449,7 @@ class Message(MetaObject):
                 self._packet = self._conversion.encode_message(self)
 
         def __str__(self):
-            return "<%s.%s %s %dbytes>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name, len(self._packet))
+            return "<%s.%s %s>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name)
 
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload, check_callback, handle_callback, undo_callback=None, batch=None):
         if __debug__:

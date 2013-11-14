@@ -23,7 +23,7 @@ except ImportError:
 from .bloomfilter import BloomFilter
 from .candidate import WalkCandidate, BootstrapCandidate
 from .conversion import BinaryConversion, DefaultConversion
-from .decorator import documentation, runtime_duration_warning
+from .decorator import documentation, runtime_duration_warning, attach_runtime_statistics
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning
 from .logger import get_logger
@@ -663,6 +663,7 @@ class Community(object):
         return sync
 
     @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def dispersy_claim_sync_bloom_filter_simple(self):
         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
         capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
@@ -699,6 +700,7 @@ class Community(object):
 
     # choose a pivot, add all items capacity to the right. If too small, add items left of pivot
     @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def dispersy_claim_sync_bloom_filter_right(self):
         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
         capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
@@ -752,6 +754,7 @@ class Community(object):
 
     # instead of pivot + capacity, divide capacity to have 50/50 division around pivot
     @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def dispersy_claim_sync_bloom_filter_50_50(self):
         bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
         capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
@@ -820,6 +823,7 @@ class Community(object):
 
     # instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
     @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def _dispersy_claim_sync_bloom_filter_largest(self):
         if __debug__:
             t1 = time()
@@ -897,6 +901,7 @@ class Community(object):
 
     # instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
     @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def _dispersy_claim_sync_bloom_filter_modulo(self):
         syncable_messages = u", ".join(unicode(meta.database_id) for meta in self._meta_messages.itervalues() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32)
         if syncable_messages:
