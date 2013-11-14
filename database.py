@@ -92,7 +92,7 @@ class Database(object):
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
-        logger.info("open database [%s]", self._file_path)
+        logger.debug("open database [%s]", self._file_path)
         self._connect()
         if initial_statements:
             self._initial_statements()
@@ -105,7 +105,7 @@ class Database(object):
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         if commit:
             self.commit(exiting=True)
-        logger.info("close database [%s]", self._file_path)
+        logger.debug("close database [%s]", self._file_path)
         self._cursor.close()
         self._cursor = None
         self._connection.close()
@@ -270,7 +270,6 @@ class Database(object):
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._cursor.rowcount
-        # return self._connection.changes()
 
     @attach_explain_query_plan
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
@@ -293,18 +292,26 @@ class Database(object):
         @type statement: unicode
 
         @param bindings: the values that must be set to the placeholders in statement.
-        @type bindings: tuple
+        @type bindings: list, tuple, dict, or set
 
         @returns: unknown
         @raise sqlite.Error: unknown
         """
-        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        if __debug__:
+            assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._debug_thread_ident != 0, "please call database.open() first"
+            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
+
+            # bindings may not be strings, text must be given as unicode strings while binary data,
+            # i.e. blobs, must be given as a buffer(...)
+            if isinstance(bindings, dict):
+                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+            else:
+                tests = (not isinstance(binding, str) for binding in bindings)
+            assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
 
         logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
         return self._cursor.execute(statement, bindings)
@@ -340,9 +347,11 @@ class Database(object):
         @param statement: the SQL statement that is to be executed.
         @type statement: unicode
 
-        @param bindings: a sequence of values that must be set to the placeholders in statement.
-         Each element in sequence is another tuple containing bindings.
-        @type bindings: list containing tuples
+        @param sequenceofbindings: a list, tuple, set, or generator of bindings, where every binding
+                                   contains the values that must be set to the placeholders in
+                                   statement.
+
+        @type sequenceofbindings: list, tuple, set or generator
 
         @returns: unknown
         @raise sqlite.Error: unknown
@@ -358,10 +367,20 @@ class Database(object):
             is_iterator = isinstance(sequenceofbindings, GeneratorType)
             if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
+
             assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
             assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
-            assert all(isinstance(x, (tuple, list, dict, set)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
-            assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
+            assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
+
+            for bindings in sequenceofbindings:
+                # bindings may not be strings, text must be given as unicode strings while binary data,
+                # i.e. blobs, must be given as a buffer(...)
+                if isinstance(bindings, dict):
+                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                else:
+                    tests = (not isinstance(binding, str) for binding in bindings)
+                assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
+
             if is_iterator:
                 sequenceofbindings = iter(sequenceofbindings)
 
@@ -431,12 +450,21 @@ class APSWDatabase(Database):
         self.execute("BEGIN")
 
     def execute(self, statement, bindings=()):
-        import apsw
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(bindings, (tuple, list, dict)), "The bindings must be a tuple, list, or dictionary"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        if __debug__:
+            assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._debug_thread_ident != 0, "please call database.open() first"
+            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
+
+            # bindings may not be strings, text must be given as unicode strings while binary data,
+            # i.e. blobs, must be given as a buffer(...)
+            if isinstance(bindings, dict):
+                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+            else:
+                tests = (not isinstance(binding, str) for binding in bindings)
+            assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
 
         logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
         return self._cursor.execute(statement, bindings)
@@ -445,19 +473,33 @@ class APSWDatabase(Database):
         return self.execute(statements)
 
     def executemany(self, statement, sequenceofbindings):
-        import apsw
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
             # generator can only iterate once
             from types import GeneratorType
-            if isinstance(sequenceofbindings, GeneratorType):
+            is_iterator = isinstance(sequenceofbindings, GeneratorType)
+            if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(sequenceofbindings, (tuple, list)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
-        assert all(isinstance(x, (tuple, list, dict)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
-        assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
+
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
+            assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
+
+            for bindings in sequenceofbindings:
+                # bindings may not be strings, text must be given as unicode strings while binary data,
+                # i.e. blobs, must be given as a buffer(...)
+                if isinstance(bindings, dict):
+                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                else:
+                    tests = (not isinstance(binding, str) for binding in bindings)
+                assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
+
+            if is_iterator:
+                sequenceofbindings = iter(sequenceofbindings)
 
         logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
         return self._cursor.executemany(statement, sequenceofbindings)
