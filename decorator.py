@@ -110,7 +110,7 @@ _runtime_statistics_logger = get_logger("runtime-statistics")
 if _runtime_statistics_logger.isEnabledFor(logging.DEBUG):
     def _output_runtime_statistics():
         log = _runtime_statistics_logger.debug
-        items = sorted((item for item in _runtime_statistics.iteritems()), key=lambda item: item[1].time)
+        items = sorted((item for item in _runtime_statistics.iteritems()), key=lambda item: item[1].duration)
         for entry, statistic in items:
             if "\n" in entry:
                 log("<<<%s %dx %.2fs %.2fs\n%s\n>>>",
@@ -120,9 +120,9 @@ if _runtime_statistics_logger.isEnabledFor(logging.DEBUG):
                     statistic.average,
                     entry)
 
-        log(" COUNT      DURATION      AVG  ENTRY")
+        log("COUNT  DURATION   AVERAGE  ENTRY")
         for entry, statistic in items:
-            log("%5dx %7.2fs %7.2fs  %s",
+            log("%5d %9.2f %9.2f  %s",
                 statistic.count,
                 statistic.duration,
                 statistic.average,
