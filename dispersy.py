@@ -2526,7 +2526,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         @param include_inactive: When False only active packets (due to pruning) are returned 
         @type include_inactive: bool
         
-        @return: An interator yielding the original request and an interator consisting of the packet matching the request
+        @return: An generator yielding the original request and a generator consisting of the packets matching the request
         """
 
         assert isinstance(requests, list)
