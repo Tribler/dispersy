@@ -2513,6 +2513,20 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     self._endpoint.send([message.candidate], packets)
 
     def _get_packets_for_bloomfilters(self, community, requests, include_inactive=True):
+        """
+        Return all packets matching a Bloomfilter request
+        
+        @param community: The community wherein all requests were received
+        @type messages: [Community]
+
+        @param request: A list of requests, each of them being a tuple consisting of the request,
+         time_low, time_high, offset, and modulo  
+        @type request: list 
+
+        @param include_inactive: When False only active packets (due to pruning) are returned 
+        @type include_inactive: bool
+        """
+
         assert isinstance(requests, list)
         assert all(isinstance(request, (list, tuple)) for request in requests)
         assert all(len(request) == 5 for request in requests)
