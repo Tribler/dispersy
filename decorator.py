@@ -105,29 +105,6 @@ class RuntimeStatistic(object):
         return dict(count=self.count, duration=self.duration, average=self.average, **kargs)
 
 _runtime_statistics = defaultdict(RuntimeStatistic)
-_runtime_statistics_logger = get_logger("runtime-statistics")
-
-if _runtime_statistics_logger.isEnabledFor(logging.DEBUG):
-    def _output_runtime_statistics():
-        log = _runtime_statistics_logger.debug
-        items = sorted((item for item in _runtime_statistics.iteritems()), key=lambda item: item[1].duration)
-        for entry, statistic in items:
-            if "\n" in entry:
-                log("<<<%s %dx %.2fs %.2fs\n%s\n>>>",
-                    sha1(entry).digest().encode("HEX"),
-                    statistic.count,
-                    statistic.duration,
-                    statistic.average,
-                    entry)
-
-        log("COUNT  DURATION   AVERAGE  ENTRY")
-        for entry, statistic in items:
-            log("%5d %9.2f %9.2f  %s",
-                statistic.count,
-                statistic.duration,
-                statistic.average,
-                entry.strip().split("\n")[0])
-    atexit_register(_output_runtime_statistics)
 
 def attach_runtime_statistics(format_):
     """
