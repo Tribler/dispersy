@@ -2519,12 +2519,14 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         @param community: The community wherein all requests were received
         @type messages: [Community]
 
-        @param request: A list of requests, each of them being a tuple consisting of the request,
+        @param requests: A list of requests, each of them being a tuple consisting of the request,
          time_low, time_high, offset, and modulo  
-        @type request: list 
+        @type requests: list 
 
         @param include_inactive: When False only active packets (due to pruning) are returned 
         @type include_inactive: bool
+        
+        @return: An interator yielding the original request and an interator consisting of the packet matching the request
         """
 
         assert isinstance(requests, list)
