@@ -300,7 +300,7 @@ class Callback(object):
             else:
                 heappush(self._requests,
                          (delay + time(),
-                          -priority,
+                          - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
@@ -363,7 +363,7 @@ class Callback(object):
                     else:
                         heappush(self._requests,
                                  (delay + time(),
-                                  -priority,
+                                  - priority,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
@@ -418,7 +418,7 @@ class Callback(object):
             else:
                 heappush(self._requests,
                          (delay + time(),
-                          -priority,
+                          - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
@@ -661,6 +661,9 @@ class Callback(object):
                 self._call_exception_handlers(exception, True)
 
             except Exception as exception:
+                from traceback import print_exc
+                print_exc()
+
                 if callback:
                     with self._lock:
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
