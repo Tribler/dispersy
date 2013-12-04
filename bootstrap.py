@@ -49,11 +49,18 @@ class Bootstrap(object):
 
     @staticmethod
     def get_default_addresses():
+        """
+        Returns the predefined default addresses.
+        """
         return _DEFAULT_ADDRESSES
 
     def __init__(self, callback, addresses):
         assert isinstance(callback, Callback), type(callback)
         assert isinstance(addresses, (tuple, list)), type(addresses)
+        assert all(isinstance(address, tuple) for address in addresses), [type(address) for address in addresses]
+        assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
+        assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
+        assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
         self._callback = callback
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
@@ -99,7 +106,7 @@ class Bootstrap(object):
         with self._lock:
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
-    def resolve(self, func, timeout=60.0):
+    def resolve(self, func, timeout=60.0, blocking=False):
         """
         Resolve all unresolved trackers on a separate thread.
 
@@ -111,6 +118,7 @@ class Bootstrap(object):
         """
         assert isinstance(timeout, float), type(timeout)
         assert timeout > 0.0, timeout
+        assert isinstance(blocking, bool), type(blocking)
 
         if self.are_resolved:
             self._callback.register(func, (True,))
@@ -123,6 +131,9 @@ class Bootstrap(object):
             thread.register(self._gethostbyname_in_parallel, (func, timeout))
             thread.register(thread.stop)
             thread.start()
+
+            if blocking:
+                thread.join(timeout)
 
     def _gethostbyname_in_parallel(self, func, timeout):
         def on_timeout():
