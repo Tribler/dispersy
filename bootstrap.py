@@ -7,14 +7,30 @@ from .candidate import BootstrapCandidate
 from .logger import get_logger
 logger = get_logger(__name__)
 
-_DEFAULT_ADDRESSES = ((u"dispersy1.tribler.org", 6421),
-                      (u"dispersy2.tribler.org", 6422),
-                      (u"dispersy3.tribler.org", 6423),
-                      (u"dispersy4.tribler.org", 6424),
-                      (u"dispersy5.tribler.org", 6425),
-                      (u"dispersy6.tribler.org", 6426),
-                      (u"dispersy7.tribler.org", 6427),
-                      (u"dispersy8.tribler.org", 6428))
+# Note that some the following DNS entries point to the same IP addresses.  For example, currently
+# both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
+# DNS entries are resolved only a single BootstrapCandidate is made.  This requires a potential
+# attacker to disrupt the DNS servers for both domains at the same time.
+_DEFAULT_ADDRESSES = (
+    # DNS entries on tribler.org
+    (u"dispersy1.tribler.org", 6421),
+    (u"dispersy2.tribler.org", 6422),
+    (u"dispersy3.tribler.org", 6423),
+    (u"dispersy4.tribler.org", 6424),
+    (u"dispersy5.tribler.org", 6425),
+    (u"dispersy6.tribler.org", 6426),
+    (u"dispersy7.tribler.org", 6427),
+    (u"dispersy8.tribler.org", 6428),
+
+    # DNS entries on st.tudelft.nl
+    (u"dispersy1.st.tudelft.nl", 6421),
+    (u"dispersy2.st.tudelft.nl", 6422),
+    (u"dispersy3.st.tudelft.nl", 6423),
+    (u"dispersy4.st.tudelft.nl", 6424),
+    (u"dispersy5.st.tudelft.nl", 6425),
+    (u"dispersy6.st.tudelft.nl", 6426),
+    (u"dispersy7.st.tudelft.nl", 6427),
+    (u"dispersy8.st.tudelft.nl", 6428))
 
 # 04/12/13 Boudewijn: We are phasing out the dispersy{1-9}b entries.  Note that older clients will
 # still assume these entries exist!
