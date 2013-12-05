@@ -2942,17 +2942,21 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert all(message.community == messages[0].community for message in messages)
         assert all(message.meta == messages[0].meta for message in messages)
 
-        result = False
+        result = True
         meta = messages[0].meta
-        if isinstance(meta.destination, CommunityDestination):
-            # CommunityDestination.node_count is allowed to be zero
-            if meta.destination.node_count > 0:
-                result = all(self._send(list(islice(meta.community.dispersy_yield_verified_candidates(), meta.destination.node_count)), [message]) for message in messages)
-
-        elif isinstance(meta.destination, CandidateDestination):
-            # CandidateDestination.candidates may be empty
-            result = all(self._send(message.destination.candidates, [message]) for message in messages)
-
+        if isinstance(meta.destination, (CommunityDestination, CandidateDestination)):
+            for message in messages:
+                # CandidateDestination.candidates may be empty
+                candidates = set(message.destination.candidates)
+                # CommunityDestination.node_count is allowed to be zero
+                if isinstance(meta.destination, CommunityDestination) and meta.destination.node_count > 0:
+                    max_candidates = meta.destination.node_count + len(candidates)
+                    for candidate in islice(meta.community.dispersy_yield_verified_candidates(), max_candidates):
+                        if len(candidates) < max_candidates:
+                            candidates.add(candidate)
+                        else:
+                            break
+                result = result and self._send(tuple(candidates), [message])
         else:
             raise NotImplementedError(meta.destination)
 
