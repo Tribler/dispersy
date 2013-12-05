@@ -247,12 +247,17 @@ class TrackerDispersy(Dispersy):
         self._silent = silent
         self._my_member = None
 
-        callback.register(self._create_my_member)
-        callback.register(self._load_persistent_storage)
-        callback.register(self._unload_communities)
+    def start(self, timeout=10.0):
+        if super(TrackerDispersy, self).start(timeout):
+            self._create_my_member()
+            self._load_persistent_storage()
+            self._callback.register(self._unload_communities)
 
-        if not self._silent:
-            callback.register(self._report_statistics)
+            if not self._silent:
+                self._callback.register(self._report_statistics)
+
+            return True
+        return False
 
     def _create_my_member(self):
         # generate a new my-member
