@@ -222,7 +222,7 @@ class Callback(object):
                 logger.warning("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
 
         else:
-            logger.warning("keep running regardless of exception [%s]", exception)
+            logger.exception("keep running regardless of exception [%s]", exception)
 
         return fatal
 
