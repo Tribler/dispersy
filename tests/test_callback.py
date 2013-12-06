@@ -140,6 +140,10 @@ class TestCallback(DispersyTestFunc):
     @call_on_dispersy_thread
     def test_call_timeout(self):
         """
+        Tests the timeout feature of Callback.call.
+
+        The Callback.call method can be used from the same thread, or from another thread.  This
+        unit-test tests both these cases.
         """
         def generator_func(count, soft_delay, hard_delay):
             for _ in xrange(count):
