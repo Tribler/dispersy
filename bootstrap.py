@@ -1,6 +1,7 @@
-from socket import gethostbyname, error
-from threading import Lock, Event
 from random import shuffle
+from socket import gethostbyname, error
+from threading import Lock
+from time import time
 
 from .callback import Callback
 from .candidate import BootstrapCandidate
@@ -146,31 +147,24 @@ class Bootstrap(object):
 
             # start a new thread (using Callback to ensure the thread is named properly)
             thread = Callback("Get-Bootstrap-Candidates-%d" % self._thread_counter)
-            thread.register(self._gethostbyname_in_parallel, (func, timeout))
-            thread.register(thread.stop)
             thread.start()
-
             if blocking:
-                thread.join(timeout)
+                thread.call(self._gethostbyname_in_parallel, (func, timeout), timeout=timeout)
+                thread.stop()
+            else:
+                thread.register(self._gethostbyname_in_parallel, (func, timeout))
+                thread.register(thread.stop)
 
     def _gethostbyname_in_parallel(self, func, timeout):
-        def on_timeout():
-            # cancel
-            event.set()
-
-            # report failure
-            self._callback.register(func, (False,))
-
-        event = Event()
+        begin = time()
         success = True
-        on_timeout_id = self._callback.register(on_timeout, delay=timeout)
 
         with self._lock:
             addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
             shuffle(addresses)
 
         for host, port in addresses:
-            if event.is_set():
+            if time() - begin > timeout:
                 # timeout
                 break
 
@@ -186,4 +180,4 @@ class Bootstrap(object):
                 success = False
 
         # indicate results are ready
-        self._callback.replace_register(on_timeout_id, func, (success,))
+        self._callback.register(func, (success,))
