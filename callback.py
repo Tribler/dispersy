@@ -448,7 +448,7 @@ class Callback(object):
                     self._expired_mirror[index] = (tup[0], tup[1], id_, None, None)
                     logger.debug("unregistered %s from _expired", id_)
 
-    def call(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", include_id=False, timeout=0.0, default=None):
+    def call(self, call, args=(), kargs=None, priority=0, id_=u"", include_id=False, timeout=0.0, default=None):
         """
         Register a blocking CALL to be made, waits for the call to finish, and returns or raises the
         result.
@@ -460,7 +460,7 @@ class Callback(object):
         DEFAULT can be anything.  The DEFAULT value is returned when a TIMEOUT occurs.  Note: as of 24/05/13 when
         DEFAULT is an Exception instance it will no longer be raised.
 
-        For the arguments CALL, ARGS, KARGS, DELAY, PRIORITY, ID_, and INCLUDE_ID: see the register(...) method.
+        For the arguments CALL, ARGS, KARGS, PRIORITY, ID_, and INCLUDE_ID: see the register(...) method.
         """
         assert isinstance(timeout, float)
         assert 0.0 <= timeout
@@ -481,7 +481,7 @@ class Callback(object):
         event = Event()
 
         # register the call
-        self.register(call, args, kargs, delay, priority, id_, callback, include_id=include_id)
+        self.register(call, args, kargs, 0.0, priority, id_, callback, include_id=include_id)
 
         if self._thread_ident == get_ident():
             begin = time()
