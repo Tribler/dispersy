@@ -1,4 +1,4 @@
-from socket import gethostbyname
+from socket import gethostbyname, error
 from threading import Lock, Event
 from random import shuffle
 
@@ -181,7 +181,7 @@ class Bootstrap(object):
                 with self._lock:
                     self._candidates[(host, port)] = candidate
 
-            except:
+            except error:
                 logger.exception("unable to obtain BootstrapCandidate(%s, %d)", host, port)
                 success = False
 
