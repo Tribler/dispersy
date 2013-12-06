@@ -44,10 +44,6 @@ class Candidate(object):
     def sock_addr(self):
         return self._sock_addr
 
-    @sock_addr.setter
-    def sock_addr(self, sock_addr):
-        self._sock_addr = sock_addr
-
     @property
     def tunnel(self):
         return self._tunnel
@@ -73,6 +69,8 @@ class Candidate(object):
         """
         return not (isinstance(other, Candidate) and self._sock_addr == other.sock_addr)
 
+    def __hash__(self):
+        return hash(str(self._sock_addr))
 
 class WalkCandidate(Candidate):
 

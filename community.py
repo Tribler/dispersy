@@ -1619,10 +1619,7 @@ class Community(object):
                         # replace candidate
                         del self._candidates[candidate.sock_addr]
                         lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, candidate.lan_address, candidate.wan_address)
-                        candidate.sock_addr = sock_addr
-                        candidate.update(candidate.tunnel, lan_address, wan_address, candidate.connection_type)
-                        self._candidates[candidate.sock_addr] = candidate
-
+                        self._candidates[candidate.sock_addr] = candidate = self.create_candidate(sock_addr, candidate.tunnel, lan_address, wan_address, candidate.connection_type)
                     break
 
             else:
