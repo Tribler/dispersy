@@ -146,7 +146,7 @@ class Bootstrap(object):
             self._thread_counter += 1
 
             # start a new thread (using Callback to ensure the thread is named properly)
-            thread = Callback("Get-Bootstrap-Candidates-%d" % self._thread_counter)
+            thread = Callback("Resolve-%d" % self._thread_counter)
             thread.start()
             if blocking:
                 thread.call(self._gethostbyname_in_parallel, (func, timeout), timeout=timeout)
