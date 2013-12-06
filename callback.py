@@ -484,15 +484,26 @@ class Callback(object):
         self.register(call, args, kargs, delay, priority, id_, callback, include_id=include_id)
 
         if self._thread_ident == get_ident():
-            # TODO timeout is not taken into account right now
+            begin = time()
             while self._one_task():
-                # wait for call to finish
+                # detect if call has finished
                 if event.is_set():
+                    break
+
+                # detect timeout
+                difference = time() - begin
+                if timeout > 0.0 and difference > timeout:
+                    logger.warning("timeout %.2fs occurred after %.2fs during call to %s", timeout, difference, call)
                     break
 
         else:
             # wait for call to finish
             event.wait(None if timeout == 0.0 else timeout)
+            if not event.is_set():
+                # starting Python 2.7 event.wait returns False on timeout while older versions
+                # always return None.  Once Dispersy requires Python 2.7 we should use the return
+                # value of event.wait instead of calling event.is_set.
+                logger.warning("timeout %.2fs occurred during call to %s", timeout, call)
 
         if container[1]:
             if container[2][0] is None:

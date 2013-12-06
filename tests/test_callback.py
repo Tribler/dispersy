@@ -1,3 +1,6 @@
+from time import time, sleep
+from threading import Thread
+
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
@@ -133,3 +136,35 @@ class TestCallback(DispersyTestFunc):
         expecting.append("generator_func(-128)")
         expecting.append("func(0)")
         self.assertEqual(container, expecting)
+
+    @call_on_dispersy_thread
+    def test_call_timeout(self):
+        """
+        """
+        def generator_func(count, soft_delay, hard_delay):
+            for _ in xrange(count):
+                yield soft_delay
+                sleep(hard_delay)
+
+        # add 'noise', i.e. something else the callback should be handling at the same time
+        self._dispersy.callback.register(generator_func, (50, 0.1, 0.5))
+
+        # test on the same thread
+        begin = time()
+        result = self._dispersy.callback.call(generator_func, (1, 2.0, 0.0), timeout=1.0, default="timeout")
+        end = time()
+        self.assertGreaterEqual(end - begin, 1.0)
+        self.assertEqual(result, "timeout")
+
+        # test on a separate thread
+        def separate_thread():
+            begin = time()
+            result = self._dispersy.callback.call(generator_func, (1, 2.0, 0.0), timeout=1.0, default="timeout")
+            end = time()
+            self.assertGreaterEqual(end - begin, 1.0)
+            self.assertEqual(result, "timeout")
+
+        thread = Thread(target=separate_thread)
+        thread.start()
+        thread.join(2.0)
+        self.assertFalse(thread.is_alive())
