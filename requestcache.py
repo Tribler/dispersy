@@ -8,16 +8,48 @@ class Cache(object):
 
     @staticmethod
     def create_identifier():
+        """
+        Create an identifier, preferably unique for each outstanding request cache.
+        """
         raise NotImplementedError()
 
     def __init__(self, identifier):
         assert isinstance(identifier, unicode), type(identifier)
         self._identifier = identifier
+        self._callback_identifier = u""
 
     @property
     def identifier(self):
+        """
+        Returns the identifier.
+
+        The identifier is typically created using the static method Cache.create_identifier() which
+        returns a unicode string.  This string should be unique for each outstanding request cache.
+        """
         assert isinstance(self._identifier, unicode), type(self._identifier)
         return self._identifier
+
+    @property
+    def callback_identifier(self):
+        """
+        Returns the callback identifier.
+
+        The callback identifier is typically set when this Cache is added to a RequestCache using
+        RequestCache.add().  It is a unicode string that is unique to the Callback instance that is
+        assigned to the RequestCache.
+
+        The callback identifier is used to register _on_timeout and _on_cleanup tasks.
+        """
+        assert isinstance(self._callback_identifier, unicode), type(self._callback_identifier)
+        return self._callback_identifier
+
+    @callback_identifier.setter
+    def callback_identifier(self, callback_identifier):
+        """
+        Sets the callback identifier, see the callback_identifier getter.
+        """
+        assert isinstance(callback_identifier, unicode), type(callback_identifier)
+        self._callback_identifier = callback_identifier
 
     @property
     def timeout_delay(self):
@@ -96,7 +128,7 @@ class RequestCache(object):
         else:
             logger.debug("add %s", cache)
             self._identifiers[cache.identifier] = cache
-            self._callback.register(self._on_timeout, (cache,), id_=cache.identifier, delay=cache.timeout_delay)
+            cache.callback_identifier = self._callback.register(self._on_timeout, (cache,), delay=cache.timeout_delay)
             return cache
 
     def replace(self, cache):
@@ -115,7 +147,7 @@ class RequestCache(object):
         self._identifiers[cache.identifier] = cache
         # 2013/07/23 Boudewijn: there appeared to be a bug with the delay parameter, it was using cleanup_delay instead
         # of timeout_delay
-        self._callback.replace_register(cache.identifier, self._on_timeout, (cache,), delay=cache.timeout_delay)
+        self._callback.replace_register(cache.callback_identifier, self._on_timeout, (cache,), delay=cache.timeout_delay)
         return cache
 
     def has(self, identifier):
@@ -149,7 +181,7 @@ class RequestCache(object):
             logger.debug("cancel timeout for %s", cache)
 
             if cache.cleanup_delay:
-                self._callback.replace_register(identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
+                self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
 
             else:
                 self._callback.unregister(identifier)
@@ -179,7 +211,7 @@ class RequestCache(object):
         cache.on_timeout()
 
         if cache.cleanup_delay:
-            self._callback.replace_register(cache.identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
+            self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
 
         else:
             del self._identifiers[cache.identifier]
