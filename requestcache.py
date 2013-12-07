@@ -184,7 +184,7 @@ class RequestCache(object):
                 self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
 
             else:
-                self._callback.unregister(identifier)
+                self._callback.unregister(cache.callback_identifier)
                 del self._identifiers[identifier]
 
             return cache
