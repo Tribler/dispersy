@@ -2951,7 +2951,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 # CommunityDestination.node_count is allowed to be zero
                 if isinstance(meta.destination, CommunityDestination) and meta.destination.node_count > 0:
                     max_candidates = meta.destination.node_count + len(candidates)
-                    for candidate in islice(meta.community.dispersy_yield_verified_candidates(), max_candidates):
+                    for candidate in meta.community.dispersy_yield_verified_candidates():
                         if len(candidates) < max_candidates:
                             candidates.add(candidate)
                         else:
