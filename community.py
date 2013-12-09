@@ -1644,6 +1644,7 @@ class Community(object):
 
     def add_candidate(self, candidate):
         if not isinstance(candidate, BootstrapCandidate):
+            assert isinstance(candidate, WalkCandidate), type(candidate)
             assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
 
             if candidate.sock_addr not in self._candidates:
