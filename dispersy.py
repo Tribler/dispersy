@@ -482,11 +482,12 @@ class Dispersy(object):
             for counter in count(1):
                 logger.warning("resolving bootstrap addresses (attempt #%d)", counter)
                 bootstrap.resolve(on_results)
-                if bootstrap.are_resolved:
-                    break
 
                 # delay should be larger than the timeout used for bootstrap.resolve()
                 yield 300.0
+
+                if bootstrap.are_resolved:
+                    break
 
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
