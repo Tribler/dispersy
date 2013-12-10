@@ -2349,12 +2349,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
                     # verify that the bloom filter is correct
                     try:
-                        packets = [str(packet) for packet, in self._database.execute(u"""
-SELECT sync.packet
-FROM sync
-JOIN meta_message ON meta_message.id = sync.meta_message
-WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND global_time BETWEEN ? AND ? AND (sync.global_time + ?) % ? = 0""",
-                                                                                     (community.database_id, time_low, community.global_time if time_high == 0 else time_high, offset, modulo))]
+                        _, packets = self._get_packets_for_bloomfilters(community, [[None, time_low, community.global_time if time_high == 0 else time_high, offset, modulo]], include_inactive=True).next()
+                        packets = list(packets)
+
                     except OverflowError:
                         logger.error("time_low:  %d", time_low)
                         logger.error("time_high: %d", time_high)
@@ -2501,10 +2498,65 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         #
         # process the bloom filter part of the request
         #
+        messages_with_sync = []
+        for message in messages:
+            payload = message.payload
+            candidate = message.candidate
+            if not candidate:
+                continue
 
-        if not any(message.payload.sync for message in messages):
-            # no sync needed
-            return
+            if payload.sync:
+                # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause
+                # overflow exceptions in the sqlite3 wrapper
+
+                # 11/11/13 Niels: according to http://www.sqlite.org/datatype3.html integers are signed and max
+                # 8 bytes, hence the max value is 2 ** 63 - 1 as one bit is used for the sign
+                time_low = min(payload.time_low, 2 ** 63 - 1)
+                time_high = min(payload.time_high if payload.has_time_high else community.global_time, 2 ** 63 - 1)
+
+                offset = long(payload.offset)
+                modulo = long(payload.modulo)
+
+                messages_with_sync.append((message, time_low, time_high, offset, modulo))
+
+        if messages_with_sync:
+            for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
+                # we limit the response by byte_limit bytes
+                byte_limit = community.dispersy_sync_response_limit
+
+                packets = []
+                for packet, in payload.bloom_filter.not_filter(generator):
+                    packets.append(packet)
+                    byte_limit -= len(packet)
+                    if byte_limit <= 0:
+                        logger.debug("bandwidth throttle")
+                        break
+
+                if packets:
+                    logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
+                    self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
+                    self._endpoint.send([message.candidate], packets)
+
+    def _get_packets_for_bloomfilters(self, community, requests, include_inactive=True):
+        """
+        Return all packets matching a Bloomfilter request
+        
+        @param community: The community wherein all requests were received
+        @type messages: [Community]
+
+        @param requests: A list of requests, each of them being a tuple consisting of the request,
+         time_low, time_high, offset, and modulo  
+        @type requests: list 
+
+        @param include_inactive: When False only active packets (due to pruning) are returned 
+        @type include_inactive: bool
+        
+        @return: An generator yielding the original request and a generator consisting of the packets matching the request
+        """
+
+        assert isinstance(requests, list)
+        assert all(isinstance(request, (list, tuple)) for request in requests)
+        assert all(len(request) == 5 for request in requests)
 
         def get_sub_select(meta):
             direction = meta.distribution.synchronization_direction
@@ -2542,44 +2594,19 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND 
         sql = "".join((u"SELECT * FROM (", " UNION ALL ".join(get_sub_select(meta) for meta in meta_messages), ")"))
         logger.debug(sql)
 
-        for message in messages:
-            payload = message.payload
-            if not message.candidate:
-                continue
+        for message, time_low, time_high, offset, modulo in requests:
+            sql_arguments = []
+            for meta in meta_messages:
+                if include_inactive:
+                    _time_low = time_low
+                else:
+                    _time_low = min(max(time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 - 1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else time_low
 
-            if payload.sync:
-                # we limit the response by byte_limit bytes
-                byte_limit = community.dispersy_sync_response_limit
-                time_high = payload.time_high if payload.has_time_high else community.global_time
+                sql_arguments.extend((meta.database_id, _time_low, time_high, offset, modulo))
+            logger.debug("%s", sql_arguments)
 
-                # 07/05/12 Boudewijn: for an unknown reason values larger than 2^63-1 cause
-                # overflow exceptions in the sqlite3 wrapper
-                # 26/02/13 Boudewijn: time_low and time_high must now be given once for every
-                # sub_selects, taking into account that time_low may not be below the
-                # inactive_threshold (if given)
-                sql_arguments = []
-                for meta in meta_messages:
-                    sql_arguments.extend((meta.database_id,
-                                          min(max(payload.time_low, community.global_time - meta.distribution.pruning.inactive_threshold + 1), 2 ** 63 - 1) if isinstance(meta.distribution.pruning, GlobalTimePruning) else min(payload.time_low, 2 ** 63 - 1),
-                                          min(time_high, 2 ** 63 - 1),
-                                          long(payload.offset),
-                                          long(payload.modulo)))
-                logger.debug("%s", sql_arguments)
-
-                packets = []
-                generator = ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
-
-                for packet, in payload.bloom_filter.not_filter(generator):
-                    packets.append(packet)
-                    byte_limit -= len(packet)
-                    if byte_limit <= 0:
-                        logger.debug("bandwidth throttle")
-                        break
-
-                if packets:
-                    logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
-                    self._statistics.dict_inc(self._statistics.outgoing, u"-sync-", len(packets))
-                    self._endpoint.send([message.candidate], packets)
+            packets = []
+            yield message, ((str(packet),) for packet, in self._database.execute(sql, sql_arguments))
 
     def check_introduction_response(self, messages):
         community = messages[0].community

@@ -213,7 +213,8 @@ class RequestCache(object):
         if cache.cleanup_delay:
             self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
 
-        else:
+        # the on_timeout call could have already removed the identifier from the cache using pop
+        elif cache.identifier in self._identifiers:
             del self._identifiers[cache.identifier]
 
     def _on_cleanup(self, cache):
@@ -233,5 +234,8 @@ class RequestCache(object):
 
         logger.debug("cleanup on %s", cache)
         cache.on_cleanup()
-        del self._identifiers[cache.identifier]
+
+        # the on_cleanup call could have already removed the identifier from the cache using pop
+        if cache.identifier in self._identifiers:
+            del self._identifiers[cache.identifier]
 

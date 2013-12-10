@@ -298,7 +298,7 @@ class Callback(object):
             else:
                 heappush(self._requests,
                          (delay + time(),
-                          -priority,
+                          - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
@@ -361,7 +361,7 @@ class Callback(object):
                     else:
                         heappush(self._requests,
                                  (delay + time(),
-                                  -priority,
+                                  - priority,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
@@ -416,7 +416,7 @@ class Callback(object):
             else:
                 heappush(self._requests,
                          (delay + time(),
-                          -priority,
+                          - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
