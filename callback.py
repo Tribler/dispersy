@@ -661,9 +661,6 @@ class Callback(object):
                 self._call_exception_handlers(exception, True)
 
             except Exception as exception:
-                from traceback import print_exc
-                print_exc()
-
                 if callback:
                     with self._lock:
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
