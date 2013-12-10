@@ -83,7 +83,7 @@ class NumberCache(Cache):
     def __init__(self, request_cache, *create_identifier_args):
         # find an unclaimed identifier
         while True:
-            number = self.create_number()
+            number = self.create_number(*create_identifier_args)
             identifier = self.create_identifier(number, *create_identifier_args)
             if not request_cache.has(identifier):
                 super(NumberCache, self).__init__(identifier)
