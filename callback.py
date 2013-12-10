@@ -203,8 +203,8 @@ class Callback(object):
             try:
                 if exception_handler(exception, fatal):
                     force_fatal = True
-            except Exception as exception:
-                logger.exception("%s in %s", exception, exception_handler)
+            except Exception as sub_exception:
+                logger.exception("caught exception [%s] in exception handler %s", sub_exception, exception_handler)
                 assert False, "the exception handler should not cause an exception"
 
         if fatal or force_fatal:
@@ -223,8 +223,6 @@ class Callback(object):
 
         else:
             logger.warning("keep running regardless of exception [%s]", exception)
-
-        return fatal
 
     def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", callback=None, callback_args=(), callback_kargs=None, include_id=False):
         """
@@ -669,9 +667,12 @@ class Callback(object):
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (None,) + callback[1], callback[2]), None))
 
             except (SystemExit, KeyboardInterrupt, GeneratorExit) as exception:
+                logger.exception("fatal exception occurred [%s]", exception)
                 self._call_exception_handlers(exception, True)
 
             except Exception as exception:
+                logger.exception("non-fatal exception occurred [%s]", exception)
+
                 if callback:
                     with self._lock:
                         heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))

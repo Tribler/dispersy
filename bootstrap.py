@@ -1,29 +1,46 @@
-from socket import gethostbyname
-from threading import Lock, Event
 from random import shuffle
+from socket import gethostbyname, error
+from threading import Lock
+from time import time
 
 from .callback import Callback
 from .candidate import BootstrapCandidate
 from .logger import get_logger
 logger = get_logger(__name__)
 
-_DEFAULT_ADDRESSES = ((u"dispersy1.tribler.org", 6421),
-                      (u"dispersy2.tribler.org", 6422),
-                      (u"dispersy3.tribler.org", 6423),
-                      (u"dispersy4.tribler.org", 6424),
-                      (u"dispersy5.tribler.org", 6425),
-                      (u"dispersy6.tribler.org", 6426),
-                      (u"dispersy7.tribler.org", 6427),
-                      (u"dispersy8.tribler.org", 6428),
+# Note that some the following DNS entries point to the same IP addresses.  For example, currently
+# both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
+# DNS entries are resolved only a single BootstrapCandidate is made.  This requires a potential
+# attacker to disrupt the DNS servers for both domains at the same time.
+_DEFAULT_ADDRESSES = (
+    # DNS entries on tribler.org
+    (u"dispersy1.tribler.org", 6421),
+    (u"dispersy2.tribler.org", 6422),
+    (u"dispersy3.tribler.org", 6423),
+    (u"dispersy4.tribler.org", 6424),
+    (u"dispersy5.tribler.org", 6425),
+    (u"dispersy6.tribler.org", 6426),
+    (u"dispersy7.tribler.org", 6427),
+    (u"dispersy8.tribler.org", 6428),
 
-                      (u"dispersy1b.tribler.org", 6421),
-                      (u"dispersy2b.tribler.org", 6422),
-                      (u"dispersy3b.tribler.org", 6423),
-                      (u"dispersy4b.tribler.org", 6424),
-                      (u"dispersy5b.tribler.org", 6425),
-                      (u"dispersy6b.tribler.org", 6426),
-                      (u"dispersy7b.tribler.org", 6427),
-                      (u"dispersy8b.tribler.org", 6428))
+    # DNS entries on st.tudelft.nl
+    (u"dispersy1.st.tudelft.nl", 6421),
+    (u"dispersy2.st.tudelft.nl", 6422),
+    (u"dispersy5.st.tudelft.nl", 6425),
+    (u"dispersy6.st.tudelft.nl", 6426),
+    (u"dispersy7.st.tudelft.nl", 6427),
+    (u"dispersy8.st.tudelft.nl", 6428))
+
+# 04/12/13 Boudewijn: We are phasing out the dispersy{1-9}b entries.  Note that older clients will
+# still assume these entries exist!
+# (u"dispersy1b.tribler.org", 6421),
+# (u"dispersy2b.tribler.org", 6422),
+# (u"dispersy3b.tribler.org", 6423),
+# (u"dispersy4b.tribler.org", 6424),
+# (u"dispersy5b.tribler.org", 6425),
+# (u"dispersy6b.tribler.org", 6426),
+# (u"dispersy7b.tribler.org", 6427),
+# (u"dispersy8b.tribler.org", 6428),
 
 # _DEFAULT_ADDRESSES = _DEFAULT_ADDRESSES + tuple((u"rotten.dns.entry%d.org" % i, 1234) for i in xrange(8))
 
@@ -49,11 +66,18 @@ class Bootstrap(object):
 
     @staticmethod
     def get_default_addresses():
+        """
+        Returns the predefined default addresses.
+        """
         return _DEFAULT_ADDRESSES
 
     def __init__(self, callback, addresses):
         assert isinstance(callback, Callback), type(callback)
         assert isinstance(addresses, (tuple, list)), type(addresses)
+        assert all(isinstance(address, tuple) for address in addresses), [type(address) for address in addresses]
+        assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
+        assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
+        assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
         self._callback = callback
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
@@ -99,7 +123,7 @@ class Bootstrap(object):
         with self._lock:
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
-    def resolve(self, func, timeout=60.0):
+    def resolve(self, func, timeout=60.0, blocking=False):
         """
         Resolve all unresolved trackers on a separate thread.
 
@@ -111,6 +135,7 @@ class Bootstrap(object):
         """
         assert isinstance(timeout, float), type(timeout)
         assert timeout > 0.0, timeout
+        assert isinstance(blocking, bool), type(blocking)
 
         if self.are_resolved:
             self._callback.register(func, (True,))
@@ -119,30 +144,27 @@ class Bootstrap(object):
             self._thread_counter += 1
 
             # start a new thread (using Callback to ensure the thread is named properly)
-            thread = Callback("Get-Bootstrap-Candidates-%d" % self._thread_counter)
-            thread.register(self._gethostbyname_in_parallel, (func, timeout))
-            thread.register(thread.stop)
+            thread = Callback("Resolve-%d" % self._thread_counter)
             thread.start()
+            if blocking:
+                thread.call(self._gethostbyname_in_parallel, (func, timeout), timeout=timeout)
+                thread.stop()
+            else:
+                thread.register(self._gethostbyname_in_parallel, (func, timeout))
+                thread.register(thread.stop)
 
     def _gethostbyname_in_parallel(self, func, timeout):
-        def on_timeout():
-            # cancel
-            event.set()
-
-            # report failure
-            self._callback.register(func, (False,))
-
-        event = Event()
+        begin = time()
         success = True
-        on_timeout_id = self._callback.register(on_timeout, delay=timeout)
 
         with self._lock:
             addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
             shuffle(addresses)
 
         for host, port in addresses:
-            if event.is_set():
+            if time() - begin > timeout:
                 # timeout
+                success = False
                 break
 
             try:
@@ -152,9 +174,9 @@ class Bootstrap(object):
                 with self._lock:
                     self._candidates[(host, port)] = candidate
 
-            except:
+            except error:
                 logger.exception("unable to obtain BootstrapCandidate(%s, %d)", host, port)
                 success = False
 
         # indicate results are ready
-        self._callback.replace_register(on_timeout_id, func, (success,))
+        self._callback.register(func, (success,))
