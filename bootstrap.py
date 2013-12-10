@@ -166,6 +166,7 @@ class Bootstrap(object):
         for host, port in addresses:
             if time() - begin > timeout:
                 # timeout
+                success = False
                 break
 
             try:
