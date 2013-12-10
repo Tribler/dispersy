@@ -405,9 +405,22 @@ class Dispersy(object):
                 return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
 
         for interface in netifaces.interfaces():
-            addresses = netifaces.ifaddresses(interface)
-            for option in addresses.get(netifaces.AF_INET, []):
-                yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+            try:
+                addresses = netifaces.ifaddresses(interface)
+
+            except ValueError:
+                # some interfaces are given that are invalid, we encountered one called ppp0
+                pass
+
+            else:
+                for option in addresses.get(netifaces.AF_INET, []):
+                    try:
+                        yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+
+                    except TypeError:
+                        # some interfaces have no netmask configured, causing a TypeError when
+                        # trying to unpack _l_netmask
+                        pass
 
     @staticmethod
     def _guess_lan_address(interfaces, default=None):
