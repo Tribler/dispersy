@@ -26,8 +26,6 @@ _DEFAULT_ADDRESSES = (
     # DNS entries on st.tudelft.nl
     (u"dispersy1.st.tudelft.nl", 6421),
     (u"dispersy2.st.tudelft.nl", 6422),
-    (u"dispersy3.st.tudelft.nl", 6423),
-    (u"dispersy4.st.tudelft.nl", 6424),
     (u"dispersy5.st.tudelft.nl", 6425),
     (u"dispersy6.st.tudelft.nl", 6426),
     (u"dispersy7.st.tudelft.nl", 6427),
