@@ -4585,18 +4585,21 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         This method is thread safe.
 
-        1. unload all communities
+        1. stops callback
+           a. new tasks are no longer accepted
+           b. flushes existing tasks
+           c. stops existing generators
+        2. unload all communities
            in reverse define_auto_load order, starting with all undefined communities
-        2. closes endpoint
-        3. closes database
-        4. stops callback
+        3. closes endpoint
+        4. closes database
 
-        Returns True when all above steps were successfully completed, otherwise False is returned.
+        Returns False when Dispersy isn't running, i.e. not callback.is_running, or when one of the
+        above steps fails.  Otherwise True is returned.
+
         Note that attempts will be made to process each step, even if one or more steps fail.  For
-        example, when 'close endpoint' reports a failure the databases and callback will still be
-        closed and stopped.
+        example, when 'close endpoint' reports a failure the databases still be closed.
         """
-        assert self._callback.is_running, "Must be called before the callback.stop()"
         assert isinstance(timeout, float), type(timeout)
         assert 0.0 <= timeout, timeout
 
@@ -4626,67 +4629,39 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             return True
 
         def stop():
-            # stop periodic tasks
-            for callback_id in self._pending_callbacks.itervalues():
-                self._callback.unregister(callback_id)
-
             # unload all communities
-            results.append((u"community", ordered_unload_communities()))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+            results[u"community"] = ordered_unload_communities()
 
             # stop endpoint
-            results.append((u"endpont", self._endpoint.close(timeout)))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-
-            # Murphy tells us that endpoint just added tasks that caused new communities to load
-            while True:
-                # because this task has a very low priority, yielding 0.0 will wait until other
-                # tasks have finished
-                if timeout > 0.0:
-                    yield 0.0
-
-                if not (self._batch_cache or self._communities):
-                    break
-
-                logger.debug("Murphy was right!  There are %d batches left.  There are %d communities left", len(self._batch_cache), len(self._communities))
-
-                # force remove incoming messages
-                for task_identifier, _, _ in self._batch_cache.itervalues():
-                    self._callback.unregister(task_identifier)
-                self._batch_cache.clear()
-
-                # unload all communities
-                results.append((u"community", ordered_unload_communities()))
-                assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+            results[u"endpoint"] = self._endpoint.close(timeout)
 
             # stop the database
-            results.append((u"database", self._database.close()))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+            results[u"database"] = self._database.close()
 
-        # output statistics before we stop
-        if logger.isEnabledFor(logging.DEBUG):
-            self._statistics.update()
-            logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
+        if self._callback.is_running:
+            # output statistics before we stop
+            if logger.isEnabledFor(logging.DEBUG):
+                self._statistics.update()
+                logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
 
-        logger.info("stopping the Dispersy core...")
-        results = []
-        self._callback.call(stop, priority= -512)
+            logger.info("stopping the Dispersy core...")
+            results = {u"callback":None, u"community":None, u"endpoint":None, u"database":None}
+            results[u"callback"] = self._callback.stop(timeout, final_func=stop)
 
-        if self._callback.is_current_thread:
-            # the result from _callback.stop will always be False since it can not stop a thread
-            # that we are currently on
-            self._callback.stop(timeout)
+            if not self._callback.is_current_thread:
+                self._callback.join(timeout)
+
+            # log and return the result
+            if all(result for result in results.itervalues()):
+                logger.info("Dispersy core properly stopped")
+                return True
+
+            else:
+                logger.error("Dispersy core unable to stop all components [%s]", results)
+                return False
+
         else:
-            results.append((u"callback", self._callback.stop(timeout)))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-
-        # log and return the result
-        if all(result for _, result in results):
-            logger.info("Dispersy core properly stopped")
-            return True
-
-        else:
-            logger.error("Dispersy core unable to stop all components [%s]", ", ".join("{0}:{1}".format(*result) for result in results))
+            logger.warning("Dispersy is already stopping, ignoring second call to Dispersy.stop()")
             return False
 
     def _candidate_walker(self):
