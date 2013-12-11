@@ -2350,7 +2350,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     # verify that the bloom filter is correct
                     try:
                         _, packets = self._get_packets_for_bloomfilters(community, [[None, time_low, community.global_time if time_high == 0 else time_high, offset, modulo]], include_inactive=True).next()
-                        packets = list(packets)
+                        packets = [packet for packet, in packets]
 
                     except OverflowError:
                         logger.error("time_low:  %d", time_low)
