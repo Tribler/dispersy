@@ -4648,9 +4648,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             results = {u"callback":None, u"community":None, u"endpoint":None, u"database":None}
             results[u"callback"] = self._callback.stop(timeout, final_func=stop)
 
-            if not self._callback.is_current_thread:
-                self._callback.join(timeout)
-
             # log and return the result
             if all(result for result in results.itervalues()):
                 logger.info("Dispersy core properly stopped")
