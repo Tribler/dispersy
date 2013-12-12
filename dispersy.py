@@ -1866,7 +1866,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         sort_key = lambda tup: (tup[0].batch.priority, tup[0])  # meta, address, packet, conversion
         groupby_key = lambda tup: tup[0]  # meta, address, packet, conversion
         for meta, iterator in groupby(sorted(self._convert_packets_into_batch(packets), key=sort_key), key=groupby_key):
-            batch = [(meta.community.candidates.get(candidate.sock_addr) or self._bootstrap_candidates.get(candidate.sock_addr) or candidate, packet, conversion)
+            batch = [(meta.community.get_candidate(candidate.sock_addr) or candidate, packet, conversion)
                      for _, candidate, packet, conversion
                      in iterator]
 
