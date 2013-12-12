@@ -1024,8 +1024,8 @@ class NoDefBinaryConversion(Conversion):
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_member_authentication_signature(self, container, message, sign):
         assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
+        data = "".join(container)
         if sign:
-            data = "".join(container)
             signature = message.authentication.member.sign(data)
             message.authentication.set_signature(signature)
             return data + signature
