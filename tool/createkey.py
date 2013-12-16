@@ -21,9 +21,9 @@ from M2Crypto import EC
 # main module of a Python application should always use absolute imports.
 from dispersy.crypto import ECCrypto
 
-def ec_name(curve):
+def ec_name(eccrypto, curve):
     assert isinstance(curve, unicode)
-    curve_id = ECCrypto._CURVES[curve]
+    curve_id = eccrypto._CURVES[curve]
 
     for name in dir(EC):
         value = getattr(EC, name)
@@ -41,7 +41,7 @@ def create_key(eccrypto, curves):
         public_bin = eccrypto.key_to_public_bin(ec)
         private_bin = eccrypto.key_to_private_bin(ec)
         print "generated:", time.ctime()
-        print "curve:", ec_name(curve)
+        print "curve:", ec_name(eccrypto, curve)
         print "len:", len(ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
         print "pub:", len(public_bin), public_bin.encode("HEX")
         print "prv:", len(private_bin), private_bin.encode("HEX")
@@ -61,7 +61,7 @@ def main():
                         help="EC curves to create")
     args = parser.parse_args()
 
-    create_key(unicode(curve) for curve in args.curves)
+    create_key(eccrypto, (unicode(curve) for curve in args.curves))
 
 if __name__ == "__main__":
     main()
