@@ -73,7 +73,6 @@ class NumberCache(Cache):
 
     @staticmethod
     def create_identifier(number):
-        assert isinstance(number, int), type(number)
         raise NotImplementedError()
 
     @staticmethod
@@ -84,6 +83,8 @@ class NumberCache(Cache):
         # find an unclaimed identifier
         while True:
             number = self.create_number(*create_identifier_args)
+            assert isinstance(number, (int, long)), type(number)
+
             identifier = self.create_identifier(number, *create_identifier_args)
             if not request_cache.has(identifier):
                 super(NumberCache, self).__init__(identifier)
@@ -92,7 +93,6 @@ class NumberCache(Cache):
 
     @property
     def number(self):
-        assert isinstance(self._number, int), type(self._number)
         return self._number
 
 
