@@ -60,7 +60,7 @@ from .authentication import NoAuthentication, MemberAuthentication, DoubleMember
 from .bloomfilter import BloomFilter
 from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
-from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
@@ -272,7 +272,7 @@ class Dispersy(object):
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
     outgoing data for, possibly, multiple communities.
     """
-    def __init__(self, callback, endpoint, working_directory, database_filename=u"dispersy.db"):
+    def __init__(self, callback, endpoint, working_directory, database_filename=u"dispersy.db", crypto=ECCrypto()):
         """
         Initialise a Dispersy instance.
 
@@ -292,6 +292,7 @@ class Dispersy(object):
         assert isinstance(endpoint, Endpoint), type(endpoint)
         assert isinstance(working_directory, unicode), type(working_directory)
         assert isinstance(database_filename, unicode), type(database_filename)
+        assert isinstance(crypto, DispersyCrypto), type(crypto)
         super(Dispersy, self).__init__()
 
         # the thread we will be using
@@ -324,6 +325,8 @@ class Dispersy(object):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
         self._database = DispersyDatabase(database_filename)
+
+        self._crypto = crypto
 
         # indicates what our connection type is.  currently it can be u"unknown", u"public", or
         # u"symmetric-NAT"
@@ -627,6 +630,14 @@ class Dispersy(object):
         return self._database
 
     @property
+    def crypto(self):
+        """
+        The Dispersy crypto singleton.
+        @rtype: DispersyCrypto
+        """
+        return self._crypto
+
+    @property
     def statistics(self):
         """
         The Statistics instance.
@@ -798,13 +809,13 @@ class Dispersy(object):
 
         return member
 
-    def get_new_member(self, curve=u"medium"):
+    def get_new_member(self, securitylevel=u"medium"):
         """
         Returns a Member instance created from a newly generated public key.
         """
-        assert isinstance(curve, unicode), type(curve)
-        ec = ec_generate_key(curve)
-        return self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        assert isinstance(securitylevel, unicode), type(securitylevel)
+        key = self.crypto.generate_key(securitylevel)
+        return self.get_member(self.crypto.key_to_public_bin(key), self.crypto.key_to_private_bin(key))
 
     def get_temporary_member_from_id(self, mid):
         """

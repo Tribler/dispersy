@@ -1,12 +1,7 @@
 from hashlib import sha1
 
-from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
 from .logger import get_logger
 logger = get_logger(__name__)
-
-
-if __debug__:
-    from .crypto import ec_check_public_bin, ec_check_private_bin
 
 
 class DummyMember(object):
@@ -115,8 +110,8 @@ class Member(DummyMember):
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), public_key.encode("HEX")
-        assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
+        assert dispersy.crypto.is_valid_public_bin(public_key), public_key.encode("HEX")
+        assert private_key == "" or dispersy.crypto.is_valid_private_bin(private_key), private_key.encode("HEX")
 
         database = dispersy.database
         mid = sha1(public_key).digest()
@@ -141,7 +136,7 @@ class Member(DummyMember):
         try:
             private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
             private_key_from_db = str(private_key_from_db)
-            assert ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+            assert dispersy.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
         except StopIteration:
             private_key_from_db = ""
@@ -152,13 +147,14 @@ class Member(DummyMember):
         elif private_key_from_db:
             private_key = private_key_from_db
 
+        self._crypto = dispersy.crypto
         self._database = database
         self._database_id = database_id
         self._mid = mid
         self._public_key = public_key
         self._private_key = private_key
-        self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
-        self._signature_length = ec_signature_length(self._ec)
+        self._ec = self._crypto.key_from_private_bin(private_key) if private_key else self._crypto.key_from_public_bin(public_key)
+        self._signature_length = self._crypto.get_signature_length(self._ec)
         self._tags = [tag for tag in tags.split(",") if tag]
         self._has_identity = set()
 
@@ -201,7 +197,7 @@ class Member(DummyMember):
         assert isinstance(private_key, str)
         assert self._private_key == ""
         self._private_key = private_key
-        self._ec = ec_from_private_bin(private_key)
+        self._ec = self._crypto.key_from_private_bin(private_key)
         self._database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
 
     def has_identity(self, community):
@@ -296,7 +292,7 @@ class Member(DummyMember):
 
         return self._public_key and \
             self._signature_length == len(signature) \
-            and ec_verify(self._ec, sha1(data[offset:offset + length]).digest(), signature)
+            and self._crypto.is_valid_signature(self._ec, sha1(data[offset:offset + length]).digest(), signature)
 
     def sign(self, data, offset=0, length=0):
         """
@@ -318,7 +314,7 @@ class Member(DummyMember):
             raise ValueError("LENGTH is larger than the available DATA")
 
         if self._private_key:
-            return ec_sign(self._ec, sha1(data[offset:offset + length]).digest())
+            return self._crypto.create_signature(self._ec, sha1(data[offset:offset + length]).digest())
         else:
             raise RuntimeError("unable to sign data without the private key")
 
