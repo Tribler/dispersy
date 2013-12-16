@@ -86,6 +86,16 @@ class DebugCommunity(Community):
         self._dispersy.store_update_forward([message], store, update, forward)
         return message
 
+    def create_targeted_full_sync_text(self, text, candidates, store=True, update=True, forward=True):
+        meta = self.get_meta_message(u"full-sync-text")
+        message = meta.impl(authentication=(self._my_member,),
+                            distribution=(self.claim_global_time(),),
+                            payload=(text,),
+                            destination=candidates,
+                        )
+        self._dispersy.store_update_forward([message], store, update, forward)
+        return message
+
     def create_full_sync_global_time_pruning_text(self, text, store=True, update=True, forward=True):
         meta = self.get_meta_message(u"full-sync-global-time-pruning-text")
         message = meta.impl(authentication=(self._my_member,),
