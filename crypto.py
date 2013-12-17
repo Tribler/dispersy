@@ -88,7 +88,7 @@ class ECCrypto(DispersyCrypto):
         Returns the names of all available curves.
         @rtype: [unicode]
         """
-        return self._CURVES.keys()
+        return _CURVES.keys()
 
     def generate_key(self, security):
         """
@@ -108,7 +108,7 @@ class ECCrypto(DispersyCrypto):
         @type security: unicode
         """
         assert isinstance(security, unicode)
-        assert security in self._CURVES
+        assert security in _CURVES
 
         ec = EC.gen_params(_CURVES[security])
         ec.gen_key()
