@@ -50,7 +50,6 @@ logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
-from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger, get_context_filter
@@ -261,8 +260,8 @@ class TrackerDispersy(Dispersy):
 
     def _create_my_member(self):
         # generate a new my-member
-        ec = ec_generate_key(u"very-low")
-        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        ec = self._dispersy.crypto.generate_key(u"very-low")
+        self._my_member = self.get_member(self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
 
     @property
     def persistent_storage_filename(self):
