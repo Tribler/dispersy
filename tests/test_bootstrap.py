@@ -1,6 +1,6 @@
 from os import environ, getcwd, path
 from socket import getfqdn
-from subprocess import Popen
+from subprocess import Popen, PIPE, STDOUT
 from time import time
 from unittest import skip, skipUnless
 
@@ -10,6 +10,7 @@ from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from threading import Thread
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
 
@@ -37,7 +38,17 @@ class TestBootstrapServers(DispersyTestFunc):
                 "--port", str(tracker_address[1]),
                 "--log-identifier", "tracker"]
         logger.debug("start tracker %s", args)
-        tracker = Popen(args, cwd=tracker_path)
+
+        def logstream(stream, loggercb):
+            while True:
+                out = stream.readline()
+                if out:
+                    loggercb(out.rstrip())
+                else:
+                    break
+        tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT)
+        logging_thread = Thread(target=logstream, args=(tracker.stdout, lambda s: logger.error(s)))
+        logging_thread.start()
 
         # can take a few seconds to start on older machines (or when running on a remote file
         # system)
@@ -75,7 +86,7 @@ class TestBootstrapServers(DispersyTestFunc):
         finally:
             yield 0.1
             logger.debug("terminate tracker")
-            tracker.terminate() # sends SIGTERM
+            tracker.terminate()  # sends SIGTERM
             tracker.wait()
             self.assertEqual(tracker.returncode, 0)
 
