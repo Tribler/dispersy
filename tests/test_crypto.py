@@ -2,7 +2,6 @@ from hashlib import sha1
 from unittest import TestCase
 
 from ..crypto import ECCrypto
-
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -15,6 +14,10 @@ class TestLowLevelCrypto(TestCase):
     def setUp(self):
         TestCase.setUp(self)
         self.crypto = ECCrypto()
+
+    def tearDown(self):
+        TestCase.tearDown(self)
+        del self.crypto
 
     def test_sign_and_verify(self):
         """
