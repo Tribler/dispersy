@@ -47,7 +47,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 else:
                     break
         tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT)
-        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream, args=(tracker.stdout, lambda s: logger.info("tracker is printing: " + s)))
+        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream, args=(tracker.stdout, lambda s: logger.error("tracker is printing: " + s)))
         tracker_logging_thread.start()
 
         # can take a few seconds to start on older machines (or when running on a remote file
