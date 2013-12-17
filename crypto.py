@@ -1,6 +1,20 @@
 from math import ceil
 from struct import Struct
 
+from M2Crypto import EC, BIO
+_STRUCT_L = Struct(">L")
+
+# Allow all available curves.
+# Niels: 16-12-2013, if it starts with NID_
+_CURVES = dict((unicode(curve), getattr(EC, curve)) for curve in dir(EC) if curve.startswith("NID_"))
+
+# We want to provide a few default curves.  We will change these curves as new become available and
+# old ones to small to provide sufficient security.
+_CURVES.update({u"very-low": EC.NID_sect163k1,
+                u"low": EC.NID_sect233k1,
+                u"medium": EC.NID_sect409k1,
+                u"high": EC.NID_sect571r1})
+
 class DispersyCrypto(object):
 
     def get_security_levels(self):
@@ -64,21 +78,6 @@ class ECCrypto(DispersyCrypto):
     @organization: Technical University Delft
     @contact: dispersy@frayja.com
     """
-    def __init__(self):
-        self._STRUCT_L = Struct(">L")
-
-        from M2Crypto import EC
-
-        # Allow all available curves.
-        # Niels: 16-12-2013, if it starts with NID_
-        self._CURVES = dict((unicode(curve), getattr(EC, curve)) for curve in dir(EC) if curve.startswith("NID_"))
-
-        # We want to provide a few default curves.  We will change these curves as new become available and
-        # old ones to small to provide sufficient security.
-        self._CURVES.update({u"very-low": EC.NID_sect163k1,
-                        u"low": EC.NID_sect233k1,
-                        u"medium": EC.NID_sect409k1,
-                        u"high": EC.NID_sect571r1})
 
     def _progress(self, *args):
         "Called when no feedback needs to be given."
@@ -114,8 +113,7 @@ class ECCrypto(DispersyCrypto):
         assert isinstance(security, unicode)
         assert security in self._CURVES
 
-        from M2Crypto import EC
-        ec = EC.gen_params(self._CURVES[security])
+        ec = EC.gen_params(_CURVES[security])
         ec.gen_key()
         return ec
 
@@ -133,33 +131,26 @@ class ECCrypto(DispersyCrypto):
 
     def key_to_private_pem(self, ec, cipher=None, password=None):
         "Get the private key in PEM format."
-        from M2Crypto import BIO
-
         def get_password(*args):
             return password or ""
-
         bio = BIO.MemoryBuffer()
         ec.save_key_bio(bio, cipher, get_password)
         return bio.read_all()
 
     def key_to_public_pem(self, ec):
         "Get the public key in PEM format."
-        from M2Crypto import BIO
-
         bio = BIO.MemoryBuffer()
         ec.save_pub_key_bio(bio)
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
         "Get the EC from a private PEM."
-        from M2Crypto import EC, BIO
         def get_password(*args):
             return password or ""
         return EC.load_key_bio(BIO.MemoryBuffer(pem), get_password)
 
     def key_from_public_pem(self, pem):
         "Get the EC from a public PEM."
-        from M2Crypto import EC, BIO
         return EC.load_pub_key_bio(BIO.MemoryBuffer(pem))
 
     def is_valid_private_pem(self, pem):
