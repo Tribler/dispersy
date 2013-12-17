@@ -11,13 +11,10 @@ logger = get_logger(__name__)
 
 class TestLowLevelCrypto(TestCase):
 
-    def setUp(self):
-        TestCase.setUp(self)
-        self.crypto = ECCrypto()
-
-    def tearDown(self):
-        TestCase.tearDown(self)
-        del self.crypto
+    @classmethod
+    def setUpClass(cls):
+        super(TestLowLevelCrypto, cls).setUpClass()
+        cls.crypto = ECCrypto()
 
     def test_sign_and_verify(self):
         """
