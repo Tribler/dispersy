@@ -43,7 +43,7 @@ class DispersyCrypto(object):
         raise NotImplementedError()
 
     def key_to_private_bin(self, key):
-        "Convert the private key to the binary format."
+        "Convert the private/public keypair to the binary format."
         raise NotImplementedError()
 
     def key_from_private_bin(self, string):
