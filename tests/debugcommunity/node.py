@@ -4,7 +4,6 @@ from time import time, sleep
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate, WalkCandidate
 from ...community import Community
-from ...crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ...logger import get_logger
 from ...member import Member
 from ...message import Message
@@ -202,8 +201,8 @@ class DebugNode(object):
         assert isinstance(candidate, bool), type(candidate)
         assert isinstance(identity, bool), type(identity)
 
-        ec = ec_generate_key(u"low")
-        self._my_member = Member(self._dispersy, ec_to_public_bin(ec), ec_to_private_bin(ec))
+        ec = self._dispersy.crypto.generate_key(u"low")
+        self._my_member = Member(self._dispersy, self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
 
         # remove the private key from the database to ensure DebugCommunity has no access to it
         self._dispersy.database.execute(u"DELETE FROM private_key WHERE member = ?", (self._my_member.database_id,))

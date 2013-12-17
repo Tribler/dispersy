@@ -1,11 +1,8 @@
 from hashlib import sha1
 from unittest import TestCase
 
-from ..crypto import ec_get_curves, ec_generate_key, ec_sign, ec_verify, ec_signature_length, \
-    ec_to_public_bin, ec_to_private_bin, ec_check_public_bin, ec_check_private_bin, \
-    ec_from_public_bin, ec_from_private_bin, \
-    ec_to_public_pem, ec_to_private_pem, ec_check_public_pem, ec_check_private_pem, \
-    ec_from_public_pem, ec_from_private_pem
+from ..crypto import ECCrypto
+
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
@@ -15,6 +12,10 @@ logger = get_logger(__name__)
 
 class TestLowLevelCrypto(TestCase):
 
+    def setUp(self):
+        TestCase.setUp(self)
+        self.crypto = ECCrypto()
+
     def test_sign_and_verify(self):
         """
         Creates each curve, signs some data, and finally verifies the signature.
@@ -22,14 +23,14 @@ class TestLowLevelCrypto(TestCase):
         data = "".join(chr(i % 256) for i in xrange(1024))
         digest = sha1(data).digest()
 
-        for curve in ec_get_curves():
-            ec = ec_generate_key(curve)
-            signature = ec_sign(ec, digest)
-            self.assertEqual(len(signature), ec_signature_length(ec))
-            self.assertTrue(ec_verify(ec, digest, signature))
+        for curve in self.crypto.get_security_levels():
+            ec = self.crypto.generate_key(curve)
+            signature = self.crypto.create_signature(ec, digest)
+            self.assertEqual(len(signature), self.crypto.get_signature_length(ec))
+            self.assertTrue(self.crypto.is_valid_signature(ec, digest, signature))
 
-            self.assertFalse(ec_verify(ec, digest, "-" * ec_signature_length(ec)))
-            self.assertFalse(ec_verify(ec, "---", signature))
+            self.assertFalse(self.crypto.is_valid_signature(ec, digest, "-" * self.crypto.get_signature_length(ec)))
+            self.assertFalse(self.crypto.is_valid_signature(ec, "---", signature))
 
             for i in xrange(len(signature)):
                 # invert one bit in the ith character of the signature
@@ -37,7 +38,7 @@ class TestLowLevelCrypto(TestCase):
                 invalid_signature[i] = chr(ord(invalid_signature[i]) ^ 1)
                 invalid_signature = "".join(invalid_signature)
                 self.assertNotEqual(signature, invalid_signature)
-                self.assertFalse(ec_verify(ec, digest, invalid_signature))
+                self.assertFalse(self.crypto.is_valid_signature(ec, digest, invalid_signature))
 
     def test_serialise_binary(self):
         """
@@ -46,43 +47,45 @@ class TestLowLevelCrypto(TestCase):
         data = "".join(chr(i % 256) for i in xrange(1024))
         digest = sha1(data).digest()
 
-        for curve in ec_get_curves():
-            ec = ec_generate_key(curve)
-            signature = ec_sign(ec, digest)
-            self.assertEqual(len(signature), ec_signature_length(ec))
-            self.assertTrue(ec_verify(ec, digest, signature))
+        for curve in self.crypto.get_security_levels():
+            ec = self.crypto.generate_key(curve)
+
+            # Niels: 17-12-2013 i'm not sure why we test_sign_and_verify again?
+            signature = self.crypto.create_signature(ec, digest)
+            self.assertEqual(len(signature), self.crypto.get_signature_length(ec))
+            self.assertTrue(self.crypto.is_valid_signature(ec, digest, signature))
 
             #
             # serialise using BIN
             #
 
-            public = ec_to_public_bin(ec)
-            self.assertTrue(ec_check_public_bin(public))
-            self.assertEqual(public, ec_to_public_bin(ec))
-            private = ec_to_private_bin(ec)
-            self.assertTrue(ec_check_private_bin(private))
-            self.assertEqual(private, ec_to_private_bin(ec))
+            public = self.crypto.key_to_public_bin(ec)
+            self.assertTrue(self.crypto.is_valid_public_bin(public))
+            self.assertEqual(public, self.crypto.key_to_public_bin(ec))
+            private = self.crypto.key_to_private_bin(ec)
+            self.assertTrue(self.crypto.key_check_private_bin(private))
+            self.assertEqual(private, self.crypto.key_to_private_bin(ec))
 
-            ec_clone = ec_from_public_bin(public)
-            self.assertTrue(ec_verify(ec_clone, digest, signature))
-            ec_clone = ec_from_private_bin(private)
-            self.assertTrue(ec_verify(ec_clone, digest, signature))
+            ec_clone = self.crypto.key_from_public_bin(public)
+            self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
+            ec_clone = self.crypto.key_from_private_bin(private)
+            self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
 
             #
             # serialise using PEM
             #
 
-            public = ec_to_public_pem(ec)
-            self.assertTrue(ec_check_public_pem(public))
-            self.assertEqual(public, ec_to_public_pem(ec))
-            private = ec_to_private_pem(ec)
-            self.assertTrue(ec_check_private_pem(private))
-            self.assertEqual(private, ec_to_private_pem(ec))
+            public = self.crypto.key_to_public_pem(ec)
+            self.assertTrue(self.crypto.key_check_public_pem(public))
+            self.assertEqual(public, self.crypto.key_to_public_pem(ec))
+            private = self.crypto.key_to_private_pem(ec)
+            self.assertTrue(self.crypto.key_check_private_pem(private))
+            self.assertEqual(private, self.crypto.key_to_private_pem(ec))
 
-            ec_clone = ec_from_public_pem(public)
-            self.assertTrue(ec_verify(ec_clone, digest, signature))
-            ec_clone = ec_from_private_pem(private)
-            self.assertTrue(ec_verify(ec_clone, digest, signature))
+            ec_clone = self.crypto.key_from_public_pem(public)
+            self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
+            ec_clone = self.crypto.key_from_private_pem(private)
+            self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
 
 class TestCrypto(DispersyTestFunc):
 
