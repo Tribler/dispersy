@@ -76,7 +76,7 @@ class TestLowLevelCrypto(TestCase):
             #
 
             public = self.crypto.key_to_public_pem(ec)
-            self.assertTrue(self.crypto.is_valid_private_pem(public))
+            self.assertTrue(self.crypto.is_valid_public_pem(public))
             self.assertEqual(public, self.crypto.key_to_public_pem(ec))
             private = self.crypto.key_to_private_pem(ec)
             self.assertTrue(self.crypto.is_valid_private_pem(private))
