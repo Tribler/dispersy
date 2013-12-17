@@ -106,9 +106,6 @@ class ECCrypto(DispersyCrypto):
     
         @param security: Level of security {u'very-low', u'low', u'medium', or u'high'}.
         @type security: unicode
-    
-        @note that the NID must always be 160 bits or more, otherwise it will not be able to sign a sha1
-            digest.
         """
         assert isinstance(security, unicode)
         assert security in self._CURVES
@@ -219,9 +216,9 @@ class ECCrypto(DispersyCrypto):
         length = int(ceil(len(ec) / 8.0))
 
         mpi_r, mpi_s = ec.sign_dsa(digest)
-        length_r, = self._STRUCT_L.unpack_from(mpi_r)
+        length_r, = _STRUCT_L.unpack_from(mpi_r)
         r = mpi_r[-min(length, length_r):]
-        length_s, = self._STRUCT_L.unpack_from(mpi_s)
+        length_s, = _STRUCT_L.unpack_from(mpi_s)
         s = mpi_s[-min(length, length_s):]
 
         return "".join(("\x00" * (length - len(r)), r, "\x00" * (length - len(s)), s))
@@ -251,8 +248,8 @@ class ECCrypto(DispersyCrypto):
             if ord(s[0]) & 128:
                 s = "\x00" + s
 
-            mpi_r = self._STRUCT_L.pack(len(r)) + r
-            mpi_s = self._STRUCT_L.pack(len(s)) + s
+            mpi_r = _STRUCT_L.pack(len(r)) + r
+            mpi_s = _STRUCT_L.pack(len(s)) + s
 
             # mpi_r3 = bn_to_mpi(bin_to_bn(signature[:length]))
             # mpi_s3 = bn_to_mpi(bin_to_bn(signature[length:]))
