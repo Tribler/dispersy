@@ -260,8 +260,8 @@ class TrackerDispersy(Dispersy):
 
     def _create_my_member(self):
         # generate a new my-member
-        ec = self._dispersy.crypto.generate_key(u"very-low")
-        self._my_member = self.get_member(self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
+        ec = self.crypto.generate_key(u"very-low")
+        self._my_member = self.get_member(self.crypto.key_to_public_bin(ec), self.crypto.key_to_private_bin(ec))
 
     @property
     def persistent_storage_filename(self):
