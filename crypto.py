@@ -120,14 +120,14 @@ class ECCrypto(DispersyCrypto):
 
     def key_private_pem_to_private_bin(self, pem):
         """
-        Convert a private key in PEM format into a private key in binary format.
+        Convert a public/private keypair in PEM format into a public/private keypair in binary format.
     
         @note: Enrcypted pem's are NOT supported and will silently fail.
         """
         return "".join(pem.split("\n")[1:-2]).decode("BASE64")
 
     def key_to_private_pem(self, ec, cipher=None, password=None):
-        "Get the private key in PEM format."
+        "Get the public/private keypair in PEM format."
         def get_password(*args):
             return password or ""
         bio = BIO.MemoryBuffer()
@@ -141,7 +141,7 @@ class ECCrypto(DispersyCrypto):
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
-        "Get the EC from a private PEM."
+        "Get the EC from a public/private keypair stored in the PEM."
         def get_password(*args):
             return password or ""
         return EC.load_key_bio(BIO.MemoryBuffer(pem), get_password)
@@ -151,7 +151,7 @@ class ECCrypto(DispersyCrypto):
         return EC.load_pub_key_bio(BIO.MemoryBuffer(pem))
 
     def is_valid_private_pem(self, pem):
-        "Returns True if the input is a valid private key"
+        "Returns True if the input is a valid public/private keypair"
         try:
             self.key_from_private_pem(pem)
         except:
@@ -167,7 +167,7 @@ class ECCrypto(DispersyCrypto):
         return True
 
     def key_to_private_bin(self, ec):
-        "Get the private key in binary format."
+        "Get the public/private keypair in binary format."
         return self.key_private_pem_to_private_bin(self.key_to_private_pem(ec))
 
     def key_to_public_bin(self, ec):
@@ -175,7 +175,7 @@ class ECCrypto(DispersyCrypto):
         return self.key_public_pem_to_public_bin(self.key_to_public_pem(ec))
 
     def is_valid_private_bin(self, string):
-        "Returns True if the input is a valid private key"
+        "Returns True if the input is a valid public/private keypair stored in a binary format"
         try:
             self.key_from_private_bin(string)
         except:
@@ -191,7 +191,7 @@ class ECCrypto(DispersyCrypto):
         return True
 
     def key_from_private_bin(self, string):
-        "Get the EC from a private key in binary format."
+        "Get the EC from a public/private keypair stored in a binary format."
         return self.key_from_private_pem("".join(("-----BEGIN EC PRIVATE KEY-----\n",
                                             string.encode("BASE64"),
                                             "-----END EC PRIVATE KEY-----\n")))
