@@ -63,7 +63,7 @@ class TestLowLevelCrypto(TestCase):
             self.assertTrue(self.crypto.is_valid_public_bin(public))
             self.assertEqual(public, self.crypto.key_to_public_bin(ec))
             private = self.crypto.key_to_private_bin(ec)
-            self.assertTrue(self.crypto.key_check_private_bin(private))
+            self.assertTrue(self.crypto.is_valid_private_bin(private))
             self.assertEqual(private, self.crypto.key_to_private_bin(ec))
 
             ec_clone = self.crypto.key_from_public_bin(public)
@@ -76,10 +76,10 @@ class TestLowLevelCrypto(TestCase):
             #
 
             public = self.crypto.key_to_public_pem(ec)
-            self.assertTrue(self.crypto.key_check_public_pem(public))
+            self.assertTrue(self.crypto.is_valid_private_pem(public))
             self.assertEqual(public, self.crypto.key_to_public_pem(ec))
             private = self.crypto.key_to_private_pem(ec)
-            self.assertTrue(self.crypto.key_check_private_pem(private))
+            self.assertTrue(self.crypto.is_valid_private_pem(private))
             self.assertEqual(private, self.crypto.key_to_private_pem(ec))
 
             ec_clone = self.crypto.key_from_public_pem(public)

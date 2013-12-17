@@ -162,7 +162,7 @@ class ECCrypto(DispersyCrypto):
         from M2Crypto import EC, BIO
         return EC.load_pub_key_bio(BIO.MemoryBuffer(pem))
 
-    def key_check_private_pem(self, pem):
+    def is_valid_private_pem(self, pem):
         "Returns True if the input is a valid private key"
         try:
             self.key_from_private_pem(pem)
@@ -170,7 +170,7 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
-    def key_check_public_pem(self, pem):
+    def is_valid_public_pem(self, pem):
         "Returns True if the input is a valid public key"
         try:
             self.key_from_public_pem(pem)
