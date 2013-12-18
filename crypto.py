@@ -2,6 +2,7 @@ from math import ceil
 from struct import Struct
 
 from M2Crypto import EC, BIO
+from M2Crypto.EC import EC_pub
 _STRUCT_L = Struct(">L")
 
 # Allow all available curves.
@@ -17,33 +18,30 @@ _CURVES.update({u"very-low": EC.NID_sect163k1,
 
 class DispersyCrypto(object):
 
-    def get_security_levels(self):
+    @property
+    def security_levels(self):
         """
         Returns the different security levels supported by this crypto class
         @rtype: [unicode]
         """
         raise NotImplementedError()
 
-    def generate_key(self, securitylevel):
+    def generate_key(self, security_level):
         """
-        Generate a new key using the specified securitylevel
-        @param security: Level of security, supported levels can be obtained using get_security_levels.
-        @type security: unicode
+        Generate a new key using the specified security_level
+        @param security_level: Level of security, supported levels can be obtained using .security_levels.
+        @type security_level: unicode
         
         @rtype key
         """
         raise NotImplementedError()
 
-    def key_to_public_bin(self, key):
-        "Convert the public key to the binary format."
+    def key_to_bin(self, key):
+        "Convert a key to the binary format."
         raise NotImplementedError()
 
     def key_from_public_bin(self, string):
         "Convert a public key stored in the binary format to a key object."
-        raise NotImplementedError()
-
-    def key_to_private_bin(self, key):
-        "Convert the private/public keypair to the binary format."
         raise NotImplementedError()
 
     def key_from_private_bin(self, string):
@@ -51,11 +49,31 @@ class DispersyCrypto(object):
         raise NotImplementedError()
 
     def is_valid_public_bin(self, string):
-        "Verify if this binary string contains an actual public key."
+        "Verify if this binary string contains a public key."
         raise NotImplementedError()
 
     def is_valid_private_bin(self, string):
-        "Verify if this binary string contains an actual public/private keypair."
+        "Verify if this binary string contains a public/private keypair."
+        raise NotImplementedError()
+
+    def key_to_pem(self, key):
+        "Convert a key to the PEM format."
+        raise NotImplementedError()
+
+    def key_from_public_pem(self, string):
+        "Convert a public key stored in the PEM format to a key object."
+        raise NotImplementedError()
+
+    def key_from_private_pem(self, string):
+        "Convert a public/private keypair stored in the PEM format to a key object."
+        raise NotImplementedError()
+
+    def is_valid_public_pem(self, string):
+        "Verify if this PEM string contains a public key."
+        raise NotImplementedError()
+
+    def is_valid_private_pem(self, string):
+        "Verify if this PEM string contains a public/private keypair."
         raise NotImplementedError()
 
     def is_valid_signature(self, key, string, signature):
@@ -83,14 +101,15 @@ class ECCrypto(DispersyCrypto):
         "Called when no feedback needs to be given."
         pass
 
-    def get_security_levels(self):
+    @property
+    def security_levels(self):
         """
         Returns the names of all available curves.
         @rtype: [unicode]
         """
         return _CURVES.keys()
 
-    def generate_key(self, security):
+    def generate_key(self, security_level):
         """
         Generate a new Elliptic Curve object with a new public / private key pair.
     
@@ -104,40 +123,34 @@ class ECCrypto(DispersyCrypto):
         Besides these predefined curves, all other curves provided by M2Crypto are also available.  For
         a full list of available curves, see ec_get_curves().
     
-        @param security: Level of security {u'very-low', u'low', u'medium', or u'high'}.
-        @type security: unicode
+        @param security_level: Level of security {u'very-low', u'low', u'medium', or u'high'}.
+        @type security_level: unicode
         """
-        assert isinstance(security, unicode)
-        assert security in _CURVES
+        assert isinstance(security_level, unicode)
+        assert security_level in _CURVES
 
-        ec = EC.gen_params(_CURVES[security])
+        ec = EC.gen_params(_CURVES[security_level])
         ec.gen_key()
         return ec
 
-    def key_public_pem_to_public_bin(self, pem):
-        "Convert a public key in PEM format into a public key in binary format."
-        return "".join(pem.split("\n")[1:-2]).decode("BASE64")
-
-    def key_private_pem_to_private_bin(self, pem):
+    def pem_to_bin(self, pem):
         """
-        Convert a public/private keypair in PEM format into a public/private keypair in binary format.
-    
+        Convert a key in the PEM format into a key in the binary format.
         @note: Enrcypted pem's are NOT supported and will silently fail.
         """
         return "".join(pem.split("\n")[1:-2]).decode("BASE64")
 
-    def key_to_private_pem(self, ec, cipher=None, password=None):
-        "Get the public/private keypair in PEM format."
+    def key_to_pem(self, ec, cipher=None, password=None):
+        "Convert a key to the PEM format."
+        if isinstance(ec, EC_pub):
+            bio = BIO.MemoryBuffer()
+            ec.save_pub_key_bio(bio)
+            return bio.read_all()
+
         def get_password(*args):
             return password or ""
         bio = BIO.MemoryBuffer()
         ec.save_key_bio(bio, cipher, get_password)
-        return bio.read_all()
-
-    def key_to_public_pem(self, ec):
-        "Get the public key in PEM format."
-        bio = BIO.MemoryBuffer()
-        ec.save_pub_key_bio(bio)
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
@@ -166,13 +179,9 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
-    def key_to_private_bin(self, ec):
-        "Get the public/private keypair in binary format."
-        return self.key_private_pem_to_private_bin(self.key_to_private_pem(ec))
-
-    def key_to_public_bin(self, ec):
-        "Get the public key in binary format."
-        return self.key_public_pem_to_public_bin(self.key_to_public_pem(ec))
+    def key_to_bin(self, ec):
+        "Convert the key to a binary format."
+        return self.pem_to_bin(self.key_to_pem(ec))
 
     def is_valid_private_bin(self, string):
         "Returns True if the input is a valid public/private keypair stored in a binary format"
@@ -274,6 +283,12 @@ class NoCrypto(ECCrypto):
         return True
 
     def is_valid_public_bin(self, string):
+        return True
+
+    def is_valid_private_pem(self, string):
+        return True
+
+    def is_valid_public_pem(self, string):
         return True
 
     def create_signature(self, ec, digest):

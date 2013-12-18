@@ -49,8 +49,8 @@ class TestLowLevelCrypto(TestCase):
 
         for curve in self.crypto.get_security_levels():
             ec = self.crypto.generate_key(curve)
+            ec_pub = ec.pub()
 
-            # Niels: 17-12-2013 i'm not sure why we test_sign_and_verify again?
             signature = self.crypto.create_signature(ec, digest)
             self.assertEqual(len(signature), self.crypto.get_signature_length(ec))
             self.assertTrue(self.crypto.is_valid_signature(ec, digest, signature))
@@ -59,12 +59,13 @@ class TestLowLevelCrypto(TestCase):
             # serialise using BIN
             #
 
-            public = self.crypto.key_to_public_bin(ec)
+            public = self.crypto.key_to_bin(ec_pub)
             self.assertTrue(self.crypto.is_valid_public_bin(public))
-            self.assertEqual(public, self.crypto.key_to_public_bin(ec))
-            private = self.crypto.key_to_private_bin(ec)
+            self.assertEqual(public, self.crypto.key_to_bin(ec_pub))
+
+            private = self.crypto.key_to_bin(ec)
             self.assertTrue(self.crypto.is_valid_private_bin(private))
-            self.assertEqual(private, self.crypto.key_to_private_bin(ec))
+            self.assertEqual(private, self.crypto.key_to_bin(ec))
 
             ec_clone = self.crypto.key_from_public_bin(public)
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
@@ -75,12 +76,12 @@ class TestLowLevelCrypto(TestCase):
             # serialise using PEM
             #
 
-            public = self.crypto.key_to_public_pem(ec)
+            public = self.crypto.key_to_pem(ec_pub)
             self.assertTrue(self.crypto.is_valid_public_pem(public))
-            self.assertEqual(public, self.crypto.key_to_public_pem(ec))
-            private = self.crypto.key_to_private_pem(ec)
+            self.assertEqual(public, self.crypto.key_to_pem(ec_pub))
+            private = self.crypto.key_to_pem(ec)
             self.assertTrue(self.crypto.is_valid_private_pem(private))
-            self.assertEqual(private, self.crypto.key_to_private_pem(ec))
+            self.assertEqual(private, self.crypto.key_to_pem(ec))
 
             ec_clone = self.crypto.key_from_public_pem(public)
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, digest, signature))
