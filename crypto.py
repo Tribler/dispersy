@@ -279,18 +279,6 @@ class NoCrypto(ECCrypto):
     Usefull to reduce CPU overhead.
     """
 
-    def is_valid_private_bin(self, string):
-        return True
-
-    def is_valid_public_bin(self, string):
-        return True
-
-    def is_valid_private_pem(self, string):
-        return True
-
-    def is_valid_public_pem(self, string):
-        return True
-
     def create_signature(self, ec, digest):
         return "0" * self.get_signature_length(ec)
 
