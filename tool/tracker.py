@@ -18,6 +18,7 @@ Outputs destroyed communities whenever encountered:
 Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
 whenever a introduction request is received for a destroyed overlay.
 """
+from crypto import NoCrypto, ECCrypto
 
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
@@ -27,7 +28,7 @@ if __name__ == "__main__":
     #    the package hierarchy. If the module's name does not contain any package information
     #    (e.g. it is set to '__main__') then relative imports are resolved as if the module were a
     #    top level module, regardless of where the module is actually located on the file system.
-    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
+    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
     exit(1)
 
 
@@ -232,8 +233,8 @@ class TrackerCommunity(Community):
 
 class TrackerDispersy(Dispersy):
 
-    def __init__(self, callback, endpoint, working_directory, silent=False):
-        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:")
+    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=ECCrypto()):
+        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:", crypto)
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -387,6 +388,7 @@ def main():
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
+    command_line_parser.add_option("--crypto", action="store", type="string", default="ECCrytpo", help="The Crypto object type Dispersy is going to use")
 
     context_filter = get_context_filter()
     command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
@@ -397,8 +399,14 @@ def main():
     # set the log identifier
     context_filter.identifier = opt.log_identifier
 
+    # crypto
+    if opt.crypto == 'NoCrypto':
+        crypto = NoCrypto()
+    else:
+        crypto = ECCrypto()
+
     # setup
-    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
+    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
 
