@@ -126,11 +126,11 @@ one of the four categories:
           lifetime/,
 - stumble :: when it is /not/ a walk-Candidate and its stuble
              difference is less or equal to the /stumble lifetime/,
-- intro: :: when it is neither a walk or a stumble-Candidate, and its
-            intro difference is less or equal to the /intro lifetime/,
-            and
-- none: :: when it does not fulfil the criteria for its assignment to
-           one of the previously mentioned categories.
+- intro :: when it is neither a walk or a stumble-Candidate, and its
+           intro difference is less or equal to the /intro lifetime/,
+           and
+- none :: when it does not fulfil the criteria for its assignment to
+          one of the previously mentioned categories.
 
 We set both the walk lifetime and the stumble lifetime equal to 57.5
 seconds because most NAT boxes close a punctured ‘hole’ 60 seconds
@@ -415,7 +415,7 @@ _get_interface_addresses method[fn:dispersy] and the Interface
 instances that it returns.
 
 Peer B uses the result of this estimation to update the lan_address
-and wan_address properties[fn:candidates] of the Candidate instance
+and wan_address properties[fn:candidate] of the Candidate instance
 pointing to peer A.  These values are also added to the
 introduction-response, allowing peer A to assess its own WAN address,
 as discusses in Section [[WAN address voting]].
