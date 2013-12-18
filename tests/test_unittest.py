@@ -26,10 +26,6 @@ class TestUnittest(DispersyTestFunc):
     """
     Tests ensuring that an exception anywhere in _dispersy.callback is propagated to the unittest framework.
 
-    The 'strict' tests will ensure that any exception results in an early shutdown.  Early shutdown
-    causes the call_on_dispersy_thread generator to receive a Shutdown command, resulting in a
-    RuntimeError("Early shutdown") exception on the caller.
-
     Non 'strict' tests will result in the Callback ignoring KeyError and AssertionError exceptions.
     """
 
@@ -46,7 +42,7 @@ class TestUnittest(DispersyTestFunc):
         " Trivial KeyError. "
         raise KeyError("This must fail")
 
-    @failure_to_success(RuntimeError, "Early shutdown")
+    @failure_to_success(AssertionError, "This must fail")
     @call_on_dispersy_thread
     def test_assert_strict_callback(self):
         " Assert within a registered task. "
@@ -57,7 +53,7 @@ class TestUnittest(DispersyTestFunc):
         yield 1.0
         self.fail("Should not reach this")
 
-    @failure_to_success(RuntimeError, "Early shutdown")
+    @failure_to_success(KeyError, "This must fail")
     @call_on_dispersy_thread
     def test_KeyError_strict_callback(self):
         " KeyError within a registered task with strict enabled. "
@@ -78,7 +74,7 @@ class TestUnittest(DispersyTestFunc):
         yield 1.0
         self.assertTrue(True)
 
-    @failure_to_success(RuntimeError, "Early shutdown")
+    @failure_to_success(AssertionError, "This must fail")
     @call_on_dispersy_thread
     def test_assert_strict_callback_generator(self):
         " Assert within a registered generator task. "
@@ -103,7 +99,7 @@ class TestUnittest(DispersyTestFunc):
         yield 1.0
         self.assertTrue(True)
 
-    @failure_to_success(RuntimeError, "Early shutdown")
+    @failure_to_success(KeyError, "This must fail")
     @call_on_dispersy_thread
     def test_KeyError_strict_callback_generator(self):
         " KeyError within a registered generator task. "
