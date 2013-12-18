@@ -140,17 +140,10 @@ class ECCrypto(DispersyCrypto):
         """
         return "".join(pem.split("\n")[1:-2]).decode("BASE64")
 
-    def key_to_pem(self, ec, cipher=None, password=None):
+    def key_to_pem(self, ec):
         "Convert a key to the PEM format."
-        if isinstance(ec, EC_pub):
-            bio = BIO.MemoryBuffer()
-            ec.save_pub_key_bio(bio)
-            return bio.read_all()
-
-        def get_password(*args):
-            return password or ""
         bio = BIO.MemoryBuffer()
-        ec.save_key_bio(bio, cipher, get_password)
+        ec.save_key_bio(bio)
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
