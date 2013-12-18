@@ -13,10 +13,6 @@ class TestRequestCache(DispersyTestFunc):
             def create_identifier(number):
                 return u"request-cache:test:%d" % (number,)
 
-            @property
-            def cleanup_delay(self):
-                return 0.0
-
         request_cache = RequestCache(self._dispersy.callback)
         cache = Cache(request_cache)
         self.assertIsNotNone(cache)
@@ -43,10 +39,6 @@ class TestRequestCache(DispersyTestFunc):
             @staticmethod
             def create_identifier(number):
                 return u"request-cache:test:%d" % (number,)
-
-            @property
-            def cleanup_delay(self):
-                return 0.0
 
         request_cache = RequestCache(self._dispersy.callback)
 
@@ -81,18 +73,12 @@ class TestRequestCache(DispersyTestFunc):
     @call_on_dispersy_thread
     def test_request_cache_double_pop_bug(self):
         """
-        Demonstrates the strange and unexpected pop behaviour when Cache.cleanup_delay > 0.0.
-
-        TODO this test should be removed when the unexpected behaviour is solved.
+        Test that the "unexpected pop behavior when Cache.cleanup_delay > 0.0" bug is fixed.
         """
         class Cache(NumberCache):
             @staticmethod
             def create_identifier(number):
                 return u"request-cache:test:%d" % (number,)
-
-            @property
-            def cleanup_delay(self):
-                return 10.0
 
         request_cache = RequestCache(self._dispersy.callback)
         cache = Cache(request_cache)
@@ -107,8 +93,7 @@ class TestRequestCache(DispersyTestFunc):
         # remove
         self.assertEqual(request_cache.pop(cache.identifier), cache)
 
-        # has, get, and pop keep working because cache.cleanup_delay > 0.0.  Note that this is very strange and
-        # unexpected!  Why is it still there when it was just popped?
-        self.assertTrue(request_cache.has(cache.identifier))
-        self.assertEqual(request_cache.get(cache.identifier), cache)
-        self.assertEqual(request_cache.pop(cache.identifier), cache)
+        #pop() used to still work after the first pop()
+        self.assertFalse(request_cache.has(cache.identifier))
+        self.assertIsNone(request_cache.get(cache.identifier))
+        self.assertIsNone(request_cache.pop(cache.identifier))
