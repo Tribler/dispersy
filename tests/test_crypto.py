@@ -23,7 +23,7 @@ class TestLowLevelCrypto(TestCase):
         data = "".join(chr(i % 256) for i in xrange(1024))
         digest = sha1(data).digest()
 
-        for curve in self.crypto.get_security_levels():
+        for curve in self.crypto.security_levels:
             ec = self.crypto.generate_key(curve)
             signature = self.crypto.create_signature(ec, digest)
             self.assertEqual(len(signature), self.crypto.get_signature_length(ec))
@@ -47,7 +47,7 @@ class TestLowLevelCrypto(TestCase):
         data = "".join(chr(i % 256) for i in xrange(1024))
         digest = sha1(data).digest()
 
-        for curve in self.crypto.get_security_levels():
+        for curve in self.crypto.security_levels:
             ec = self.crypto.generate_key(curve)
             ec_pub = ec.pub()
 
