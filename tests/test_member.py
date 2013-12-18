@@ -112,7 +112,7 @@ class TestMember(DispersyTestFunc):
         Test test member.verify assuming create_signature works properly.
         """
         ec = self._dispersy.crypto.generate_key(u"medium")
-        member = self._dispersy.get_member(self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
+        member = self._dispersy.get_member(self._dispersy.crypto.key_to_bin(ec.pub()), self._dispersy.crypto.key_to_bin(ec))
 
         # sign and verify "0123456789"[0:10]
         self.assertTrue(member.verify("0123456789", self._dispersy.crypto.create_signature(ec, sha1("0123456789").digest())))
@@ -172,7 +172,7 @@ class TestMember(DispersyTestFunc):
         Test test member.sign assuming is_valid_signature works properly.
         """
         ec = self._dispersy.crypto.generate_key(u"medium")
-        member = self._dispersy.get_member(self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
+        member = self._dispersy.get_member(self._dispersy.crypto.key_to_bin(ec.pub()), self._dispersy.crypto.key_to_bin(ec))
 
         # sign and verify "0123456789"[0:10]
         self.assertTrue(self._dispersy.crypto.is_valid_signature(ec, sha1("0123456789").digest(), member.sign("0123456789")))

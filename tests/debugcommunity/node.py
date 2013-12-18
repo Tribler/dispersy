@@ -202,7 +202,7 @@ class DebugNode(object):
         assert isinstance(identity, bool), type(identity)
 
         ec = self._dispersy.crypto.generate_key(u"low")
-        self._my_member = Member(self._dispersy, self._dispersy.crypto.key_to_public_bin(ec), self._dispersy.crypto.key_to_private_bin(ec))
+        self._my_member = Member(self._dispersy, self._dispersy.crypto.key_to_bin(ec.pub()), self._dispersy.crypto.key_to_bin(ec))
 
         # remove the private key from the database to ensure DebugCommunity has no access to it
         self._dispersy.database.execute(u"DELETE FROM private_key WHERE member = ?", (self._my_member.database_id,))

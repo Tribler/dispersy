@@ -815,7 +815,7 @@ class Dispersy(object):
         """
         assert isinstance(securitylevel, unicode), type(securitylevel)
         key = self.crypto.generate_key(securitylevel)
-        return self.get_member(self.crypto.key_to_public_bin(key), self.crypto.key_to_private_bin(key))
+        return self.get_member(self.crypto.key_to_bin(key.pub()), self.crypto.key_to_bin(key))
 
     def get_temporary_member_from_id(self, mid):
         """

@@ -36,10 +36,10 @@ def create_key(eccrypto, curves):
             print
 
         ec = eccrypto.generate_key(curve)
-        private_pem = eccrypto.key_to_private_pem(ec)
-        public_pem = eccrypto.key_to_public_pem(ec)
-        public_bin = eccrypto.key_to_public_bin(ec)
-        private_bin = eccrypto.key_to_private_bin(ec)
+        private_pem = eccrypto.key_to_pem(ec)
+        public_pem = eccrypto.key_to_pem(ec.pub())
+        private_bin = eccrypto.key_to_bin(ec)
+        public_bin = eccrypto.key_to_bin(ec.pub())
         print "generated:", time.ctime()
         print "curve:", ec_name(eccrypto, curve)
         print "len:", len(ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
