@@ -18,7 +18,6 @@ Outputs destroyed communities whenever encountered:
 Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
 whenever a introduction request is received for a destroyed overlay.
 """
-from crypto import NoCrypto, ECCrypto
 
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
@@ -51,6 +50,7 @@ logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
+from ..crypto import NoCrypto, ECCrypto
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger, get_context_filter
