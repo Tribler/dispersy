@@ -1,0 +1,171 @@
+commit 6dc5ff8d7bb236c9bbf3fecf42098940f85cb285 (HEAD, refs/remotes/boudewijn/five-second-factor, refs/heads/five-second-factor)
+Author: Boudewijn <boudewijn-tribler@frayja.com>
+Date:   Wed Oct 16 13:48:47 2013 +0200
+
+    Added WALK_MULTIPLIER constant.
+    
+    Allows to scale all constants derived from the 'walk every 5.0 second'
+    rule.
+
+4 files changed, 22 insertions(+), 18 deletions(-)
+ candidate.py    | 15 +++++++++------
+ community.py    |  6 +++---
+ dispersy.py     | 14 +++++++-------
+ requestcache.py |  5 +++--
+
+	Modified   candidate.py
+diff --git a/candidate.py b/candidate.py
+index 06d8f16..41df91c 100644
+--- a/candidate.py
++++ b/candidate.py
+@@ -14,16 +14,19 @@ if __debug__:
+         return True
+ 
+ 
++# factor applied to all 5.0 second based values
++WALK_MULTIPLIER = 1.0
++
+ # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
+ # seconds.  However, taking into account round trip time and processing delay we to use smaller
+ # values without conflicting with the next 5.0 walk cycle.  Hence, we pick 2.5 seconds below the
+ # actual cutoff point.
+-CANDIDATE_ELIGIBLE_DELAY = 27.5
+-CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY = 57.5
+-CANDIDATE_WALK_LIFETIME = 57.5
+-CANDIDATE_STUMBLE_LIFETIME = 57.5
+-CANDIDATE_INTRO_LIFETIME = 27.5
+-CANDIDATE_LIFETIME = 180.0
++CANDIDATE_ELIGIBLE_DELAY = 27.5 * WALK_MULTIPLIER
++CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY = 57.5 * WALK_MULTIPLIER
++CANDIDATE_WALK_LIFETIME = 57.5 * WALK_MULTIPLIER
++CANDIDATE_STUMBLE_LIFETIME = 57.5 * WALK_MULTIPLIER
++CANDIDATE_INTRO_LIFETIME = 27.5 * WALK_MULTIPLIER
++CANDIDATE_LIFETIME = 180.0 * WALK_MULTIPLIER
+ assert isinstance(CANDIDATE_ELIGIBLE_DELAY, float)
+ assert isinstance(CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY, float)
+ assert isinstance(CANDIDATE_WALK_LIFETIME, float)
+	Modified   community.py
+diff --git a/community.py b/community.py
+index 7c1d4e4..0a10c67 100644
+--- a/community.py
++++ b/community.py
+@@ -21,7 +21,7 @@ except ImportError:
+     from .python27_ordereddict import OrderedDict
+ 
+ from .bloomfilter import BloomFilter
+-from .candidate import WalkCandidate, BootstrapCandidate
++from .candidate import WalkCandidate, BootstrapCandidate, WALK_MULTIPLIER
+ from .conversion import BinaryConversion, DefaultConversion
+ from .decorator import documentation, runtime_duration_warning
+ from .dispersy import Dispersy
+@@ -420,7 +420,7 @@ class Community(object):
+             self._meta_messages[meta_message.name] = meta_message
+ 
+         if __debug__:
+-            sync_interval = 5.0
++            sync_interval = 5.0 * WALK_MULTIPLIER
+             for meta_message in self._meta_messages.itervalues():
+                 if isinstance(meta_message.distribution, SyncDistribution) and meta_message.batch.max_window >= sync_interval:
+                     logger.warning("when sync is enabled the interval should be greater than the walking frequency.  otherwise you are likely to receive duplicate packets [%s]", meta_message.name)
+@@ -1109,7 +1109,7 @@ class Community(object):
+             # get opinions from all active candidates
+             if self._acceptable_global_time_deadline < now:
+                 self._acceptable_global_time_cache = acceptable_global_time_helper()
+-                self._acceptable_global_time_deadline = now + 5.0
++                self._acceptable_global_time_deadline = now + (5.0 * WALK_MULTIPLIER)
+             return self._acceptable_global_time_cache
+ 
+         else:
+	Modified   dispersy.py
+diff --git a/dispersy.py b/dispersy.py
+index c97126d..34e1642 100644
+--- a/dispersy.py
++++ b/dispersy.py
+@@ -59,7 +59,7 @@ from time import time
+ from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
+ from .bloomfilter import BloomFilter
+ from .bootstrap import get_bootstrap_candidates
+-from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
++from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate, WALK_MULTIPLIER
+ from .crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+ from .destination import CommunityDestination, CandidateDestination
+ from .dispersydatabase import DispersyDatabase
+@@ -127,13 +127,13 @@ class IntroductionRequestCache(NumberCache):
+     @property
+     def timeout_delay(self):
+         # we will accept the response at most 10.5 seconds after our request
+-        return 10.5
++        return 10.5 * WALK_MULTIPLIER
+ 
+     @property
+     def cleanup_delay(self):
+         # the cache remains available at most 4.5 after receiving the response.  this gives some time to receive the
+         # puncture message
+-        return 4.5
++        return 4.5 * WALK_MULTIPLIER
+ 
+     def __init__(self, community, helper_candidate):
+         super(IntroductionRequestCache, self).__init__(community.request_cache)
+@@ -3150,7 +3150,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND
+                 for func, args in cache.callbacks:
+                     func(message, *args)
+ 
+-    def create_missing_identity(self, community, candidate, dummy_member, response_func=None, response_args=(), timeout=4.5, forward=True):
++    def create_missing_identity(self, community, candidate, dummy_member, response_func=None, response_args=(), timeout=4.5 * WALK_MULTIPLIER, forward=True):
+         """
+         Create a dispersy-missing-identity message.
+ 
+@@ -4616,7 +4616,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND
+ 
+         # delay will never be less than 0.1, hence we can accommodate 50 communities before the
+         # interval between each step becomes larger than 5.0 seconds
+-        optimaldelay = max(0.1, 5.0 / len(walker_communities))
++        optimaldelay = max(0.1, (5.0 * WALK_MULTIPLIER) / len(walker_communities))
+         logger.debug("there are %d walker enabled communities.  pausing %ss (on average) between each step", len(walker_communities), optimaldelay)
+ 
+         if __debug__:
+@@ -4635,7 +4635,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND
+             walker_communities.append(community)
+ 
+             actualtime = time()
+-            allow_sync = community.dispersy_enable_bloom_filter_sync and actualtime - community.__most_recent_sync > 4.5
++            allow_sync = community.dispersy_enable_bloom_filter_sync and actualtime - community.__most_recent_sync > (4.5 * WALK_MULTIPLIER)
+             logger.debug("previous sync was %.1f seconds ago %s", actualtime - community.__most_recent_sync, "" if allow_sync else "(no sync this cycle)")
+             if allow_sync:
+                 community.__most_recent_sync = actualtime
+@@ -4661,7 +4661,7 @@ WHERE sync.community = ? AND meta_message.priority > 32 AND sync.undone = 0 AND
+             optimaltime = start + steps * optimaldelay
+             actualtime = time()
+ 
+-            if optimaltime + 5.0 < actualtime:
++            if optimaltime + (5.0 + WALK_MULTIPLIER) < actualtime:
+                 # way out of sync!  reset start time
+                 logger.warning("can not keep up!  resetting walker start time!")
+                 start = actualtime
+	Modified   requestcache.py
+diff --git a/requestcache.py b/requestcache.py
+index 83e459c..608649c 100644
+--- a/requestcache.py
++++ b/requestcache.py
+@@ -1,5 +1,6 @@
+ from random import random
+ 
++from .candidate import WALK_MULTIPLIER
+ from .logger import get_logger
+ logger = get_logger(__name__)
+ 
+@@ -21,11 +22,11 @@ class Cache(object):
+ 
+     @property
+     def timeout_delay(self):
+-        return 10.0
++        return 10.0 * WALK_MULTIPLIER
+ 
+     @property
+     def cleanup_delay(self):
+-        return 10.0
++        return 10.0 * WALK_MULTIPLIER
+ 
+     def on_timeout(self):
+         raise NotImplementedError()
+
