@@ -514,7 +514,7 @@ class Dispersy(object):
             # first attempt will block for at most TIMEOUT seconds
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
             # give low priority to ensure that on_results is called before the call returns
-            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority=-128)
+            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority= -128)
 
             if not bootstrap.are_resolved:
                 # unable to resolve all... retry until successful
@@ -2533,6 +2533,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 messages_with_sync.append((message, time_low, time_high, offset, modulo))
 
         if messages_with_sync:
+            payload = message.payload
             for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
                 # we limit the response by byte_limit bytes
                 byte_limit = community.dispersy_sync_response_limit
