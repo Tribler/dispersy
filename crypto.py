@@ -143,10 +143,7 @@ class ECCrypto(DispersyCrypto):
     def key_to_pem(self, ec):
         "Convert a key to the PEM format."
         bio = BIO.MemoryBuffer()
-        
-        def get_password(*args):
-            return password or ""
-        ec.save_key_bio(bio, cipher, get_password)
+        ec.save_key_bio(bio, None, lambda *args: "")
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
