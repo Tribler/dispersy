@@ -109,10 +109,6 @@ class SignatureRequestCache(NumberCache):
     def timeout_delay(self):
         return self._timeout_delay
 
-    @property
-    def cleanup_delay(self):
-        return 0.0
-
     def on_timeout(self):
         logger.debug("signature timeout")
         self.response_func(self, None, True, *self.response_args)
@@ -129,18 +125,14 @@ class IntroductionRequestCache(NumberCache):
         # we will accept the response at most 10.5 seconds after our request
         return 10.5
 
-    @property
-    def cleanup_delay(self):
-        # the cache remains available at most 4.5 after receiving the response.  this gives some time to receive the
-        # puncture message
-        return 4.5
-
     def __init__(self, community, helper_candidate):
         super(IntroductionRequestCache, self).__init__(community.request_cache)
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None
         self.puncture_candidate = None
+        self._introduction_response_received = False
+        self._puncture_received = False
 
     def on_timeout(self):
         # helper_candidate did not respond to a request message in this community.  after some time
@@ -152,6 +144,18 @@ class IntroductionRequestCache(NumberCache):
 
         # set the candidate to obsolete
         self.helper_candidate.obsolete(time())
+
+    def _check_if_both_received(self):
+        if self._introduction_response_received and self._puncture_received:
+            self.community.dispersy.request_cache.pop(self.identifier)
+
+    def on_introduction_response(self):
+        self._introduction_response_received = True
+        self._check_if_both_received()
+
+    def on_puncture(self):
+        self._puncture_received = True
+        self._check_if_both_received()
 
 
 class MissingSomethingCache(Cache):
@@ -165,10 +169,6 @@ class MissingSomethingCache(Cache):
     @property
     def timeout_delay(self):
         return self._timeout_delay
-
-    @property
-    def cleanup_delay(self):
-        return 0.0
 
     def on_timeout(self):
         logger.debug("%s: timeout on %d callbacks", self.__class__.__name__, len(self.callbacks))
@@ -242,10 +242,6 @@ class MissingSequenceOverviewCache(Cache):
     @property
     def timeout_delay(self):
         return self._timeout_delay
-
-    @property
-    def cleanup_delay(self):
-        return 0.0
 
     def on_timeout(self):
         pass
@@ -2692,7 +2688,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._statistics.dict_inc(self._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
-            cache = community.request_cache.pop(IntroductionRequestCache.create_identifier(message.payload.identifier))
+            cache = community.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
+            cache.on_introduction_response()
 
             # handle the introduction
             lan_introduction_address = payload.lan_introduction_address
@@ -2807,6 +2804,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         for message in messages:
             # get cache object linked to this request but does NOT stop timeout from occurring
             cache = community.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
+            cache.on_puncture()
 
             # when the sender is behind a symmetric NAT and we are not, we will not be able to get
             # through using the port that the helper node gave us (symmetric NAT will give a

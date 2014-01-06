@@ -55,15 +55,8 @@ class Cache(object):
     def timeout_delay(self):
         return 10.0
 
-    @property
-    def cleanup_delay(self):
-        return 10.0
-
     def on_timeout(self):
         raise NotImplementedError()
-
-    def on_cleanup(self):
-        pass
 
     def __str__(self):
         return "<%s identifier:%s>" % (self.__class__.__name__, self.identifier)
@@ -176,16 +169,10 @@ class RequestCache(object):
 
         cache = self._identifiers.get(identifier)
         if cache:
-            assert isinstance(cache.cleanup_delay, float)
-            assert cache.cleanup_delay >= 0.0
             logger.debug("cancel timeout for %s", cache)
 
-            if cache.cleanup_delay:
-                self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
-
-            else:
-                self._callback.unregister(cache.callback_identifier)
-                del self._identifiers[identifier]
+            self._callback.unregister(cache.callback_identifier)
+            del self._identifiers[identifier]
 
             return cache
 
@@ -210,32 +197,6 @@ class RequestCache(object):
         logger.debug("timeout on %s", cache)
         cache.on_timeout()
 
-        if cache.cleanup_delay:
-            self._callback.replace_register(cache.callback_identifier, self._on_cleanup, (cache,), delay=cache.cleanup_delay)
-
         # the on_timeout call could have already removed the identifier from the cache using pop
-        elif cache.identifier in self._identifiers:
-            del self._identifiers[cache.identifier]
-
-    def _on_cleanup(self, cache):
-        """
-        Called CACHE.cleanup_delay seconds after CACHE had either a timeout or was popped.
-
-        _on_cleanup is called for every Cache that has CAHCHE.cleanup_delay > 0.0.  When called _on_cleanup will:
-        - call CACHE.on_cleanup().
-        - removes CACHE, freeing CACHE.identifier to be used again.
-        """
-        # if not cache.identifier in self._identifiers:
-        #     logger.error("_on_cleanup with unknown identifier \"%s\"", cache.identifier)
-        #     return
-
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        assert cache.identifier in self._identifiers, cache
-
-        logger.debug("cleanup on %s", cache)
-        cache.on_cleanup()
-
-        # the on_cleanup call could have already removed the identifier from the cache using pop
         if cache.identifier in self._identifiers:
             del self._identifiers[cache.identifier]
-
