@@ -171,7 +171,7 @@ class RawserverEndpoint(Endpoint):
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
         if any(len(packet) > 2**16 - 60 for packet in packets):
-            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
+            raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))
@@ -370,7 +370,7 @@ class TunnelEndpoint(Endpoint):
         assert all(isinstance(packet, str) for packet in packets)
         assert all(len(packet) > 0 for packet in packets)
         if any(len(packet) > 2**16 - 60 for packet in packets):
-            raise RuntimeError("UDP does not support %d byte packets" % len(max(len(packet) for packet in packets)))
+            raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
         self._total_send += (len(packets) * len(candidates))

@@ -100,8 +100,6 @@ def main_real(setup=None):
     #     swift_process.add_download(dispersy.endpoint)
     # else:
 
-    # register tasks
-    callback.register(start_script, (dispersy, opt))
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
@@ -112,6 +110,10 @@ def main_real(setup=None):
     # start
     if not dispersy.start():
         raise RuntimeError("Unable to start Dispersy")
+
+    # This has to be scheduled _after_ starting dispersy so the DB is opened by when this is actually executed.
+    # register tasks
+    callback.register(start_script, (dispersy, opt))
 
     # wait forever
     callback.loop()

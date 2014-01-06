@@ -78,10 +78,10 @@ class Callback(object):
         # _state contains the current state of the thread.  it is protected by _lock and follows the
         # following states:
         #
-        #                                              --> fatal-exception -> STATE_EXCEPTION
-        #                                             /
-        # STATE_INIT -> start() -> PLEASE_RUN -> STATE_RUNNING
-        #                                \            \
+        #                                              --> fatal-exception
+        #                                             /               \
+        # STATE_INIT -> start() -> PLEASE_RUN -> STATE_RUNNING         \
+        #                                \            \                 \
         #                                 --------------> stop() -> PLEASE_STOP -> STATE_FINISHED
         #
         self._state = "STATE_INIT"
@@ -89,7 +89,7 @@ class Callback(object):
 
         # _exception is set to SystemExit, KeyboardInterrupt, GeneratorExit, or AssertionError when
         # any of the registered callbacks raises any of these exceptions.  in this case _state will
-        # be set to STATE_EXCEPTION.  it is protected by _lock
+        # be set to STATE_PLEASE_STOP, causing a shutdown.  it is protected by _lock
         self._exception = None
         self._exception_traceback = None
 
@@ -118,6 +118,10 @@ class Callback(object):
         # will be accepted.
         self._requests_mirror = self._requests
         self._expired_mirror = self._expired
+
+        # _final_func is called directly on the callback thread directly before the state is set to
+        # STATE_FINISHED
+        self._final_func = None
 
         if __debug__:
             def must_close(callback):
@@ -149,10 +153,10 @@ class Callback(object):
     @property
     def is_finished(self):
         """
-        Returns True when the state is either STATE_FINISHED, STATE_EXCEPTION or STATE_INIT.  In either case the
+        Returns True when the state is either STATE_FINISHED or STATE_INIT.  In either case the
         thread is no longer running.
         """
-        return self._state == "STATE_FINISHED" or self._state == "STATE_EXCEPTION" or self._state == "STATE_INIT"
+        return self._state == "STATE_FINISHED" or self._state == "STATE_INIT"
 
     @property
     def exception(self):
@@ -209,17 +213,20 @@ class Callback(object):
 
         if fatal or force_fatal:
             with self._lock:
-                self._state = "STATE_EXCEPTION"
                 self._exception = exception
                 self._exception_traceback = exc_info()[2]
 
-            if fatal:
-                logger.warning("attempting proper shutdown [%s]", exception)
+                if self._state == "STATE_RUNNING":
+                    self._state = "STATE_PLEASE_STOP"
+                    logger.debug("STATE_PLEASE_STOP")
 
-            else:
-                # one or more of the exception handlers returned True, we will consider this
-                # exception to be fatal and quit
-                logger.warning("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
+                    if fatal:
+                        logger.warning("attempting proper shutdown [%s]", exception)
+
+                    else:
+                        # one or more of the exception handlers returned True, we will consider this
+                        # exception to be fatal and quit
+                        logger.warning("reassessing as fatal exception, attempting proper shutdown [%s]", exception)
 
         else:
             logger.warning("keep running regardless of exception [%s]", exception)
@@ -535,7 +542,7 @@ class Callback(object):
 
         return self.is_running
 
-    def stop(self, timeout=10.0, exception=None):
+    def stop(self, timeout=10.0, exception=None, final_func=None):
         """
         Stop the asynchronous thread.
 
@@ -545,35 +552,50 @@ class Callback(object):
         Returns True when the callback thread is finished, otherwise returns False.
         """
         assert isinstance(timeout, float)
-        if self._state == "STATE_RUNNING":
-            with self._lock:
+        with self._lock:
+            if self._state == "STATE_RUNNING":
+                do_stop = True
+
                 if exception:
                     self._exception = exception
                     self._exception_traceback = exc_info()[2]
+                self._final_func = final_func
                 self._state = "STATE_PLEASE_STOP"
                 logger.debug("STATE_PLEASE_STOP")
 
                 # wakeup if sleeping
                 self._event.set()
 
-        # 05/04/13 Boudewijn: we must also wait when self._state != RUNNING.  This can occur when
-        # stop() has already been called from SELF._THREAD_IDENT, changing the state to PLEASE_STOP.
-        if self._thread_ident == get_ident():
-            logger.debug("using callback.stop from the same thread will not allow us to wait until the callback has finished")
+            else:
+                do_stop = False
 
-        else:
-            while self._state == "STATE_PLEASE_STOP" and timeout > 0.0:
-                sleep(0.01)
-                timeout -= 0.01
+        if do_stop:
+            if self._thread_ident == get_ident():
+                begin = time()
+                while self._one_task():
+                    difference = time() - begin
+                    if timeout > 0.0 and difference > timeout:
+                        logger.warning("timeout %.2fs occurred after %.2fs", timeout, difference)
+                        break
 
-            if not self.is_finished:
-                logger.warning("unable to stop the callback within the allowed time")
+                # _shutdown must be called from the callback thread
+                self._shutdown()
+
+            else:
+                begin = time()
+                while self._state == "STATE_PLEASE_STOP":
+                    sleep(0.01)
+                    difference = time() - begin
+                    if timeout > 0.0 and difference > timeout:
+                        logger.warning("timeout %.2fs occurred after %.2fs", timeout, difference)
+                        break
 
         return self.is_finished
 
     def join(self, timeout=0.0):
         assert isinstance(timeout, float), type(timeout)
         assert timeout >= 0.0, timeout
+        logger.debug("waiting at most %.2f seconds for thread to stop")
         self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
 
@@ -675,7 +697,7 @@ class Callback(object):
 
                 if callback:
                     with self._lock:
-                        heappush(self._expired, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
+                        heappush(self._expired_mirror, (priority, actual_time, root_id, (callback[0], (exception,) + callback[1], callback[2]), None))
 
                 self._call_exception_handlers(exception, False)
 
@@ -688,23 +710,7 @@ class Callback(object):
 
         return True
 
-    @attach_profiler
-    def loop(self):
-        # set thread name (visible from ps and top)
-        set_name(self._name[:16])
-
-        # from now on we will assume GET_IDENT() is the running thread
-        self._thread_ident = get_ident()
-
-        with self._lock:
-            if self._state == "STATE_PLEASE_RUN":
-                self._state = "STATE_RUNNING"
-                logger.debug("STATE_RUNNING")
-
-        # handle tasks as long as possible
-        while self._one_task():
-            pass
-
+    def _shutdown(self):
         with self._lock:
             # allowing us to refuse any new tasks.  _requests_mirror and _expired_mirror will still
             # allow tasks to be removed
@@ -713,7 +719,7 @@ class Callback(object):
 
         # call all expired tasks and send GeneratorExit exceptions to expired generators, note that
         # new tasks will not be accepted
-        logger.debug("there are %d expired tasks", len(self._expired_mirror))
+        logger.debug("there are %d expired tasks at shutdown", len(self._expired_mirror))
         while self._expired_mirror:
             _, _, _, call, callback = heappop(self._expired_mirror)
             if isinstance(call, TupleType):
@@ -748,7 +754,7 @@ class Callback(object):
                         logger.exception("%s", exception)
 
         # send GeneratorExit exceptions to scheduled generators
-        logger.debug("there are %d scheduled tasks", len(self._requests_mirror))
+        logger.debug("there are %d scheduled tasks at shutdown", len(self._requests_mirror))
         while self._requests_mirror:
             _, _, _, call, callback = heappop(self._requests_mirror)
             if isinstance(call, GeneratorType):
@@ -765,7 +771,35 @@ class Callback(object):
                 except Exception as exception:
                     logger.exception("%s", exception)
 
+        # call FINAL_FUNC
+        if callable(self._final_func):
+            logger.debug("calling final function %s", self._final_func)
+            try:
+                self._final_func()
+            except Exception as exception:
+                logger.exception("%s", exception)
+
         # set state to finished
         with self._lock:
-            logger.debug("STATE_FINISHED")
+            self._final_func = None
             self._state = "STATE_FINISHED"
+            logger.debug("STATE_FINISHED")
+
+    @attach_profiler
+    def loop(self):
+        # set thread name (visible from ps and top)
+        set_name(self._name[:16])
+
+        # from now on we will assume GET_IDENT() is the running thread
+        self._thread_ident = get_ident()
+
+        with self._lock:
+            if self._state == "STATE_PLEASE_RUN":
+                self._state = "STATE_RUNNING"
+                logger.debug("STATE_RUNNING")
+
+        # handle tasks as long as possible
+        while self._one_task():
+            pass
+
+        self._shutdown()

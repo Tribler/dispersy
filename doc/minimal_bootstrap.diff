@@ -1,0 +1,33 @@
+commit b5065d3876fb0ea45f783944e9d06e1b87b24ae6 (HEAD, refs/heads/documentation)
+Author: Boudewijn <boudewijn-tribler@frayja.com>
+Date:   Wed Oct 23 10:13:19 2013 +0200
+
+    Minimal steps towards bootstrap peers.
+    
+    This disables the 0.5% chance of walking towards a bootstrap peer.
+
+1 file changed, 5 insertions(+), 5 deletions(-)
+ community.py | 10 +++++-----
+
+	Modified   community.py
+diff --git a/community.py b/community.py
+index 7c1d4e4..30b6cf7 100644
+--- a/community.py
++++ b/community.py
+@@ -1555,11 +1555,11 @@ class Community(object):
+                                 logger.debug("returning [%2d:%2d:%2d intro  ] %s", category_sizes[0] , category_sizes[1], category_sizes[2], intro)
+                                 return intro
+ 
+-            else:  # ~.5%
+-                candidate = self._bootstrap_candidates.next()
+-                if candidate:
+-                    logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0] , category_sizes[1], category_sizes[2], candidate)
+-                    return candidate
++            # else:  # ~.5%
++            #     candidate = self._bootstrap_candidates.next()
++            #     if candidate:
++            #         logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0] , category_sizes[1], category_sizes[2], candidate)
++            #         return candidate
+ 
+         bootstrap_candidates = list(self._iter_bootstrap(once=True))
+         shuffle(bootstrap_candidates)

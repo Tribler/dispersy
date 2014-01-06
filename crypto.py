@@ -1,5 +1,6 @@
 from math import ceil
 from struct import Struct
+from hashlib import sha1
 
 from M2Crypto import EC, BIO
 from M2Crypto.EC import EC_pub
@@ -38,6 +39,10 @@ class DispersyCrypto(object):
 
     def key_to_bin(self, key):
         "Convert a key to the binary format."
+        raise NotImplementedError()
+
+    def key_to_hash(self, key):
+        "Get a hash representation from a key."
         raise NotImplementedError()
 
     def key_from_public_bin(self, string):
@@ -143,7 +148,10 @@ class ECCrypto(DispersyCrypto):
     def key_to_pem(self, ec):
         "Convert a key to the PEM format."
         bio = BIO.MemoryBuffer()
-        ec.save_key_bio(bio)
+        if isinstance(ec, EC_pub):
+            ec.save_pub_key_bio(bio)
+        else:
+            ec.save_key_bio(bio, None, lambda *args: "")
         return bio.read_all()
 
     def key_from_private_pem(self, pem, password=None):
@@ -175,6 +183,10 @@ class ECCrypto(DispersyCrypto):
     def key_to_bin(self, ec):
         "Convert the key to a binary format."
         return self.pem_to_bin(self.key_to_pem(ec))
+
+    def key_to_hash(self, ec):
+        "Get a hash representation from a key."
+        return sha1(self.key_to_bin(ec.pub())).digest()
 
     def is_valid_private_bin(self, string):
         "Returns True if the input is a valid public/private keypair stored in a binary format"

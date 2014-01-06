@@ -58,9 +58,30 @@ class CommunityDestination(Destination):
     """
     class Implementation(Destination.Implementation):
 
+        def __init__(self, meta, *candidates):
+            """
+            Construct a CandidateDestination.Implementation object.
+
+            META the associated CandidateDestination object.
+
+            CANDIDATES is a tuple containing zero or more Candidate objects.  These will contain the
+            destination addresses when the associated message is sent.
+            """
+            if __debug__:
+                from .candidate import Candidate
+            assert isinstance(candidates, tuple), type(candidates)
+            assert len(candidates) >= 0, len(candidates)
+            assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
+            super(CommunityDestination.Implementation, self).__init__(meta)
+            self._candidates = candidates
+
         @property
         def node_count(self):
             return self._meta._node_count
+
+        @property
+        def candidates(self):
+            return self._candidates
 
     def __init__(self, node_count):
         """
