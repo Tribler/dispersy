@@ -113,8 +113,8 @@ class Member(DummyMember):
 
         database = dispersy.database
 
-        ec_pub = self._crypto.key_from_public_bin(public_key)
-        mid = self._crypto.key_to_hash(ec_pub)
+        ec_pub = dispersy.crypto.key_from_public_bin(public_key)
+        mid = dispersy.crypto.key_to_hash(ec_pub)
         for database_id, public_key_from_db, tags in database.execute(u"SELECT id, public_key, tags FROM member WHERE mid = ?", (buffer(mid),)):
             public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
             if public_key_from_db == public_key:
