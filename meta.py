@@ -1,15 +1,15 @@
 import inspect
 
-from .dprint import dprint
-from .revision import update_revision_information
+from .logger import get_logger
+logger = get_logger(__name__)
 
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class MetaObject(object):
+
     class Implementation(object):
+
         def __init__(self, meta):
-            assert isinstance(meta, MetaObject)
+            assert isinstance(meta, MetaObject), type(meta)
             self._meta = meta
 
         @property
@@ -28,9 +28,9 @@ class MetaObject(object):
             try:
                 return cls(self, *args, **kargs)
             except TypeError:
-                dprint("TypeError in ", self.__class__.__name__, ".", self.Implementation.__name__, level="error")
-                dprint("self.Implementation takes: ", inspect.getargspec(self.Implementation.__init__), level="error")
-                dprint("self.Implementation got: ", args, " ", kargs, level="error")
+                logger.error("TypeError in %s.%s", self.__class__.__name__, self.Implementation.__name__)
+                logger.error("self.Implementation takes: %s", inspect.getargspec(self.Implementation.__init__))
+                logger.error("self.Implementation got: %s %s", args, kargs)
                 raise
 
         else:

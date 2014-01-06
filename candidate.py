@@ -1,5 +1,7 @@
+from .logger import get_logger
+logger = get_logger(__name__)
+
 if __debug__:
-    from .dprint import dprint
     from .member import Member
 
     def is_address(address):
@@ -7,14 +9,10 @@ if __debug__:
         assert len(address) == 2, len(address)
         assert isinstance(address[0], str), type(address[0])
         assert address[0], address[0]
-        assert not address[0] == "0.0.0.0", address
         assert isinstance(address[1], int), type(address[1])
         assert address[1] >= 0, address[1]
         return True
 
-# update version information directly from SVN
-from .revision import update_revision_information
-update_revision_information("$HeadURL$", "$Revision$")
 
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
 # seconds.  However, taking into account round trip time and processing delay we to use smaller
@@ -33,42 +31,49 @@ assert isinstance(CANDIDATE_STUMBLE_LIFETIME, float)
 assert isinstance(CANDIDATE_INTRO_LIFETIME, float)
 assert isinstance(CANDIDATE_LIFETIME, float)
 
+
 class Candidate(object):
+
     def __init__(self, sock_addr, tunnel):
         assert is_address(sock_addr), sock_addr
         assert isinstance(tunnel, bool), type(tunnel)
         self._sock_addr = sock_addr
         self._tunnel = tunnel
 
-    # @property
-    def __get_sock_addr(self):
+    @property
+    def sock_addr(self):
         return self._sock_addr
-    # @sock_addr.setter
-    def __set_sock_addr(self, sock_addr):
-        self._sock_addr = sock_addr
-    # .setter was introduced in Python 2.6
-    sock_addr = property(__get_sock_addr, __set_sock_addr)
 
     @property
     def tunnel(self):
         return self._tunnel
 
     def get_destination_address(self, wan_address):
-        assert is_address(wan_address), wan_address
+        logger.debug("deprecated.  use candidate.sock_addr instead")
         return self._sock_addr
-
-    def get_members(self, community):
-        # preferably use the WalkerCandidate directly
-        candidate = community.dispersy.get_candidate(self._sock_addr)
-        if candidate:
-            return candidate.get_members(community)
-        else:
-            return []
 
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
 
+    def __eq__(self, other):
+        """
+        True when OTHER is a Candidate instance and self.sock_addr == other.sock_addr, otherwise
+        False.
+        """
+        return isinstance(other, Candidate) and self._sock_addr == other.sock_addr
+
+    def __ne__(self, other):
+        """
+        False when OTHER is a Candidate instance and self.sock_addr == other.sock_addr, otherwise
+        True.
+        """
+        return not (isinstance(other, Candidate) and self._sock_addr == other.sock_addr)
+
+    def __hash__(self):
+        return hash(str(self._sock_addr))
+
 class WalkCandidate(Candidate):
+
     """
     A Candidate instance represents a communication endpoint with one or more member/community
     pairs.
@@ -85,21 +90,6 @@ class WalkCandidate(Candidate):
     - INTRO: we know about this candidate through hearsay.  Viable up to CANDIDATE_INACTIVE seconds
       after the introduction-response message (talking about the candidate) was received.
     """
-    class Timestamps(object):
-        __slots__ = ["timeout_adjustment", "last_walk", "last_stumble", "last_intro"]
-
-        def __init__(self):
-            self.timeout_adjustment = 0.0
-            self.last_walk = 0.0
-            self.last_stumble = 0.0
-            self.last_intro = 0.0
-
-        def merge(self, other):
-            assert isinstance(other, WalkCandidate.Timestamps), other
-            self.timeout_adjustment = max(self.timeout_adjustment, other.timeout_adjustment)
-            self.last_walk = max(self.last_walk, other.last_walk)
-            self.last_stumble = max(self.last_stumble, other.last_stumble)
-            self.last_intro = max(self.last_intro, other.last_intro)
 
     def __init__(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
         assert is_address(sock_addr), sock_addr
@@ -112,13 +102,22 @@ class WalkCandidate(Candidate):
         self._lan_address = lan_address
         self._wan_address = wan_address
         self._connection_type = connection_type
+
+        # Member instances that this Candidate is associated with
         self._associations = set()
-        self._timestamps = dict()
-        self._global_times = dict()
+
+        # properties to determine the category
+        self._timeout_adjustment = 0.0
+        self._last_walk = 0.0
+        self._last_stumble = 0.0
+        self._last_intro = 0.0
+
+        # the highest global time that one of the walks reported from this Candidate
+        self._global_time = 0
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error", stack=True)
+                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
                 assert False
 
     @property
@@ -133,247 +132,167 @@ class WalkCandidate(Candidate):
     def connection_type(self):
         return self._connection_type
 
-    def get_destination_address(self, wan_address):
-        assert is_address(wan_address), wan_address
-        return self._lan_address if wan_address[0] == self._wan_address[0] else self._wan_address
-
     def merge(self, other):
-        assert isinstance(other, WalkCandidate), other
+        assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
-        
-        for cid, timestamps in other._timestamps.iteritems():
-            if cid in self._timestamps:
-                self._timestamps[cid].merge(timestamps)
-            else:
-                self._timestamps[cid] = timestamps
-                
-                #TODO: this should be improved
-                from .dispersy import Dispersy
-                dispersy = Dispersy.get_instance()
-                community = dispersy._communities.get(cid, None)
-                community.add_candidate(self)
-                
-        for cid, global_time in self._global_times.iteritems():
-            self._global_times[cid] = max(self._global_times.get(cid, 0), global_time)
-        
-    def set_global_time(self, community, global_time):
-        self._global_times[community.cid] = max(self._global_times.get(community.cid, 0), global_time)
+        self._timeout_adjustment = max(self._timeout_adjustment, other._timeout_adjustment)
+        self._last_walk = max(self._last_walk, other._last_walk)
+        self._last_stumble = max(self._last_stumble, other._last_stumble)
+        self._last_intro = max(self._last_intro, other._last_intro)
+        self._global_time = max(self._global_time, other._global_time)
 
-    def get_global_time(self, community):
-        return self._global_times.get(community.cid, 0)
+    @property
+    def global_time(self):
+        return self._global_time
 
-    def _get_or_create_timestamps(self, community):
-        if __debug__:
-            from .community import Community
-            assert isinstance(community, Community)
-        timestamps = self._timestamps.get(community.cid)
-        if not timestamps:
-            self._timestamps[community.cid] = timestamps = self.Timestamps()
-        return timestamps
+    @global_time.setter
+    def global_time(self, global_time):
+        self._global_time = max(self._global_time, global_time)
 
-    def associate(self, community, member):
+    def associate(self, member):
         """
         Once it is confirmed that the candidate is represented by a member, i.e. though a 3-way
         handshake, the member can be associated with the candidate.
         """
-        if __debug__:
-            from .community import Community
-        assert isinstance(community, Community)
         assert isinstance(member, Member)
-        self._associations.add((community.cid, member))
+        self._associations.add(member)
 
-    def is_associated(self, community, member):
+    def is_associated(self, member):
         """
-        Check if the (community, member) pair is associated with this candidate.
+        Check if the member is associated with this candidate.
         """
-        if __debug__:
-            from .community import Community
-        assert isinstance(community, Community)
         assert isinstance(member, Member)
-        return (community.cid, member) in self._associations
+        return member in self._associations
 
-    def disassociate(self, community, member):
+    def disassociate(self, member):
         """
         Remove the association with a member.
         """
-        if __debug__:
-            from .community import Community
-        assert isinstance(community, Community)
         assert isinstance(member, Member)
-        self._associations.remove((community.cid, member))
-        if community.cid in self._global_times:
-            del self._global_times[community.cid]
+        self._associations.remove(member)
 
-    def get_members(self, community):
+    def get_members(self):
         """
-        Returns all unique Member instances in COMMUNITY associated to this candidate.
+        Returns all unique Member instances associated to this candidate.
         """
-        return set(member for cid, member in self._associations if community.cid == cid)
+        return self._associations
 
-    def in_community(self, community, now):
+    def is_obsolete(self, now):
         """
-        Returns True if SELF is either walk, stumble, or intro in COMMUNITY.
+        Returns True if this candidate exceeded the CANDIDATE_LIFETIME.
         """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            return (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
-                    now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME or
-                    now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME)
-        else:
-            return False
+        return max(self._last_walk, self._last_stumble, self._last_intro) + CANDIDATE_LIFETIME < now
 
-    def is_active(self, community, now):
+    def age(self, now, category=u""):
         """
-        Returns True if SELF is either walk or stumble in COMMUNITY.
-        """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            return (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
-                    now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME)
-        return False
+        Returns the time between NOW and the most recent walk, stumble, or intro (depending on
+        CATEGORY).
 
-    def is_any_active(self, now):
-        """
-        Returns True if SELF is either walk or stumble in any of the associated communities.
+        When CATEGORY is an empty string candidate.get_category(NOW) will be used to obtain it.
 
-        This is used when deciding if this candidate can be used for communication, the assumption
-        is that if any community is still active, that all will still be active.  The exception to
-        this rule is when a node decides to leave one or more communities while remaining active in
-        one or more others.
+        For the following CATEGORY values it will return the equivalent:
+        - walk :: NOW - candidate.last_walk
+        - stumble :: NOW - candidate.last_stumble
+        - intro :: NOW - candidate.last_intro
+        - none :: NOW - max(candidate.last_walk, candidate.last_stumble, candidate.last_intro)
         """
-        return any(timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME
-                   for timestamps
-                   in self._timestamps.itervalues())
+        if not category:
+            category = self.get_category(now)
 
-    def is_all_obsolete(self, now):
-        """
-        Returns True if SELF exceeded the CANDIDATE_LIFETIME of all the associated communities.
-        """
-        return all(max(timestamps.last_walk, timestamps.last_stumble, timestamps.last_intro) + CANDIDATE_LIFETIME < now
-                   for timestamps
-                   in self._timestamps.itervalues())
+        mapping = {u"walk": now - self._last_walk,
+                   u"stumble": now - self._last_stumble,
+                   u"intro": now - self._last_intro,
+                   u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
 
-    def age(self, now):
-        """
-        Returns the time between NOW and the most recent walk or stumble or any of the associated communities.
-        """
-        return now - max(max(timestamps.last_walk, timestamps.last_stumble) for timestamps in self._timestamps.itervalues())
+        return mapping[category]
 
-    def inactive(self, community, now):
+    def inactive(self, now):
         """
-        Called to set SELF to inactive for COMMUNITY.
+        Called to set this candidate to inactive.
         """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            timestamps.last_walk = now - CANDIDATE_WALK_LIFETIME
-            timestamps.last_stumble = now - CANDIDATE_STUMBLE_LIFETIME
-            timestamps.last_intro = now - CANDIDATE_INTRO_LIFETIME
+        self._last_walk = now - CANDIDATE_WALK_LIFETIME
+        self._last_stumble = now - CANDIDATE_STUMBLE_LIFETIME
+        self._last_intro = now - CANDIDATE_INTRO_LIFETIME
 
-    def obsolete(self, community, now):
+    def obsolete(self, now):
         """
-        Called to set SELF to obsolete for all associated communities.
+        Called to set this candidate to obsolete.
         """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            timestamps.last_walk = now - CANDIDATE_LIFETIME
-            timestamps.last_stumble = now - CANDIDATE_LIFETIME
-            timestamps.last_intro = now - CANDIDATE_LIFETIME
+        self._last_walk = now - CANDIDATE_LIFETIME
+        self._last_stumble = now - CANDIDATE_LIFETIME
+        self._last_intro = now - CANDIDATE_LIFETIME
 
-    def all_inactive(self, now):
+    def is_eligible_for_walk(self, now):
         """
-        Called to set SELF to inactive (or keep it at OBSOLETE) for all associated communities.
-
-        This is used when a timeout occurs while waiting for an introduction-response.  We choose to
-        set all communities to inactive to improve churn handling.  Setting the entire candidate to
-        inactive will not remove it and any associated 3-way handshake information.  This is
-        retained until the entire candidate becomes obsolete.
-        """
-        for timestamps in self._timestamps.itervalues():
-            timestamps.last_walk = now - CANDIDATE_WALK_LIFETIME
-            timestamps.last_stumble = now - CANDIDATE_STUMBLE_LIFETIME
-            timestamps.last_intro = now - CANDIDATE_INTRO_LIFETIME
-
-    def is_eligible_for_walk(self, community, now):
-        """
-        Returns True when the candidate is eligible for taking a step.
+        Returns True when this candidate is eligible for taking a step.
 
         A candidate is eligible when:
-        - SELF is either walk, stumble, or intro in COMMUNITY; and
+        - SELF is either walk, stumble, or intro; and
         - the previous step is more than CANDIDATE_ELIGIBLE_DELAY ago.
         """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            return (timestamps.last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and
-                    (timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME or
-                     now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME or
-                     now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME))
-        else:
-            return False
+        return (self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and
+                (self._last_walk + self._timeout_adjustment <= now < self._last_walk + CANDIDATE_WALK_LIFETIME or
+                 now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME or
+                 now < self._last_intro + CANDIDATE_INTRO_LIFETIME))
 
-    def last_walk(self, community):
-        assert community.cid in self._timestamps
-        return self._timestamps[community.cid].last_walk
+    @property
+    def last_walk(self):
+        return self._last_walk
 
-    def last_stumble(self, community):
-        assert community.cid in self._timestamps
-        return self._timestamps[community.cid].last_stumble
+    @property
+    def last_stumble(self):
+        return self._last_stumble
 
-    def last_intro(self, community):
-        assert community.cid in self._timestamps
-        return self._timestamps[community.cid].last_intro
+    @property
+    def last_intro(self):
+        return self._last_intro
 
-    def get_category(self, community, now):
+    def get_category(self, now):
         """
         Returns the category (u"walk", u"stumble", u"intro", or u"none") depending on the current
         time NOW.
         """
-        timestamps = self._timestamps.get(community.cid)
-        if timestamps:
-            if timestamps.last_walk + timestamps.timeout_adjustment <= now < timestamps.last_walk + CANDIDATE_WALK_LIFETIME:
-                return u"walk"
-    
-            if now < timestamps.last_stumble + CANDIDATE_STUMBLE_LIFETIME:
-                return u"stumble"
-    
-            if now < timestamps.last_intro + CANDIDATE_INTRO_LIFETIME:
-                return u"intro"
+        assert isinstance(now, float), type(now)
+
+        if self._last_walk + self._timeout_adjustment <= now < self._last_walk + CANDIDATE_WALK_LIFETIME:
+            return u"walk"
+
+        if now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
+            return u"stumble"
+
+        if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
+            return u"intro"
 
         return u"none"
 
-    def walk(self, community, now, timeout_adjustment):
+    def walk(self, now, timeout_adjustment):
         """
         Called when we are about to send an introduction-request to this candidate.
         """
-        timestamps = self._get_or_create_timestamps(community)
-        timestamps.timeout_adjustment = timeout_adjustment
-        timestamps.last_walk = now
-        
-        if not isinstance(self, BootstrapCandidate):
-            community.add_candidate(self)
+        assert isinstance(now, float), type(now)
+        assert isinstance(timeout_adjustment, float), type(timeout_adjustment)
+        self._last_walk = now
+        self._timeout_adjustment = timeout_adjustment
 
-    def walk_response(self, community):
+    def walk_response(self):
         """
         Called when we received an introduction-response to this candidate.
         """
-        self._get_or_create_timestamps(community).timeout_adjustment = 0.0
+        self._timeout_adjustment = 0.0
 
-    def stumble(self, community, now):
+    def stumble(self, now):
         """
         Called when we receive an introduction-request from this candidate.
         """
-        self._get_or_create_timestamps(community).last_stumble = now
-        
-        if not isinstance(self, BootstrapCandidate):
-            community.add_candidate(self)
+        assert isinstance(now, float), type(now)
+        self._last_stumble = now
 
-    def intro(self, community, now):
+    def intro(self, now):
         """
         Called when we receive an introduction-response introducing this candidate.
         """
-        self._get_or_create_timestamps(community).last_intro = now
-        
-        if not isinstance(self, BootstrapCandidate):
-            community.add_candidate(self)
+        assert isinstance(now, float), type(now)
+        self._last_intro = now
 
     def update(self, tunnel, lan_address, wan_address, connection_type):
         assert isinstance(tunnel, bool)
@@ -392,7 +311,7 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                dprint("Either LAN ", self._lan_address, " or the WAN ", self._wan_address, " should be SOCK_ADDR ", self.sock_addr, level="error", stack=True)
+                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:
@@ -403,27 +322,19 @@ class WalkCandidate(Candidate):
             # should not occur
             return "{%s:%d %s:%d %s:%d}" % (self._sock_addr[0], self._sock_addr[1], self._lan_address[0], self._lan_address[1], self._wan_address[0], self._wan_address[1])
 
+
 class BootstrapCandidate(WalkCandidate):
+
     def __init__(self, sock_addr, tunnel):
         super(BootstrapCandidate, self).__init__(sock_addr, tunnel, sock_addr, sock_addr, connection_type=u"public")
 
-    def in_community(self, community, now):
-        """
-        Bootstrap nodes are, by definition, in every possible community.
-        """
-        if not community.cid in self._timestamps:
-            self._timestamps[community.cid] = self.Timestamps()
-        return True
-
-    def is_eligible_for_walk(self, community, now):
+    def is_eligible_for_walk(self, now):
         """
         Bootstrap nodes are, by definition, always online, hence the timeouts do not apply.
         """
-        assert community.cid in self._timestamps
-        timestamps = self._timestamps[community.cid]
-        return now >= timestamps.last_walk + CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY
+        return self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now
 
-    def is_associated(self, community, member):
+    def is_associated(self, member):
         """
         Bootstrap nodes are, by definition, always associated hence we return true.
         """
@@ -432,6 +343,8 @@ class BootstrapCandidate(WalkCandidate):
     def __str__(self):
         return "B!" + super(BootstrapCandidate, self).__str__()
 
+
 class LoopbackCandidate(Candidate):
+
     def __init__(self):
         super(LoopbackCandidate, self).__init__(("localhost", 0), False)

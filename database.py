@@ -6,33 +6,43 @@ This module provides basic database functionalty and simple version control.
 @contact: dispersy@frayja.com
 """
 
-from os import environ
+from abc import ABCMeta, abstractmethod
+from sqlite3 import Connection, Error
+import logging
+import sys
 
-import hashlib
-import sqlite3
-
-from .dprint import dprint
-from .revision import update_revision_information
-from .singleton import Singleton
+from .decorator import attach_runtime_statistics
+from .logger import get_logger
+logger = get_logger(__name__)
 
 if __debug__:
     import thread
-    from threading import current_thread
 
-__DEBUG_QUERIES__ = environ.has_key('DISPERSY_DEBUG_DATABASE_QUERIES')
-if __DEBUG_QUERIES__:
-    from random import randint
-    from os.path import exists
-    from time import time
-    DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
-    while exists(DB_DEBUG_FILE):
-        DB_DEBUG_FILE="database_queries_%d.txt" % randint(1,9999999)
+if "--explain-query-plan" in getattr(sys, "argv", []):
+    _explain_query_plan_logger = get_logger("explain-query-plan")
+    _explain_query_plan = set()
 
+    def attach_explain_query_plan(func):
+        def attach_explain_query_plan_helper(self, statements, bindings=()):
+            if not statements in _explain_query_plan:
+                _explain_query_plan.add(statements)
 
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
+                _explain_query_plan_logger.info("Explain query plan for <<<%s>>>", statements)
+                for line in self._cursor.execute(u"EXPLAIN QUERY PLAN %s" % statements, bindings):
+                    _explain_query_plan_logger.info(line)
+                _explain_query_plan_logger.info("--")
+
+            return func(self, statements, bindings)
+        attach_explain_query_plan_helper.__name__ = func.__name__
+        return attach_explain_query_plan_helper
+
+else:
+    def attach_explain_query_plan(func):
+        return func
+
 
 class IgnoreCommits(Exception):
+
     """
     Ignore all commits made within the body of a 'with database:' clause.
 
@@ -46,7 +56,11 @@ class IgnoreCommits(Exception):
     def __init__(self):
         super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
 
-class Database(Singleton):
+
+class Database(object):
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, file_path):
         """
         Initialize a new Database instance.
@@ -54,13 +68,14 @@ class Database(Singleton):
         @param file_path: the path to the database file.
         @type file_path: unicode
         """
-        if __debug__:
-            assert isinstance(file_path, unicode)
-            dprint(file_path)
-            self._debug_thread_ident = thread.get_ident()
+        assert isinstance(file_path, unicode)
+        logger.debug("loading database [%s]", file_path)
         self._file_path = file_path
 
-        self._connect(file_path)
+        # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
+        self._connection = None
+        self._cursor = None
+        self._database_version = 0
 
         # _commit_callbacks contains a list with functions that are called on each database commit
         self._commit_callbacks = []
@@ -69,11 +84,46 @@ class Database(Singleton):
         # when _pending_commits > 0.  A commit is required when _pending_commits > 1.
         self._pending_commits = 0
 
+        if __debug__:
+            self._debug_thread_ident = 0
+
+    def open(self, initial_statements=True, prepare_visioning=True):
+        assert self._cursor is None, "Database.open() has already been called"
+        assert self._connection is None, "Database.open() has already been called"
+        if __debug__:
+            self._debug_thread_ident = thread.get_ident()
+        logger.debug("open database [%s]", self._file_path)
+        self._connect()
+        if initial_statements:
+            self._initial_statements()
+        if prepare_visioning:
+            self._prepare_version()
+        return True
+
+    def close(self, commit=True):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        if commit:
+            self.commit(exiting=True)
+        logger.debug("close database [%s]", self._file_path)
+        self._cursor.close()
+        self._cursor = None
+        self._connection.close()
+        self._connection = None
+        return True
+
+    def _connect(self):
+        self._connection = Connection(self._file_path)
+        self._cursor = self._connection.cursor()
+
+    def _initial_statements(self):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+
         # collect current database configuration
         page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
         journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
         synchronous = unicode(next(self._cursor.execute(u"PRAGMA synchronous"))[0]).upper()
-        temp_store = unicode(next(self._cursor.execute(u"PRAGMA temp_store"))[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -82,8 +132,9 @@ class Database(Singleton):
         # directly by VACUUM.  Since we do not want the cost of VACUUM every time we load a
         # database, existing databases must be upgraded.
         #
-        if __debug__: dprint("PRAGMA page_size = 8192 (previously: ", page_size, ")")
         if page_size < 8192:
+            logger.debug("PRAGMA page_size = 8192 (previously: %s) [%s]", page_size, self._file_path)
+
             # it is not possible to change page_size when WAL is enabled
             if journal_mode == u"WAL":
                 self._cursor.executescript(u"PRAGMA journal_mode = DELETE")
@@ -92,30 +143,34 @@ class Database(Singleton):
             self._cursor.execute(u"VACUUM")
             page_size = 8192
 
+        else:
+            logger.debug("PRAGMA page_size = %s (no change) [%s]", page_size, self._file_path)
+
         #
         # PRAGMA journal_mode = DELETE | TRUNCATE | PERSIST | MEMORY | WAL | OFF
         # http://www.sqlite.org/pragma.html#pragma_page_size
         #
-        if __debug__: dprint("PRAGMA journal_mode = WAL (previously: ", journal_mode, ")")
-        if not journal_mode == u"WAL":
+        if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
+            logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
             self._cursor.execute(u"PRAGMA journal_mode = WAL")
+
+        else:
+            logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
 
         #
         # PRAGMA synchronous = 0 | OFF | 1 | NORMAL | 2 | FULL;
         # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
-        if __debug__: dprint("PRAGMA synchronous = NORMAL (previously: ", synchronous, ")")
         if not synchronous in (u"NORMAL", u"1"):
+            logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
-        
-        #
-        # PRAGMA temp_store = 0 | DEFAULT | 1 | FILE | 2 | MEMORY;
-        # http://www.sqlite.org/pragma.html#pragma_temp_store
-        #
-#DISABLED temp_store memory        
-#        if __debug__: dprint("PRAGMA temp_store = MEMORY (previously: ", temp_store, ")")    
-#        if not temp_store in (u"MEMORY", u"2"):
-#            self._cursor.execute(u"PRAGMA temp_store = MEMORY")
+
+        else:
+            logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
+
+    def _prepare_version(self):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
 
         # check is the database contains an 'option' table
         try:
@@ -133,35 +188,20 @@ class Database(Singleton):
         else:
             # the 'option' table probably hasn't been created yet
             version = u"0"
-            
-        self._init_database()
 
         self._database_version = self.check_database(version)
         assert isinstance(self._database_version, (int, long)), type(self._database_version)
-        
-    def _connect(self, file_path):
-        self._connection = sqlite3.Connection(file_path)
-        # self._connection.setrollbackhook(self._on_rollback)
-        self._cursor = self._connection.cursor()
-
-    def _init_database(self):
-        pass
 
     @property
     def database_version(self):
         return self._database_version
 
+    @property
     def file_path(self):
         """
         The database filename including path.
         """
         return self._file_path
-
-    def close(self, commit=True):
-        if commit:
-            self.commit()
-        self._cursor.close()
-        self._connection.close()
 
     def __enter__(self):
         """
@@ -169,9 +209,12 @@ class Database(Singleton):
 
         @return: The method self.execute
         """
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
-        if __debug__: dprint("disabling Database.commit()")
+        logger.debug("disabling commit [%s]", self._file_path)
         self._pending_commits = max(1, self._pending_commits)
         return self
 
@@ -180,24 +223,27 @@ class Database(Singleton):
         Leaves a no-commit state.  A commit will be performed if Database.commit() was called while
         in the no-commit state.
         """
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         self._pending_commits, pending_commits = 0, self._pending_commits
 
         if exc_type is None:
-            if __debug__: dprint("enabling Database.commit()")
+            logger.debug("enabling commit [%s]", self._file_path)
             if pending_commits > 1:
-                if __debug__: dprint("performing ", pending_commits - 1, " pending commits")
+                logger.debug("performing %d pending commits [%s]", pending_commits - 1, self._file_path)
                 self.commit()
             return True
-        
+
         elif isinstance(exc_value, IgnoreCommits):
-            if __debug__: dprint("enabling Database.commit() without committing now")
+            logger.debug("enabling commit without committing now [%s]", self._file_path)
             return True
-        
+
         else:
-            #Niels 23-01-2013, an exception happened from within the with database block
-            #returning False to let Python reraise the exception.
+            # Niels 23-01-2013, an exception happened from within the with database block
+            # returning False to let Python reraise the exception.
             return False
 
     @property
@@ -206,7 +252,10 @@ class Database(Singleton):
         The row id of the most recent insert query.
         @rtype: int or long
         """
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._cursor.lastrowid
 
@@ -216,10 +265,14 @@ class Database(Singleton):
         The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._cursor.rowcount
-        # return self._connection.changes()
 
+    @attach_explain_query_plan
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def execute(self, statement, bindings=()):
         """
         Execute one SQL statement.
@@ -239,74 +292,43 @@ class Database(Singleton):
         @type statement: unicode
 
         @param bindings: the values that must be set to the placeholders in statement.
-        @type bindings: tuple
+        @type bindings: list, tuple, dict, or set
 
         @returns: unknown
         @raise sqlite.Error: unknown
         """
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread (%s %d-%d)"%(current_thread().getName(), self._debug_thread_ident, thread.get_ident())
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        if __debug__:
+            assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._debug_thread_ident != 0, "please call database.open() first"
+            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
 
-        try:
-            if __debug__: dprint(statement, " <-- ", bindings)
+            # bindings may not be strings, text must be given as unicode strings while binary data,
+            # i.e. blobs, must be given as a buffer(...)
+            if isinstance(bindings, dict):
+                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+            else:
+                tests = (not isinstance(binding, str) for binding in bindings)
+            assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
 
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                #Store the query plan with EXPLAIN QUERY PLAN to detect possible optimizations
-                debug_bindings = list(bindings)
-                for i, binding in enumerate(debug_bindings):
-                    if isinstance(binding, buffer):
-                        try:
-                            binding = str(binding).encode("HEX")[:100] #try to show content of buffer, but a most 100 characters
-                        except:
-                            pass
-                        debug_bindings[i] = binding
-                    
-                f.write('QueryDebug: (%f) %s %s\n' % (time(), statement, str(debug_bindings)))
-                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, bindings).fetchall():
-                    f.write('%s %s %s\t%s\n' % row)
-                
-            result = self._cursor.execute(statement, bindings)
-            
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug: (%f) END\n' % time())
-                f.close()
-                
-            return result
+        logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
+        return self._cursor.execute(statement, bindings)
 
-        except sqlite3.Error:
-            dprint(exception=True, level="warning")
-            dprint("Filename: ", self._file_path, level="warning")
-            dprint(statement, level="warning")
-            raise
-
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
 
-        try:
-            if __debug__: dprint(statements)
-            
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                f.write('QueryDebug-script: (%f) %s\n' % (time(), statements))
+        logger.log(logging.NOTSET, "%s [%s]", statements, self._file_path)
+        return self._cursor.executescript(statements)
 
-            result = self._cursor.executescript(statements)
-        
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug-script: (%f) END\n' % time())
-                f.close()
-                
-            return result
-
-        except sqlite3.Error:
-            dprint(exception=True, level="warning")
-            dprint("Filename: ", self._file_path, level="warning")
-            dprint(statements, level="warning")
-            raise
-
+    @attach_explain_query_plan
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executemany(self, statement, sequenceofbindings):
         """
         Execute one SQL statement several times.
@@ -325,83 +347,70 @@ class Database(Singleton):
         @param statement: the SQL statement that is to be executed.
         @type statement: unicode
 
-        @param bindings: a sequence of values that must be set to the placeholders in statement.
-         Each element in sequence is another tuple containing bindings.
-        @type bindings: list containing tuples
+        @param sequenceofbindings: a list, tuple, set, or generator of bindings, where every binding
+                                   contains the values that must be set to the placeholders in
+                                   statement.
+
+        @type sequenceofbindings: list, tuple, set or generator
 
         @returns: unknown
         @raise sqlite.Error: unknown
         """
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
             # generator can only iterate once
             from types import GeneratorType
-            if isinstance(sequenceofbindings, GeneratorType):
+            is_iterator = isinstance(sequenceofbindings, GeneratorType)
+            if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
-        assert all(isinstance(x, (tuple, list, dict, set)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
-        assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
 
-        try:
-            if __debug__: dprint(statement)
-            
-                        
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                                    
-                f.write('QueryDebug-executemany: (%f) %s %s %d times\n' % (time(), statement, len(sequenceofbindings)))
-                for row in self._cursor.execute('EXPLAIN QUERY PLAN '+statement, sequenceofbindings[0]).fetchall():
-                    f.write('%s %s %s\t%s\n' % row)
-            
-            result =  self._cursor.executemany(statement, sequenceofbindings)        
-                    
-            if __DEBUG_QUERIES__:
-                f.write('QueryDebug-executemany: (%f) END\n' % time())
-                f.close()
-            
-            return result
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
+            assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
 
-        except sqlite3.Error:
-            dprint(exception=True)
-            dprint("Filename: ", self._file_path)
-            dprint(statement)
-            raise
+            for bindings in sequenceofbindings:
+                # bindings may not be strings, text must be given as unicode strings while binary data,
+                # i.e. blobs, must be given as a buffer(...)
+                if isinstance(bindings, dict):
+                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                else:
+                    tests = (not isinstance(binding, str) for binding in bindings)
+                assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
 
-    def commit(self, exiting = False):
+            if is_iterator:
+                sequenceofbindings = iter(sequenceofbindings)
+
+        logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
+        return self._cursor.executemany(statement, sequenceofbindings)
+
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
+    def commit(self, exiting=False):
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:
-            if __debug__: dprint("defer COMMIT")
+            logger.debug("defer commit [%s]", self._file_path)
             self._pending_commits += 1
             return False
 
         else:
-            if __debug__: dprint("COMMIT")
-            
-            if __DEBUG_QUERIES__:
-                f = open(DB_DEBUG_FILE, 'a')
-                f.write('QueryDebug-commit: (%f)\n' % time())
-            
-            result = self._connection.commit()
+            logger.debug("commit [%s]", self._file_path)
             for callback in self._commit_callbacks:
                 try:
-                    callback(exiting = exiting)
-                except Exception:
-                    if __debug__: dprint(exception=True, stack=True)
-            
-            if __DEBUG_QUERIES__:     
-                f.write('QueryDebug-commit: (%f) END\n' % time())
-                f.close()
-            
-            return result
+                    callback(exiting=exiting)
+                except Exception as exception:
+                    logger.exception("%s [%s]", exception, self._file_path)
 
-    # def _on_rollback(self):
-    #     if __debug__: dprint("ROLLBACK", level="warning")
-    #     raise DatabaseRollbackException(1)
+            return self._connection.commit()
 
+    @abstractmethod
     def check_database(self, database_version):
         """
         Check the database and upgrade if required.
@@ -418,7 +427,7 @@ class Database(Singleton):
          value reverts to u'0' when the table could not be accessed.
         @type database_version: unicode
         """
-        raise NotImplementedError()
+        pass
 
     def attach_commit_callback(self, func):
         assert not func in self._commit_callbacks
@@ -427,62 +436,73 @@ class Database(Singleton):
     def detach_commit_callback(self, func):
         assert func in self._commit_callbacks
         self._commit_callbacks.remove(func)
-        
+
+
 class APSWDatabase(Database):
-    def _connect(self, file_path):
+
+    def _connect(self):
         import apsw
-        self._connection = apsw.Connection(file_path)
+        self._connection = apsw.Connection(self._file_path)
         self._cursor = self._connection.cursor()
 
-    def _init_database(self):
+    def _initial_statements(self):
+        super(APSWDatabase, self)._initial_statements()
         self.execute("BEGIN")
 
     def execute(self, statement, bindings=()):
-        import apsw
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(bindings, (tuple, list, dict)), "The bindings must be a tuple, list, or dictionary"
-        assert all(lambda x: isinstance(x, str) for x in bindings), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB. \nGiven types: %s" % str([type(binding) for binding in bindings])
+        if __debug__:
+            assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+            assert self._debug_thread_ident != 0, "please call database.open() first"
+            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
 
-        try:
-            if __debug__: dprint(statement, " <-- ", bindings)
-            return self._cursor.execute(statement, bindings)
+            # bindings may not be strings, text must be given as unicode strings while binary data,
+            # i.e. blobs, must be given as a buffer(...)
+            if isinstance(bindings, dict):
+                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+            else:
+                tests = (not isinstance(binding, str) for binding in bindings)
+            assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
 
-        except apsw.Error:
-            if __debug__:
-                dprint(exception=True, level="warning")
-                dprint("Filename: ", self._file_path, level="warning")
-                dprint(statement, level="warning")
-                dprint(bindings, level="warning")
-            raise
+        logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
+        return self._cursor.execute(statement, bindings)
 
     def executescript(self, statements):
         return self.execute(statements)
 
     def executemany(self, statement, sequenceofbindings):
-        import apsw
+        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
             # generator can only iterate once
             from types import GeneratorType
-            if isinstance(sequenceofbindings, GeneratorType):
+            is_iterator = isinstance(sequenceofbindings, GeneratorType)
+            if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
-        assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-        assert isinstance(sequenceofbindings, (tuple, list)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
-        assert all(isinstance(x, (tuple, list, dict)) for x in list(sequenceofbindings)), "The sequenceofbindings must be a list with tuples, lists, or dictionaries"
-        assert not filter(lambda x: filter(lambda y: isinstance(y, str), x), list(sequenceofbindings)), "The bindings may not contain a string. \nProvide unicode for TEXT and buffer(...) for BLOB."
 
-        try:
-            if __debug__: dprint(statement)
-            return self._cursor.executemany(statement, sequenceofbindings)
+            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
+            assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
 
-        except apsw.Error:
-            if __debug__:
-                dprint(exception=True)
-                dprint("Filename: ", self._file_path)
-                dprint(statement)
-            raise
+            for bindings in sequenceofbindings:
+                # bindings may not be strings, text must be given as unicode strings while binary data,
+                # i.e. blobs, must be given as a buffer(...)
+                if isinstance(bindings, dict):
+                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                else:
+                    tests = (not isinstance(binding, str) for binding in bindings)
+                assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
+
+            if is_iterator:
+                sequenceofbindings = iter(sequenceofbindings)
+
+        logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
+        return self._cursor.executemany(statement, sequenceofbindings)
 
     @property
     def last_insert_rowid(self):
@@ -490,6 +510,7 @@ class APSWDatabase(Database):
         The row id of the most recent insert query.
         @rtype: int or long
         """
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident()
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._connection.last_insert_rowid()
@@ -500,18 +521,20 @@ class APSWDatabase(Database):
         The number of changes that resulted from the most recent query.
         @rtype: int or long
         """
-        assert self._debug_thread_ident == thread.get_ident()
+        assert self._debug_thread_ident != 0, "please call database.open() first"
+        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         return self._connection.totalchanges()
 
-    def commit(self):
+    def commit(self, exiting=False):
+        assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
+        assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
-        if __debug__: dprint("COMMIT")
+        logger.debug("commit [%s]", self._file_path)
         result = self.execute("COMMIT;BEGIN")
         for callback in self._commit_callbacks:
             try:
-                callback()
-            except Exception:
-                if __debug__: dprint(exception=True, stack=True)
+                callback(exiting=exiting)
+            except Exception as exception:
+                logger.debug("%s [%s]", exception, self._file_path)
         return result
-

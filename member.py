@@ -1,49 +1,23 @@
 from hashlib import sha1
 
-try:
-    # python 2.7 only...
-    from collections import OrderedDict
-except ImportError:
-    from .python27_ordereddict import OrderedDict
-
-from .dispersydatabase import DispersyDatabase
 from .crypto import ec_from_private_bin, ec_from_public_bin, ec_signature_length, ec_verify, ec_sign
-from .revision import update_revision_information
+from .logger import get_logger
+logger = get_logger(__name__)
+
 
 if __debug__:
-    from .dprint import dprint
     from .crypto import ec_check_public_bin, ec_check_private_bin
 
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
-
-def cleanup():
-    """
-    Removes all member caches.
-
-    - Clears _cache from all DummyMember subclasses
-    - Clears _mid_cache from all DummyMember subclasses
-    - Clears _did_cache from all DummyMember subclasses
-    """
-    def clear(cls):
-        if hasattr(cls, "_cache"):
-            cls._cache.clear()
-        if hasattr(cls, "_mid_cache"):
-            cls._mid_cache.clear()
-        if hasattr(cls, "_did_cache"):
-            cls._did_cache.clear()
-        
-        for subcls in cls.__subclasses__():
-            clear(subcls)
-    
-    clear(DummyMember)
 
 class DummyMember(object):
-    def __init__(self, mid):
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-        database = DispersyDatabase.get_instance()
+
+    def __init__(self, dispersy, mid):
+        if __debug__:
+            from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(mid, str), type(mid)
+        assert len(mid) == 20, len(mid)
+        database = dispersy.database
 
         try:
             database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
@@ -84,32 +58,29 @@ class DummyMember(object):
     def has_identity(self, community):
         return False
 
-    # @property
-    def __get_must_store(self):
+    @property
+    def must_store(self):
         return False
-    # @must_store.setter
-    def __set_must_store(self, value):
-        pass
-    # .setter was introduced in Python 2.6
-    must_store = property(__get_must_store, __set_must_store)
 
-    # @property
-    def __get_must_ignore(self):
-        return False
-    # @must_ignore.setter
-    def __set_must_ignore(self, value):
+    @must_store.setter
+    def must_store(self, value):
         pass
-    # .setter was introduced in Python 2.6
-    must_ignore = property(__get_must_ignore, __set_must_ignore)
 
-    # @property
-    def __get_must_blacklist(self):
+    @property
+    def must_ignore(self):
         return False
-    # @must_blacklist.setter
-    def __set_must_blacklist(self, value):
+
+    @must_ignore.setter
+    def must_ignore(self, value):
         pass
-    # .setter was introduced in Python 2.6
-    must_blacklist = property(__get_must_blacklist, __set_must_blacklist)
+
+    @property
+    def must_blacklist(self):
+        return False
+
+    @must_blacklist.setter
+    def must_blacklist(self, value):
+        pass
 
     def verify(self, data, signature, offset=0, length=0):
         return False
@@ -132,71 +103,71 @@ class DummyMember(object):
     def __str__(self):
         return "<%s 0 %s>" % (self.__class__.__name__, self._mid.encode("HEX"))
 
-class MemberBase(DummyMember):
-    def __init__(self, public_key, private_key=""):
+
+class Member(DummyMember):
+
+    def __init__(self, dispersy, public_key, private_key=""):
         """
         Create a new Member instance.
         """
+        if __debug__:
+            from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
         assert ec_check_public_bin(public_key), public_key.encode("HEX")
         assert private_key == "" or ec_check_private_bin(private_key), private_key.encode("HEX")
 
-        if hasattr(self, "_public_key"):
-            # already have an instance.  however, it is possible that we did not yet have PRIVATE_KEY
-            if private_key and not self._private_key:
-                self._private_key = private_key
-                self._ec = ec_from_private_bin(private_key)
-                DispersyDatabase.get_instance().execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+        database = dispersy.database
+        mid = sha1(public_key).digest()
+
+        for database_id, public_key_from_db, tags in database.execute(u"SELECT id, public_key, tags FROM member WHERE mid = ?", (buffer(mid),)):
+            public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+            if public_key_from_db == public_key:
+                break
+
+            if public_key_from_db == "":
+                database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
+                break
+
+            logger.warning("multiple public keys having the same SHA1 digest.  this is very unlikely to occur [%s] [%s]", public_key.encode("HEX"), public_key_from_db.encode("HEX"))
 
         else:
-            # create a new instance
-            assert DispersyDatabase.has_instance(), "DispersyDatabase has not yet been created"
-            database = DispersyDatabase.get_instance()
+            # did not break, hence the public key is not yet in the database
+            database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
+            database_id = database.last_insert_rowid
+            tags = u""
 
-            try:
-                database_id, mid, tags, private_key_from_db = database.execute(u"SELECT m.id, m.mid, m.tags, p.private_key FROM member AS m LEFT OUTER JOIN private_key AS p ON p.member = m.id WHERE m.public_key = ? LIMIT 1", (buffer(public_key),)).next()
+        try:
+            private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
+            private_key_from_db = str(private_key_from_db)
+            assert ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
-            except StopIteration:
-                mid = sha1(public_key).digest()
-                private_key_from_db = None
-                try:
-                    database_id, tags = database.execute(u"SELECT id, tags FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
+        except StopIteration:
+            private_key_from_db = ""
 
-                except StopIteration:
-                    database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-                    database_id = database.last_insert_rowid
-                    tags = u""
+        if private_key and not private_key_from_db:
+            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
 
-                else:
-                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
+        elif private_key_from_db:
+            private_key = private_key_from_db
 
-            else:
-                mid = str(mid)
-                private_key_from_db = str(private_key_from_db) if private_key_from_db else ""
-                assert private_key_from_db == "" or ec_check_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+        self._database = database
+        self._database_id = database_id
+        self._mid = mid
+        self._public_key = public_key
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
+        self._signature_length = ec_signature_length(self._ec)
+        self._tags = [tag for tag in tags.split(",") if tag]
+        self._has_identity = set()
 
-            if private_key_from_db:
-                private_key = private_key_from_db
-            elif private_key:
-                database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
+        if __debug__:
+            assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
+            for tag in self._tags:
+                assert tag in (u"store", u"ignore", u"blacklist"), tag
 
-            self._database = database
-            self._database_id = database_id
-            self._mid = mid
-            self._public_key = public_key
-            self._private_key = private_key
-            self._ec = ec_from_private_bin(private_key) if private_key else ec_from_public_bin(public_key)
-            self._signature_length = ec_signature_length(self._ec)
-            self._tags = [tag for tag in tags.split(",") if tag]
-            self._has_identity = set()
-
-            if __debug__:
-                assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
-                for tag in self._tags:
-                    assert tag in (u"store", u"ignore", u"blacklist"), tag
-
-            if __debug__: dprint("mid:", self._mid.encode("HEX"), " db:", self._database_id, " public:", bool(self._public_key), " private:", bool(self._private_key))
+        logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
 
     @property
     def public_key(self):
@@ -226,6 +197,13 @@ class MemberBase(DummyMember):
         """
         return self._signature_length
 
+    def set_private_key(self, private_key):
+        assert isinstance(private_key, str)
+        assert self._private_key == ""
+        self._private_key = private_key
+        self._ec = ec_from_private_bin(private_key)
+        self._database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+
     def has_identity(self, community):
         """
         Returns True when we have a dispersy-identity message for this member in COMMUNITY.
@@ -251,7 +229,7 @@ class MemberBase(DummyMember):
         assert isinstance(tag, unicode)
         assert tag in [u"store", u"ignore", u"blacklist"]
         assert isinstance(value, bool)
-        if __debug__: dprint(tag, " -> ", value)
+        logger.debug("mid:%s set tag %s -> %s", self._mid.encode("HEX"), tag, value)
         if value:
             if tag in self._tags:
                 # the tag is already set
@@ -267,32 +245,29 @@ class MemberBase(DummyMember):
         self._database.execute(u"UPDATE member SET tags = ? WHERE id = ?", (u",".join(sorted(self._tags)), self._database_id))
         return True
 
-    # @property
-    def __get_must_store(self):
+    @property
+    def must_store(self):
         return u"store" in self._tags
-    # @must_store.setter
-    def __set_must_store(self, value):
+
+    @must_store.setter
+    def must_store(self, value):
         return self._set_tag(u"store", value)
-    # .setter was introduced in Python 2.6
-    must_store = property(__get_must_store, __set_must_store)
 
-    # @property
-    def __get_must_ignore(self):
+    @property
+    def must_ignore(self):
         return u"ignore" in self._tags
-    # @must_ignore.setter
-    def __set_must_ignore(self, value):
-        return self._set_tag(u"ignore", value)
-    # .setter was introduced in Python 2.6
-    must_ignore = property(__get_must_ignore, __set_must_ignore)
 
-    # @property
-    def __get_must_blacklist(self):
+    @must_ignore.setter
+    def must_ignore(self, value):
+        return self._set_tag(u"ignore", value)
+
+    @property
+    def must_blacklist(self):
         return u"blacklist" in self._tags
-    # @must_blacklist.setter
-    def __set_must_blacklist(self, value):
+
+    @must_blacklist.setter
+    def must_blacklist(self, value):
         return self._set_tag(u"blacklist", value)
-    # .setter was introduced in Python 2.6
-    must_blacklist = property(__get_must_blacklist, __set_must_blacklist)
 
     def verify(self, data, signature, offset=0, length=0):
         """
@@ -301,26 +276,49 @@ class MemberBase(DummyMember):
 
         DATA is the signed data and the signature concatenated.
         OFFSET is the offset for the signed data.
-        LENGTH is the length of the signature and the data, in bytes.
+        LENGTH is the number of bytes, starting at OFFSET, to be verified.  When this value is 0 it
+               is set to len(data) - OFFSET.
 
         Returns True or False.
         """
-        assert isinstance(data, str)
-        assert isinstance(signature, str)
-        assert isinstance(offset, (int, long))
-        assert isinstance(length, (int, long))
+        assert isinstance(data, str), type(data)
+        assert isinstance(signature, str), type(signature)
+        assert isinstance(offset, (int, long)), type(offset)
+        assert isinstance(length, (int, long)), type(length)
+
+        if length == 0:
+            # default LENGTH is len(DATA[OFFSET:])
+            length = len(data) - offset
+
+        elif len(data) < offset + length:
+            # DATA is to small, we expect len(DATA[OFFSET:OFFSET+LENGTH]) to be LENGTH
+            return False
+
         return self._public_key and \
-               self._signature_length == len(signature) \
-               and ec_verify(self._ec, sha1(data[offset:offset+(length or len(data))]).digest(), signature)
+            self._signature_length == len(signature) \
+            and ec_verify(self._ec, sha1(data[offset:offset + length]).digest(), signature)
 
     def sign(self, data, offset=0, length=0):
         """
         Returns the signature of DATA, starting at OFFSET up to LENGTH bytes.
 
+        Will raise a ValueError when len(DATA) < offset + length
         Will raise a RuntimeError when this we do not have the private key.
         """
+        assert isinstance(data, str), type(data)
+        assert isinstance(offset, (int, long)), type(offset)
+        assert isinstance(length, (int, long)), type(length)
+
+        if length == 0:
+            # default LENGTH is len(DATA[OFFSET:])
+            length = len(data) - offset
+
+        elif len(data) < offset + length:
+            # DATA is to small, we expect len(DATA[OFFSET:OFFSET+LENGTH]) to be LENGTH
+            raise ValueError("LENGTH is larger than the available DATA")
+
         if self._private_key:
-            return ec_sign(self._ec, sha1(data[offset:length or len(data)]).digest())
+            return ec_sign(self._ec, sha1(data[offset:offset + length]).digest())
         else:
             raise RuntimeError("unable to sign data without the private key")
 
@@ -350,72 +348,3 @@ class MemberBase(DummyMember):
         Returns a human readable string representing the member.
         """
         return "<%s %d %s>" % (self.__class__.__name__, self._database_id, self._mid.encode("HEX"))
-
-class Member(MemberBase):
-    _cache_length = 1024
-    _cache = OrderedDict()
-    _mid_cache = {}
-    _did_cache = {}
-
-    def __new__(cls, public_key, private_key=""):
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-
-        # retrieve Member from cache (based on public_key)
-        return cls._cache.get(public_key) or object.__new__(cls)
-
-    def __init__(self, public_key, private_key=""):
-        super(Member, self).__init__(public_key, private_key)
-
-        assert hasattr(self, "_public_key"), self
-        assert hasattr(self, "_mid"), self
-        
-        assert self._cache.get(public_key, self) == self 
-        assert self._mid_cache.get(self._mid, self) == self
-        assert self._did_cache.get(self._database_id, self) == self
-
-        # store Member in cache
-        self._cache[public_key] = self
-        self._mid_cache[self._mid] = self
-        self._did_cache[self._database_id] = self
-        
-        if len(self._cache) > self._cache_length:
-            replaced_member = self._cache.popitem(False)
-            if replaced_member:
-                replaced_member = replaced_member[1]
-                del self._mid_cache[replaced_member._mid]
-                del self._did_cache[replaced_member._database_id]
-                
-        assert len(self._cache) == len(self._mid_cache) and len(self._mid_cache) == len(self._did_cache), "Cache sizes are not synchronized after inserting (%s-%s) (%d,%d,%d)"%(type(self), str(self), len(self._cache), len(self._mid_cache), len(self._did_cache))
-
-class MemberFromId(Member):
-    def __new__(cls, mid):
-        assert isinstance(mid, str)
-        assert len(mid) == 20
-        
-        # retrieve Member from cache (based on mid)
-        if mid in cls._mid_cache:
-            return cls._mid_cache[mid]
-        
-        # prevent __init__ and hence caching this instance
-        raise LookupError(mid)
-
-class MemberFromDatabaseId(Member):
-    def __new__(cls, database_id):
-        assert isinstance(database_id, (int, long)), type(database_id)
-        
-        if database_id in cls._did_cache:
-            return cls._did_cache[database_id]
-
-        # prevent __init__ and hence caching this instance
-        raise LookupError(database_id)
-
-class MemberWithoutCheck(Member):
-    def __new__(cls, public_key, private_key=""):
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert ec_check_public_bin(public_key), [len(public_key), public_key.encode("HEX")]
-        assert private_key == "" or ec_check_private_bin(private_key), [len(private_key), private_key.encode("HEX")]
-        return object.__new__(cls)

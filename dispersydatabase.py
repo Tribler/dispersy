@@ -7,30 +7,25 @@ This module provides an interface to the Dispersy database.
 """
 
 from itertools import groupby
-from collections import defaultdict
-
 import sys
+
+from .database import Database
+from .distribution import FullSyncDistribution
+from .logger import get_logger
+logger = get_logger(__name__)
+
 if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
-else:
-    from .database import Database
 
-from .distribution import FullSyncDistribution
-from .dprint import dprint
-from .revision import update_revision_information
 
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
-
-LATEST_VERSION = 16
+LATEST_VERSION = 17
 
 schema = u"""
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
  public_key BLOB,                               -- member public key
- tags TEXT DEFAULT '',                          -- comma separated tags: store, ignore, and blacklist
- UNIQUE(public_key));
+ tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
 CREATE INDEX member_mid_index ON member(mid);
 
 CREATE TABLE private_key(
@@ -87,6 +82,7 @@ CREATE TABLE malicious_proof(
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '""" + str(LATEST_VERSION) + """');
 """
+
 
 class DispersyDatabase(Database):
     if __debug__:
@@ -268,39 +264,39 @@ UPDATE option SET value = '7' WHERE key = 'database_version';
 
             # upgrade from version 7 to version 8
             if database_version < 8:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 8)
+                logger.debug("upgrade database %d -> %d", database_version, 8)
                 self.executescript(u"""
 ALTER TABLE community ADD COLUMN database_version INTEGER DEFAULT 0;
 UPDATE option SET value = '8' WHERE key = 'database_version';
 """)
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 8, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 8)
                 self.commit()
 
             # upgrade from version 8 to version 9
             if database_version < 9:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 9)
+                logger.debug("upgrade database %d -> %d", database_version, 9)
                 self.executescript(u"""
 DROP INDEX IF EXISTS sync_meta_message_global_time_index;
 CREATE INDEX IF NOT EXISTS sync_global_time_undone_meta_message_index ON sync(global_time, undone, meta_message);
 UPDATE option SET value = '9' WHERE key = 'database_version';
 """)
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 9, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 9)
                 self.commit()
 
             # upgrade from version 9 to version 10
             if database_version < 10:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 10)
+                logger.debug("upgrade database %d -> %d", database_version, 10)
                 self.executescript(u"""
 DELETE FROM option WHERE key = 'my_wan_ip';
 DELETE FROM option WHERE key = 'my_wan_port';
 UPDATE option SET value = '10' WHERE key = 'database_version';
 """)
                 self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 10, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 10)
 
             # upgrade from version 10 to version 11
             if database_version < 11:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 11)
+                logger.debug("upgrade database %d -> %d", database_version, 11)
                 # unfortunately the default SCHEMA did not contain
                 # sync_global_time_undone_meta_message_index but was still using
                 # sync_meta_message_global_time_index in database version 10
@@ -311,23 +307,23 @@ CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, un
 UPDATE option SET value = '11' WHERE key = 'database_version';
 """)
                 self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 11, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 11)
 
             # upgrade from version 11 to version 12
             if database_version < 12:
                 # according to the profiler the dispersy/member.py:201(has_identity) has a
                 # disproportionally long runtime.  this is easily improved using the below index.
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 12)
+                logger.debug("upgrade database %d -> %d", database_version, 12)
                 self.executescript(u"""
 CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
 UPDATE option SET value = '12' WHERE key = 'database_version';
 """)
                 self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 12, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 12)
 
             # upgrade from version 12 to version 13
             if database_version < 13:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 13)
+                logger.debug("upgrade database %d -> %d", database_version, 13)
                 # reference_member_sync is a very generic but also expensive way to store
                 # multi-sighned messages.  by simplifying the milti-sign into purely double-sign we
                 # can use a less expensive (in terms of query time) table.  note: we simply drop the
@@ -343,23 +339,52 @@ CREATE INDEX double_signed_sync_index_0 ON double_signed_sync(member1, member2);
 UPDATE option SET value = '13' WHERE key = 'database_version';
 """)
                 self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 13, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 13)
 
             # upgrade from version 13 to version 16
             if database_version < 16:
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 16)
+                logger.debug("upgrade database %d -> %d", database_version, 16)
                 # only effects check_community_database
                 self.executescript(u"""UPDATE option SET value = '16' WHERE key = 'database_version';""")
                 self.commit()
-                if __debug__: dprint("upgrade database ", database_version, " -> ", 16, " (done)")
+                logger.debug("upgrade database %d -> %d (done)", database_version, 16)
 
             # upgrade from version 16 to version 17
             if database_version < 17:
-                # there is no version 17 yet...
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 17)
-                # self.executescript(u"""UPDATE option SET value = '17' WHERE key = 'database_version';""")
+                # 23/09/13 Boudewijn: by rewriting the Member constructor to find the member using
+                # the mid instead of the public_key, we no longer need to have an index on the
+                # public_key column.  this greatly reduces the bytes written when creating new
+                # Member instances.  unfortunately this requires the removal of the UNIQUE clause,
+                # however, the python code already guarantees that the public_key remains unique.
+                logger.info("upgrade database %d -> %d", database_version, 17)
+                self.executescript(u"""
+-- move / remove old member table
+DROP INDEX IF EXISTS member_mid_index;
+ALTER TABLE member RENAME TO old_member;
+-- create new member table
+CREATE TABLE member(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB,                               -- member public key
+ tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
+CREATE INDEX member_mid_index ON member(mid);
+-- fill new member table with old data
+INSERT INTO member (id, mid, public_key, tags) SELECT id, mid, public_key, tags FROM old_member;
+-- remove old member table
+DROP TABLE old_member;
+-- update database version
+UPDATE option SET value = '17' WHERE key = 'database_version';
+""")
+                self.commit()
+                logger.info("upgrade database %d -> %d (done)", database_version, 17)
+
+            # upgrade from version 17 to version 18
+            if database_version < 18:
+                # there is no version 18 yet...
+                # logger.debug("upgrade database %d -> %d", database_version, 18)
+                # self.executescript(u"""UPDATE option SET value = '18' WHERE key = 'database_version';""")
                 # self.commit()
-                # if __debug__: dprint("upgrade database ", database_version, " -> ", 17, " (done)")
+                # logger.debug("upgrade database %d -> %d (done)", database_version, 18)
                 pass
 
         return LATEST_VERSION
@@ -369,7 +394,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
         assert database_version >= 0
 
         if database_version < 8:
-            if __debug__: dprint("upgrade community ", database_version, " -> ", 8)
+            logger.debug("upgrade community %d -> %d", database_version, 8)
 
             # patch notes:
             #
@@ -390,7 +415,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
 
             progress = 0
             count, = self.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ? OR meta_message = ?", (undo_own_meta.database_id, undo_other_meta.database_id)).next()
-            if __debug__: dprint("upgrading ", count, " undo messages")
+            logger.debug("upgrading %d undo messages", count)
             if count > 50:
                 progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count) for handler in community.dispersy.get_progress_handlers()]
             else:
@@ -428,8 +453,8 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                             try:
                                 # try to redo the message... this may not always be possible now...
                                 msg.undo_callback([(msg.authentication.member, msg.distribution.global_time, msg)], redo=True)
-                            except:
-                                if __debug__: dprint(exception=True, level="warning")
+                            except Exception as exception:
+                                logger.exception("%s", exception)
 
                 progress += 1
                 for handler in progress_handlers:
@@ -451,7 +476,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 handler.Destroy()
 
         if database_version < 16:
-            if __debug__: dprint("upgrade community ", database_version, " -> ", 16)
+            logger.debug("upgrade community %d -> %d", database_version, 16)
 
             # patch 14 -> 15 notes:
             #
@@ -500,7 +525,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for meta in metas:
                 i, = next(self.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?", (meta.database_id,)))
                 count += i
-            if __debug__: dprint("checking ", count, " sequence number enabled messages [", community.cid.encode("HEX"), "]")
+            logger.debug("checking %d sequence number enabled messages [%s]", count, community.cid.encode("HEX"))
             if count > 50:
                 progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count) for handler in community.dispersy.get_progress_handlers()]
             else:
@@ -515,14 +540,14 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                         message = convert_packet_to_message(str(packet), community, verify=False)
                         assert message.authentication.member.database_id == member_id
                         if (last_sequence_number + 1 == message.distribution.sequence_number and
-                            last_global_time < message.distribution.global_time):
+                                last_global_time < message.distribution.global_time):
                             # message is OK
                             last_sequence_number += 1
                             last_global_time = message.distribution.global_time
 
                         else:
                             deletes.append((packet_id,))
-                            if __debug__: dprint("delete id:", packet_id)
+                            logger.debug("delete id:%d", packet_id)
 
                         progress += 1
                         for handler in progress_handlers:
@@ -531,7 +556,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
             for handler in progress_handlers:
                 handler.Update(progress, "Saving the results...")
 
-            if __debug__: dprint("will delete ", len(deletes), " packets from the database")
+            logger.debug("will delete %d packets from the database", len(deletes))
             if deletes:
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
                 assert len(deletes) == self.changes, [len(deletes), self.changes]

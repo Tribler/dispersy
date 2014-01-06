@@ -1,29 +1,33 @@
-from .member import DummyMember
+from abc import ABCMeta, abstractmethod
+
+from .logger import get_logger
 from .meta import MetaObject
-from .revision import update_revision_information
+logger = get_logger(__name__)
 
-if __debug__:
-    from .dprint import dprint
-
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 #
 # Exceptions
 #
+
+
 class DelayPacket(Exception):
+
     """
     Uses an identifier to match request to response.
     """
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, msg, community):
         super(DelayPacket, self).__init__(msg)
         self._community = community
 
+    @abstractmethod
     def create_request(self, candidate, delayed):
         # create and send a request.  once the response is received the _process_delayed_packet can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
         # @return True if actual request is made
-        raise NotImplementedError()
+        pass
 
     def _process_delayed_packet(self, response, candidate, delayed):
         if response:
@@ -34,7 +38,9 @@ class DelayPacket(Exception):
             # timeout, do nothing
             self._community.dispersy.statistics.delay_timeout += 1
 
+
 class DelayPacketByMissingMember(DelayPacket):
+
     def __init__(self, community, missing_member_id):
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
@@ -42,9 +48,11 @@ class DelayPacketByMissingMember(DelayPacket):
         self._missing_member_id = missing_member_id
 
     def create_request(self, candidate, delayed):
-        return self._community.dispersy.create_missing_identity(self._community, candidate, DummyMember(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+        return self._community.dispersy.create_missing_identity(self._community, candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+
 
 class DelayPacketByMissingLastMessage(DelayPacket):
+
     def __init__(self, community, member, message, count):
         if __debug__:
             from .member import Member
@@ -59,7 +67,9 @@ class DelayPacketByMissingLastMessage(DelayPacket):
     def create_request(self, candidate, delayed):
         return self._community.dispersy.create_missing_last_message(self._community, candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
 
+
 class DelayPacketByMissingMessage(DelayPacket):
+
     def __init__(self, community, member, global_time):
         if __debug__:
             from .community import Community
@@ -74,7 +84,9 @@ class DelayPacketByMissingMessage(DelayPacket):
     def create_request(self, candidate, delayed):
         return self._community.dispersy.create_missing_message(self._community, candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
 
+
 class DropPacket(Exception):
+
     """
     Raised by Conversion.decode_message when the packet is invalid.
     I.e. does not conform to valid syntax, contains malicious
@@ -82,13 +94,18 @@ class DropPacket(Exception):
     """
     pass
 
+
 class DelayMessage(Exception):
+
     """
     Uses an identifier to match request to response.
 
     Ensure to call Dispersy.handle_missing_messages for each incoming message that may have been
     requested.
     """
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, delayed):
         if __debug__:
             from .message import Message
@@ -106,15 +123,16 @@ class DelayMessage(Exception):
         """
         return self.__class__(delayed)
 
+    @abstractmethod
     def create_request(self):
         # create and send a request.  once the response is received the _process_delayed_message can
         # pass the (candidate, delayed) tuple to dispersy for reprocessing
         # @return True if actual request is made
-        raise NotImplementedError()
+        pass
 
     def _process_delayed_message(self, response):
         if response:
-            if __debug__: dprint("resume ", self._delayed, " (received ", response, ")")
+            logger.debug("resume %s (received %s)", self._delayed, response)
 
             # inform the delayed message of the reason why it is resumed
             self._delayed.resume = response
@@ -124,15 +142,19 @@ class DelayMessage(Exception):
             self._delayed.community.dispersy.statistics.delay_success += 1
         else:
             # timeout, do nothing
-            if __debug__: dprint("ignore ", self._delayed, " (no response was received)")
+            logger.debug("ignore %s (no response was received)", self._delayed)
             self._delayed.community.dispersy.statistics.delay_timeout += 1
 
+
 class DelayMessageByProof(DelayMessage):
+
     def create_request(self):
         community = self._delayed.community
         return community.dispersy.create_missing_proof(community, self._delayed.candidate, self._delayed, self._process_delayed_message)
 
+
 class DelayMessageBySequence(DelayMessage):
+
     def __init__(self, delayed, missing_low, missing_high):
         assert isinstance(missing_low, (int, long))
         assert isinstance(missing_high, (int, long))
@@ -148,7 +170,9 @@ class DelayMessageBySequence(DelayMessage):
         community = self._delayed.community
         return community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
 
+
 class DelayMessageByMissingMessage(DelayMessage):
+
     def __init__(self, delayed, member, global_time):
         if __debug__:
             from .member import Member
@@ -165,7 +189,9 @@ class DelayMessageByMissingMessage(DelayMessage):
         community = self._delayed.community
         return community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
 
+
 class DropMessage(Exception):
+
     """
     Raised during Community.on_message.
 
@@ -196,7 +222,9 @@ class DropMessage(Exception):
 # batch
 #
 
+
 class BatchConfiguration(object):
+
     def __init__(self, max_window=0.0, priority=0, max_size=1024, max_age=300.0):
         """
         Per meta message configuration on batch handling.
@@ -255,7 +283,9 @@ class BatchConfiguration(object):
 # packet
 #
 
+
 class Packet(MetaObject.Implementation):
+
     def __init__(self, meta, packet, packet_id):
         assert isinstance(packet, str)
         assert isinstance(packet_id, (int, long))
@@ -303,15 +333,14 @@ class Packet(MetaObject.Implementation):
     def packet(self):
         return self._packet
 
-    # @property
-    def __get_packet_id(self):
+    @property
+    def packet_id(self):
         return self._packet_id
-    # @packet_id.setter
-    def __set_packet_id(self, packet_id):
+
+    @packet_id.setter
+    def packet_id(self, packet_id):
         assert isinstance(packet_id, (int, long))
         self._packet_id = packet_id
-    # .setter was introduced in Python 2.6
-    packet_id = property(__get_packet_id, __set_packet_id)
 
     def load_message(self):
         message = self._meta.community.dispersy.convert_packet_to_message(self._packet, self._meta.community, verify=False)
@@ -324,11 +353,14 @@ class Packet(MetaObject.Implementation):
 #
 # message
 #
+
+
 class Message(MetaObject):
+
     class Implementation(Packet):
+
         def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
             if __debug__:
-                from .payload import Payload
                 from .conversion import Conversion
                 from .candidate import Candidate
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
@@ -363,9 +395,9 @@ class Message(MetaObject):
             if conversion:
                 self._conversion = conversion
             elif packet:
-                self._conversion = meta._community.get_conversion(packet[:22])
+                self._conversion = meta.community.get_conversion_for_packet(packet)
             else:
-                self._conversion = meta._community.get_conversion()
+                self._conversion = meta.community.get_conversion_for_message(self)
 
             if not packet:
                 self._packet = self._conversion.encode_message(self, sign=sign)
@@ -398,15 +430,14 @@ class Message(MetaObject):
         def candidate(self):
             return self._candidate
 
-        # @property
-        def __get_resume(self):
+        @property
+        def resume(self):
             return self._resume
-        # @resume.setter
-        def __set_resume(self, message):
+
+        @resume.setter
+        def resume(self, message):
             assert isinstance(message, Message.Implementation), type(message)
             self._resume = message
-        # .setter was introduced in Python 2.6
-        resume = property(__get_resume, __set_resume)
 
         def load_message(self):
             return self
@@ -418,7 +449,7 @@ class Message(MetaObject):
                 self._packet = self._conversion.encode_message(self)
 
         def __str__(self):
-            return "<%s.%s %s %dbytes>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name, len(self._packet))
+            return "<%s.%s %s>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name)
 
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload, check_callback, handle_callback, undo_callback=None, batch=None):
         if __debug__:
@@ -464,7 +495,7 @@ class Message(MetaObject):
             community.dispersy.database.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, 0, 128, 1)",
                                                 (community.database_id, name))
             self._database_id = community.dispersy.database.last_insert_rowid
-            community.meta_message_cache[name] = {"id":self._database_id, "cluster":0, "priority":128, "direction":1}
+            community.meta_message_cache[name] = {"id": self._database_id, "cluster": 0, "priority": 128, "direction": 1}
 
         # allow optional setup methods to initialize the specific parts of the meta message
         self._authentication.setup(self)
@@ -535,12 +566,12 @@ class Message(MetaObject):
                 destination_impl = self._destination.Implementation(self._destination, *destination)
                 payload_impl = self._payload.Implementation(self._payload, *payload)
             except TypeError:
-                dprint("message name:   ", self._name, level="error")
-                dprint("authentication: ", self._authentication.__class__.__name__, ".Implementation", level="error")
-                dprint("resolution:     ", self._resolution.__class__.__name__, ".Implementation", level="error")
-                dprint("distribution:   ", self._distribution.__class__.__name__, ".Implementation", level="error")
-                dprint("destination:    ", self._destination.__class__.__name__, ".Implementation", level="error")
-                dprint("payload:        ", self._payload.__class__.__name__, ".Implementation", level="error")
+                logger.error("message name:   %s", self._name)
+                logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
+                logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
+                logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
+                logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
+                logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
                 raise
             else:
                 return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)
@@ -553,7 +584,6 @@ class Message(MetaObject):
                                    self._payload.Implementation(self._payload, *payload),
                                    *args, **kargs)
 
-
     def __str__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
 
@@ -562,7 +592,7 @@ class Message(MetaObject):
         from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
         from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
         from .distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
-        from .destination import Destination, CandidateDestination, MemberDestination, CommunityDestination
+        from .destination import Destination, CandidateDestination, CommunityDestination
 
         assert isinstance(authentication, Authentication)
         assert isinstance(resolution, Resolution)
@@ -576,26 +606,26 @@ class Message(MetaObject):
         if isinstance(authentication, NoAuthentication):
             require(authentication, resolution, PublicResolution)
             require(authentication, distribution, (RelayDistribution, DirectDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(authentication, MemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(authentication, DoubleMemberAuthentication):
             require(authentication, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(authentication, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(authentication, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(authentication, destination, (CandidateDestination, CommunityDestination))
         else:
             raise ValueError("%s is not supported" % authentication.__class_.__name__)
 
         if isinstance(resolution, PublicResolution):
             require(resolution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(resolution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(resolution, LinearResolution):
             require(resolution, authentication, (MemberAuthentication, DoubleMemberAuthentication))
             require(resolution, distribution, (RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution))
-            require(resolution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(resolution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(resolution, DynamicResolution):
             pass
         else:
@@ -604,11 +634,11 @@ class Message(MetaObject):
         if isinstance(distribution, RelayDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(distribution, destination, (CandidateDestination, MemberDestination))
+            require(distribution, destination, (CandidateDestination,))
         elif isinstance(distribution, DirectDistribution):
             require(distribution, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(distribution, destination, (CandidateDestination, MemberDestination, CommunityDestination))
+            require(distribution, destination, (CandidateDestination, CommunityDestination))
         elif isinstance(distribution, FullSyncDistribution):
             require(distribution, authentication, (MemberAuthentication, DoubleMemberAuthentication))
             require(distribution, resolution, (PublicResolution, LinearResolution, DynamicResolution))
@@ -623,10 +653,6 @@ class Message(MetaObject):
             raise ValueError("%s is not supported" % distribution.__class_.__name__)
 
         if isinstance(destination, CandidateDestination):
-            require(destination, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
-            require(destination, resolution, (PublicResolution, LinearResolution, DynamicResolution))
-            require(destination, distribution, (RelayDistribution, DirectDistribution))
-        elif isinstance(destination, MemberDestination):
             require(destination, authentication, (NoAuthentication, MemberAuthentication, DoubleMemberAuthentication))
             require(destination, resolution, (PublicResolution, LinearResolution, DynamicResolution))
             require(destination, distribution, (RelayDistribution, DirectDistribution))

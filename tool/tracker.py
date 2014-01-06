@@ -1,13 +1,11 @@
-# Python 2.5 features
-from __future__ import with_statement
-
 """
 Run Dispersy in standalone tracker mode.
 
 Outputs statistics every 300 seconds:
 - BANDWIDTH BYTES-UP BYTES-DOWN
-- CANDIDATE COUNT(CANDIDATES)
 - COMMUNITY COUNT(OVERLAYS) COUNT(KILLED-OVERLAYS)
+- CANDIDATE COUNT(ALL_CANDIDATES)                       18/07/13 no longer used
+- CANDIDATE2 COUNT(VERIFIED_CANDIDATES)                 18/07/13 replaces CANDIDATE
 
 Outputs active peers whenever encountered:
 - REQ_IN2 HEX(COMMUNITY) hex(MEMBER) DISPERSY-VERSION OVERLAY-VERSION ADDRESS PORT
@@ -32,35 +30,49 @@ if __name__ == "__main__":
     print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
     exit(1)
 
+
 from time import time
-import os
 import errno
+import logging.config
+# optparse is deprecated since python 2.7
 import optparse
+import os
 import signal
 import sys
 
-from ..callback import Callback
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
+
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
 from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
 from ..dispersy import Dispersy
-from ..dprint import dprint
 from ..endpoint import StandaloneEndpoint
-from ..member import DummyMember, Member
+from ..logger import get_logger, get_context_filter
 from ..message import Message, DropMessage
+from .mainthreadcallback import MainThreadCallback
+logger = get_logger(__name__)
 
 if sys.platform == 'win32':
-    SOCKET_BLOCK_ERRORCODE = 10035    # WSAEWOULDBLOCK
+    SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
+
 class BinaryTrackerConversion(BinaryConversion):
+
     def decode_message(self, candidate, data, _=None):
         # disable verify
         return self._decode_message(candidate, data, False, False)
 
+
 class TrackerHardKilledCommunity(HardKilledCommunity):
+
     def __init__(self, *args, **kargs):
         super(TrackerHardKilledCommunity, self).__init__(*args, **kargs)
         # communities are cleaned based on a 'strike' rule.  periodically, we will check is there
@@ -80,7 +92,9 @@ class TrackerHardKilledCommunity(HardKilledCommunity):
             print "DESTROY_OUT", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerHardKilledCommunity, self).dispersy_on_introduction_request(messages)
 
+
 class TrackerCommunity(Community):
+
     """
     This community will only use dispersy-candidate-request and dispersy-candidate-response messages.
     """
@@ -124,14 +138,12 @@ class TrackerCommunity(Community):
     @property
     def dispersy_acceptable_global_time_range(self):
         # we will accept the full 64 bit global time range
-        return 2**64 - self._global_time
+        return 2 ** 64 - self._global_time
 
     def update_strikes(self, now):
         # does the community have any active candidates
-        for candidate in self._dispersy.candidates:
-            if candidate.is_active(self, now):
-                self._strikes = 0
-                break
+        if any(self.dispersy_yield_verified_candidates()):
+            self._strikes = 0
         else:
             self._strikes += 1
         return self._strikes
@@ -142,25 +154,17 @@ class TrackerCommunity(Community):
     def initiate_conversions(self):
         return [BinaryTrackerConversion(self, "\x00")]
 
-    def get_conversion(self, prefix=None):
-        if not prefix in self._conversions:
+    def get_conversion_for_packet(self, packet):
+        try:
+            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
-            # the dispersy version MUST BE available.  Currently we
-            # only support \x00: BinaryConversion
-            if prefix[0] == "\x00":
-                self._conversions[prefix] = BinaryTrackerConversion(self, prefix[1])
+        except KeyError:
+            # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
+            if packet[0] == "\x00":
+                self.add_conversion(BinaryConversion(self, packet[1]))
 
-            else:
-                raise KeyError("Unknown conversion")
-
-            # use highest version as default
-            if None in self._conversions:
-                if self._conversions[None].version < self._conversions[prefix].version:
-                    self._conversions[None] = self._conversions[prefix]
-            else:
-                self._conversions[None] = self._conversions[prefix]
-
-        return self._conversions[prefix]
+            # try again
+            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
     def dispersy_cleanup_community(self, message):
         # since the trackers use in-memory databases, we need to store the destroy-community
@@ -195,33 +199,42 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
-    def dispersy_yield_introduce_candidates(self, candidate=None):
+    def dispersy_get_introduce_candidate(self, exclude_candidate=None):
         """
-        Yields unique active candidates that are part of COMMUNITY in Round Robin (Not random anymore).
+        Get an active candidate that is part of this community in Round Robin (Not random anymore).
         """
         assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-        prev_result = None
+        first_candidate = None
         while True:
             result = self._walked_stumbled_candidates.next()
-            if prev_result == result:
-                if __debug__: dprint("yielding random ", None)
-                yield None
+            if result == first_candidate:
+                result = None
 
-            else:
-                prev_result = result
-                if result == candidate:
+            if not first_candidate:
+                first_candidate = result
+
+            if result and exclude_candidate:
+                # same candidate as requesting the introduction
+                if result == exclude_candidate:
                     continue
-                if __debug__: dprint("yielding random ", result)
-                yield result
+
+                # cannot introduce a non-tunnelled candidate to a tunneled candidate (it's swift instance will not
+                # get it)
+                if not exclude_candidate.tunnel and result.tunnel:
+                    continue
+
+                # cannot introduce two nodes that are behind a different symmetric NAT
+                if (exclude_candidate.connection_type == u"symmetric-NAT" and
+                    result.connection_type == u"symmetric-NAT" and
+                    not exclude_candidate.wan_address[0] == result.wan_address[0]):
+                    continue
+
+            return result
 
 class TrackerDispersy(Dispersy):
-    @classmethod
-    def get_instance(cls, *args, **kargs):
-        kargs["singleton_placeholder"] = Dispersy
-        return super(TrackerDispersy, cls).get_instance(*args, **kargs)
 
-    def __init__(self, callback, working_directory, silent = False):
-        super(TrackerDispersy, self).__init__(callback, working_directory, u":memory:")
+    def __init__(self, callback, endpoint, working_directory, silent=False):
+        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:")
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -229,19 +242,27 @@ class TrackerDispersy(Dispersy):
         # leaseweb machines, some are running boosters, they never unload a community
         self._non_autoload.update(["95.211.105.65", "95.211.105.67", "95.211.105.69", "95.211.105.71", "95.211.105.73", "95.211.105.75", "95.211.105.77", "95.211.105.79", "95.211.105.81", "85.17.81.36"])
 
-        # generate a new my-member
-        ec = ec_generate_key(u"very-low")
-        self._my_member = Member(ec_to_public_bin(ec), ec_to_private_bin(ec))
-
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
         self._silent = silent
+        self._my_member = None
 
-        callback.register(self._load_persistent_storage)
-        callback.register(self._unload_communities)
+    def start(self, timeout=10.0):
+        if super(TrackerDispersy, self).start(timeout):
+            self._create_my_member()
+            self._load_persistent_storage()
+            self._callback.register(self._unload_communities)
 
-        if not self._silent:
-            callback.register(self._report_statistics)
+            if not self._silent:
+                self._callback.register(self._report_statistics)
+
+            return True
+        return False
+
+    def _create_my_member(self):
+        # generate a new my-member
+        ec = ec_generate_key(u"very-low")
+        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
 
     @property
     def persistent_storage_filename(self):
@@ -251,7 +272,7 @@ class TrackerDispersy(Dispersy):
         try:
             return super(TrackerDispersy, self).get_community(cid, True, True)
         except KeyError:
-            self._communities[cid] = TrackerCommunity.join_community(DummyMember(cid), self._my_member)
+            self._communities[cid] = TrackerCommunity.join_community(self, self.get_temporary_member_from_id(cid), self._my_member)
             return self._communities[cid]
 
     def _load_persistent_storage(self):
@@ -266,7 +287,7 @@ class TrackerDispersy(Dispersy):
                 try:
                     self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
                 except:
-                    dprint("Error while loading from persistent-destroy-community.data", exception=True, level="error")
+                    logger.exception("Error while loading from persistent-destroy-community.data")
 
     def _convert_packets_into_batch(self, packets):
         """
@@ -277,9 +298,9 @@ class TrackerDispersy(Dispersy):
             for candidate, packet in packets:
                 cid = packet[2:22]
 
-                if not cid in self._communities and False:#candidate.sock_addr[0] in self._non_autoload:
+                if not cid in self._communities and False:  # candidate.sock_addr[0] in self._non_autoload:
                     if __debug__:
-                        dprint("drop a ", len(packet), " byte packet (received from non-autoload node) from ", candidate, level="warning", force=1)
+                        logger.warn("drop a %d byte packet (received from non-autoload node) from %s", len(packet), candidate)
                         self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
                     continue
 
@@ -310,20 +331,20 @@ class TrackerDispersy(Dispersy):
             yield 180.0
             now = time()
             inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-            if __debug__: dprint("cleaning ", len(inactive), "/", len(self._communities), " communities")
+            logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
             for community in inactive:
                 community.unload_community()
 
     def _report_statistics(self):
         while True:
             yield 300.0
-            mapping = {TrackerCommunity:0, TrackerHardKilledCommunity:0}
+            mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
             for community in self._communities.itervalues():
                 mapping[type(community)] += 1
 
             print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
             print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
-            print "CANDIDATE", len(self._candidates)
+            print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
             if self._statistics.outgoing:
                 for key, value in self._statistics.outgoing.iteritems():
@@ -358,6 +379,7 @@ class TrackerDispersy(Dispersy):
                 print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerDispersy, self).on_introduction_response(messages)
 
+
 def main():
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
@@ -367,21 +389,32 @@ def main():
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
 
+    context_filter = get_context_filter()
+    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
+
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
 
-    # start Dispersy
-    dispersy = TrackerDispersy.get_instance(Callback(), unicode(opt.statedir), bool(opt.silent))
-    dispersy.endpoint = StandaloneEndpoint(dispersy, opt.port, opt.ip)
-    dispersy.endpoint.start()
+    # set the log identifier
+    context_filter.identifier = opt.log_identifier
+
+    # setup
+    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
-        print "Received signal '", sig, "' in", frame, "(shutting down)"
-        dispersy.callback.stop(wait=False)
+        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
+        dispersy.stop()
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # start
+    if not dispersy.start():
+        raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
     dispersy.callback.loop()
-    dispersy.endpoint.stop()
+
+    # return 1 on exception, otherwise 0
+    exit(1 if dispersy.callback.exception else 0)

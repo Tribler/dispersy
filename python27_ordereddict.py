@@ -13,6 +13,7 @@ except ImportError:
 
 
 class OrderedDict(dict):
+
     'Dictionary that remembers insertion order'
     # An inherited dict maps keys to values.
     # The inherited dict provides __getitem__, __len__, __contains__, and get.
@@ -237,7 +238,7 @@ class OrderedDict(dict):
 
         '''
         if isinstance(other, OrderedDict):
-            return len(self)==len(other) and self.items() == other.items()
+            return len(self) == len(other) and self.items() == other.items()
         return dict.__eq__(self, other)
 
     def __ne__(self, other):

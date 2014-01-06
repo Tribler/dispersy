@@ -1,4 +1,4 @@
-from hashlib import sha1
+from abc import ABCMeta, abstractmethod
 from math import ceil
 from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
@@ -7,30 +7,32 @@ from random import choice
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .crypto import ec_check_public_bin
-from .destination import MemberDestination, CommunityDestination, CandidateDestination
-from .dispersydatabase import DispersyDatabase
+from .decorator import attach_runtime_statistics
+from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
-from .revision import update_revision_information
+logger = get_logger(__name__)
 
 if __debug__:
     from .authentication import Authentication
     from .candidate import Candidate
     from .destination import Destination
     from .distribution import Distribution
-    from .dprint import dprint
     from .resolution import Resolution
 
-# update version information directly from SVN
-update_revision_information("$HeadURL$", "$Revision$")
 
 class Conversion(object):
+
     """
     A Conversion object is used to convert incoming packets to a different, possibly more recent,
     community version.  If also allows outgoing messages to be converted to a different, possibly
     older, community version.
     """
+
+    __metaclass__ = ABCMeta
+
     def __init__(self, community, dispersy_version, community_version):
         """
         COMMUNITY instance that this conversion belongs to.
@@ -49,16 +51,13 @@ class Conversion(object):
         assert isinstance(community_version, str), type(community_version)
         assert len(community_version) == 1, community_version
 
-        # the dispersy database
-        self._dispersy_database = DispersyDatabase.get_instance()
-
         # the community that this conversion belongs to.
         self._community = community
 
         # the messages that this instance can handle, and that this instance produces, is identified
         # by _prefix.
         self._prefix = dispersy_version + community_version + community.cid
-        assert len(self._prefix) == 22 # when this assumption changes, we need to ensure the
+        assert len(self._prefix) == 22  # when this assumption changes, we need to ensure the
                                        # dispersy_version and community_version properties are
                                        # returned correctly
 
@@ -82,6 +81,14 @@ class Conversion(object):
     def prefix(self):
         return self._prefix
 
+    @abstractmethod
+    def can_decode_message(self, data):
+        """
+        Returns True when DATA can be decoded using this conversion.
+        """
+        assert isinstance(data, str), type(data)
+
+    @abstractmethod
     def decode_meta_message(self, data):
         """
         Obtain the dispersy meta message from DATA.
@@ -90,8 +97,8 @@ class Conversion(object):
         assert isinstance(data, str)
         assert len(data) >= 22
         assert data[:22] == self._prefix
-        raise NotImplementedError("The subclass must implement decode_message")
 
+    @abstractmethod
     def decode_message(self, address, data, verify=True):
         """
         DATA is a string, where the first byte is the on-the-wire Dispersy version, the second byte
@@ -103,8 +110,15 @@ class Conversion(object):
         assert isinstance(data, str)
         assert len(data) >= 22
         assert data[:22] == self._prefix
-        raise NotImplementedError("The subclass must implement decode_message")
 
+    @abstractmethod
+    def can_encode_message(self, message):
+        """
+        Returns True when MESSAGE can be encoded using this conversion.
+        """
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+
+    @abstractmethod
     def encode_message(self, message, sign=True):
         """
         Encode a Message instance into a binary string where the first byte is the on-the-wire
@@ -113,16 +127,24 @@ class Conversion(object):
 
         Returns a binary string.
         """
-        assert isinstance(message, Message)
-        raise NotImplementedError("The subclass must implement encode_message")
+        assert isinstance(message, Message), type(message)
+        assert isinstance(sign, bool), type(sign)
 
-class BinaryConversion(Conversion):
+    def __str__(self):
+        return "<%s %s%s>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"))
+
+    def __repr__(self):
+        return str(self)
+
+class NoDefBinaryConversion(Conversion):
+
     """
     On-The-Wire binary version
 
     This conversion is intended to be as space efficient as possible.
     All data is encoded in a binary form.
     """
+
     class Placeholder(object):
         __slots__ = ["candidate", "meta", "offset", "data", "authentication", "resolution", "first_signature_offset", "destination", "distribution", "payload", "verify", "allow_empty_signature"]
 
@@ -143,7 +165,8 @@ class BinaryConversion(Conversion):
     class EncodeFunctions(object):
         __slots__ = ["byte", "authentication", "signature", "resolution", "distribution", "payload"]
 
-        def __init__(self, byte, (authentication, signature), resolution, distribution, payload):
+        def __init__(self, byte, xxx_todo_changeme, resolution, distribution, payload):
+            (authentication, signature) = xxx_todo_changeme
             self.byte = byte
             self.authentication = authentication
             self.signature = signature
@@ -177,62 +200,24 @@ class BinaryConversion(Conversion):
         self._struct_QQHHBH = Struct(">QQHHBH")
         self._struct_ccB = Struct(">ccB")
 
-        self._encode_message_map = dict() # message.name : EncodeFunctions
-        self._decode_message_map = dict() # byte : DecodeFunctions
+        self._encode_message_map = dict()  # message.name : EncodeFunctions
+        self._decode_message_map = dict()  # byte : DecodeFunctions
 
         # the dispersy-introduction-request and dispersy-introduction-response have several bitfield
         # flags that must be set correctly
         # reserve 1st bit for enable/disable advice
-        self._encode_advice_map = {True:int("1", 2), False:int("0", 2)}
+        self._encode_advice_map = {True: int("1", 2), False: int("0", 2)}
         self._decode_advice_map = dict((value, key) for key, value in self._encode_advice_map.iteritems())
         # reserve 2nd bit for enable/disable sync
-        self._encode_sync_map = {True:int("10", 2), False:int("00", 2)}
+        self._encode_sync_map = {True: int("10", 2), False: int("00", 2)}
         self._decode_sync_map = dict((value, key) for key, value in self._encode_sync_map.iteritems())
         # reserve 3rd bit for enable/disable tunnel (02/05/12)
-        self._encode_tunnel_map = {True:int("100", 2), False:int("000", 2)}
+        self._encode_tunnel_map = {True: int("100", 2), False: int("000", 2)}
         self._decode_tunnel_map = dict((value, key) for key, value in self._encode_tunnel_map.iteritems())
         # 4th, 5th and 6th bits are currently unused
         # reserve 7th and 8th bits for connection type
-        self._encode_connection_type_map = {u"unknown":int("00000000", 2), u"public":int("10000000", 2), u"symmetric-NAT":int("11000000", 2)}
+        self._encode_connection_type_map = {u"unknown": int("00000000", 2), u"public": int("10000000", 2), u"symmetric-NAT": int("11000000", 2)}
         self._decode_connection_type_map = dict((value, key) for key, value in self._encode_connection_type_map.iteritems())
-
-        def define(value, name, encode, decode):
-            try:
-                meta = community.get_meta_message(name)
-            except KeyError:
-                if __debug__:
-                    debug_non_available.append(name)
-            else:
-                self.define_meta_message(chr(value), meta, encode, decode)
-
-        if __debug__:
-            debug_non_available = []
-
-        # 255 is reserved
-        define(254, u"dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
-        define(253, u"dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
-        define(252, u"dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
-        define(251, u"dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
-        define(250, u"dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
-        define(249, u"dispersy-puncture", self._encode_puncture, self._decode_puncture)
-        define(248, u"dispersy-identity", self._encode_identity, self._decode_identity)
-        define(247, u"dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
-        define(246, u"dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
-        define(245, u"dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
-        define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
-        define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
-        define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
-        # 241 for obsolete dispersy-subjective-set
-        # 240 for obsolete dispersy-missing-subjective-set
-        define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
-        define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
-        define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
-        define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
-        define(235, u"dispersy-missing-last-message", self._encode_missing_last_message, self._decode_missing_last_message)
-
-        if __debug__:
-            if debug_non_available:
-                dprint("unable to define non-available messages ", ", ".join(debug_non_available), level="warning")
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -244,35 +229,34 @@ class BinaryConversion(Conversion):
         assert callable(encode_payload_func)
         assert callable(decode_payload_func)
 
-        mapping = {MemberAuthentication:(self._encode_member_authentication, self._encode_member_authentication_signature),
-                   DoubleMemberAuthentication:(self._encode_double_member_authentication, self._encode_double_member_authentication_signature),
-                   NoAuthentication:(self._encode_no_authentication, self._encode_no_authentication_signature),
+        mapping = {MemberAuthentication: (self._encode_member_authentication, self._encode_member_authentication_signature),
+                   DoubleMemberAuthentication: (self._encode_double_member_authentication, self._encode_double_member_authentication_signature),
+                   NoAuthentication: (self._encode_no_authentication, self._encode_no_authentication_signature),
 
-                   PublicResolution:self._encode_public_resolution,
-                   LinearResolution:self._encode_linear_resolution,
-                   DynamicResolution:self._encode_dynamic_resolution,
+                   PublicResolution: self._encode_public_resolution,
+                   LinearResolution: self._encode_linear_resolution,
+                   DynamicResolution: self._encode_dynamic_resolution,
 
-                   FullSyncDistribution:self._encode_full_sync_distribution,
-                   LastSyncDistribution:self._encode_last_sync_distribution,
-                   DirectDistribution:self._encode_direct_distribution}
+                   FullSyncDistribution: self._encode_full_sync_distribution,
+                   LastSyncDistribution: self._encode_last_sync_distribution,
+                   DirectDistribution: self._encode_direct_distribution}
 
         self._encode_message_map[meta.name] = self.EncodeFunctions(byte, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], encode_payload_func)
 
-        mapping = {MemberAuthentication:self._decode_member_authentication,
-                   DoubleMemberAuthentication:self._decode_double_member_authentication,
-                   NoAuthentication:self._decode_no_authentication,
+        mapping = {MemberAuthentication: self._decode_member_authentication,
+                   DoubleMemberAuthentication: self._decode_double_member_authentication,
+                   NoAuthentication: self._decode_no_authentication,
 
-                   DynamicResolution:self._decode_dynamic_resolution,
-                   LinearResolution:self._decode_linear_resolution,
-                   PublicResolution:self._decode_public_resolution,
+                   DynamicResolution: self._decode_dynamic_resolution,
+                   LinearResolution: self._decode_linear_resolution,
+                   PublicResolution: self._decode_public_resolution,
 
-                   DirectDistribution:self._decode_direct_distribution,
-                   FullSyncDistribution:self._decode_full_sync_distribution,
-                   LastSyncDistribution:self._decode_last_sync_distribution,
+                   DirectDistribution: self._decode_direct_distribution,
+                   FullSyncDistribution: self._decode_full_sync_distribution,
+                   LastSyncDistribution: self._decode_last_sync_distribution,
 
-                   CandidateDestination:self._decode_empty_destination,
-                   CommunityDestination:self._decode_empty_destination,
-                   MemberDestination:self._decode_empty_destination}
+                   CandidateDestination: self._decode_empty_destination,
+                   CommunityDestination: self._decode_empty_destination}
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 
@@ -290,7 +274,7 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 29:
             raise DropPacket("Insufficient packet size")
 
-        member_id = data[offset:offset+20]
+        member_id = data[offset:offset + 20]
         offset += 20
         members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
         if not members:
@@ -341,7 +325,7 @@ class BinaryConversion(Conversion):
         if len(data) < offset + key_length:
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
-        key = data[offset:offset+key_length]
+        key = data[offset:offset + key_length]
         if not ec_check_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(key)
@@ -392,7 +376,7 @@ class BinaryConversion(Conversion):
         if len(data) < offset + key_length:
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
-        key = data[offset:offset+key_length]
+        key = data[offset:offset + key_length]
         if not ec_check_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(key)
@@ -460,7 +444,7 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 20:
             raise DropPacket("Insufficient packet size")
 
-        return offset + 20, placeholder.meta.payload.Implementation(placeholder.meta.payload, data[offset:offset+20])
+        return offset + 20, placeholder.meta.payload.Implementation(placeholder.meta.payload, data[offset:offset + 20])
 
     def _encode_destroy_community(self, message):
         if message.payload.is_soft_kill:
@@ -495,7 +479,7 @@ class BinaryConversion(Conversion):
            ]
         ]
         """
-        permission_map = {u"permit":int("0001", 2), u"authorize":int("0010", 2), u"revoke":int("0100", 2), u"undo":int("1000", 2)}
+        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
             public_key = member.public_key
@@ -524,7 +508,7 @@ class BinaryConversion(Conversion):
         return tuple(data)
 
     def _decode_authorize(self, placeholder, offset, data):
-        permission_map = {u"permit":int("0001", 2), u"authorize":int("0010", 2), u"revoke":int("0100", 2), u"undo":int("1000", 2)}
+        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
         permission_triplets = []
 
         while offset < len(data):
@@ -537,7 +521,7 @@ class BinaryConversion(Conversion):
             if len(data) < offset + key_length + 1:
                 raise DropPacket("Insufficient packet size")
 
-            key = data[offset:offset+key_length]
+            key = data[offset:offset + key_length]
             if not ec_check_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_authorize)")
             member = self._community.dispersy.get_member(key)
@@ -592,7 +576,7 @@ class BinaryConversion(Conversion):
            ]
         ]
         """
-        permission_map = {u"permit":int("0001", 2), u"authorize":int("0010", 2), u"revoke":int("0100", 2), u"undo":int("1000", 2)}
+        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
             public_key = member.public_key
@@ -621,7 +605,7 @@ class BinaryConversion(Conversion):
         return tuple(data)
 
     def _decode_revoke(self, placeholder, offset, data):
-        permission_map = {u"permit":int("0001", 2), u"authorize":int("0010", 2), u"revoke":int("0100", 2), u"undo":int("1000", 2)}
+        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
         permission_triplets = []
 
         while offset < len(data):
@@ -634,7 +618,7 @@ class BinaryConversion(Conversion):
             if len(data) < offset + key_length + 1:
                 raise DropPacket("Insufficient packet size")
 
-            key = data[offset:offset+key_length]
+            key = data[offset:offset + key_length]
             if not ec_check_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_revoke)")
             member = self._community.dispersy.get_member(key)
@@ -711,7 +695,7 @@ class BinaryConversion(Conversion):
         if len(data) < offset + key_length:
             raise DropPacket("Insufficient packet size")
 
-        public_key = data[offset:offset+key_length]
+        public_key = data[offset:offset + key_length]
         if not ec_check_public_bin(public_key):
             raise DropPacket("Invalid cryptographic key (_decode_revoke)")
         member = self._community.dispersy.get_member(public_key)
@@ -741,7 +725,7 @@ class BinaryConversion(Conversion):
         global_time, key_length = self._struct_QH.unpack_from(data, offset)
         offset += 10
 
-        key = data[offset:offset+key_length]
+        key = data[offset:offset + key_length]
         if not ec_check_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_proof)")
         member = self._community.dispersy.get_member(key)
@@ -816,13 +800,13 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 21:
             raise DropPacket("Insufficient packet size")
 
-        destination_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        source_lan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
         flags, identifier = self._struct_BH.unpack_from(data, offset)
@@ -892,19 +876,19 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 33:
             raise DropPacket("Insufficient packet size")
 
-        destination_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        destination_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        source_lan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        lan_introduction_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        lan_introduction_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        wan_introduction_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        wan_introduction_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
         flags, identifier, = self._struct_BH.unpack_from(data, offset)
@@ -930,10 +914,10 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 14:
             raise DropPacket("Insufficient packet size")
 
-        lan_walker_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        lan_walker_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        wan_walker_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        wan_walker_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
         identifier, = self._struct_H.unpack_from(data, offset)
@@ -951,10 +935,10 @@ class BinaryConversion(Conversion):
         if len(data) < offset + 14:
             raise DropPacket("Insufficient packet size")
 
-        source_lan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset+4]), self._struct_H.unpack_from(data, offset+4)[0])
+        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
         offset += 6
 
         identifier, = self._struct_H.unpack_from(data, offset)
@@ -997,7 +981,7 @@ class BinaryConversion(Conversion):
         assert message.distribution.global_time
         # 23/04/12 Boudewijn: testcases generate global time values that have not been claimed
         # if message.distribution.global_time > message.community.global_time:
-        #     # did not use community.claim_global_time() FAIL
+        # did not use community.claim_global_time() FAIL
         #     raise ValueError("incorrect global_time value chosen")
         if message.distribution.enable_sequence_number:
             assert message.distribution.sequence_number
@@ -1009,7 +993,7 @@ class BinaryConversion(Conversion):
         assert message.distribution.global_time
         # 23/04/12 Boudewijn: testcases generate global time values that have not been claimed
         # if message.distribution.global_time > message.community.global_time:
-        #     # did not use community.claim_global_time() FAIL
+        # did not use community.claim_global_time() FAIL
         #     raise ValueError("incorrect global_time value chosen")
         container.append(self._struct_Q.pack(message.distribution.global_time))
 
@@ -1017,7 +1001,7 @@ class BinaryConversion(Conversion):
         assert message.distribution.global_time
         # 23/04/12 Boudewijn: testcases generate global time values that have not been claimed
         # if message.distribution.global_time > message.community.global_time:
-        #     # did not use community.claim_global_time() FAIL
+        # did not use community.claim_global_time() FAIL
         #     raise ValueError("incorrect global_time value chosen")
         container.append(self._struct_Q.pack(message.distribution.global_time))
 
@@ -1037,10 +1021,11 @@ class BinaryConversion(Conversion):
     def _encode_no_authentication_signature(self, container, message, sign):
         return "".join(container)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_member_authentication_signature(self, container, message, sign):
         assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
+        data = "".join(container)
         if sign:
-            data = "".join(container)
             signature = message.authentication.member.sign(data)
             message.authentication.set_signature(signature)
             return data + signature
@@ -1048,6 +1033,7 @@ class BinaryConversion(Conversion):
         else:
             return data + "\x00" * message.authentication.member.signature_length
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_double_member_authentication_signature(self, container, message, sign):
         data = "".join(container)
         signatures = []
@@ -1062,6 +1048,14 @@ class BinaryConversion(Conversion):
                 signatures.append("\x00" * member.signature_length)
         return data + "".join(signatures)
 
+    def can_encode_message(self, message):
+        """
+        Returns True when MESSAGE can be encoded using this conversion.
+        """
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
+        return message.name in self._encode_message_map
+
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.name}")
     def encode_message(self, message, sign=True):
         assert isinstance(message, Message.Implementation), message
         assert message.name in self._encode_message_map, message.name
@@ -1088,11 +1082,7 @@ class BinaryConversion(Conversion):
         # sign
         packet = encode_functions.signature(container, message, sign)
 
-        if __debug__:
-            if len(packet) > 1500 - 60 - 8:
-                dprint("Packet size for ", message.name, " exceeds MTU - IP header - UDP header (", len(packet), " bytes)", level="warning")
-
-        # dprint(message.packet.encode("HEX"))
+        logger.debug("created message %s (%d bytes)", message.name, len(packet))
         return packet
 
     #
@@ -1156,6 +1146,7 @@ class BinaryConversion(Conversion):
         placeholder.first_signature_offset = len(placeholder.data)
         placeholder.authentication = NoAuthentication.Implementation(placeholder.meta.authentication)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
@@ -1164,7 +1155,7 @@ class BinaryConversion(Conversion):
         if authentication.encoding == "sha1":
             if len(data) < offset + 20:
                 raise DropPacket("Insufficient packet size (_decode_member_authentication sha1)")
-            member_id = data[offset:offset+20]
+            member_id = data[offset:offset + 20]
             offset += 20
 
             members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
@@ -1190,7 +1181,7 @@ class BinaryConversion(Conversion):
             offset += 2
             if len(data) < offset + key_length:
                 raise DropPacket("Insufficient packet size (_decode_member_authentication bin)")
-            key = data[offset:offset+key_length]
+            key = data[offset:offset + key_length]
             offset += key_length
 
             if not ec_check_public_bin(key):
@@ -1215,6 +1206,7 @@ class BinaryConversion(Conversion):
         else:
             raise NotImplementedError(authentication.encoding)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_double_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
@@ -1238,7 +1230,7 @@ class BinaryConversion(Conversion):
 
             members_ids = []
             for _ in range(2):
-                member_id = data[offset:offset+20]
+                member_id = data[offset:offset + 20]
                 members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
                 if not members:
                     raise DelayPacketByMissingMember(self._community, member_id)
@@ -1252,13 +1244,13 @@ class BinaryConversion(Conversion):
                 signatures = ["", ""]
                 found_valid_combination = True
                 for index, member in zip(range(2), members):
-                    signature = data[signature_offset:signature_offset+member.signature_length]
-                    # dprint("INDEX: ", index, force=1)
-                    # dprint(signature.encode('HEX'), force=1)
+                    signature = data[signature_offset:signature_offset + member.signature_length]
+                    # logging.info("INDEX: %d", index)
+                    # logging.info("%s", signature.encode('HEX'))
                     if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
                         signatures[index] = ""
 
-                    elif (not placeholder.verify and len(members) == 1) or member.verify(data, data[signature_offset:signature_offset+member.signature_length], length=first_signature_offset):
+                    elif (not placeholder.verify and len(members) == 1) or member.verify(data, data[signature_offset:signature_offset + member.signature_length], length=first_signature_offset):
                         signatures[index] = signature
 
                     else:
@@ -1284,9 +1276,9 @@ class BinaryConversion(Conversion):
             offset += 4
             if len(data) < offset + key1_length + key2_length:
                 raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
-            key1 = data[offset:offset+key1_length]
+            key1 = data[offset:offset + key1_length]
             offset += key1_length
-            key2 = data[offset:offset+key2_length]
+            key2 = data[offset:offset + key2_length]
             offset += key2_length
 
             if not ec_check_public_bin(key1):
@@ -1317,6 +1309,7 @@ class BinaryConversion(Conversion):
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
     def _decode_message(self, candidate, data, verify, allow_empty_signature):
         """
         Decode a binary string into a Message structure, with some
@@ -1371,7 +1364,7 @@ class BinaryConversion(Conversion):
         # payload
         placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, placeholder.data[:placeholder.first_signature_offset])
         if placeholder.offset != placeholder.first_signature_offset:
-            if __debug__: dprint("invalid packet size for ", placeholder.meta.name, " data:", placeholder.first_signature_offset, "; offset:", placeholder.offset, level="warning")
+            logger.warning("invalid packet size for %s data:%d; offset:%d", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
         if __debug__:
@@ -1380,6 +1373,15 @@ class BinaryConversion(Conversion):
             assert isinstance(placeholder.offset, (int, long))
 
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
+
+    def can_decode_message(self, data):
+        """
+        Returns True when DATA can be decoded using this conversion.
+        """
+        assert isinstance(data, str), type(data)
+        return (len(data) >= 23 and
+                data[:22] == self._prefix and
+                data[22] in self._decode_message_map)
 
     def decode_meta_message(self, data):
         """
@@ -1407,7 +1409,58 @@ class BinaryConversion(Conversion):
         assert isinstance(verify, bool)
         return self._decode_message(candidate, data, verify, False)
 
+    def __str__(self):
+        return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
+
+class BinaryConversion(NoDefBinaryConversion):
+
+    """
+    Extends NoDefBinaryConversion and will define all standard dispersy messages
+    """
+
+    def __init__(self, community, community_version):
+        super(BinaryConversion, self).__init__(community, community_version)
+
+        def define(value, name, encode, decode):
+            try:
+                meta = community.get_meta_message(name)
+            except KeyError:
+                if __debug__:
+                    debug_non_available.append(name)
+            else:
+                self.define_meta_message(chr(value), meta, encode, decode)
+
+        if __debug__:
+            debug_non_available = []
+
+        # 255 is reserved
+        define(254, u"dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
+        define(253, u"dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
+        define(252, u"dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
+        define(251, u"dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
+        define(250, u"dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
+        define(249, u"dispersy-puncture", self._encode_puncture, self._decode_puncture)
+        define(248, u"dispersy-identity", self._encode_identity, self._decode_identity)
+        define(247, u"dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
+        define(246, u"dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
+        define(245, u"dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
+        define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
+        define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
+        define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
+        # 241 for obsolete dispersy-subjective-set
+        # 240 for obsolete dispersy-missing-subjective-set
+        define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
+        define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
+        define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
+        define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
+        define(235, u"dispersy-missing-last-message", self._encode_missing_last_message, self._decode_missing_last_message)
+
+        if __debug__:
+            if debug_non_available:
+                logger.debug("unable to define non-available messages %s", debug_non_available)
+
 class DefaultConversion(BinaryConversion):
+
     """
     This conversion class is initially used to encode some Dispersy
     specific messages during the creation of a new Community

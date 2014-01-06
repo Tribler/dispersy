@@ -1,0 +1,349 @@
+* Introduction
+Dispersy is a library that offers a simple interface to synchronise
+data between possibly millions of people, using a peer to peer
+overlay.
+
+This first tutorial will show how to create a basic overlay using
+Dispersy.  Our goal is to emulate an overlay containing multiple
+peers, where each peer will inject new data, i.e. messages, that will
+be distributed between all peers in the overlay.
+
+The code samples are written in such a way, that when placed
+sequentially in a python file, it will run the described emulation.
+The code samples can be automatically extracted using [[filter_code.py][filter_code.py]]
+by running: =cat tutorial-part1.org | python filter_code.py python >
+tutorial-part1.py=.
+
+* Flood community
+#+BEGIN_SRC python
+import logging
+import struct
+import sys
+import time
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
+
+from dispersy.authentication import MemberAuthentication
+from dispersy.callback import Callback
+from dispersy.community import Community
+from dispersy.conversion import DefaultConversion, BinaryConversion
+from dispersy.destination import CommunityDestination
+from dispersy.dispersy import Dispersy
+from dispersy.distribution import FullSyncDistribution
+from dispersy.endpoint import StandaloneEndpoint
+from dispersy.message import Message, DropPacket, DropMessage, BatchConfiguration
+from dispersy.payload import Payload
+from dispersy.resolution import PublicResolution
+
+class FloodCommunity(Community):
+    def __init__(self, dispersy, master_member):
+        super(FloodCommunity, self).__init__(dispersy, master_member)
+        self.message_received = 0
+
+    def initiate_conversions(self):
+        return [DefaultConversion(self), FloodConversion(self)]
+
+    @property
+    def dispersy_auto_download_master_member(self):
+        return False
+
+    @property
+    def dispersy_sync_response_limit(self):
+        return 50 * 1024
+#+END_SRC
+
+In Dispersy each overlay is implemented as a subclass of =Community=.
+For our purposes we implement the FloodCommunity class which contains
+out design.  The constructor provides the community with the Dispersy
+instance, see [[../dispersy.py][dispersy.py]] and the =master_member=.  The master member
+is a Member or DummyMember instance, see [[../member.py][member.py]], and uniquely
+identifies an overlay using a 20 byte community identifier.  We will
+cover the cryptography aspect of the master member the [[tutorial-part2.org][next tutorial]].
+
+The different peers use the community identifier to find other peers
+participating in the same overlay.  Knowledge about other peers in the
+overlay is exchanged using a simple request/response message scheme
+and includes bootstrap peers, the only central component in the
+Dispersy system.
+
+Every message in Dispersy contains version information.  The
+conversion instances returned by =initiate_conversions= list the
+versions that the community is able to read.  By default, the last
+item in the list is used when we create new messages.
+
+=DefaultConversion= uses version zero, this conversion must be
+available to decode messages from the Dispersy trackers.
+=FloodConversion= uses version one, see [[#conversion][section conversion]], and allows
+us to encode and decode the message that are created during the
+emulation.
+
+Because in this simplified tutorial our master member is a DummyMember
+instead of an actual member we disable downloading the master member
+cryptography key by having =dispersy_auto_download_master_member=
+property return False.
+
+Dispersy will attempt to obtain missing messages once every five
+seconds.  Given that each of our messages is approximately 170 bytes
+long and each peer responds with at most 50 kilobytes (defined with
+the property =dispersy_sync_response_limit=), we expect 300 new
+messages with every synchronisation attempt, although this will
+decrease as the difference between peers becomes progressively
+smaller.
+
+** Message definitions
+#+BEGIN_SRC python
+    def initiate_meta_messages(self):
+        return [Message(self,
+                        u"flood",
+                        MemberAuthentication(encoding="sha1"),
+                        PublicResolution(),
+                        FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128),
+                        CommunityDestination(node_count=22),
+                        FloodPayload(),
+                        self.check_flood,
+                        self.on_flood,
+                        batch=BatchConfiguration(3.0))]
+#+END_SRC
+
+Given the simple nature of this tutorial most of the code consists of
+the design of the text message and its handling.
+=initiate_meta_messages= returns a list of Message instances.  In our
+case, just a single message called "flood".  Each message is given
+policies that decide how this message will behave:
+
+- =MemberAuthentication= ensures that every flood message is signed
+  using the cryptography key of the author.  Setting the encoding to
+  'sha1' adds the sha1 digest of the author's public key into every
+  message, Dispersy will automatically retrieve missing public key's.
+  See [[../authentication.py][authentication.py]] for more options.
+
+- =PublicResolution= ensures that everyone is allowed to create this
+  message.  See [[../resolution.py][resolution.py]] for more options.
+
+- =FullSyncDistribution= ensures that every message is distributed to
+  every peer in the overlay.  Note that each overlay is identified by
+  a 20 byte binary string, hence an infinite amount of distinct
+  overlays can exist at any time.
+
+  When enabled, =enable_sequence_number= will include a sequence
+  number in a message.  The first message created by someone will have
+  number one.  Every subsequent message, created by the same person,
+  will have its sequence number incremented by one.  Dispersy will
+  process all messages in sequence order, ensuring that no messages
+  are missed.  Note that every message for every person in each
+  overlay has its own sequence.
+
+  The FullSyncDistribution policy uses bloom filters to efficiently
+  find messages that are missing (i.e. pull mechanism), resulting in
+  low bandwidth overhead.  =synchronization_direction= and =priority=
+  influences the way that the synchronisation is performed.  See
+  [[../distribution.py][distribution.py]] for more options.
+
+- =CommunityDestination= ensures that the message will be distributed
+  to everyone in the community.  =node_count= determines the number of
+  people that will receive the message when it is created (i.e. push
+  mechanism).  See [[../destination.py][destination.py]] for more options.
+
+- =FloodPayload= describes the community specific payload.  In our
+  tutorial the payload is randomly generated.  The [[#payload][payload section]]
+  will explain how payload is defined.
+
+- =check_flood= and =on_flood= are called when flood messages are
+  received.  The [[#message-handling][message handling]] section explains how messages are
+  made and processed.
+
+- And finally, =BatchConfiguration(3.0)= groups all incoming flood
+  messages that arrived within 3 seconds of each other, allowing us to
+  process them at the same time.
+
+** Message handling
+#+BEGIN_SRC python
+    def create_flood(self, count):
+        print "%d] creating %d messages" % (self.dispersy.lan_address[1], count)
+        meta = self.get_meta_message(u"flood")
+        messages = [meta.impl(authentication=(self.my_member,),
+                              distribution=(self.claim_global_time(),),
+                              payload=("flood #%d" % i,))
+                    for i
+                    in xrange(count)]
+        self.dispersy.store_update_forward(messages, True, True, True)
+
+    def check_flood(self, messages):
+        for message in messages:
+            if "spam" in message.payload.data:
+                yield DropMessage(message, "drop spam message")
+            else:
+                yield message
+
+    def on_flood(self, messages):
+        self.message_received += len(messages)
+        print "%d] received %d total messages (%d new messages this batch)" % (self.dispersy.lan_address[1], self.message_received, len(messages))
+#+END_SRC
+
+For every Dispersy message three things must be defined: creation,
+verification, and handling.  Dispersy uses the verification and
+handling methods defined by each Message instance, see [[#message-definitions][previous
+section]].  In our case the methods =check_flood= and =on_flood= are
+used.
+
+The =create_flood= method is called when the user wants to create new
+flood message.  In this method we first retrieve the Message instance
+that describes the flood message, this is the instance that we
+returned in the [[#message-definitions][previous section]].  Subsequently we /implement/ this
+meta message by providing it with the author, the current time, and
+the payload.
+
+- The author is =self.my_member=.  This is the Member instance
+  containing the cryptography key that we use to identify ourselves.
+
+- The current time is incremented and returned by
+  =self.claim_global_time()=.  The global time of an overlay is
+  implemented as a Lamport clock (i.e. a counter that is progressively
+  incremented as new messages are created and received).
+
+- Finally, the payload for our message is a simple text with an
+  increasing number for each message created.
+
+When one or more new messages are received they are decoded (see the
+[[#conversion][next section]]) and passed to the handler methods defined in the
+previous section, in this case =check_flood= and =on_flood=.
+=check_flood= is responsible for ensuring that messages are acceptable
+and ready to be stored.  It does this by yielding one or more of the
+following for every message:
+- =DropMessage(message, "reason")= :: indicating that the message is
+     unacceptable, it will be ignored.
+- =DelayMessageBy...(message, ...)= :: indicating that the message can
+     not yet be processed until we receive some other piece of
+     information.  There are multiple different things that a message
+     can be waiting for, see the DelayMessage classes in [[../message.py][message.py]].
+- =message= :: indicating that message is acceptable.  Only messages
+               that are yielded are stored and part of the call made
+               to =on_flood=.  In our tutorial we will accept all
+               incoming messages unless they contain the word
+               ="spam"=.
+
+** Payload
+#+BEGIN_SRC python
+class FloodPayload(Payload):
+    class Implementation(Payload.Implementation):
+        def __init__(self, meta, data):
+            super(FloodPayload.Implementation, self).__init__(meta)
+            self.data = data
+#+END_SRC
+
+The FloodPayload class is part of the (meta) Message implementation,
+and hence it contains the overlay specific payload settings that we
+want all flood messages to follow.  In this case there are no such
+settings.
+
+The FloodPayload.Implementation class describes what an actual message
+can contain, i.e. one message may contain a single data string.  When
+a message is received this data string is available at
+=message.payload.data=.
+
+** Conversion
+#+BEGIN_SRC python
+class FloodConversion(BinaryConversion):
+    def __init__(self, community):
+        super(FloodConversion, self).__init__(community, "\x01")
+        self.define_meta_message(chr(1), community.get_meta_message(u"flood"), self._encode_flood, self._decode_flood)
+
+    def _encode_flood(self, message):
+        return struct.pack("!L", len(message.payload.data)), message.payload.data
+
+    def _decode_flood(self, placeholder, offset, data):
+        if len(data) < offset + 4:
+            raise DropPacket("Insufficient packet size")
+        data_length, = struct.unpack_from("!L", data, offset)
+        offset += 4
+
+        if len(data) < offset + data_length:
+            raise DropPacket("Insufficient packet size")
+        data_payload = data[offset:offset + data_length]
+        offset += data_length
+
+        return offset, placeholder.meta.payload.implement(data_payload)
+#+END_SRC
+
+The FloodConversion class handled the conversion between the
+Message.Implementation instances used in the code and the binary
+string representation on the wire.
+
+TODO: explain ="\x01"= and =define_meta_message=
+
+The =_encode_flood= method must return a tuple containing one or more
+strings.  For our message, we add the length and value of the
+=payload.data= field.
+
+The =_decode_flood= method must return the new offset and a
+FloodPayload.Implementation instance.  =placeholder= contains
+everything that has been decoded so far, =data= contains the entire
+message as a string, and =offset= is the index of the first character
+in =data= where the payload starts.
+
+* Putting it all together
+#+BEGIN_SRC python
+def join_flood_overlay(dispersy):
+    master_member = dispersy.get_temporary_member_from_id("-FLOOD-OVERLAY-HASH-")
+    my_member = dispersy.get_new_member()
+    return FloodCommunity.join_community(dispersy, master_member, my_member)
+
+def main(new_message_count, total_message_count):
+    callback = Callback()
+    endpoint = StandaloneEndpoint(10000)
+    dispersy = Dispersy(callback, endpoint, u".", u":memory:")
+    dispersy.start()
+    print "%d] Dispersy is listening on port %d" % (dispersy.lan_address[1], dispersy.lan_address[1])
+
+    community = callback.call(join_flood_overlay, (dispersy,))
+    callback.register(community.create_flood, (new_message_count, ), delay=10.0)
+
+    try:
+        while callback.is_running:
+            time.sleep(5.0)
+
+            if community.message_received >= total_message_count:
+                print "%d] finished, will remain online for a bit longer to help disseminate messages" % dispersy.lan_address[1]
+                time.sleep(120.0)
+                break
+
+    except KeyboardInterrupt:
+        print "%d] shutdown" % dispersy.lan_address[1]
+
+    finally:
+        dispersy.stop()
+
+if __name__ == "__main__":
+    main(int(sys.argv[1]), int(sys.argv[2]))
+#+END_SRC
+
+Now that we have our community implemented, we must start Dispersy and
+join the overlay.  To start Dispersy we need to give it a thread to
+run on and a UDP socket to listen to, this is handled by =Callback()=
+and =StandaloneEndpoint(...)= respectively.
+
+We instruct Dispersy to use the current working directory to store any
+files, and use a =:memory:= SQLite database.  The following
+=dispersy.start()= will start the callback thread, bind to an
+available UDP port, and create the database.
+
+Finally, =callback.register(...)= will schedule =join_flood_overlay=
+to be run on the callback thread where it will create the
+=master_member= that uniquely identifies this overlay, the =member=
+that identifies this peer, and the =community= itself.  Lastly,
+=create_flood= is called, thereby giving the peers in the overlay
+something to gossip about.
+
+#+BEGIN_SRC bash
+for (( PEER=1; PEER<=10; PEER++ )); do
+    python -O tutorial-part1.py 250 2500 &
+done
+wait
+#+END_SRC
+
+With the above shell script we can run multiple peers at the same
+time.  Each peer will attempt to bind port =10000= (or the next one
+that is available) and will create =250= new messages.  Finally they
+will form an overlay (finding each other through the Dispersy
+bootstrap peers) and wait until they have received the expected =2500=
+messages.  The peers will stay online for little while to distribute
+messages to other peers before finishing and ending the emulation.
