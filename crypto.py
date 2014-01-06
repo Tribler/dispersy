@@ -222,12 +222,13 @@ class ECCrypto(DispersyCrypto):
         """
         return int(ceil(len(ec) / 8.0)) * 2
 
-    def create_signature(self, ec, digest):
+    def create_signature(self, ec, data):
         """
         Returns the signature of DIGEST made using EC.
         """
-        assert isinstance(digest, str), type(digest)
+        assert isinstance(data, str), type(data)
         length = int(ceil(len(ec) / 8.0))
+        digest = sha1(data).digest()
 
         mpi_r, mpi_s = ec.sign_dsa(digest)
         length_r, = _STRUCT_L.unpack_from(mpi_r)
@@ -237,11 +238,11 @@ class ECCrypto(DispersyCrypto):
 
         return "".join(("\x00" * (length - len(r)), r, "\x00" * (length - len(s)), s))
 
-    def is_valid_signature(self, ec, digest, signature):
+    def is_valid_signature(self, ec, data, signature):
         """
         Returns True when SIGNATURE matches the DIGEST made using EC.
         """
-        assert isinstance(digest, str), type(digest)
+        assert isinstance(data, str), type(data)
         assert isinstance(signature, str), type(signature)
         assert len(signature) == self.get_signature_length(ec), [len(signature), self.get_signature_length(ec)]
         length = len(signature) / 2
@@ -273,6 +274,7 @@ class ECCrypto(DispersyCrypto):
             # if not mpi_s == mpi_s3:
             #     raise RuntimeError([mpi_s.encode("HEX"), mpi_s3.encode("HEX")])
 
+            digest = sha1(data).digest()
             return bool(ec.verify_dsa(digest, mpi_r, mpi_s))
 
         except:

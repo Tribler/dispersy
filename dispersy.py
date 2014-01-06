@@ -49,7 +49,6 @@ except ImportError:
     from .python27_ordereddict import OrderedDict
 
 from collections import defaultdict
-from hashlib import sha1
 from itertools import groupby, islice, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error

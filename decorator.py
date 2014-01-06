@@ -2,7 +2,6 @@ from atexit import register as atexit_register
 from cProfile import Profile
 from collections import defaultdict
 from functools import wraps
-from hashlib import sha1
 from thread import get_ident
 from threading import current_thread
 from time import time

@@ -1,5 +1,3 @@
-from hashlib import sha1
-
 from .logger import get_logger
 logger = get_logger(__name__)
 
@@ -114,8 +112,9 @@ class Member(DummyMember):
         assert private_key == "" or dispersy.crypto.is_valid_private_bin(private_key), private_key.encode("HEX")
 
         database = dispersy.database
-        mid = sha1(public_key).digest()
 
+        ec_pub = self._crypto.key_from_public_bin(public_key)
+        mid = self._crypto.key_to_hash(ec_pub)
         for database_id, public_key_from_db, tags in database.execute(u"SELECT id, public_key, tags FROM member WHERE mid = ?", (buffer(mid),)):
             public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
             if public_key_from_db == public_key:
@@ -153,7 +152,7 @@ class Member(DummyMember):
         self._mid = mid
         self._public_key = public_key
         self._private_key = private_key
-        self._ec = self._crypto.key_from_private_bin(private_key) if private_key else self._crypto.key_from_public_bin(public_key)
+        self._ec = self._crypto.key_from_private_bin(private_key) if private_key else ec_pub
         self._signature_length = self._crypto.get_signature_length(self._ec)
         self._tags = [tag for tag in tags.split(",") if tag]
         self._has_identity = set()
@@ -292,7 +291,7 @@ class Member(DummyMember):
 
         return self._public_key and \
             self._signature_length == len(signature) \
-            and self._crypto.is_valid_signature(self._ec, sha1(data[offset:offset + length]).digest(), signature)
+            and self._crypto.is_valid_signature(self._ec, data[offset:offset + length], signature)
 
     def sign(self, data, offset=0, length=0):
         """
@@ -314,7 +313,7 @@ class Member(DummyMember):
             raise ValueError("LENGTH is larger than the available DATA")
 
         if self._private_key:
-            return self._crypto.create_signature(self._ec, sha1(data[offset:offset + length]).digest())
+            return self._crypto.create_signature(self._ec, data[offset:offset + length])
         else:
             raise RuntimeError("unable to sign data without the private key")
 
