@@ -133,7 +133,7 @@ class TrackerCommunity(Community):
     @property
     def dispersy_sync_bloom_filter_strategy(self):
         # disable sync bloom filter
-        return lambda: None
+        return lambda request_cache: None
 
     @property
     def dispersy_acceptable_global_time_range(self):
