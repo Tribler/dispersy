@@ -714,7 +714,7 @@ class Community(object):
 
                 bloomfilter_range = [1, acceptable_global_time]
 
-                data, fixed = self._select_and_fix(syncable_messages, 0, capacity, True)
+                data, fixed = self._select_and_fix(request_cache, syncable_messages, 0, capacity, True)
                 if len(data) > 0 and fixed:
                     bloomfilter_range[1] = data[-1][0]
                     self._nrsyncpackets = capacity + 1
