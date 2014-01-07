@@ -27,7 +27,7 @@ if __name__ == "__main__":
     #    the package hierarchy. If the module's name does not contain any package information
     #    (e.g. it is set to '__main__') then relative imports are resolved as if the module were a
     #    top level module, regardless of where the module is actually located on the file system.
-    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT]"
+    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
     exit(1)
 
 
@@ -50,7 +50,7 @@ logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
-from ..crypto import ec_generate_key, ec_to_public_bin, ec_to_private_bin
+from ..crypto import NoCrypto, ECCrypto
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger, get_context_filter
@@ -133,7 +133,7 @@ class TrackerCommunity(Community):
     @property
     def dispersy_sync_bloom_filter_strategy(self):
         # disable sync bloom filter
-        return lambda: None
+        return lambda request_cache: None
 
     @property
     def dispersy_acceptable_global_time_range(self):
@@ -233,8 +233,8 @@ class TrackerCommunity(Community):
 
 class TrackerDispersy(Dispersy):
 
-    def __init__(self, callback, endpoint, working_directory, silent=False):
-        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:")
+    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=ECCrypto()):
+        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:", crypto)
 
         # non-autoload nodes
         self._non_autoload = set()
@@ -261,8 +261,8 @@ class TrackerDispersy(Dispersy):
 
     def _create_my_member(self):
         # generate a new my-member
-        ec = ec_generate_key(u"very-low")
-        self._my_member = self.get_member(ec_to_public_bin(ec), ec_to_private_bin(ec))
+        ec = self.crypto.generate_key(u"very-low")
+        self._my_member = self.get_member(self.crypto.key_to_bin(ec.pub()), self.crypto.key_to_bin(ec))
 
     @property
     def persistent_storage_filename(self):
@@ -388,6 +388,7 @@ def main():
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
+    command_line_parser.add_option("--crypto", action="store", type="string", default="ECCrytpo", help="The Crypto object type Dispersy is going to use")
 
     context_filter = get_context_filter()
     command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
@@ -398,8 +399,14 @@ def main():
     # set the log identifier
     context_filter.identifier = opt.log_identifier
 
+    # crypto
+    if opt.crypto == 'NoCrypto':
+        crypto = NoCrypto()
+    else:
+        crypto = ECCrypto()
+
     # setup
-    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent))
+    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
     dispersy.define_auto_load(TrackerCommunity)
     dispersy.define_auto_load(TrackerHardKilledCommunity)
 

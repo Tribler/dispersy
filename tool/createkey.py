@@ -19,31 +19,30 @@ from M2Crypto import EC
 # Note that both explicit and implicit relative imports are based on the name of the current
 # module. Since the name of the main module is always "__main__", modules intended for use as the
 # main module of a Python application should always use absolute imports.
-from dispersy.crypto import _CURVES, ec_get_curves, ec_generate_key, ec_to_public_pem, ec_to_private_pem, \
-    ec_to_public_bin, ec_to_private_bin, ec_signature_length
+from dispersy.crypto import ECCrypto
 
-def ec_name(curve):
+def ec_name(eccrypto, curve):
     assert isinstance(curve, unicode)
-    curve_id = _CURVES[curve]
+    curve_id = eccrypto._CURVES[curve]
 
     for name in dir(EC):
         value = getattr(EC, name)
         if isinstance(value, int) and value == curve_id:
             return name
 
-def create_key(curves):
+def create_key(eccrypto, curves):
     for index, curve in enumerate(curves):
         if index > 0:
             print
 
-        ec = ec_generate_key(curve)
-        private_pem = ec_to_private_pem(ec)
-        public_pem = ec_to_public_pem(ec)
-        public_bin = ec_to_public_bin(ec)
-        private_bin = ec_to_private_bin(ec)
+        ec = eccrypto.generate_key(curve)
+        private_pem = eccrypto.key_to_pem(ec)
+        public_pem = eccrypto.key_to_pem(ec.pub())
+        private_bin = eccrypto.key_to_bin(ec)
+        public_bin = eccrypto.key_to_bin(ec.pub())
         print "generated:", time.ctime()
-        print "curve:", ec_name(curve)
-        print "len:", len(ec), "bits ~", ec_signature_length(ec), "bytes signature"
+        print "curve:", ec_name(eccrypto, curve)
+        print "len:", len(ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
         print "pub:", len(public_bin), public_bin.encode("HEX")
         print "prv:", len(private_bin), private_bin.encode("HEX")
         print "pub-sha1", sha1(public_bin).digest().encode("HEX")
@@ -52,15 +51,17 @@ def create_key(curves):
         print private_pem.strip()
 
 def main():
+    eccrypto = ECCrypto()
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("curves",
                         metavar="CURVE",
                         nargs="+",
-                        choices=sorted([str(curve) for curve in ec_get_curves()]),
+                        choices=sorted([str(curve) for curve in eccrypto.get_security_levels()]),
                         help="EC curves to create")
     args = parser.parse_args()
 
-    create_key(unicode(curve) for curve in args.curves)
+    create_key(eccrypto, (unicode(curve) for curve in args.curves))
 
 if __name__ == "__main__":
     main()

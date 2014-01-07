@@ -6,7 +6,6 @@ from random import choice
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .crypto import ec_check_public_bin
 from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
@@ -326,7 +325,7 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
         key = data[offset:offset + key_length]
-        if not ec_check_public_bin(key):
+        if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(key)
         if not member.has_identity(self._community):
@@ -377,7 +376,7 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
         key = data[offset:offset + key_length]
-        if not ec_check_public_bin(key):
+        if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(key)
         if not member.has_identity(self._community):
@@ -522,7 +521,7 @@ class NoDefBinaryConversion(Conversion):
                 raise DropPacket("Insufficient packet size")
 
             key = data[offset:offset + key_length]
-            if not ec_check_public_bin(key):
+            if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_authorize)")
             member = self._community.dispersy.get_member(key)
             if not member.has_identity(self._community):
@@ -619,7 +618,7 @@ class NoDefBinaryConversion(Conversion):
                 raise DropPacket("Insufficient packet size")
 
             key = data[offset:offset + key_length]
-            if not ec_check_public_bin(key):
+            if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_revoke)")
             member = self._community.dispersy.get_member(key)
             if not member.has_identity(self._community):
@@ -696,7 +695,7 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size")
 
         public_key = data[offset:offset + key_length]
-        if not ec_check_public_bin(public_key):
+        if not self._community.dispersy.crypto.is_valid_public_bin(public_key):
             raise DropPacket("Invalid cryptographic key (_decode_revoke)")
         member = self._community.dispersy.get_member(public_key)
         if not member.has_identity(self._community):
@@ -726,7 +725,7 @@ class NoDefBinaryConversion(Conversion):
         offset += 10
 
         key = data[offset:offset + key_length]
-        if not ec_check_public_bin(key):
+        if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_proof)")
         member = self._community.dispersy.get_member(key)
         if not member.has_identity(self._community):
@@ -958,7 +957,7 @@ class NoDefBinaryConversion(Conversion):
             container.append(message.authentication.member.mid)
         elif message.authentication.encoding == "bin":
             assert message.authentication.member.public_key
-            assert ec_check_public_bin(message.authentication.member.public_key), message.authentication.member.public_key.encode("HEX")
+            assert self._community.dispersy.crypto.is_valid_public_bin(message.authentication.member.public_key), message.authentication.member.public_key.encode("HEX")
             container.extend((self._struct_H.pack(len(message.authentication.member.public_key)), message.authentication.member.public_key))
         else:
             raise NotImplementedError(message.authentication.encoding)
@@ -969,8 +968,8 @@ class NoDefBinaryConversion(Conversion):
         elif message.authentication.encoding == "bin":
             assert message.authentication.members[0].public_key
             assert message.authentication.members[1].public_key
-            assert ec_check_public_bin(message.authentication.members[0].public_key), message.authentication.members[0].public_key.encode("HEX")
-            assert ec_check_public_bin(message.authentication.members[1].public_key), message.authentication.members[1].public_key.encode("HEX")
+            assert self._community.dispersy.crypto.is_valid_public_bin(message.authentication.members[0].public_key), message.authentication.members[0].public_key.encode("HEX")
+            assert self._community.dispersy.crypto.is_valid_public_bin(message.authentication.members[1].public_key), message.authentication.members[1].public_key.encode("HEX")
             container.extend((self._struct_HH.pack(len(message.authentication.members[0].public_key), len(message.authentication.members[1].public_key)),
                               message.authentication.members[0].public_key,
                               message.authentication.members[1].public_key))
@@ -1184,7 +1183,7 @@ class NoDefBinaryConversion(Conversion):
             key = data[offset:offset + key_length]
             offset += key_length
 
-            if not ec_check_public_bin(key):
+            if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_member_authentication)")
 
             member = self._community.dispersy.get_member(key)
@@ -1281,9 +1280,9 @@ class NoDefBinaryConversion(Conversion):
             key2 = data[offset:offset + key2_length]
             offset += key2_length
 
-            if not ec_check_public_bin(key1):
+            if not self._community.dispersy.crypto.is_valid_public_bin(key1):
                 raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
-            if not ec_check_public_bin(key2):
+            if not self._community.dispersy.crypto.is_valid_public_bin(key2):
                 raise DropPacket("Invalid cryptographic key2 (_decode_double_member_authentication)")
 
             members = [self._community.dispersy.get_member(key1), self._community.dispersy.get_member(key2)]

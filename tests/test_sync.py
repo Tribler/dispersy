@@ -177,6 +177,8 @@ class TestSync(DispersyTestFunc):
                                     reverse=True))
 
             # all RANDOM-text must NOT be received in (reversed) order of their global time
+            # Niels: 17-12-2013 Why are we doing this twice? Moreover, random is random
+            # it could just happen to be equal.
             self.assertNotEqual([message.distribution.global_time
                                  for _, message
                                  in received

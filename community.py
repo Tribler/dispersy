@@ -583,11 +583,11 @@ class Community(object):
 
     @property
     def dispersy_sync_skip_enable(self):
-        return True #_sync_skip_
+        return True  # _sync_skip_
 
     @property
     def dispersy_sync_cache_enable(self):
-        return True #_cache_enable_
+        return True  # _cache_enable_
 
     def dispersy_store(self, messages):
         """
@@ -652,7 +652,7 @@ class Community(object):
                 self._sync_cache = None
                 return None
 
-        sync = self.dispersy_sync_bloom_filter_strategy()
+        sync = self.dispersy_sync_bloom_filter_strategy(request_cache)
         if sync:
             self._sync_cache = SyncCache(*sync)
             self._sync_cache.candidate = request_cache.helper_candidate
@@ -662,169 +662,10 @@ class Community(object):
 
         return sync
 
-    @runtime_duration_warning(0.5)
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
-    def dispersy_claim_sync_bloom_filter_simple(self):
-        bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
-        capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
-        global_time = self.global_time
-
-        desired_mean = global_time / 2.0
-        lambd = 1.0 / desired_mean
-        time_point = global_time - int(self._random.expovariate(lambd))
-        if time_point < 1:
-            time_point = int(self._random.random() * global_time)
-
-        time_low = time_point - capacity / 2
-        time_high = time_low + capacity
-
-        if time_low < 1:
-            time_low = 1
-            time_high = capacity
-            db_high = capacity
-
-        elif time_high > global_time - capacity:
-            time_low = max(1, global_time - capacity)
-            time_high = self.acceptable_global_time
-            db_high = global_time
-
-        else:
-            db_high = time_high
-
-        bloom.add_keys(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND meta_message.priority > 32 AND NOT sync.undone AND global_time BETWEEN ? AND ?", (self._database_id, time_low, db_high)))
-
-        if __debug__:
-            import sys
-            print >> sys.stderr, "Syncing %d-%d, capacity = %d, pivot = %d" % (time_low, time_high, capacity, time_low)
-        return (time_low, time_high, 1, 0, bloom)
-
-    # choose a pivot, add all items capacity to the right. If too small, add items left of pivot
-    @runtime_duration_warning(0.5)
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
-    def dispersy_claim_sync_bloom_filter_right(self):
-        bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
-        capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
-
-        desired_mean = self.global_time / 2.0
-        lambd = 1.0 / desired_mean
-        from_gbtime = self.global_time - int(self._random.expovariate(lambd))
-        if from_gbtime < 1:
-            from_gbtime = int(self._random.random() * self.global_time)
-
-        # import sys
-        # print >> sys.stderr, "Pivot", from_gbtime
-
-        mostRecent = False
-        if from_gbtime > 1:
-            # use from_gbtime - 1 to include from_gbtime
-            right, _ = self._select_and_fix(from_gbtime - 1, capacity, True)
-
-            # we did not select enough items from right side, increase nr of items for left
-            if len(right) < capacity:
-                to_select = capacity - len(right)
-                mostRecent = True
-
-                left, _ = self._select_and_fix(from_gbtime, to_select, False)
-                data = left + right
-            else:
-                data = right
-        else:
-            data, _ = self._select_and_fix(0, capacity, True)
-
-        if len(data) > 0:
-            if len(data) >= capacity:
-                time_low = min(from_gbtime, data[0][0])
-
-                if mostRecent:
-                    time_high = self.acceptable_global_time
-                else:
-                    time_high = max(from_gbtime, data[-1][0])
-
-            # we did not fill complete bloomfilter, assume we selected all items
-            else:
-                time_low = 1
-                time_high = self.acceptable_global_time
-
-            bloom.add_keys(str(packet) for _, packet in data)
-
-            # print >> sys.stderr, "Syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d"%(time_low, time_high, len(data), capacity, data[0][0], data[-1][0])
-
-            return (time_low, time_high, 1, 0, bloom)
-        return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
-
-    # instead of pivot + capacity, divide capacity to have 50/50 division around pivot
-    @runtime_duration_warning(0.5)
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
-    def dispersy_claim_sync_bloom_filter_50_50(self):
-        bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
-        capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
-
-        desired_mean = self.global_time / 2.0
-        lambd = 1.0 / desired_mean
-        from_gbtime = self.global_time - int(self._random.expovariate(lambd))
-        if from_gbtime < 1:
-            from_gbtime = int(self._random.random() * self.global_time)
-
-        # import sys
-        # print >> sys.stderr, "Pivot", from_gbtime
-
-        mostRecent = False
-        leastRecent = False
-
-        if from_gbtime > 1:
-            to_select = capacity / 2
-
-            # use from_gbtime - 1 to include from_gbtime
-            right, _ = self._select_and_fix(from_gbtime - 1, to_select, True)
-
-            # we did not select enough items from right side, increase nr of items for left
-            if len(right) < to_select:
-                to_select = capacity - len(right)
-                mostRecent = True
-
-            left, _ = self._select_and_fix(from_gbtime, to_select, False)
-
-            # we did not select enough items from left side
-            if len(left) < to_select:
-                leastRecent = True
-
-                # increase nr of items for right if we did select enough items on right side
-                if len(right) >= to_select:
-                    to_select = capacity - len(right) - len(left)
-                    right = right + self._select_and_fix(right[-1][0], to_select, True)[0]
-            data = left + right
-
-        else:
-            data, _ = self._select_and_fix(0, capacity, True)
-
-        if len(data) > 0:
-            if len(data) >= capacity:
-                if leastRecent:
-                    time_low = 1
-                else:
-                    time_low = min(from_gbtime, data[0][0])
-
-                if mostRecent:
-                    time_high = self.acceptable_global_time
-                else:
-                    time_high = max(from_gbtime, data[-1][0])
-
-            # we did not fill complete bloomfilter, assume we selected all items
-            else:
-                time_low = 1
-                time_high = self.acceptable_global_time
-
-            bloom.add_keys(str(packet) for _, packet in data)
-
-            # print >> sys.stderr, "Syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d"%(time_low, time_high, len(data), capacity, data[0][0], data[-1][0])
-
-            return (time_low, time_high, 1, 0, bloom)
-        return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
-
     # instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
     @runtime_duration_warning(0.5)
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
-    def _dispersy_claim_sync_bloom_filter_largest(self):
+    def _dispersy_claim_sync_bloom_filter_largest(self, request_cache):
         if __debug__:
             t1 = time()
 
@@ -845,12 +686,12 @@ class Community(object):
 
             if from_gbtime > 1 and self._nrsyncpackets >= capacity:
                 # use from_gbtime -1/+1 to include from_gbtime
-                right, rightdata = self._select_bloomfilter_range(syncable_messages, from_gbtime - 1, capacity, True)
+                right, rightdata = self._select_bloomfilter_range(request_cache, syncable_messages, from_gbtime - 1, capacity, True)
 
                 # if right did not get to capacity, then we have less than capacity items in the database
                 # skip left
                 if right[2] == capacity:
-                    left, leftdata = self._select_bloomfilter_range(syncable_messages, from_gbtime + 1, capacity, False)
+                    left, leftdata = self._select_bloomfilter_range(request_cache, syncable_messages, from_gbtime + 1, capacity, False)
                     left_range = (left[1] or self.global_time) - left[0]
                     right_range = (right[1] or self.global_time) - right[0]
 
@@ -873,7 +714,7 @@ class Community(object):
 
                 bloomfilter_range = [1, acceptable_global_time]
 
-                data, fixed = self._select_and_fix(syncable_messages, 0, capacity, True)
+                data, fixed = self._select_and_fix(request_cache, syncable_messages, 0, capacity, True)
                 if len(data) > 0 and fixed:
                     bloomfilter_range[1] = data[-1][0]
                     self._nrsyncpackets = capacity + 1
@@ -899,62 +740,8 @@ class Community(object):
             logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
         return (1, acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
-    # instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
-    @runtime_duration_warning(0.5)
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
-    def _dispersy_claim_sync_bloom_filter_modulo(self):
-        syncable_messages = u", ".join(unicode(meta.database_id) for meta in self._meta_messages.itervalues() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32)
-        if syncable_messages:
-            bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
-            capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
-
-            self._nrsyncpackets = list(self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE meta_message IN (%s) AND undone = 0 LIMIT 1" % (syncable_messages)))[0][0]
-            modulo = int(ceil(self._nrsyncpackets / float(capacity)))
-            if modulo > 1:
-                offset = randint(0, modulo - 1)
-                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
-            else:
-                offset = 0
-                modulo = 1
-                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0" % syncable_messages))
-
-            bloom.add_keys(packets)
-
-            logger.debug("%s syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d",
-                         self.cid.encode("HEX"), modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets)
-
-            return (1, self.acceptable_global_time, modulo, offset, bloom)
-
-        else:
-            logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
-        return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
-
-    def _select_and_fix(self, syncable_messages, global_time, to_select, higher=True):
-        assert isinstance(syncable_messages, unicode)
-        if higher:
-            data = list(self._dispersy.database.execute(u"SELECT global_time, packet FROM sync WHERE meta_message IN (%s) AND undone = 0 AND global_time > ? ORDER BY global_time ASC LIMIT ?" % (syncable_messages),
-                                                    (global_time, to_select + 1)))
-        else:
-            data = list(self._dispersy.database.execute(u"SELECT global_time, packet FROM sync WHERE meta_message IN (%s) AND undone = 0 AND global_time < ? ORDER BY global_time DESC LIMIT ?" % (syncable_messages),
-                                                    (global_time, to_select + 1)))
-
-        fixed = False
-        if len(data) > to_select:
-            fixed = True
-
-            # if last 2 packets are equal, then we need to drop those
-            global_time = data[-1][0]
-            del data[-1]
-            while data and data[-1][0] == global_time:
-                del data[-1]
-
-        if not higher:
-            data.reverse()
-
-        return data, fixed
-
-    def _select_bloomfilter_range(self, syncable_messages, global_time, to_select, higher=True):
-        data, fixed = self._select_and_fix(syncable_messages, global_time, to_select, higher)
+    def _select_bloomfilter_range(self, request_cache, syncable_messages, global_time, to_select, higher=True):
+        data, fixed = self._select_and_fix(request_cache, syncable_messages, global_time, to_select, higher)
 
         lowerfixed = True
         higherfixed = True
@@ -965,10 +752,10 @@ class Community(object):
             to_select = to_select - len(data)
             if to_select > 25:
                 if higher:
-                    lowerdata, lowerfixed = self._select_and_fix(syncable_messages, global_time + 1, to_select, False)
+                    lowerdata, lowerfixed = self._select_and_fix(request_cache, syncable_messages, global_time + 1, to_select, False)
                     data = lowerdata + data
                 else:
-                    higherdata, higherfixed = self._select_and_fix(syncable_messages, global_time - 1, to_select, True)
+                    higherdata, higherfixed = self._select_and_fix(request_cache, syncable_messages, global_time - 1, to_select, True)
                     data = data + higherdata
 
         bloomfilter_range = [data[0][0], data[-1][0], len(data)]
@@ -994,6 +781,60 @@ class Community(object):
                 bloomfilter_range[1] = self.acceptable_global_time
 
         return bloomfilter_range, data
+
+    def _select_and_fix(self, request_cache, syncable_messages, global_time, to_select, higher=True):
+        assert isinstance(syncable_messages, unicode)
+        if higher:
+            data = list(self._dispersy.database.execute(u"SELECT global_time, packet FROM sync WHERE meta_message IN (%s) AND undone = 0 AND global_time > ? ORDER BY global_time ASC LIMIT ?" % (syncable_messages),
+                                                    (global_time, to_select + 1)))
+        else:
+            data = list(self._dispersy.database.execute(u"SELECT global_time, packet FROM sync WHERE meta_message IN (%s) AND undone = 0 AND global_time < ? ORDER BY global_time DESC LIMIT ?" % (syncable_messages),
+                                                    (global_time, to_select + 1)))
+
+        fixed = False
+        if len(data) > to_select:
+            fixed = True
+
+            # if last 2 packets are equal, then we need to drop those
+            global_time = data[-1][0]
+            del data[-1]
+            while data and data[-1][0] == global_time:
+                del data[-1]
+
+        if not higher:
+            data.reverse()
+
+        return data, fixed
+
+    # instead of pivot + capacity, compare pivot - capacity and pivot + capacity to see which globaltime range is largest
+    @runtime_duration_warning(0.5)
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
+    def _dispersy_claim_sync_bloom_filter_modulo(self, request_cache):
+        syncable_messages = u", ".join(unicode(meta.database_id) for meta in self._meta_messages.itervalues() if isinstance(meta.distribution, SyncDistribution) and meta.distribution.priority > 32)
+        if syncable_messages:
+            bloom = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate, prefix=chr(int(random() * 256)))
+            capacity = bloom.get_capacity(self.dispersy_sync_bloom_filter_error_rate)
+
+            self._nrsyncpackets = list(self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE meta_message IN (%s) AND undone = 0 LIMIT 1" % (syncable_messages)))[0][0]
+            modulo = int(ceil(self._nrsyncpackets / float(capacity)))
+            if modulo > 1:
+                offset = randint(0, modulo - 1)
+                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0 AND (sync.global_time + ?) %% ? = 0" % syncable_messages, (offset, modulo)))
+            else:
+                offset = 0
+                modulo = 1
+                packets = list(str(packet) for packet, in self._dispersy.database.execute(u"SELECT sync.packet FROM sync WHERE meta_message IN (%s) AND sync.undone = 0" % syncable_messages))
+
+            bloom.add_keys(packets)
+
+            logger.debug("%s syncing %d-%d, nr_packets = %d, capacity = %d, totalnr = %d",
+                         self.cid.encode("HEX"), modulo, offset, self._nrsyncpackets, capacity, self._nrsyncpackets)
+
+            return (1, self.acceptable_global_time, modulo, offset, bloom)
+
+        else:
+            logger.debug("%s NOT syncing no syncable messages", self.cid.encode("HEX"))
+        return (1, self.acceptable_global_time, 1, 0, BloomFilter(8, 0.1, prefix='\x00'))
 
     @property
     def dispersy_sync_response_limit(self):
@@ -1663,7 +1504,7 @@ class Community(object):
         for candidate in candidates:
             self._candidates.pop(candidate.sock_addr, None)
 
-        assert len(set(self._candidates.iterkeys()) & set(bsc.sock_addr for bsc in self._dispersy.bootstrap_candidates)) == 0,\
+        assert len(set(self._candidates.iterkeys()) & set(bsc.sock_addr for bsc in self._dispersy.bootstrap_candidates)) == 0, \
                    "candidates and bootstrap candidates must be separate"
 
     def get_candidate_mid(self, mid):
