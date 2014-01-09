@@ -67,7 +67,7 @@ class IntroductionRequestCache(NumberCache):
 
     def _check_if_both_received(self):
         if self._introduction_response_received and self._puncture_received:
-            self.community.dispersy.request_cache.pop(self.identifier)
+            self.community.request_cache.pop(self.identifier)
 
     def on_introduction_response(self):
         self._introduction_response_received = True
