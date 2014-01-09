@@ -1,18 +1,18 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from time import time
+from threading import RLock
 
 from .decorator import attach_runtime_statistics, _runtime_statistics
-
 
 class Statistics(object):
 
     __metaclass__ = ABCMeta
 
-    @staticmethod
-    def dict_inc(dictionary, key, value=1):
+    def dict_inc(self, dictionary, key, value=1):
         if dictionary != None:
-            dictionary[key] += value
+            with self._lock:
+                dictionary[key] += value
 
     @abstractmethod
     def update(self):
@@ -56,6 +56,7 @@ class DispersyStatistics(Statistics):
         self.database_version = dispersy.database.database_version
         self.lan_address = None
         self.start = self.timestamp = time()
+        self._lock = RLock()
 
         # nr packets received
         self.received_count = 0
@@ -239,6 +240,7 @@ class CommunityStatistics(Statistics):
         self.sync_bloom_reuse = 0
         self.sync_bloom_send = 0
         self.sync_bloom_skip = 0
+        self._lock = RLock()
         self.update()
 
     def update(self, database=False):
