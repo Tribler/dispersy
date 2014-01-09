@@ -2364,8 +2364,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 messages_with_sync.append((message, time_low, time_high, offset, modulo))
 
         if messages_with_sync:
-            payload = message.payload
             for message, generator in self._get_packets_for_bloomfilters(community, messages_with_sync, include_inactive=False):
+                payload = message.payload
                 # we limit the response by byte_limit bytes
                 byte_limit = community.dispersy_sync_response_limit
 
