@@ -36,30 +36,23 @@ A community can tweak the policies and how they behave by changing the parameter
 supply.  Aside from the four policies, each meta-message also defines the community that it is part
 of, the name it uses as an internal identifier, and the class that will contain the payload.
 """
-
 import logging
-import netifaces
 import os
 import sys
-
-try:
-    # python 2.7 only...
-    from collections import OrderedDict
-except ImportError:
-    from .python27_ordereddict import OrderedDict
-
 from collections import defaultdict
-from itertools import groupby, islice, count
+from itertools import groupby, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
 from struct import unpack_from
 from time import time
 
+import netifaces
 
-from .cache import *
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .bootstrap import Bootstrap
+from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCache, MissingSequenceCache,
+                    MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
@@ -67,20 +60,24 @@ from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
 from .logger import get_logger
 from .member import DummyMember, Member
-from .message import BatchConfiguration, Packet, Message
-from .message import DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence, DelayMessageByMissingMessage
-from .message import DropPacket, DelayPacket
-from .payload import AuthorizePayload, RevokePayload, UndoPayload
-from .payload import DestroyCommunityPayload
-from .payload import DynamicSettingsPayload
-from .payload import IdentityPayload, MissingIdentityPayload
-from .payload import IntroductionRequestPayload, IntroductionResponsePayload, PunctureRequestPayload, PuncturePayload
-from .payload import MissingMessagePayload, MissingLastMessagePayload
-from .payload import MissingSequencePayload, MissingProofPayload
-from .payload import SignatureRequestPayload, SignatureResponsePayload
-from .requestcache import Cache, NumberCache
+from .message import (BatchConfiguration, Packet, Message, DropMessage, DelayMessage, DelayMessageByProof,
+                      DelayMessageBySequence, DelayMessageByMissingMessage, DropPacket, DelayPacket)
+from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommunityPayload, DynamicSettingsPayload,
+                      IdentityPayload, MissingIdentityPayload, IntroductionRequestPayload, IntroductionResponsePayload,
+                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingLastMessagePayload,
+                      MissingSequencePayload, MissingProofPayload, SignatureRequestPayload, SignatureResponsePayload)
 from .resolution import PublicResolution, LinearResolution
 from .statistics import DispersyStatistics
+
+
+try:
+    # python 2.7 only...
+    from collections import OrderedDict
+except ImportError:
+    from .python27_ordereddict import OrderedDict
+
+
+
 
 logger = get_logger(__name__)
 

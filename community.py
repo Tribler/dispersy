@@ -1549,7 +1549,7 @@ class Community(object):
     def handle_missing_messages(self, messages, *classes):
         if __debug__:
             from .message import Message
-            from .dispersy import MissingSomethingCache
+            from .cache import MissingSomethingCache
             assert all(isinstance(message, Message.Implementation) for message in messages), [type(message) for message in messages]
             assert all(issubclass(cls, MissingSomethingCache) for cls in classes), [type(cls) for cls in classes]
 
