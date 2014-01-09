@@ -3,7 +3,7 @@ from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import CommunityDestination
-from ...dispersy import MissingSequenceCache
+from ...cache import MissingSequenceCache
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...logger import get_logger
 from ...message import Message, DelayMessageByProof
