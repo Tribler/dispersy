@@ -37,7 +37,7 @@ class TestDynamicSettings(DispersyTestFunc):
         self.assertEqual(undone, 0, "must accept the message")
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -60,7 +60,7 @@ class TestDynamicSettings(DispersyTestFunc):
         self.assertEqual(proof, [])
 
         # change and check policy
-        message = community.create_dispersy_dynamic_settings([(meta, linear)])
+        message = community.create_dynamic_settings([(meta, linear)])
         linear_policy, proof = community.timeline.get_resolution_policy(meta, community.global_time + 1)
         self.assertIsInstance(linear_policy, LinearResolution)
         self.assertEqual(proof, [message])
@@ -87,7 +87,7 @@ class TestDynamicSettings(DispersyTestFunc):
             self.fail("must not accept the message")
 
         # change and check policy
-        message = community.create_dispersy_dynamic_settings([(meta, public)])
+        message = community.create_dynamic_settings([(meta, public)])
         public_policy, proof = community.timeline.get_resolution_policy(meta, community.global_time + 1)
         self.assertIsInstance(public_policy, PublicResolution)
         self.assertEqual(proof, [message])
@@ -114,7 +114,7 @@ class TestDynamicSettings(DispersyTestFunc):
         self.assertEqual(undone, 0, "must accept the message")
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -135,12 +135,12 @@ class TestDynamicSettings(DispersyTestFunc):
         # create policy change, but do not yet process
         community.update_global_time(10)
         self.assertEqual(community.global_time, 10)
-        policy_linear = community.create_dispersy_dynamic_settings([(meta, linear)], store=False, update=False, forward=False)
+        policy_linear = community.create_dynamic_settings([(meta, linear)], store=False, update=False, forward=False)
         self.assertEqual(policy_linear.distribution.global_time, 11)  # hence the policy starts at 12
 
         community.update_global_time(20)
         self.assertEqual(community.global_time, 20)
-        policy_public = community.create_dispersy_dynamic_settings([(meta, public)], store=False, update=False, forward=False)
+        policy_public = community.create_dynamic_settings([(meta, public)], store=False, update=False, forward=False)
         self.assertEqual(policy_public.distribution.global_time, 21)  # hence the policy starts at 22
 
         # because above policy changes were not applied (i.e. update=False) everything is still
@@ -207,7 +207,7 @@ class TestDynamicSettings(DispersyTestFunc):
         self.assertEqual(undone, 0, "must accept the message")
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -228,10 +228,10 @@ class TestDynamicSettings(DispersyTestFunc):
         node.init_my_member()
 
         # set linear policy
-        community.create_dispersy_dynamic_settings([(meta, linear)])
+        community.create_dynamic_settings([(meta, linear)])
 
         # give permission to node
-        community.create_dispersy_authorize([(self._dispersy.get_member(node.my_member.public_key), meta, u"permit")])
+        community.create_authorize([(self._dispersy.get_member(node.my_member.public_key), meta, u"permit")])
 
         # NODE creates a message (should allow, linear resolution and we have permission)
         global_time = community.global_time + 1
@@ -258,7 +258,7 @@ class TestDynamicSettings(DispersyTestFunc):
             self.fail("must NOT accept the message")
 
         # set public policy
-        community.create_dispersy_dynamic_settings([(meta, public)])
+        community.create_dynamic_settings([(meta, public)])
 
         # NODE creates a message (should allow, we use public resolution and that is the active policy)
         global_time = community.global_time + 1
@@ -285,5 +285,5 @@ class TestDynamicSettings(DispersyTestFunc):
             self.fail("must NOT accept the message")
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

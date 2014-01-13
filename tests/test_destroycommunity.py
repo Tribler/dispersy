@@ -32,7 +32,7 @@ class TestDestroyCommunity(DispersyTestFunc):
         self.assertIn(global_time, times)
 
         # destroy the community
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         yield 0.555
 
         # node should receive the dispersy-destroy-community message

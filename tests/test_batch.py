@@ -64,7 +64,7 @@ class TestBatch(DispersyTestFunc):
         self.assertEqual(count, len(messages))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -89,7 +89,7 @@ class TestBatch(DispersyTestFunc):
         self.assertEqual(times, [global_time])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -125,7 +125,7 @@ class TestBatch(DispersyTestFunc):
         self.assertEqual(times, [global_time])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -153,7 +153,7 @@ class TestBatch(DispersyTestFunc):
         self.assertEqual(times, [global_time])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -192,7 +192,7 @@ class TestBatch(DispersyTestFunc):
         self.assertEqual(times, [global_time])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -225,7 +225,7 @@ class TestBatch(DispersyTestFunc):
             self.assertSmaller(self._big_batch_took, self._small_batches_took * 1.1)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -259,5 +259,5 @@ class TestBatch(DispersyTestFunc):
             self.assertSmaller(self._big_batch_took, self._small_batches_took * 1.1)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
