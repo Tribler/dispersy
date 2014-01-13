@@ -2314,13 +2314,13 @@ class Community(object):
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
-                if not self.is_valid_address(message.payload.lan_introduction_address):
+                if not self._dispersy.is_valid_address(message.payload.lan_introduction_address):
                     yield DropMessage(message, "invalid LAN introduction address [is_valid_address]")
                     continue
 
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
-                if not self.is_valid_address(message.payload.wan_introduction_address):
+                if not self._dispersy.is_valid_address(message.payload.wan_introduction_address):
                     yield DropMessage(message, "invalid WAN introduction address [is_valid_address]")
                     continue
 
@@ -2382,8 +2382,8 @@ class Community(object):
             wan_introduction_address = payload.wan_introduction_address
             if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0) or
                     lan_introduction_address in self._bootstrap_candidates or wan_introduction_address in self._bootstrap_candidates):
-                assert self.is_valid_address(lan_introduction_address), lan_introduction_address
-                assert self.is_valid_address(wan_introduction_address), wan_introduction_address
+                assert self._dispersy.is_valid_address(lan_introduction_address), lan_introduction_address
+                assert self._dispersy.is_valid_address(wan_introduction_address), wan_introduction_address
 
                 # get or create the introduced candidate
                 self._dispersy._statistics.walk_advice_incoming_response += 1
@@ -2602,11 +2602,11 @@ class Community(object):
                 yield DropMessage(message, "invalid WAN walker address [puncture herself]")
                 continue
 
-            if not self.is_valid_address(message.payload.lan_walker_address):
+            if not self._dispersy.is_valid_address(message.payload.lan_walker_address):
                 yield DropMessage(message, "invalid LAN walker address [is_valid_address]")
                 continue
 
-            if not self.is_valid_address(message.payload.wan_walker_address):
+            if not self._dispersy.is_valid_address(message.payload.wan_walker_address):
                 yield DropMessage(message, "invalid WAN walker address [is_valid_address]")
                 continue
 
@@ -2621,14 +2621,15 @@ class Community(object):
             yield message
 
     def on_puncture_request(self, messages):
+        # TODO(emilon): community -> self
         community = messages[0].community
-        meta_puncture = community.get_meta_message(u"dispersy-puncture")
+        meta_puncture = self.get_meta_message(u"dispersy-puncture")
         punctures = []
         for message in messages:
             lan_walker_address = message.payload.lan_walker_address
             wan_walker_address = message.payload.wan_walker_address
-            assert self.is_valid_address(lan_walker_address), lan_walker_address
-            assert self.is_valid_address(wan_walker_address), wan_walker_address
+            assert self._dispersy.is_valid_address(lan_walker_address), lan_walker_address
+            assert self._dispersy.is_valid_address(wan_walker_address), wan_walker_address
 
             # we are asked to send a message to a -possibly- unknown peer get the actual candidate
             # or create a dummy candidate
@@ -2672,8 +2673,8 @@ class Community(object):
             lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
 
             if not (lan_address == ("0.0.0.0", 0) or wan_address == ("0.0.0.0", 0)):
-                assert self.is_valid_address(lan_address), lan_address
-                assert self.is_valid_address(wan_address), wan_address
+                assert self._dispersy.is_valid_address(lan_address), lan_address
+                assert self._dispersy.is_valid_address(wan_address), wan_address
 
                 # get or create the introduced candidate
                 candidate = community.get_candidate(sock_addr, replace=True, lan_address=lan_address)
@@ -2767,8 +2768,9 @@ class Community(object):
     def on_missing_last_message(self, messages):
         for message in messages:
             payload = message.payload
-            packets = [str(packet) for packet, in list(self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT ?",
-                                                                              (message.community.database_id, payload.member.database_id, payload.message.database_id, payload.count)))]
+            packets = [str(packet) for packet, in list(self._dispersy._database.execute(
+                    u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT ?",
+                    (message.community.database_id, payload.member.database_id, payload.message.database_id, payload.count)))]
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-last-message", len(packets))
             self._dispersy._endpoint.send([message.candidate], packets)
 
