@@ -48,7 +48,7 @@ class DelayPacketByMissingMember(DelayPacket):
         self._missing_member_id = missing_member_id
 
     def create_request(self, candidate, delayed):
-        return self._community.dispersy.create_missing_identity(self._community, candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+        return self._community.create_missing_identity(candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
 
 
 class DelayPacketByMissingLastMessage(DelayPacket):
@@ -65,7 +65,7 @@ class DelayPacketByMissingLastMessage(DelayPacket):
         self._count = count
 
     def create_request(self, candidate, delayed):
-        return self._community.dispersy.create_missing_last_message(self._community, candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
+        return self._community.create_missing_last_message(candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
 
 
 class DelayPacketByMissingMessage(DelayPacket):
@@ -82,7 +82,7 @@ class DelayPacketByMissingMessage(DelayPacket):
         self._global_time = global_time
 
     def create_request(self, candidate, delayed):
-        return self._community.dispersy.create_missing_message(self._community, candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
+        return self._community.create_missing_message(candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
 
 
 class DropPacket(Exception):
@@ -150,7 +150,7 @@ class DelayMessageByProof(DelayMessage):
 
     def create_request(self):
         community = self._delayed.community
-        return community.dispersy.create_missing_proof(community, self._delayed.candidate, self._delayed, self._process_delayed_message)
+        return community.create_missing_proof(self._delayed.candidate, self._delayed, self._process_delayed_message)
 
 
 class DelayMessageBySequence(DelayMessage):
@@ -168,7 +168,7 @@ class DelayMessageBySequence(DelayMessage):
 
     def create_request(self):
         community = self._delayed.community
-        return community.dispersy.create_missing_sequence(community, self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
+        return community.create_missing_sequence(self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
 
 
 class DelayMessageByMissingMessage(DelayMessage):
@@ -187,7 +187,7 @@ class DelayMessageByMissingMessage(DelayMessage):
 
     def create_request(self):
         community = self._delayed.community
-        return community.dispersy.create_missing_message(community, self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
+        return community.create_missing_message(self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
 
 
 class DropMessage(Exception):
