@@ -45,6 +45,7 @@ from pprint import pformat
 from socket import inet_aton, error as socket_error
 from struct import unpack_from
 from time import time
+from traceback import print_exc
 
 import netifaces
 
@@ -2146,6 +2147,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
                 raise
             except:
+                print_exc()
                 logger.exception("exception during handle_callback for %s", messages[0].name)
                 return False
 
