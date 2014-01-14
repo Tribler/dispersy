@@ -2381,7 +2381,7 @@ class Community(object):
             lan_introduction_address = payload.lan_introduction_address
             wan_introduction_address = payload.wan_introduction_address
             if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0) or
-                    lan_introduction_address in self._bootstrap_candidates or wan_introduction_address in self._bootstrap_candidates):
+                    lan_introduction_address in self._dispersy._bootstrap_candidates or wan_introduction_address in self._dispersy._bootstrap_candidates):
                 assert self._dispersy.is_valid_address(lan_introduction_address), lan_introduction_address
                 assert self._dispersy.is_valid_address(wan_introduction_address), wan_introduction_address
 
