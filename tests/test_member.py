@@ -50,7 +50,7 @@ class TestMemberTag(DispersyTestFunc):
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -98,7 +98,7 @@ class TestMemberTag(DispersyTestFunc):
         self.assertEqual([message.packet for message in messages], community.fetch_packets(meta.name))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
 

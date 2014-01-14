@@ -28,7 +28,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # undo all messages
-        undoes = [community.create_dispersy_undo(message, forward=False) for message in messages]
+        undoes = [community.create_undo(message, forward=False) for message in messages]
 
         # check that they are in the database and ARE undone
         for undo, message in zip(undoes, messages):
@@ -43,7 +43,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill", forward=False)
+        community.create_destroy_community(u"hard-kill", forward=False)
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -71,7 +71,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # SELF undoes all messages
-        undoes = [community.create_dispersy_undo(message, forward=False) for message in messages]
+        undoes = [community.create_undo(message, forward=False) for message in messages]
 
         # check that they are in the database and ARE undone
         for undo, message in zip(undoes, messages):
@@ -86,7 +86,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill", forward=False)
+        community.create_destroy_community(u"hard-kill", forward=False)
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -101,7 +101,7 @@ class TestUndo(DispersyTestFunc):
         node.init_my_member()
 
         # SELF grants undo permission to NODE
-        community.create_dispersy_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create messages
         messages = [node.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
@@ -134,7 +134,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -154,7 +154,7 @@ class TestUndo(DispersyTestFunc):
         node2.init_my_member()
 
         # SELF grants undo permission to NODE1
-        community.create_dispersy_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # NODE2 creates messages
         messages = [node2.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
@@ -187,7 +187,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -203,16 +203,16 @@ class TestUndo(DispersyTestFunc):
         message = community.create_full_sync_text("Should undo")
 
         # undo once
-        undo1 = community.create_dispersy_undo(message)
+        undo1 = community.create_undo(message)
         self.assertIsInstance(undo1, Message.Implementation)
 
         # undo twice.  instead of a new dispersy-undo, a new instance of the previous UNDO1 must be
         # returned
-        undo2 = community.create_dispersy_undo(message)
+        undo2 = community.create_undo(message)
         self.assertEqual(undo1.packet, undo2.packet)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -233,7 +233,7 @@ class TestUndo(DispersyTestFunc):
         node.init_my_member()
 
         # SELF grants undo permission to NODE
-        community.create_dispersy_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create message
         global_time = 10
@@ -280,7 +280,7 @@ class TestUndo(DispersyTestFunc):
         self.assertEqual(sorted(malicious_packets), sorted([undo1.packet, undo2.packet]))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -296,7 +296,7 @@ class TestUndo(DispersyTestFunc):
         node.init_my_member()
 
         # SELF grants undo permission to NODE
-        community.create_dispersy_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create message
         global_time = 10
@@ -304,7 +304,7 @@ class TestUndo(DispersyTestFunc):
         node.give_message(message)
 
         # SELF undoes
-        community.create_dispersy_undo(message)
+        community.create_undo(message)
 
         # NODE undoes
         global_time = 30
@@ -324,7 +324,7 @@ class TestUndo(DispersyTestFunc):
         self.assertFalse(self._dispersy.get_member(node.my_member.public_key).must_blacklist)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -342,7 +342,7 @@ class TestUndo(DispersyTestFunc):
         node.init_my_member()
 
         # SELF grants undo permission to NODE
-        community.create_dispersy_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create messages
         messages = [node.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
@@ -383,7 +383,7 @@ class TestUndo(DispersyTestFunc):
             self.assertEqual(undone, [(0,)])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -398,13 +398,13 @@ class TestUndo(DispersyTestFunc):
         node1.init_my_member()
 
         # SELF grants undo permission to NODE1
-        community.create_dispersy_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # SELF revoke undo permission from NODE1
-        community.create_dispersy_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -420,7 +420,7 @@ class TestUndo(DispersyTestFunc):
         node1.init_my_member()
 
         # SELF grants undo permission to NODE1
-        community.create_dispersy_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # SELF creates a message
         message = community.create_full_sync_text("will be undone")
@@ -432,11 +432,11 @@ class TestUndo(DispersyTestFunc):
         self.assert_message_stored(community, community.my_member, message.distribution.global_time, undone="undone")
 
         # SELF revoke undo permission from NODE1
-        community.create_dispersy_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        community.create_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
         self.assert_message_stored(community, community.my_member, message.distribution.global_time, undone="undone")
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     def assert_message_stored(self, community, member, global_time, undone="done"):

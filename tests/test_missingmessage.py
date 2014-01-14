@@ -40,7 +40,7 @@ class TestMissingMessage(DispersyTestFunc):
             logger.debug("ok @%d", response.distribution.global_time)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -75,7 +75,7 @@ class TestMissingMessage(DispersyTestFunc):
             logger.debug("ok @%d", response.distribution.global_time)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -116,5 +116,5 @@ class TestMissingMessage(DispersyTestFunc):
         logger.debug("ok @%s", global_times)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

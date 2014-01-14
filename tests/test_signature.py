@@ -47,7 +47,7 @@ class TestSignature(DispersyTestFunc):
         self.assertEqual(container["timeout"], 1)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -92,7 +92,7 @@ class TestSignature(DispersyTestFunc):
         self.assertEqual(container["response"], 1)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -135,7 +135,7 @@ class TestSignature(DispersyTestFunc):
                                                    message.payload.message.packet[second_signature_offset:]))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -165,5 +165,5 @@ class TestSignature(DispersyTestFunc):
             self.assertEqual(messages, [])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

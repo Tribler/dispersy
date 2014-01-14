@@ -201,7 +201,7 @@ class TestBootstrapServers(DispersyTestFunc):
             community.summary()
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
         # assert when not all of the servers are responding
@@ -356,5 +356,5 @@ class TestBootstrapServers(DispersyTestFunc):
             community.summary()
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

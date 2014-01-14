@@ -57,7 +57,7 @@ class TestIdenticalPayload(DispersyTestFunc):
         #         assert_(message.packet in bloom_filter)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -112,5 +112,5 @@ class TestIdenticalPayload(DispersyTestFunc):
         #         assert_(message.packet in bloom_filter)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

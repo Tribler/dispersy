@@ -107,13 +107,11 @@ class TrackerCommunity(Community):
 
         self._walked_stumbled_candidates = self._iter_categories([u'walk', u'stumble'])
 
-    def _initialize_meta_messages(self):
-        super(TrackerCommunity, self)._initialize_meta_messages()
+    def initiate_meta_messages(self):
+        messages = super(TrackerCommunity, self).initiate_meta_messages()
 
         # remove all messages that we should not be using
-        meta_messages = self._meta_messages
-        self._meta_messages = {}
-        for name in [u"dispersy-introduction-request",
+        tracker_messages = [u"dispersy-introduction-request",
                      u"dispersy-introduction-response",
                      u"dispersy-puncture-request",
                      u"dispersy-puncture",
@@ -123,8 +121,10 @@ class TrackerCommunity(Community):
                      u"dispersy-authorize",
                      u"dispersy-revoke",
                      u"dispersy-missing-proof",
-                     u"dispersy-destroy-community"]:
-            self._meta_messages[name] = meta_messages[name]
+                     u"dispersy-destroy-community"]
+
+        messages = [message for message in messages if message.name in tracker_messages]
+        return messages
 
     @property
     def dispersy_auto_download_master_member(self):
@@ -147,9 +147,6 @@ class TrackerCommunity(Community):
         else:
             self._strikes += 1
         return self._strikes
-
-    def initiate_meta_messages(self):
-        return []
 
     def initiate_conversions(self):
         return [BinaryTrackerConversion(self, "\x00")]

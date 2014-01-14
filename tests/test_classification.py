@@ -210,7 +210,7 @@ class TestClassification(DispersyTestFunc):
         self.assertEqual(check(), 1)
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -279,7 +279,7 @@ class TestClassification(DispersyTestFunc):
         yield 0.555
 
         logger.debug("cleanup")
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
@@ -379,5 +379,5 @@ class TestClassification(DispersyTestFunc):
 
         logger.debug("cleanup")
         community = DebugCommunity.load_community(self._dispersy, master_member)
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

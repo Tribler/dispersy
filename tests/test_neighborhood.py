@@ -93,5 +93,5 @@ class TestNeighborhood(DispersyTestFunc):
         self.assertEqual(forwarded_node_count, min(total_node_count, meta.destination.node_count + targeted_node_count))
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()

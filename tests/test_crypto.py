@@ -115,5 +115,5 @@ class TestCrypto(DispersyTestFunc):
         self.assertEqual(ids, [])
 
         # cleanup
-        community.create_dispersy_destroy_community(u"hard-kill")
+        community.create_destroy_community(u"hard-kill")
         self._dispersy.get_community(community.cid).unload_community()
