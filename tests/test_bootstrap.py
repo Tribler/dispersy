@@ -100,9 +100,6 @@ class TestBootstrapServers(DispersyTestFunc):
         class PingCommunity(DebugCommunity):
 
             def __init__(self, *args, **kargs):
-                # original walker callbacks (will be set during super(...).__init__)
-                self._original_on_introduction_response = None
-
                 super(PingCommunity, self).__init__(*args, **kargs)
 
                 self._pings_done = 0
@@ -121,11 +118,6 @@ class TestBootstrapServers(DispersyTestFunc):
 
             def _initialize_meta_messages(self):
                 super(PingCommunity, self)._initialize_meta_messages()
-
-                # replace the callbacks for the dispersy-introduction-response message
-                meta = self._meta_messages[u"dispersy-introduction-response"]
-                self._original_on_introduction_response = meta.handle_callback
-                self._meta_messages[meta.name] = Message(meta.community, meta.name, meta.authentication, meta.resolution, meta.distribution, meta.destination, meta.payload, meta.check_callback, self.on_introduction_response, meta.undo_callback, meta.batch)
 
             @property
             def dispersy_enable_candidate_walker(self):
@@ -147,13 +139,13 @@ class TestBootstrapServers(DispersyTestFunc):
                         request_stamp = self._request[candidate.sock_addr].pop(message.payload.identifier, 0.0)
                         self._summary[candidate.sock_addr].append(now - request_stamp)
                         self._identifiers[candidate.sock_addr] = message.authentication.member.mid
-                return self._original_on_introduction_response(messages)
+                return super(DebugCommunity, self).on_introduction_response(messages)
 
             def ping(self, now):
                 logger.debug("PING")
                 self._pings_done += 1
                 for candidate in self._pcandidates:
-                    request = self._dispersy.create_introduction_request(self, candidate, False)
+                    request = self.create_introduction_request(candidate, False)
                     self._request[candidate.sock_addr][request.payload.identifier] = now
 
             def summary(self):
