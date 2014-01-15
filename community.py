@@ -1515,8 +1515,8 @@ class Community(object):
                                candidate.sock_addr, candidate)
                 candidate.merge(other)
                 del self._candidates[other.sock_addr]
-                self.add_candidate(candidate)
                 self._dispersy.wan_address_unvote(other)
+        self.add_candidate(candidate)
 
     def handle_missing_messages(self, messages, *classes):
         if __debug__:
