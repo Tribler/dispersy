@@ -9,14 +9,13 @@ class Statistics(object):
 
     __metaclass__ = ABCMeta
 
+    def __init__(self):
+        self._lock = RLock()
+
     def dict_inc(self, dictionary, key, value=1):
         if dictionary != None:
             with self._lock:
                 dictionary[key] += value
-
-    @abstractmethod
-    def update(self):
-        pass
 
     def get_dict(self):
         """
@@ -45,10 +44,14 @@ class Statistics(object):
             return o
         return clone(self)
 
+    @abstractmethod
+    def update(self):
+        pass
 
 class DispersyStatistics(Statistics):
 
     def __init__(self, dispersy):
+        super(DispersyStatistics, self).__init__()
         self._dispersy = dispersy
 
         self.communities = None
@@ -56,7 +59,6 @@ class DispersyStatistics(Statistics):
         self.database_version = dispersy.database.database_version
         self.lan_address = None
         self.start = self.timestamp = time()
-        self._lock = RLock()
 
         # nr packets received
         self.received_count = 0
@@ -222,6 +224,8 @@ class DispersyStatistics(Statistics):
 class CommunityStatistics(Statistics):
 
     def __init__(self, community):
+        super(CommunityStatistics, self).__init__()
+
         self._community = community
         self.acceptable_global_time = None
         self.candidates = None
