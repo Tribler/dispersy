@@ -55,15 +55,17 @@ class IntroductionRequestCache(NumberCache):
         self._puncture_received = False
 
     def on_timeout(self):
-        # helper_candidate did not respond to a request message in this community.  after some time
-        # inactive candidates become obsolete and will be removed by
-        # _periodically_cleanup_candidates
-        logger.debug("walker timeout for %s", self.helper_candidate)
+        if not self._introduction_response_received:
+            # helper_candidate did not respond to a request message in this community.  after some time
+            # inactive candidates become obsolete and will be removed by
+            # _periodically_cleanup_candidates
 
-        self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
+            logger.debug("walker timeout for %s", self.helper_candidate)
 
-        # set the candidate to obsolete
-        self.helper_candidate.obsolete(time())
+            self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
+
+            # set the candidate to obsolete
+            self.helper_candidate.obsolete(time())
 
     def _check_if_both_received(self):
         if self._introduction_response_received and self._puncture_received:
