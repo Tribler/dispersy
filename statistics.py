@@ -244,7 +244,6 @@ class CommunityStatistics(Statistics):
         self.sync_bloom_reuse = 0
         self.sync_bloom_send = 0
         self.sync_bloom_skip = 0
-        self._lock = RLock()
         self.update()
 
     def update(self, database=False):
