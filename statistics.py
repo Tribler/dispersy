@@ -1,22 +1,21 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from time import time
+from threading import RLock
 
 from .decorator import attach_runtime_statistics, _runtime_statistics
-
 
 class Statistics(object):
 
     __metaclass__ = ABCMeta
 
-    @staticmethod
-    def dict_inc(dictionary, key, value=1):
-        if dictionary != None:
-            dictionary[key] += value
+    def __init__(self):
+        self._lock = RLock()
 
-    @abstractmethod
-    def update(self):
-        pass
+    def dict_inc(self, dictionary, key, value=1):
+        if dictionary != None:
+            with self._lock:
+                dictionary[key] += value
 
     def get_dict(self):
         """
@@ -45,10 +44,14 @@ class Statistics(object):
             return o
         return clone(self)
 
+    @abstractmethod
+    def update(self):
+        pass
 
 class DispersyStatistics(Statistics):
 
     def __init__(self, dispersy):
+        super(DispersyStatistics, self).__init__()
         self._dispersy = dispersy
 
         self.communities = None
@@ -221,6 +224,8 @@ class DispersyStatistics(Statistics):
 class CommunityStatistics(Statistics):
 
     def __init__(self, community):
+        super(CommunityStatistics, self).__init__()
+
         self._community = community
         self.acceptable_global_time = None
         self.candidates = None
