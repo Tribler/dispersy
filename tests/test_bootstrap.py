@@ -127,7 +127,7 @@ class TestBootstrapServers(DispersyTestFunc):
             def dispersy_enable_candidate_walker_responses(self):
                 return True
 
-            def dispersy_take_step(self):
+            def take_step(self, allow_sync):
                 test.fail("we disabled the walker")
 
             def on_introduction_response(self, messages):

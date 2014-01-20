@@ -2077,18 +2077,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return lan_address, wan_address
 
-    def take_step(self, community, allow_sync):
-        if community.cid in self._communities:
-            candidate = community.dispersy_get_walk_candidate()
-            if candidate:
-                assert community.my_member.private_key
-                logger.debug("%s %s taking step towards %s", community.cid.encode("HEX"), community.get_classification(), candidate)
-                community.create_introduction_request(candidate, allow_sync)
-                return True
-            else:
-                logger.debug("%s %s no candidate to take step", community.cid.encode("HEX"), community.get_classification())
-                return False
-
     def store_update_forward(self, messages, store, update, forward):
         """
         Usually we need to do three things when we have a valid messages: (1) store it in our local
@@ -2792,10 +2780,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             assert community.dispersy_enable_candidate_walker
             assert community.dispersy_enable_candidate_walker_responses
             try:
-                community.dispersy_take_step(allow_sync)
+                community.take_step(allow_sync)
                 steps += 1
             except Exception:
-                logger.exception("%s causes an exception during dispersy_take_step", community.cid.encode("HEX"))
+                logger.exception("%s causes an exception during take_step", community.cid.encode("HEX"))
 
             optimaltime = start + steps * optimaldelay
             actualtime = time()

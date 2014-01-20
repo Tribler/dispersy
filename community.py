@@ -484,7 +484,7 @@ class Community(object):
         """
         Enable the candidate walker.
 
-        When True is returned, the dispersy_take_step method will be called periodically.  Otherwise
+        When True is returned, the take_step method will be called periodically.  Otherwise
         it will be ignored.  The candidate walker is enabled by default.
         """
         return True
@@ -1150,9 +1150,17 @@ class Community(object):
             assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
-    @documentation(Dispersy.take_step)
-    def dispersy_take_step(self, allow_sync):
-        return self._dispersy.take_step(self, allow_sync)
+    def take_step(self, allow_sync):
+        if self.cid in self._dispersy._communities:
+            candidate = self.dispersy_get_walk_candidate()
+            if candidate:
+                logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+                self.create_introduction_request(candidate, allow_sync)
+                return True
+            else:
+                logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
+                return False
+
 
     @documentation(Dispersy.get_message)
     def get_dispersy_message(self, member, global_time):
