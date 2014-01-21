@@ -15,58 +15,6 @@ class TestBatch(DispersyTestFunc):
         self._big_batch_took = 0.0
         self._small_batches_took = 0.0
 
-    def test_max_batch_size_A(self):
-        return self._dispersy.callback.call(self._max_batch_size, kargs=dict(length=1000 - 1, max_size=25))
-
-    def test_max_batch_size_B(self):
-        return self._dispersy.callback.call(self._max_batch_size, kargs=dict(length=1000, max_size=25))
-
-    def test_max_batch_size_C(self):
-        return self._dispersy.callback.call(self._max_batch_size, kargs=dict(length=1000 + 1, max_size=25))
-
-    def _max_batch_size(self, length, max_size):
-        """
-        Gives many messages at once, the system should process them in max-batch-size batches.
-        """
-        class MaxBatchSizeCommunity(DebugCommunity):
-
-            def _initialize_meta_messages(self):
-                super(MaxBatchSizeCommunity, self)._initialize_meta_messages()
-
-                batch = BatchConfiguration(max_window=0.01, max_size=max_size)
-
-                meta = self._meta_messages[u"full-sync-text"]
-                meta = Message(meta.community, meta.name, meta.authentication, meta.resolution, meta.distribution, meta.destination, meta.payload, meta.check_callback, meta.handle_callback, meta.undo_callback, batch=batch)
-                self._meta_messages[meta.name] = meta
-
-        community = MaxBatchSizeCommunity.create_community(self._dispersy, self._my_member)
-
-        # create node and ensure that SELF knows the node address
-        node = DebugNode(community)
-        node.init_socket()
-        node.init_my_member()
-
-        logger.debug("START BIG BATCH (with max batch size)")
-        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
-
-        begin = time()
-        node.give_messages(messages, cache=True)
-
-        # wait till the batch is processed
-        meta = community.get_meta_message(u"full-sync-text")
-        while meta in self._dispersy._batch_cache:
-            yield 0.1
-
-        end = time()
-        logger.debug("%2.2f seconds for _max_batch_size(%d, %d)", end - begin, length, max_size)
-
-        count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
-        self.assertEqual(count, len(messages))
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
     def test_one_batch_binary_duplicate(self):
         """
