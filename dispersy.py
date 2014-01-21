@@ -970,35 +970,18 @@ class Dispersy(object):
         # check self._lan_address and self._wan_address
         #
 
-        # change when new vote count is equal or higher than old address vote count
-        if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
-                set_wan_address(address):
-
-            # reassessing our LAN address, perhaps we are running on a roaming device
-            self._local_interfaces = list(self._get_interface_addresses())
-            interface = self._guess_lan_address(self._local_interfaces)
-            lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
-            if not self.is_valid_address(lan_address):
-                lan_address = (self._wan_address[0], self._lan_address[1])
-            set_lan_address(lan_address)
-
-            # TODO security threat!  we should never remove bootstrap candidates, for they are our
-            # safety net our address may not be a bootstrap address
-            if self._wan_address in self._bootstrap_candidates:
-                del self._bootstrap_candidates[self._wan_address]
-            if self._lan_address in self._bootstrap_candidates:
-                del self._bootstrap_candidates[self._lan_address]
-
-            # TODO security threat!  we should not remove candidates based on the votes we obtain,
-            # this can be easily misused.  leaving this code to prevent a node talking with itself
-            #
-            # our address may not be a candidate
-            for community in self._communities.itervalues():
-                community.candidates.pop(self._wan_address, None)
-                community.candidates.pop(self._lan_address, None)
-
-                for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
-                    community.candidates.pop(candidate.sock_addr, None)
+        # change when new vote count is higher than old address vote count (don't use equal to avoid
+        # alternating between two equally voted addresses)
+        if len(self._wan_address_votes[address]) > len(self._wan_address_votes.get(self._wan_address, ())):
+            if set_wan_address(address):
+                # refresh our LAN address(es), perhaps we are running on a roaming device
+                self._local_interfaces = list(self._get_interface_addresses())
+                interface = self._guess_lan_address(self._local_interfaces)
+                lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
+                if not self.is_valid_address(lan_address):
+                    lan_address = (self._wan_address[0], self._lan_address[1])
+                set_lan_address(lan_address)
+                self._remove_own_address_from_candidates()
 
         #
         # check self._connection_type
@@ -1010,15 +993,25 @@ class Dispersy(object):
             set_connection_type(u"public")
 
         elif len(self._wan_address_votes) > 1:
-            # external peers are reporting multiple WAN addresses (most likely the same IP with
-            # different port numbers)
-            set_connection_type(u"symmetric-NAT")
-
+            for voters in self._wan_address_votes.itervalues():
+                if len(set([address[0] for address in voters])) > 1:
+                    # A single NAT mapping has more than one destination IP hence
+                    # it cannot be a symmetric NAT
+                    set_connection_type(u"unknown")
+                    break
+            else:
+                # Our nat created a new mapping for each destination IP
+                set_connection_type(u"symmetric-NAT")
         else:
-            # it is possible that, for some time after the WAN address changes, we will believe that
-            # the connection type is symmetric NAT.  once votes have been pruned we may find that we
-            # are no longer behind a symmetric-NAT
             set_connection_type(u"unknown")
+
+    def _remove_own_address_from_candidates(self):
+        """
+        Remove our lan/wan adresses from all communities candidate lists.
+        """
+        for community in self._communities.itervalues():
+            community.remove_candidate(self._wan_address)
+            community.remove_candidate(self._lan_address)
 
     def _is_duplicate_sync_message(self, message):
         """
