@@ -280,7 +280,16 @@ class ECCrypto(DispersyCrypto):
         except:
             return False
 
-class NoCrypto(ECCrypto):
+
+class NoVerifyCrypto(ECCrypto):
+    """
+    A crypto object which assumes all signatures are valid.  Usefull to reduce CPU overhead.
+
+    """
+    def is_valid_signature(self, ec, digest, signature):
+        return True
+
+class NoCrypto(NoVerifyCrypto):
     """
     A crypto object which does not create a valid signatures, and assumes all signatures are valid.
     Usefull to reduce CPU overhead.
@@ -288,6 +297,3 @@ class NoCrypto(ECCrypto):
 
     def create_signature(self, ec, digest):
         return "0" * self.get_signature_length(ec)
-
-    def is_valid_signature(self, ec, digest, signature):
-        return True
