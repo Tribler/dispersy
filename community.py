@@ -19,14 +19,15 @@ from .bloomfilter import BloomFilter
 from .cache import (SignatureRequestCache, IntroductionRequestCache, MissingMemberCache, MissingMessageCache, MissingSomethingCache,
                     MissingLastMessageCache, MissingProofCache, MissingSequenceOverviewCache, MissingSequenceCache)
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate
-from .conversion import BinaryConversion, DefaultConversion
+from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import documentation, runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .logger import get_logger
 from .member import DummyMember, Member
-from .message import BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof, DelayMessageByMissingMessage
+from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
+                      DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
 from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommunityPayload, DynamicSettingsPayload,
                       IdentityPayload, MissingIdentityPayload, IntroductionRequestPayload, IntroductionResponsePayload,
                       PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingLastMessagePayload,
@@ -290,6 +291,9 @@ class Community(object):
         # community is unloaded.  most of the time this contains all the generators that are being
         # used by the community
         self._pending_callbacks = []
+
+        # batch caching incoming packets
+        self._batch_cache = {}
 
         try:
             self._database_id, member_public_key, self._database_version = self._dispersy.database.execute(u"SELECT community.id, member.public_key, database_version FROM community JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
@@ -1161,7 +1165,6 @@ class Community(object):
                 logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
                 return False
 
-
     @documentation(Dispersy.get_message)
     def get_dispersy_message(self, member, global_time):
         return self._dispersy.get_message(self, member, global_time)
@@ -1842,6 +1845,237 @@ class Community(object):
                 else:
                     yield DelayMessageByProof(message)
 
+    def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
+        """
+        Process incoming packets for this community.
+        """
+        assert isinstance(packets, (tuple, list)), packets
+        assert len(packets) > 0, packets
+        assert all(isinstance(packet, tuple) for packet in packets), packets
+        assert all(len(packet) == 2 for packet in packets), packets
+        assert all(isinstance(packet[0], Candidate) for packet in packets), packets
+        assert all(isinstance(packet[1], str) for packet in packets), packets
+        assert isinstance(cache, bool), cache
+        assert isinstance(timestamp, float), timestamp
+
+        messages = []
+        for message_type, iterator in groupby(packets, key=lambda tup: tup[1][22]):
+            cur_packets = list(iterator)
+            # find associated conversion
+            try:
+                # TODO(emilon): just have a function that gets a packet type byte
+                conversion = self.get_conversion_for_packet(cur_packets[0][1])
+                meta = conversion.decode_meta_message(cur_packets[0][1])
+                batch = [(self.get_candidate(candidate.sock_addr) or candidate, packet, conversion)
+                         for candidate, packet in cur_packets]
+                if meta.batch.enabled and cache:
+                    if meta in self._batch_cache:
+                        task_identifier, current_timestamp, current_batch = self._batch_cache[meta]
+                        current_batch.extend(batch)
+                        logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
+                    else:
+                        # TODO(emilon): add it to the pending callbacks
+                        task_identifier = self._dispersy._callback.register(self._on_batch_cache_timeout, (meta,), delay=meta.batch.max_window)
+                        self._batch_cache[meta] = (task_identifier, timestamp, batch)
+                        logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
+                else:
+                    self._on_batch_cache(meta, batch)
+            except KeyError:
+                for candidate, packet in cur_packets:
+                    logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
+                self._dispersy._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
+                self._dispersy._statistics.drop_count += len(cur_packets)
+
+    def _on_batch_cache_timeout(self, meta):
+        """
+        Start processing a batch of messages once the cache timeout occurs.
+
+        This method is called meta.batch.max_window seconds after the first message in this batch
+        arrived.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
+        Hopefully the delay caused the batch to collect as many messages as possible.
+        """
+        assert isinstance(meta, Message)
+        assert meta in self._batch_cache
+
+        _, _, batch = self._batch_cache.pop(meta)
+        logger.debug("processing %sx %s batched messages", len(batch), meta.name)
+
+        return self._on_batch_cache(meta, batch)
+
+    def _on_batch_cache(self, meta, batch):
+        """
+        Start processing a batch of messages.
+
+        The batch is processed in the following steps:
+
+         1. All duplicate binary packets are removed.
+
+         2. All binary packets are converted into Message.Implementation instances.  Some packets
+            are dropped or delayed at this stage.
+
+         3. All remaining messages are passed to on_message_batch.
+        """
+        # convert binary packets into Message.Implementation instances
+        messages = []
+
+        assert isinstance(batch, (list, set))
+        assert len(batch) > 0
+        assert all(isinstance(x, tuple) for x in batch)
+        assert all(len(x) == 3 for x in batch)
+
+        for candidate, packet, conversion in batch:
+            assert isinstance(candidate, Candidate)
+            assert isinstance(packet, str)
+            assert isinstance(conversion, Conversion)
+
+            try:
+                # convert binary data to internal Message
+                messages.append(conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet))
+
+            except DropPacket as exception:
+                logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % exception)
+                self._dispersy._statistics.drop_count += 1
+
+            except DelayPacket as delay:
+                logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
+                if delay.create_request(candidate, packet):
+                    self._dispersy._statistics.delay_send += 1
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "_convert_batch_into_messages:%s" % delay)
+                self._dispersy._statistics.delay_count += 1
+
+        assert all(isinstance(message, Message.Implementation) for message in messages), "_convert_batch_into_messages must return only Message.Implementation instances"
+        assert all(message.meta == meta for message in messages), "All Message.Implementation instances must be in the same batch"
+        logger.debug("%d %s messages after conversion", len(messages), meta.name)
+
+        # handle the incoming messages
+        if messages:
+            self.on_messages(messages)
+
+    def purge_batch_cache(self):
+        """
+        Remove all batches currently scheduled.
+        """
+        # remove any items that are left in the cache
+        for task_identifier, _, _ in self._batch_cache.itervalues():
+            self._callback.unregister(task_identifier)
+        self._batch_cache.clear()
+
+    def flush_batch_cache(self):
+        """
+        Process all pending batches with a sync distribution.
+        """
+        flush_list = [(meta, tup) for meta, tup in
+                      self._batch_cache.iteritems() if isinstance(meta.distribution, SyncDistribution)]
+        for meta, (task_identifier, timestamp, batch) in flush_list:
+            logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, task_identifier)
+            self._dispersy._callback.unregister(task_identifier)
+            self._on_batch_cache_timeout(meta)
+
+    def on_messages(self, messages):
+        """
+        Process one batch of messages.
+
+        This method is called to process one or more Message.Implementation instances that all have
+        the same meta message.  This occurs when new packets are received, to attempt to process
+        previously delayed messages, or when a member explicitly creates a message to process.  The
+        last option should only occur for debugging purposes.
+
+        The messages are processed with the following steps:
+
+         1. Messages created by a member in our blacklist are droped.
+
+         2. Messages that are old or duplicate, based on their distribution policy, are dropped.
+
+         3. The meta.check_callback(...) is used to allow messages to be dropped or delayed.
+
+         4. Messages are stored, based on their distribution policy.
+
+         5. The meta.handle_callback(...) is used to process the messages.
+
+        @param packets: The sequence of messages with the same meta message from the same community.
+        @type packets: [Message.Implementation]
+        """
+        assert isinstance(messages, list)
+        assert len(messages) > 0
+        assert all(isinstance(message, Message.Implementation) for message in messages)
+        assert all(message.community == messages[0].community for message in messages)
+        assert all(message.meta == messages[0].meta for message in messages)
+
+        def _filter_fail(message):
+            if isinstance(message, DelayMessage):
+                logger.debug("%s delay %s (%s)", message.delayed.candidate, message.delayed, message)
+
+                if message.create_request():
+                    self._dispersy._statistics.delay_send += 1
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "om_message_batch:%s" % message.delayed)
+                self._dispersy._statistics.delay_count += 1
+                return False
+
+            elif isinstance(message, DropMessage):
+                logger.debug("%s drop: %s (%s)", message.dropped.candidate, message.dropped.name, message)
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "on_message_batch:%s" % message)
+                self._dispersy._statistics.drop_count += 1
+                return False
+
+            else:
+                return True
+
+        meta = messages[0].meta
+        debug_count = len(messages)
+        debug_begin = time()
+
+        # drop all duplicate or old messages
+        assert type(meta.distribution) in self._dispersy._check_distribution_batch_map
+        messages = list(self._dispersy._check_distribution_batch_map[type(meta.distribution)](messages))
+        # TODO(emilon): This seems iffy
+        assert len(messages) > 0  # should return at least one item for each message
+        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
+
+        # handle/remove DropMessage and DelayMessage instances
+        messages = [message for message in messages if _filter_fail(message)]
+        if not messages:
+            return 0
+
+        # check all remaining messages on the community side.  may yield Message.Implementation,
+        # DropMessage, and DelayMessage instances
+        try:
+            messages = list(meta.check_callback(messages))
+        except:
+            logger.exception("exception during check_callback for %s", meta.name)
+            return 0
+        # TODO(emilon): fixh _disp_check_modification in channel/community.py (tribler) so we can make a proper assert out of this.
+        assert len(messages) >= 0  # may return zero messages
+        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
+
+        if len(messages) == 0:
+            logger.warning("%s yielded zero messages, drop, or delays.  This is allowed but likely to be an error.", meta.check_callback)
+
+        # handle/remove DropMessage and DelayMessage instances
+        messages = [message for message in messages if _filter_fail(message)]
+        if not messages:
+            return 0
+
+        logger.debug("in... %d %s messages from %s", len(messages), meta.name, " ".join(str(candidate) for candidate in set(message.candidate for message in messages)))
+
+        # store to disk and update locally
+        if self._dispersy.store_update_forward(messages, True, True, False):
+
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.success, meta.name, len(messages))
+            self._dispersy._statistics.success_count += len(messages)
+
+            # tell what happened
+            debug_end = time()
+            if debug_end - debug_begin > 1.0:
+                logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
+            else:
+                logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
+
+            # return the number of messages that were correctly handled (non delay, duplicates, etc)
+            return len(messages)
+
+        return 0
+
     def on_identity(self, messages):
         """
         We received a dispersy-identity message.
@@ -2452,13 +2686,7 @@ class Community(object):
 
         else:
             # flush any sync-able items left in the cache before we create a sync
-            flush_list = [(meta, tup) for meta, tup in self._dispersy._batch_cache.iteritems() if meta.community == self and isinstance(meta.distribution, SyncDistribution)]
-            flush_list.sort(key=lambda tup: tup[0].batch.priority, reverse=True)
-            for meta, (task_identifier, timestamp, batch) in flush_list:
-                logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, task_identifier)
-                self._dispersy._callback.unregister(task_identifier)
-                self._dispersy._on_batch_cache_timeout(meta, timestamp, batch)
-
+            self.flush_batch_cache()
             sync = self.dispersy_claim_sync_bloom_filter(cache)
             if __debug__:
                 assert sync is None or isinstance(sync, tuple), sync

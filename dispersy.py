@@ -117,9 +117,6 @@ class Dispersy(object):
         # communication endpoint
         self._endpoint = endpoint
 
-        # batch caching incoming packets
-        self._batch_cache = {}
-
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
 
@@ -715,10 +712,7 @@ class Dispersy(object):
                 self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
 
         # remove any items that are left in the cache
-        for meta in community.get_meta_messages():
-            if meta.batch.enabled and meta in self._batch_cache:
-                task_identifier, _, _ = self._batch_cache[meta]
-                self._callback.unregister(task_identifier)
+        community.purge_batch_cache()
 
     def reclassify_community(self, source, destination):
         """
@@ -1600,23 +1594,14 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         received, to attempt to process previously delayed packets, or when a member explicitly
         creates a packet to process.  The last option should only occur for debugging purposes.
 
-        All the received packets are processed in batches, a batch consists of all packets for the
-        same community and the same meta message.  Batches are formed with the following steps:
+        The following steps are followed:
 
-         1. The associated community is retrieved.  Failure results in packet drop.
+        1. Group the packets by community.
 
-         2. The associated conversion is retrieved.  Failure results in packet drop, this probably
-            indicates that we are running outdated software.
+        2. Try to obtain the community.
 
-         3. The associated meta message is retrieved.  Failure results in a packet drop, this
-            probably indicates that we are running outdated software.
+        3. In case 2 suceeded: Pass the packets to the community for further processing.
 
-        All packets are grouped by their meta message.  All batches are scheduled based on the
-        meta.batch.max_window and meta.batch.priority.  Finally, the candidate table is updated in
-        regards to the incoming source addresses.
-
-        @param packets: The sequence of packets.
-        @type packets: [(address, packet)]
         """
         assert isinstance(packets, (tuple, list)), packets
         assert len(packets) > 0, packets
@@ -1629,296 +1614,19 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         self._statistics.received_count += len(packets)
 
-        sort_key = lambda tup: (tup[0].batch.priority, tup[0])  # meta, address, packet, conversion
-        groupby_key = lambda tup: tup[0]  # meta, address, packet, conversion
-        for meta, iterator in groupby(sorted(self._convert_packets_into_batch(packets), key=sort_key), key=groupby_key):
-            batch = [(meta.community.get_candidate(candidate.sock_addr) or candidate, packet, conversion)
-                     for _, candidate, packet, conversion
-                     in iterator]
-
-            # schedule batch processing (taking into account the message priority)
-            if meta.batch.enabled and cache:
-                if meta in self._batch_cache:
-                    task_identifier, current_timestamp, current_batch = self._batch_cache[meta]
-                    current_batch.extend(batch)
-                    logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
-
-                else:
-                    current_timestamp = timestamp
-                    current_batch = batch
-                    task_identifier = self._callback.register(self._on_batch_cache_timeout, (meta, current_timestamp, current_batch), delay=meta.batch.max_window, priority=meta.batch.priority)
-                    self._batch_cache[meta] = (task_identifier, current_timestamp, current_batch)
-                    logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
-
-                while len(current_batch) > meta.batch.max_size:
-                    # batch exceeds maximum size, schedule first max_size immediately
-                    batch, current_batch = current_batch[:meta.batch.max_size], current_batch[meta.batch.max_size:]
-                    logger.debug("schedule processing %d %s messages immediately (exceeded batch size)", len(batch), meta.name)
-                    self._callback.register(self._on_batch_cache_timeout, (meta, current_timestamp, batch), priority=meta.batch.priority)
-
-                    # we can not use callback.replace_register because
-                    # it would not re-schedule the task, i.e. not at
-                    # the end of the task queue
-                    self._callback.unregister(task_identifier)
-                    task_identifier = self._callback.register(self._on_batch_cache_timeout, (meta, timestamp, current_batch), delay=meta.batch.max_window, priority=meta.batch.priority)
-                    self._batch_cache[meta] = (task_identifier, timestamp, current_batch)
-
-            else:
-                # ignore cache, process batch immediately
-                logger.debug("processing %d %s messages immediately", len(batch), meta.name)
-                self._on_batch_cache(meta, batch)
-
-    def _on_batch_cache_timeout(self, meta, timestamp, batch):
-        """
-        Start processing a batch of messages once the cache timeout occurs.
-
-        This method is called meta.batch.max_window seconds after the first message in this batch
-        arrived.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
-        Hopefully the delay caused the batch to collect as many messages as possible.
-        """
-        assert isinstance(meta, Message)
-        assert isinstance(timestamp, float)
-        assert isinstance(batch, list)
-        assert len(batch) > 0
-        logger.debug("processing %sx %s batched messages", len(batch), meta.name)
-
-        if meta in self._batch_cache and id(self._batch_cache[meta][2]) == id(batch):
-            logger.debug("pop batch cache for %sx %s", len(batch), meta.name)
-            self._batch_cache.pop(meta)
-
-        if not self._communities.get(meta.community.cid, None) == meta.community:
-            logger.warning("dropped %sx %s packets (community no longer loaded)", len(batch), meta.name)
-            self._statistics.dict_inc(self._statistics.drop, "on_batch_cache_timeout: community no longer loaded", len(batch))
-            self._statistics.drop_count += len(batch)
-            return 0
-
-        if meta.batch.enabled and timestamp > 0.0 and meta.batch.max_age + timestamp <= time():
-            logger.warning("dropped %sx %s packets (can not process these messages on time)", len(batch), meta.name)
-            self._statistics.dict_inc(self._statistics.drop, "on_batch_cache_timeout: can not process these messages on time", len(batch))
-            self._statistics.drop_count += len(batch)
-            return 0
-
-        return self._on_batch_cache(meta, batch)
-
-    def _on_batch_cache(self, meta, batch):
-        """
-        Start processing a batch of messages.
-
-        The batch is processed in the following steps:
-
-         1. All duplicate binary packets are removed.
-
-         2. All binary packets are converted into Message.Implementation instances.  Some packets
-            are dropped or delayed at this stage.
-
-         3. All remaining messages are passed to on_message_batch.
-        """
-        # convert binary packets into Message.Implementation instances
-        messages = list(self._convert_batch_into_messages(batch))
-        assert all(isinstance(message, Message.Implementation) for message in messages), "_convert_batch_into_messages must return only Message.Implementation instances"
-        assert all(message.meta == meta for message in messages), "All Message.Implementation instances must be in the same batch"
-        logger.debug("%d %s messages after conversion", len(messages), meta.name)
-
-        # handle the incoming messages
-        if messages:
-            self.on_message_batch(messages)
-
-    def on_messages(self, messages):
-        batches = dict()
-        for message in messages:
-            if not message.meta in batches:
-                batches[message.meta] = set()
-            batches[message.meta].add(message)
-
-        for messages in batches.itervalues():
-            self.on_message_batch(list(messages))
-
-    def on_message_batch(self, messages):
-        """
-        Process one batch of messages.
-
-        This method is called to process one or more Message.Implementation instances that all have
-        the same meta message.  This occurs when new packets are received, to attempt to process
-        previously delayed messages, or when a member explicitly creates a message to process.  The
-        last option should only occur for debugging purposes.
-
-        The messages are processed with the following steps:
-
-         1. Messages created by a member in our blacklist are droped.
-
-         2. Messages that are old or duplicate, based on their distribution policy, are dropped.
-
-         3. The meta.check_callback(...) is used to allow messages to be dropped or delayed.
-
-         4. Messages are stored, based on their distribution policy.
-
-         5. The meta.handle_callback(...) is used to process the messages.
-
-        @param packets: The sequence of messages with the same meta message from the same community.
-        @type packets: [Message.Implementation]
-        """
-        assert isinstance(messages, list)
-        assert len(messages) > 0
-        assert all(isinstance(message, Message.Implementation) for message in messages)
-        assert all(message.community == messages[0].community for message in messages)
-        assert all(message.meta == messages[0].meta for message in messages)
-
-        def _filter_fail(message):
-            if isinstance(message, DelayMessage):
-                logger.debug("%s delay %s (%s)", message.delayed.candidate, message.delayed, message)
-
-                if message.create_request():
-                    self._statistics.delay_send += 1
-                self._statistics.dict_inc(self._statistics.delay, "om_message_batch:%s" % message.delayed)
-                self._statistics.delay_count += 1
-                return False
-
-            elif isinstance(message, DropMessage):
-                logger.debug("%s drop: %s (%s)", message.dropped.candidate, message.dropped.name, message)
-                self._statistics.dict_inc(self._statistics.drop, "on_message_batch:%s" % message)
-                self._statistics.drop_count += 1
-                return False
-
-            else:
-                return True
-
-        meta = messages[0].meta
-        debug_count = len(messages)
-        debug_begin = time()
-
-        # drop all duplicate or old messages
-        assert type(meta.distribution) in self._check_distribution_batch_map
-        messages = list(self._check_distribution_batch_map[type(meta.distribution)](messages))
-        assert len(messages) > 0  # should return at least one item for each message
-        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
-
-        # handle/remove DropMessage and DelayMessage instances
-        messages = [message for message in messages if isinstance(message, Message.Implementation) or _filter_fail(message)]
-        if not messages:
-            return 0
-
-        # check all remaining messages on the community side.  may yield Message.Implementation,
-        # DropMessage, and DelayMessage instances
-        try:
-            messages = list(meta.check_callback(messages))
-        except:
-            logger.exception("exception during check_callback for %s", meta.name)
-            return 0
-        assert len(messages) >= 0  # may return zero messages
-        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
-
-        if len(messages) == 0:
-            logger.warning("%s yielded zero messages, drop, or delays.  This is allowed but likely to be an error.", meta.check_callback)
-
-        # handle/remove DropMessage and DelayMessage instances
-        messages = [message for message in messages if _filter_fail(message)]
-        if not messages:
-            return 0
-
-        logger.debug("in... %d %s messages from %s", len(messages), meta.name, " ".join(str(candidate) for candidate in set(message.candidate for message in messages)))
-
-        # store to disk and update locally
-        if self.store_update_forward(messages, True, True, False):
-
-            self._statistics.dict_inc(self._statistics.success, meta.name, len(messages))
-            self._statistics.success_count += len(messages)
-
-            # tell what happened
-            debug_end = time()
-            if debug_end - debug_begin > 1.0:
-                logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
-            else:
-                logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
-
-            # return the number of messages that were correctly handled (non delay, duplictes, etc)
-            return len(messages)
-
-        return 0
-
-    def _convert_packets_into_batch(self, packets):
-        """
-        Convert a list with one or more (candidate, data) tuples into a list with zero or more
-        (Message, (candidate, packet, conversion)) tuples using a generator.
-
-        # 22/06/11 boudewijn: no longer checks for duplicates.  duplicate checking is pointless
-        # because new duplicates may be introduced because of the caching mechanism.
-        #
-        # Duplicate packets are removed.  This will result in drops when two we receive the exact same
-        # binary packet from multiple nodes.  While this is usually not a problem, packets are usually
-        # signed and hence unique, in rare cases this may result in invalid drops.
-
-        Packets from invalid sources are removed.  The is_valid_destination_address is used to
-        determine if the address that the candidate points to is valid.
-
-        Packets associated with an unknown community are removed.  Packets from a known community
-        encoded in an unknown conversion, are also removed.
-
-        The results can be used to easily create a dictionary batch using
-         > batch = dict(_convert_packets_into_batch(packets))
-        """
-        assert isinstance(packets, (tuple, list))
-        assert len(packets) > 0
-        assert all(isinstance(packet, tuple) for packet in packets)
-        assert all(len(packet) == 2 for packet in packets)
-        assert all(isinstance(packet[0], Candidate) for packet in packets)
-        assert all(isinstance(packet[1], str) for packet in packets)
-
-        for candidate, packet in packets:
+        sort_key = lambda tup: (tup[1][2:22], tup[1][22])  # community ID, message meta type
+        groupby_key = lambda tup: tup[1][2:22]  # community ID
+        for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community
             try:
-                community = self.get_community(packet[2:22])
+                community = self.get_community(community_id)
+                community.on_incoming_packets(iterator, cache, timestamp)
             except KeyError:
-                logger.warning("drop a %d byte packet (received packet for unknown community) from %s", len(packet), candidate)
+                packets = list(iterator)
+                candidates = set([candidate for candidate, _ in packets])
+                logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
                 self._statistics.drop_count += 1
-                continue
-
-            # find associated conversion
-            try:
-                conversion = community.get_conversion_for_packet(packet)
-            except KeyError:
-                logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
-                self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown conversion")
-                self._statistics.drop_count += 1
-                continue
-
-            try:
-                # convert binary data into the meta message
-                yield conversion.decode_meta_message(packet), candidate, packet, conversion
-
-            except DropPacket as exception:
-                logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
-                self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:decode_meta_message:%s" % exception)
-                self._statistics.drop_count += 1
-
-    def _convert_batch_into_messages(self, batch):
-        if __debug__:
-            from .conversion import Conversion
-        assert isinstance(batch, (list, set))
-        assert len(batch) > 0
-        assert all(isinstance(x, tuple) for x in batch)
-        assert all(len(x) == 3 for x in batch)
-
-        for candidate, packet, conversion in batch:
-            assert isinstance(candidate, Candidate)
-            assert isinstance(packet, str)
-            assert isinstance(conversion, Conversion)
-
-            try:
-                # convert binary data to internal Message
-                yield conversion.decode_message(candidate, packet)
-
-            except DropPacket as exception:
-                logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
-                self._statistics.dict_inc(self._statistics.drop, "_convert_batch_into_messages:%s" % exception)
-                self._statistics.drop_count += 1
-
-            except DelayPacket as delay:
-                logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
-                if delay.create_request(candidate, packet):
-                    self._statistics.delay_send += 1
-                self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
-                self._statistics.delay_count += 1
 
     def _store(self, messages):
         """

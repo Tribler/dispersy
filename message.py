@@ -138,7 +138,7 @@ class DelayMessage(Exception):
             self._delayed.resume = response
 
             # process the response and the delayed message
-            self._delayed.community.dispersy.on_messages([self._delayed])
+            self._delayed.community.on_messages([self._delayed])
             self._delayed.community.dispersy.statistics.delay_success += 1
         else:
             # timeout, do nothing
@@ -225,38 +225,17 @@ class DropMessage(Exception):
 
 class BatchConfiguration(object):
 
-    def __init__(self, max_window=0.0, priority=0, max_size=1024, max_age=300.0):
+    def __init__(self, max_window=0.0):
         """
         Per meta message configuration on batch handling.
 
         MAX_WINDOW sets the maximum size, in seconds, of the window.  A larger window results in
         larger batches and a longer average delay for incoming messages.  Setting MAX_WINDOW to zero
         disables batching, in this case all other parameters are ignored.
-
-        PRIORITY sets the Callback priority of the task that processes the batch.  A higher priority
-        will result in earlier handling when there is CPU contention.
-
-        MAX_SIZE sets the maximum size of the batch.  A new batch will be created when this size is
-        reached, even when new messages would fall within MAX_WINDOW size.  A larger MAX_SIZE
-        results in more processing time per batch and will reduce responsiveness as the processing
-        thread is occupied.  Also, when a batch reaches MAX_SIZE it is processed immediately.
-
-        MAX_AGE sets the maximum age of the batch.  This is useful for messages that require a
-        response.  When the requests are delayed for to long they will time out, in this case a
-        response no longer needs to be sent.  MAX_AGE for the request messages should hence be lower
-        than the used timeout + max_window on the response messages.
         """
         assert isinstance(max_window, float)
         assert 0.0 <= max_window, max_window
-        assert isinstance(priority, int)
-        assert isinstance(max_size, int)
-        assert 0 < max_size, max_size
-        assert isinstance(max_age, float)
-        assert 0.0 <= max_window < max_age, [max_window, max_age]
         self._max_window = max_window
-        self._priority = priority
-        self._max_size = max_size
-        self._max_age = max_age
 
     @property
     def enabled(self):
@@ -266,19 +245,6 @@ class BatchConfiguration(object):
     @property
     def max_window(self):
         return self._max_window
-
-    @property
-    def priority(self):
-        return self._priority
-
-    @property
-    def max_size(self):
-        return self._max_size
-
-    @property
-    def max_age(self):
-        return self._max_age
-
 #
 # packet
 #
