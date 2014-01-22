@@ -15,7 +15,7 @@ except ImportError:
     def set_name(_):
         pass
 
-from .decorator import attach_profiler
+from .decorator import attach_profiler, attach_runtime_statistics
 from .logger import get_logger
 logger = get_logger(__name__)
 
@@ -599,6 +599,7 @@ class Callback(object):
         self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")    
     def _one_task(self):
         if __debug__:
             time_since_expired = 0
