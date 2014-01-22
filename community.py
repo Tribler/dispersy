@@ -2992,7 +2992,7 @@ class Community(object):
         """
         sources = defaultdict(lambda: defaultdict(set))
 
-        logger.debug("received %d missing-sequence message for community %d", len(messages), community.database_id)
+        logger.debug("received %d missing-sequence message for community %d", len(messages), self.database_id)
 
         # we know that there are buggy clients out there that give numerous overlapping requests.
         # we will filter these to perform as few queries on the database as possible
