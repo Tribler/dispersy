@@ -1454,13 +1454,9 @@ class Community(object):
                     logger.debug("using existing candidate %s at different port %s %s", candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
 
                     if replace:
-                        # remove vote under previous key
-                        self._dispersy.wan_address_unvote(candidate)
-
-                        # replace candidate
-                        del self._candidates[candidate.sock_addr]
+                        self.remove_candidate(candidate.sock_addr)
                         lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, candidate.lan_address, candidate.wan_address)
-                        self._candidates[candidate.sock_addr] = candidate = self.create_candidate(sock_addr, candidate.tunnel, lan_address, wan_address, candidate.connection_type)
+                        self._candidates[sock_addr] = candidate = self.create_candidate(sock_addr, candidate.tunnel, lan_address, wan_address, candidate.connection_type)
                     break
 
             else:
@@ -1468,6 +1464,15 @@ class Community(object):
                 candidate = None
 
         return candidate
+
+    def remove_candidate(self, sock_addr):
+        # replace candidate
+        candidate = self._candidates.pop(sock_addr, None)
+
+        if candidate:
+            # remove vote under previous key
+            self._dispersy.wan_address_unvote(candidate)
+
 
     def get_walkcandidate(self, message):
         if isinstance(message.candidate, WalkCandidate):
