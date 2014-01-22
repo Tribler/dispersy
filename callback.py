@@ -628,7 +628,10 @@ class Callback(object):
                 priority, deadline, root_id, call, callback = heappop(self._expired)
                 wait = 0.0
 
-                self._debug_call_name = self._debug_call_to_string(call)
+                if __debug__:
+                    self._debug_call_name = self._debug_call_to_string(call)
+                else:
+                    self._debug_call_name = None
 
                 # ignore removed tasks
                 if call is None:
