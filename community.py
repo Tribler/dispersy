@@ -2715,12 +2715,11 @@ class Community(object):
         responses = []  # (candidate, packet) tuples
         for message in messages:
             candidate = message.candidate
-            community_database_id = message.community.database_id
             member_database_id = message.payload.member.database_id
             for global_time in message.payload.global_times:
                 try:
                     packet, = self._dispersy._database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                              (community_database_id, member_database_id, global_time)).next()
+                                                              (self.database_id, member_database_id, global_time)).next()
                 except StopIteration:
                     pass
                 else:
@@ -2763,7 +2762,7 @@ class Community(object):
             payload = message.payload
             packets = [str(packet) for packet, in list(self._dispersy._database.execute(
                     u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT ?",
-                    (message.community.database_id, payload.member.database_id, payload.message.database_id, payload.count)))]
+                    (self.database_id, payload.member.database_id, payload.message.database_id, payload.count)))]
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-last-message", len(packets))
             self._dispersy._endpoint.send([message.candidate], packets)
 
@@ -2846,7 +2845,7 @@ class Community(object):
         @param messages: The dispersy-identity message.
         @type messages: [Message.Implementation]
         """
-        meta_id = messages[0].community.get_meta_message(u"dispersy-identity").database_id
+        meta_id = self.get_meta_message(u"dispersy-identity").database_id
         sql_member = u"SELECT id FROM member WHERE mid = ? LIMIT 10"
         sql_packet = u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? LIMIT 1"
 
@@ -2856,7 +2855,7 @@ class Community(object):
             # we are assuming that no more than 10 members have the same sha1 digest.
             for member_id in [member_id for member_id, in self._dispersy._database.execute(sql_member, (buffer(mid),))]:
                 packets = [str(packet) for packet, in self._dispersy._database.execute(sql_packet,
-                                                                                       (self.community_id, member_id, meta_id))]
+                                                                                       (self.database_id, member_id, meta_id))]
 
                 if packets:
                     logger.debug("responding with %d identity messages", len(packets))
@@ -2864,8 +2863,8 @@ class Community(object):
                     self._dispersy._endpoint.send([message.candidate], packets)
 
                 else:
-                    assert not message.payload.mid == message.community.my_member.mid, "we should always have our own dispersy-identity"
-                    logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", mid.encode("HEX"), message.community.my_member.mid.encode("HEX"), message.community.cid.encode("HEX"))
+                    assert not message.payload.mid == self.my_member.mid, "we should always have our own dispersy-identity"
+                    logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", mid.encode("HEX"), self.my_member.mid.encode("HEX"), self.cid.encode("HEX"))
 
     def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
