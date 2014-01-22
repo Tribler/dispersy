@@ -1861,8 +1861,12 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         # check all remaining messages on the community side.  may yield Message.Implementation,
         # DropMessage, and DelayMessage instances
+        @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1[0].name")
+        def check_callback(messages):
+            return list(meta.check_callback(messages))
+        
         try:
-            messages = list(meta.check_callback(messages))
+            messages = check_callback(messages)
         except:
             logger.exception("exception during check_callback for %s", meta.name)
             return 0
