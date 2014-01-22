@@ -55,6 +55,7 @@ from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCa
                     MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import DispersyCrypto, ECCrypto
+from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
@@ -1159,6 +1160,7 @@ class Dispersy(object):
             # this message is a duplicate
             return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution full_sync")
     def _check_full_sync_distribution_batch(self, messages):
         """
         Ensure that we do not yet have the messages and that, if sequence numbers are enabled, we
@@ -1298,6 +1300,7 @@ class Dispersy(object):
                 # we accept this message
                 yield message
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution last_sync")
     def _check_last_sync_distribution_batch(self, messages):
         """
         Check that the messages do not violate any database consistency rules.
@@ -1512,6 +1515,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         return messages
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution direct")
     def _check_direct_distribution_batch(self, messages):
         """
         Returns the messages in the correct processing order.
