@@ -1241,7 +1241,7 @@ class NoDefBinaryConversion(Conversion):
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value.name}")
     def _decode_message(self, candidate, data, verify, allow_empty_signature):
         """
         Decode a binary string into a Message structure, with some
