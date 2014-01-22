@@ -708,7 +708,7 @@ class Callback(object):
                 else:
                     logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
 
-        return self._debug_call_name
+        return self._debug_call_name or True
 
     def _shutdown(self):
         with self._lock:
