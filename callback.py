@@ -599,7 +599,7 @@ class Callback(object):
         self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")    
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")    
     def _one_task(self):
         if __debug__:
             time_since_expired = 0
@@ -628,8 +628,7 @@ class Callback(object):
                 priority, deadline, root_id, call, callback = heappop(self._expired)
                 wait = 0.0
 
-                if __debug__:
-                    self._debug_call_name = self._debug_call_to_string(call)
+                self._debug_call_name = self._debug_call_to_string(call)
 
                 # ignore removed tasks
                 if call is None:
@@ -709,7 +708,7 @@ class Callback(object):
                 else:
                     logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
 
-        return True
+        return self._debug_call_name
 
     def _shutdown(self):
         with self._lock:
