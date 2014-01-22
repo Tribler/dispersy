@@ -1009,7 +1009,6 @@ class NoDefBinaryConversion(Conversion):
     def _encode_no_authentication_signature(self, container, message, sign):
         return "".join(container)
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_member_authentication_signature(self, container, message, sign):
         assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
         data = "".join(container)
@@ -1021,7 +1020,6 @@ class NoDefBinaryConversion(Conversion):
         else:
             return data + "\x00" * message.authentication.member.signature_length
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {2.name}")
     def _encode_double_member_authentication_signature(self, container, message, sign):
         data = "".join(container)
         signatures = []
@@ -1134,7 +1132,6 @@ class NoDefBinaryConversion(Conversion):
         placeholder.first_signature_offset = len(placeholder.data)
         placeholder.authentication = NoAuthentication.Implementation(placeholder.meta.authentication)
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
@@ -1189,7 +1186,6 @@ class NoDefBinaryConversion(Conversion):
         else:
             raise NotImplementedError(authentication.encoding)
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.meta.name}")
     def _decode_double_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
