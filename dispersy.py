@@ -2728,13 +2728,16 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._store(messages)
 
         if update:
-            try:
-                messages[0].handle_callback(messages)
-            except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
-                raise
-            except:
-                logger.exception("exception during handle_callback for %s", messages[0].name)
-                return False
+            @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+            def handle_callback(messages):
+                try:
+                    messages[0].handle_callback(messages)
+                except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
+                    raise
+                except:
+                    logger.exception("exception during handle_callback for %s", messages[0].name)
+                    return False
+            handle_callback(messages)
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
