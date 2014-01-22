@@ -2571,14 +2571,14 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         logger.debug("%s success", community.cid.encode("HEX"))
 
-    def _watchdog(self):
+    def _flush_database(self):
         """
         Periodically called to commit database changes to disk.
         """
         while True:
             # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
             # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
-            # exception is raised when the _watchdog generator is closed)
+            # exception is raised when the _flush_database generator is closed)
             yield 60.0
 
             try:
@@ -2627,8 +2627,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._endpoint_ready()
 
             # commit changes to the database periodically
-            id_ = u"dispersy-watchdog-%d" % (id(self),)
-            self._pending_callbacks["watchdog"] = self._callback.register(self._watchdog, id_=id_)
+            id_ = u"flush-database-%d" % (id(self),)
+            self._pending_callbacks["flush_database"] = self._callback.register(self._flush_database, id_=id_)
             # output candidate statistics
             id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
             self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
