@@ -430,8 +430,8 @@ class Callback(object):
             return id_
         
     def _wake_up_if(self, new_task_deadline):
-        # wakeup if sleeping
-        first_request_deadline = self._requests[0][0] if self._requests else new_task_deadline - 1
+        # wakeup if sleeping, if prev_deadline is larger -> if no requests then we scheduled an expired task 
+        first_request_deadline = self._requests[0][0] if self._requests else new_task_deadline + 1
         if new_task_deadline <= first_request_deadline: 
             if not self._event_is_set():
                 self._event_set()
