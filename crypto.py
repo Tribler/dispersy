@@ -2,6 +2,8 @@ from math import ceil
 from struct import Struct
 from hashlib import sha1
 
+from .decorator import attach_runtime_statistics
+
 from M2Crypto import EC, BIO
 from M2Crypto.EC import EC_pub
 _STRUCT_L = Struct(">L")
@@ -114,6 +116,7 @@ class ECCrypto(DispersyCrypto):
         """
         return _CURVES.keys()
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def generate_key(self, security_level):
         """
         Generate a new Elliptic Curve object with a new public / private key pair.
@@ -138,6 +141,7 @@ class ECCrypto(DispersyCrypto):
         ec.gen_key()
         return ec
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def pem_to_bin(self, pem):
         """
         Convert a key in the PEM format into a key in the binary format.
@@ -145,6 +149,7 @@ class ECCrypto(DispersyCrypto):
         """
         return "".join(pem.split("\n")[1:-2]).decode("BASE64")
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_pem(self, ec):
         "Convert a key to the PEM format."
         bio = BIO.MemoryBuffer()
@@ -154,16 +159,19 @@ class ECCrypto(DispersyCrypto):
             ec.save_key_bio(bio, None, lambda *args: "")
         return bio.read_all()
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_from_private_pem(self, pem, password=None):
         "Get the EC from a public/private keypair stored in the PEM."
         def get_password(*args):
             return password or ""
         return EC.load_key_bio(BIO.MemoryBuffer(pem), get_password)
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_from_public_pem(self, pem):
         "Get the EC from a public PEM."
         return EC.load_pub_key_bio(BIO.MemoryBuffer(pem))
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_private_pem(self, pem):
         "Returns True if the input is a valid public/private keypair"
         try:
@@ -172,6 +180,7 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_public_pem(self, pem):
         "Returns True if the input is a valid public key"
         try:
@@ -180,14 +189,17 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_bin(self, ec):
         "Convert the key to a binary format."
         return self.pem_to_bin(self.key_to_pem(ec))
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_hash(self, ec):
         "Get a hash representation from a key."
         return sha1(self.key_to_bin(ec.pub())).digest()
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_private_bin(self, string):
         "Returns True if the input is a valid public/private keypair stored in a binary format"
         try:
@@ -196,6 +208,7 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_public_bin(self, string):
         "Returns True if the input is a valid public key"
         try:
@@ -204,12 +217,14 @@ class ECCrypto(DispersyCrypto):
             return False
         return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_from_private_bin(self, string):
         "Get the EC from a public/private keypair stored in a binary format."
         return self.key_from_private_pem("".join(("-----BEGIN EC PRIVATE KEY-----\n",
                                             string.encode("BASE64"),
                                             "-----END EC PRIVATE KEY-----\n")))
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_from_public_bin(self, string):
         "Get the EC from a public key in binary format."
         return self.key_from_public_pem("".join(("-----BEGIN PUBLIC KEY-----\n",
@@ -222,6 +237,7 @@ class ECCrypto(DispersyCrypto):
         """
         return int(ceil(len(ec) / 8.0)) * 2
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def create_signature(self, ec, data):
         """
         Returns the signature of DIGEST made using EC.
@@ -238,6 +254,7 @@ class ECCrypto(DispersyCrypto):
 
         return "".join(("\x00" * (length - len(r)), r, "\x00" * (length - len(s)), s))
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_signature(self, ec, data, signature):
         """
         Returns True when SIGNATURE matches the DIGEST made using EC.

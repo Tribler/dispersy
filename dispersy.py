@@ -55,6 +55,7 @@ from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCa
                     MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .crypto import DispersyCrypto, ECCrypto
+from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution, GlobalTimePruning
@@ -1159,6 +1160,7 @@ class Dispersy(object):
             # this message is a duplicate
             return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution full_sync")
     def _check_full_sync_distribution_batch(self, messages):
         """
         Ensure that we do not yet have the messages and that, if sequence numbers are enabled, we
@@ -1298,6 +1300,7 @@ class Dispersy(object):
                 # we accept this message
                 yield message
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution last_sync")
     def _check_last_sync_distribution_batch(self, messages):
         """
         Check that the messages do not violate any database consistency rules.
@@ -1512,6 +1515,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         return messages
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution direct")
     def _check_direct_distribution_batch(self, messages):
         """
         Returns the messages in the correct processing order.
@@ -1857,8 +1861,12 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         # check all remaining messages on the community side.  may yield Message.Implementation,
         # DropMessage, and DelayMessage instances
+        @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+        def check_callback(messages):
+            return list(meta.check_callback(messages))
+        
         try:
-            messages = list(meta.check_callback(messages))
+            messages = check_callback(messages)
         except:
             logger.exception("exception during check_callback for %s", meta.name)
             return 0
@@ -1978,6 +1986,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
                 self._statistics.delay_count += 1
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
         """
         Store a message in the database.
@@ -2720,12 +2729,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._store(messages)
 
         if update:
-            try:
-                messages[0].handle_callback(messages)
-            except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
-                raise
-            except:
-                logger.exception("exception during handle_callback for %s", messages[0].name)
+            if self._update(messages) == False:
                 return False
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
@@ -2744,7 +2748,22 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             return self._forward(messages)
 
         return True
+    
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
+    def _update(self, messages):
+        """
+        Call the handle callback of a list of messages of the same type.
+        """
+        try:
+            messages[0].handle_callback(messages)
+            return True
+        except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
+            raise
+        except:
+            logger.exception("exception during handle_callback for %s", messages[0].name)
+            return False
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _forward(self, messages):
         """
         Queue a sequence of messages to be sent to other members.
