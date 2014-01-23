@@ -1986,6 +1986,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
                 self._statistics.delay_count += 1
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
     def _store(self, messages):
         """
         Store a message in the database.
@@ -2728,16 +2729,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._store(messages)
 
         if update:
-            @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
-            def handle_callback(messages):
-                try:
-                    messages[0].handle_callback(messages)
-                except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
-                    raise
-                except:
-                    logger.exception("exception during handle_callback for %s", messages[0].name)
-                    return False
-            handle_callback(messages)
+            if self._update(messages) == False:
+                return False
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
@@ -2755,7 +2748,22 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             return self._forward(messages)
 
         return True
+    
+    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+    def _update(self, messages):
+        """
+        Call the handle callback of a list of messages of the same type.
+        """
+        try:
+            messages[0].handle_callback(messages)
+            return True
+        except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
+            raise
+        except:
+            logger.exception("exception during handle_callback for %s", messages[0].name)
+            return False
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
     def _forward(self, messages):
         """
         Queue a sequence of messages to be sent to other members.
