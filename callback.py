@@ -616,10 +616,6 @@ class Callback(object):
                 heappush(self._expired, (priority, deadline, root_id, call, callback))
 
             if self._expired:
-                if __debug__ and len(self._expired) > 10:
-                    if not time_since_expired:
-                        time_since_expired = actual_time
-
                 # we need to handle the next call in line
                 priority, deadline, root_id, call, callback = heappop(self._expired)
                 wait = 0.0
