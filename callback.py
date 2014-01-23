@@ -122,8 +122,6 @@ class Callback(object):
         # _final_func is called directly on the callback thread directly before the state is set to
         # STATE_FINISHED
         self._final_func = None
-        
-        self._debug_call_name = None
 
         if __debug__:
             def must_close(callback):
@@ -602,9 +600,6 @@ class Callback(object):
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")    
     def _one_task(self):
-        if __debug__:
-            time_since_expired = 0
-
         actual_time = time()
 
         with self._lock:
@@ -630,9 +625,9 @@ class Callback(object):
                 wait = 0.0
 
                 if __debug__:
-                    self._debug_call_name = self._debug_call_to_string(call)
+                    debug_call_name = self._debug_call_to_string(call)
                 else:
-                    self._debug_call_name = None
+                    debug_call_name = None
 
                 # ignore removed tasks
                 if call is None:
@@ -640,15 +635,12 @@ class Callback(object):
                     return True
 
             else:
+                debug_call_name = 'Nothing to handle'
+                
                 # there is nothing to handle
                 wait = self._requests[0][0] - actual_time if self._requests else 300.0
                 if __debug__:
                     logger.debug("nothing to handle, wait %.2f seconds", wait)
-                    if time_since_expired:
-                        diff = actual_time - time_since_expired
-                        if diff > 1.0:
-                            logger.warning("took %.2f to process expired queue", diff)
-                        time_since_expired = 0
 
             if self._event.is_set():
                 self._event.clear()
@@ -659,7 +651,7 @@ class Callback(object):
 
         else:
             if __debug__:
-                logger.debug("---- call %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
+                logger.debug("---- call %s (priority:%d, id:%s)", debug_call_name, priority, root_id)
                 debug_call_start = time()
 
             # call can be either:
@@ -708,11 +700,11 @@ class Callback(object):
             if __debug__:
                 debug_call_duration = time() - debug_call_start
                 if debug_call_duration > 1.0:
-                    logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                    logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, debug_call_name, priority, root_id)
                 else:
-                    logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                    logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, debug_call_name, priority, root_id)
 
-        return self._debug_call_name or True
+        return debug_call_name or True
 
     def _shutdown(self):
         with self._lock:
