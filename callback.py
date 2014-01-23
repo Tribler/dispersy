@@ -122,12 +122,13 @@ class Callback(object):
         # _final_func is called directly on the callback thread directly before the state is set to
         # STATE_FINISHED
         self._final_func = None
+        
+        self._debug_call_name = None
 
         if __debug__:
             def must_close(callback):
                 assert callback.is_finished, self
             atexit_register(must_close, self)
-            self._debug_call_name = None
 
     def __str__(self):
         return "<%s %s %d>" % (self.__class__.__name__, self._name, self._thread_ident)
