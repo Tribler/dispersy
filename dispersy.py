@@ -1986,7 +1986,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
                 self._statistics.delay_count += 1
 
-    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
         """
         Store a message in the database.
@@ -2749,7 +2749,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return True
     
-    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _update(self, messages):
         """
         Call the handle callback of a list of messages of the same type.
@@ -2763,7 +2763,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             logger.exception("exception during handle_callback for %s", messages[0].name)
             return False
 
-    @attach_runtime_statistics(u"Dispersy.{function_name} {0[0].name}")
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _forward(self, messages):
         """
         Queue a sequence of messages to be sent to other members.
