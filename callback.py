@@ -294,24 +294,23 @@ class Callback(object):
                 self._id += 1
                 id_ = u"dispersy-#%d" % self._id
 
+            new_task_deadline = time() + delay
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
-                          time(),
+                          new_task_deadline,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
             else:
                 heappush(self._requests,
-                         (delay + time(),
+                         (new_task_deadline,
                           - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
-            # wakeup if sleeping
-            if not self._event_is_set():
-                self._event_set()
+            self._wake_up_if(new_task_deadline)
             return id_
 
     def persistent_register(self, id_, call, args=(), kargs=None, delay=0.0, priority=0, callback=None, callback_args=(), callback_kargs=None, include_id=False):
@@ -356,25 +355,24 @@ class Callback(object):
 
                 else:
                     # not found in expired
+                    new_task_deadline = time() + delay
                     if delay <= 0.0:
                         heappush(self._expired,
                                  (-priority,
-                                  time(),
+                                  new_task_deadline,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
                     else:
                         heappush(self._requests,
-                                 (delay + time(),
+                                 (new_task_deadline,
                                   - priority,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
-                    # wakeup if sleeping
-                    if not self._event_is_set():
-                        self._event_set()
+                    self._wake_up_if(new_task_deadline)
 
             return id_
 
@@ -411,26 +409,32 @@ class Callback(object):
                     logger.debug("unregistered %s from _expired", id_)
 
             # register
+            new_task_deadline = time() + delay
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
-                          time(),
+                          new_task_deadline,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
             else:
                 heappush(self._requests,
-                         (delay + time(),
+                         (new_task_deadline,
                           - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
-
-            # wakeup if sleeping
+                
+            self._wake_up_if(new_task_deadline)
+            return id_
+        
+    def _wake_up_if(self, new_task_deadline):
+        # wakeup if sleeping
+        first_request_deadline = self._requests[0][0] if self._requests else new_task_deadline - 1
+        if new_task_deadline <= first_request_deadline: 
             if not self._event_is_set():
                 self._event_set()
-            return id_
 
     def unregister(self, id_):
         """
