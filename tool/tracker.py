@@ -50,7 +50,7 @@ logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
-from ..crypto import NoCrypto, ECCrypto
+from ..crypto import NoVerifyCrypto, NoCrypto
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger, get_context_filter
@@ -62,13 +62,6 @@ if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
-
-
-class BinaryTrackerConversion(BinaryConversion):
-
-    def decode_message(self, candidate, data, _=None):
-        # disable verify
-        return self._decode_message(candidate, data, False, False)
 
 
 class TrackerHardKilledCommunity(HardKilledCommunity):
@@ -149,7 +142,7 @@ class TrackerCommunity(Community):
         return self._strikes
 
     def initiate_conversions(self):
-        return [BinaryTrackerConversion(self, "\x00")]
+        return [BinaryConversion(self, "\x00")]
 
     def get_conversion_for_packet(self, packet):
         try:
@@ -230,14 +223,8 @@ class TrackerCommunity(Community):
 
 class TrackerDispersy(Dispersy):
 
-    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=ECCrypto()):
+    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
         super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:", crypto)
-
-        # non-autoload nodes
-        self._non_autoload = set()
-        self._non_autoload.update(host for host, _ in self._bootstrap_candidates.iterkeys())
-        # leaseweb machines, some are running boosters, they never unload a community
-        self._non_autoload.update(["95.211.105.65", "95.211.105.67", "95.211.105.69", "95.211.105.71", "95.211.105.73", "95.211.105.75", "95.211.105.77", "95.211.105.79", "95.211.105.81", "85.17.81.36"])
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
@@ -286,30 +273,6 @@ class TrackerDispersy(Dispersy):
                 except:
                     logger.exception("Error while loading from persistent-destroy-community.data")
 
-    def _convert_packets_into_batch(self, packets):
-        """
-        Ensure that communities are loaded when the packet is received from a non-bootstrap node,
-        otherwise, load and auto-load are disabled.
-        """
-        def filter_non_bootstrap_nodes():
-            for candidate, packet in packets:
-                cid = packet[2:22]
-
-                if not cid in self._communities and False:  # candidate.sock_addr[0] in self._non_autoload:
-                    if __debug__:
-                        logger.warn("drop a %d byte packet (received from non-autoload node) from %s", len(packet), candidate)
-                        self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:from bootstrap node for unloaded community")
-                    continue
-
-                yield candidate, packet
-
-        packets = list(filter_non_bootstrap_nodes())
-        if packets:
-            return super(TrackerDispersy, self)._convert_packets_into_batch(packets)
-
-        else:
-            return []
-
     def _unload_communities(self):
         def is_active(community, now):
             # check 1: does the community have any active candidates
@@ -348,21 +311,11 @@ class TrackerDispersy(Dispersy):
                     print "OUTGOING", key, value
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
-        # prevent steps towards other trackers
-        if not isinstance(destination, BootstrapCandidate):
-            return super(TrackerDispersy, self).create_introduction_request(community, destination, allow_sync, forward)
-
-    def check_introduction_request(self, messages):
-        for message in super(TrackerDispersy, self).check_introduction_request(messages):
-            if isinstance(message, Message.Implementation) and isinstance(message.candidate, BootstrapCandidate):
-                yield DropMessage(message, "drop dispersy-introduction-request from bootstrap peer")
-                continue
-
-            yield message
+        return
 
     def on_introduction_request(self, messages):
         if not self._silent:
-            hex_cid = messages[0].community.cid.encode("HEX")
+            hex_cid = self.cid.encode("HEX")
             for message in messages:
                 host, port = message.candidate.sock_addr
                 print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
@@ -370,7 +323,7 @@ class TrackerDispersy(Dispersy):
 
     def on_introduction_response(self, messages):
         if not self._silent:
-            hex_cid = messages[0].community.cid.encode("HEX")
+            hex_cid = self.cid.encode("HEX")
             for message in messages:
                 host, port = message.candidate.sock_addr
                 print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
@@ -400,7 +353,7 @@ def main():
     if opt.crypto == 'NoCrypto':
         crypto = NoCrypto()
     else:
-        crypto = ECCrypto()
+        crypto = NoVerifyCrypto()
 
     # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
