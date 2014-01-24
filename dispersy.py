@@ -1620,7 +1620,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # find associated community
             try:
                 community = self.get_community(community_id)
-                community.on_incoming_packets(iterator, cache, timestamp)
+                community.on_incoming_packets(list(iterator), cache, timestamp)
             except KeyError:
                 packets = list(iterator)
                 candidates = set([candidate for candidate, _ in packets])
