@@ -1027,55 +1027,6 @@ class Community(object):
         """
         self._database_version = self._dispersy.database.check_community_database(self, self._database_version)
 
-    def get_member(self, public_key):
-        """
-        Returns a Member instance associated with public_key.
-
-        since we have the public_key, we can create this user when it didn't already exist.  Hence,
-        this method always succeeds.
-
-        @param public_key: The public key of the member we want to obtain.
-        @type public_key: string
-
-        @return: The Member instance associated with public_key.
-        @rtype: Member
-
-        @note: This returns -any- Member, it may not be a member that is part of this community.
-
-        @todo: Since this method returns Members that are not specifically bound to any community,
-         this method should be moved to Dispersy
-        """
-        logger.warning("deprecated.  please use Dispersy.get_member")
-        return self._dispersy.get_member(public_key)
-
-    def get_members_from_id(self, mid):
-        """
-        Returns zero or more Member instances associated with mid, where mid is the sha1 digest of a
-        member public key.
-
-        As we are using only 20 bytes to represent the actual member public key, this method may
-        return multiple possible Member instances.  In this case, other ways must be used to figure
-        out the correct Member instance.  For instance: if a signature or encryption is available,
-        all Member instances could be used, but only one can succeed in verifying or decrypting.
-
-        Since we may not have the public key associated to MID, this method may return an empty
-        list.  In such a case it is sometimes possible to DelayPacketByMissingMember to obtain the
-        public key.
-
-        @param mid: The 20 byte sha1 digest indicating a member.
-        @type mid: string
-
-        @return: A list containing zero or more Member instances.
-        @rtype: [Member]
-
-        @note: This returns -any- Member, it may not be a member that is part of this community.
-
-        @todo: Since this method returns Members that are not specifically bound to any community,
-         this method should be moved to Dispersy
-        """
-        logger.warning("deprecated.  please use Dispersy.get_members_from_id")
-        return self._dispersy.get_members_from_id(mid)
-
     def get_default_conversion(self):
         """
         Returns the default conversion (defined as the last conversion).
