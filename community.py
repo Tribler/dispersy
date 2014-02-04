@@ -362,7 +362,6 @@ class Community(object):
         self._introduced_candidates = self._iter_category(u'intro')
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
         self._bootstrap_candidates = self._iter_bootstrap()
-        self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_candidates))
 
         # statistics...
         self._statistics = CommunityStatistics(self)
@@ -1345,6 +1344,10 @@ class Community(object):
         from sys import maxsize
 
         now = time()
+
+        # cleanup obsolete candidates
+        self.cleanup_candidates()
+
         categories = [(maxsize, None), (maxsize, None), (maxsize, None)]
         category_sizes = [0, 0, 0]
 
@@ -1543,14 +1546,6 @@ class Community(object):
                     for response_func, response_args in cache.callbacks:
                         response_func(message, *response_args)
 
-    def _periodically_cleanup_candidates(self):
-        """
-        Periodically remove obsolete Candidate instances.
-        """
-        while True:
-            yield 5 * 60.0
-            self.cleanup_candidates()
-
     def cleanup_candidates(self):
         """
         Removes all candidates that are obsolete.
@@ -1558,7 +1553,7 @@ class Community(object):
         Returns the number of candidates that were removed.
         """
         now = time()
-        obsolete_candidates = [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.is_obsolete(now)]
+        obsolete_candidates = [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.get_category(now) == u"none"]
         for key, candidate in obsolete_candidates:
             logger.debug("removing obsolete candidate %s", candidate)
             del self._candidates[key]

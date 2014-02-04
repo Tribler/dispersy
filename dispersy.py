@@ -2557,7 +2557,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     for age, candidate in sorted(aged):
                         summary.debug("%5.1fs %s%s%s %-7s %-13s %s",
                                       min(age, 999.0),
-                                      "O" if candidate.is_obsolete(now) else " ",
+                                      "O" if candidate.get_category(now) == u"none" else " ",
                                       "E" if candidate.is_eligible_for_walk(now) else " ",
                                       "B" if isinstance(candidate, BootstrapCandidate) else " ",
                                       category,

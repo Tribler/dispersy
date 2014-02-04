@@ -177,12 +177,6 @@ class WalkCandidate(Candidate):
         """
         return self._associations
 
-    def is_obsolete(self, now):
-        """
-        Returns True if this candidate exceeded the CANDIDATE_LIFETIME.
-        """
-        return max(self._last_walk, self._last_stumble, self._last_intro) + CANDIDATE_LIFETIME < now
-
     def age(self, now, category=u""):
         """
         Returns the time between NOW and the most recent walk, stumble, or intro (depending on
@@ -205,22 +199,6 @@ class WalkCandidate(Candidate):
                    u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
 
         return mapping[category]
-
-    def inactive(self, now):
-        """
-        Called to set this candidate to inactive.
-        """
-        self._last_walk = now - CANDIDATE_WALK_LIFETIME
-        self._last_stumble = now - CANDIDATE_STUMBLE_LIFETIME
-        self._last_intro = now - CANDIDATE_INTRO_LIFETIME
-
-    def obsolete(self, now):
-        """
-        Called to set this candidate to obsolete.
-        """
-        self._last_walk = now - CANDIDATE_LIFETIME
-        self._last_stumble = now - CANDIDATE_LIFETIME
-        self._last_intro = now - CANDIDATE_LIFETIME
 
     def is_eligible_for_walk(self, now):
         """
