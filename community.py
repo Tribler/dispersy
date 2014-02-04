@@ -1834,7 +1834,7 @@ class Community(object):
             except KeyError:
                 for candidate, packet in cur_packets:
                     logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
-                self._dispersy._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
     def _on_batch_cache_timeout(self, meta):
