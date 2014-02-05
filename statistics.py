@@ -27,13 +27,13 @@ class Statistics(object):
             if isinstance(o, Statistics):
                 return dict((key, clone(value))
                             for key, value
-                            in o.__dict__.iteritems()
+                            in o.__dict__.items()
                             if not key.startswith("_"))
 
             if isinstance(o, dict):
                 return dict((clone(key), clone(value))
                             for key, value
-                            in o.iteritems())
+                            in o.items())
 
             if isinstance(o, tuple):
                 return tuple(clone(value) for value in o)
