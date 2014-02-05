@@ -24,7 +24,7 @@ from .decorator import documentation, runtime_duration_warning, attach_runtime_s
 from .destination import CommunityDestination, CandidateDestination
 from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
-from .logger import get_logger
+from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
                       DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
@@ -1396,8 +1396,7 @@ class Community(object):
 
                         # replace candidate
                         del self._candidates[candidate.sock_addr]
-                        lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, candidate.lan_address, candidate.wan_address)
-                        self._candidates[candidate.sock_addr] = candidate = self.create_candidate(sock_addr, candidate.tunnel, lan_address, wan_address, candidate.connection_type)
+                        candidate = self.create_or_update_walkcandidate(sock_addr, candidate.lan_address, candidate.wan_address, candidate.tunnel, candidate.connection_type)
                     break
 
             else:
@@ -1406,6 +1405,7 @@ class Community(object):
 
         return candidate
 
+    @deprecated("Use create_or_update_walkcandidate() instead")
     def get_walkcandidate(self, message):
         if isinstance(message.candidate, WalkCandidate):
             return message.candidate
@@ -1421,6 +1421,16 @@ class Community(object):
 
             candidate = self.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
             return candidate
+
+    def create_or_update_walkcandidate(self, sock_addr, lan_address, wan_address, tunnel, connection_type):
+        lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, lan_address, wan_address)
+
+        candidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
+        if candidate:
+            candidate.update(tunnel, lan_address, wan_address, connection_type)
+        else:
+            candidate = self.create_candidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
+        return candidate
 
     def add_candidate(self, candidate):
         if not isinstance(candidate, BootstrapCandidate):
@@ -1471,17 +1481,20 @@ class Community(object):
                   if (other.wan_address[0] == wan_address[0] and
                       other.lan_address == lan_address)]
 
-        # merge and remove existing candidates in favor of the new CANDIDATE
-        for other in others:
-            # all except for the CANDIDATE
-            if not other == candidate:
-                logger.warning("removing %s %s in favor of %s %s",
-                               other.sock_addr, other,
-                               candidate.sock_addr, candidate)
-                candidate.merge(other)
-                del self._candidates[other.sock_addr]
-                self._dispersy.wan_address_unvote(other)
-        self.add_candidate(candidate)
+        if others:
+            # merge and remove existing candidates in favor of the new CANDIDATE
+            for other in others:
+                # all except for the CANDIDATE
+                if not other == candidate:
+                    logger.warning("removing %s %s in favor of %s %s",
+                                   other.sock_addr, other,
+                                   candidate.sock_addr, candidate)
+                    candidate.merge(other)
+                    del self._candidates[other.sock_addr]
+                    self._dispersy.wan_address_unvote(other)
+
+            # add this candidate to make sure it didn't get removed in the del call
+            self.add_candidate(candidate)
 
     def handle_missing_messages(self, messages, *classes):
         if __debug__:
@@ -2253,25 +2266,16 @@ class Community(object):
         # make all candidates available for introduction
         #
         for message in messages:
-            candidate = self.get_walkcandidate(message)
+            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, message.payload.connection_type)
+            candidate.stumble(now)
             message._candidate = candidate
-            if not candidate:
-                continue
-
-            payload = message.payload
 
             # apply vote to determine our WAN address
-            self._dispersy.wan_address_vote(payload.destination_address, candidate)
+            self._dispersy.wan_address_vote(message.payload.destination_address, candidate)
 
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
             candidate.associate(message.authentication.member)
-
-            # update sender candidate
-            source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
-            candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
-            candidate.stumble(now)
-            self.add_candidate(candidate)
 
             self.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
@@ -2279,7 +2283,6 @@ class Community(object):
         #
         # process the walker part of the request
         #
-
         for message in messages:
             payload = message.payload
             candidate = message.candidate
@@ -2301,7 +2304,7 @@ class Community(object):
                 responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier)))
 
                 # create puncture request
-                requests.append(meta_puncture_request.impl(distribution=(self.global_time,), destination=(introduced,), payload=(source_lan_address, source_wan_address, payload.identifier)))
+                requests.append(meta_puncture_request.impl(distribution=(self.global_time,), destination=(introduced,), payload=(payload.source_lan_address, payload.source_wan_address, payload.identifier)))
 
             else:
                 logger.debug("responding to %s without an introduction %s", candidate, type(self))
@@ -2496,10 +2499,18 @@ class Community(object):
                     yield DropMessage(message, "invalid LAN introduction address [is_valid_address]")
                     continue
 
+                if message.payload.lan_introduction_address in self._dispersy._bootstrap_candidates:
+                    yield DropMessage(message, "invalid LAN introduction address [is_bootstrap_candidate]")
+                    continue
+
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
                 if not self._dispersy.is_valid_address(message.payload.wan_introduction_address):
                     yield DropMessage(message, "invalid WAN introduction address [is_valid_address]")
+                    continue
+
+                if message.payload.wan_introduction_address in self._dispersy._bootstrap_candidates:
+                    yield DropMessage(message, "invalid WAN introduction address [is_bootstrap_candidate]")
                     continue
 
                 if message.payload.wan_introduction_address == self._dispersy._wan_address:
@@ -2524,20 +2535,13 @@ class Community(object):
 
         for message in messages:
             payload = message.payload
-
-            # modify either the senders LAN or WAN address based on how we perceive that node
-            source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
-
-            if isinstance(message.candidate, WalkCandidate):
-                candidate = message.candidate
-                candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
-            else:
-                candidate = self.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
+            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address, message.candidate.tunnel, payload.connection_type)
+            candidate.walk_response(now)
 
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
             candidate.associate(message.authentication.member)
-            candidate.walk_response(now)
+
             self.filter_duplicate_candidate(candidate)
             logger.debug("introduction response from %s", candidate)
 
@@ -2548,6 +2552,7 @@ class Community(object):
             self._dispersy._statistics.walk_success += 1
             if isinstance(candidate, BootstrapCandidate):
                 self._dispersy._statistics.walk_bootstrap_success += 1
+
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
@@ -2557,39 +2562,32 @@ class Community(object):
             # handle the introduction
             lan_introduction_address = payload.lan_introduction_address
             wan_introduction_address = payload.wan_introduction_address
-            if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0) or
-                    lan_introduction_address in self._dispersy._bootstrap_candidates or wan_introduction_address in self._dispersy._bootstrap_candidates):
-                assert self._dispersy.is_valid_address(lan_introduction_address), lan_introduction_address
-                assert self._dispersy.is_valid_address(wan_introduction_address), wan_introduction_address
-
-                # get or create the introduced candidate
+            if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0)):
                 self._dispersy._statistics.walk_advice_incoming_response += 1
+
+                # we need to choose either the lan or wan address to be used as the sock_addr
+                # currently we base this decision on the wan ip, if its the same as ours we're probably behind the same NAT and hence must use the lan address
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._dispersy._wan_address[0] else wan_introduction_address
-                introduce = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
-                if introduce is None:
-                    self._dispersy._statistics.walk_advice_incoming_response_new += 1
-                    introduce = self.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
+                introduced = self.create_or_update_walkcandidate(sock_introduction_addr, lan_introduction_address, wan_introduction_address, payload.tunnel, u"unknown")
+                introduced.intro(now)
 
-                # reset the 'I have been introduced' timer
-                self.add_candidate(introduce)
-                introduce.intro(now)
-                self.filter_duplicate_candidate(introduce)
-                logger.debug("received introduction to %s from %s", introduce, candidate)
+                self.filter_duplicate_candidate(introduced)
+                logger.debug("received introduction to %s from %s", introduced, candidate)
 
-                cache.response_candidate = introduce
+                cache.response_candidate = introduced
 
                 # update statistics
                 if self._dispersy._statistics.received_introductions is not None:
-                    self._dispersy._statistics.received_introductions[candidate.sock_addr][introduce.sock_addr] += 1
+                    self._dispersy._statistics.received_introductions[candidate.sock_addr][introduced.sock_addr] += 1
 
                 # TEMP: see which peers we get returned by the trackers
                 if self._dispersy._statistics.bootstrap_candidates is not None and isinstance(message.candidate, BootstrapCandidate):
-                    self._dispersy._statistics.bootstrap_candidates[introduce.sock_addr] = self._dispersy._statistics.bootstrap_candidates.get(introduce.sock_addr, 0) + 1
+                    self._dispersy._statistics.bootstrap_candidates[introduced.sock_addr] = self._dispersy._statistics.bootstrap_candidates.get(introduced.sock_addr, 0) + 1
 
             else:
                 # update statistics
                 if self._dispersy._statistics.received_introductions is not None:
-                    self._dispersy._statistics.received_introductions[candidate.sock_addr][wan_introduction_address] += 1
+                    self._dispersy._statistics.received_introductions[candidate.sock_addr]['-ignored-'] += 1
 
                 # TEMP: see which peers we get returned by the trackers
                 if self._dispersy._statistics.bootstrap_candidates is not None and isinstance(message.candidate, BootstrapCandidate):
@@ -2615,7 +2613,6 @@ class Community(object):
 
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
         destination.walk(time())
-        self.add_candidate(destination)
 
         # decide if the requested node should introduce us to someone else
         # advice = random() < 0.5 or len(community.candidates) <= 5
@@ -2826,31 +2823,11 @@ class Community(object):
             cache = self.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
             cache.on_puncture()
 
-            # when the sender is behind a symmetric NAT and we are not, we will not be able to get
-            # through using the port that the helper node gave us (symmetric NAT will give a
-            # different port for each destination address).
-
-            # we can match this source address (message.candidate.sock_addr) to the candidate and
-            # modify the LAN or WAN address that has been proposed.
-            sock_addr = message.candidate.sock_addr
-            lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, message.payload.source_lan_address, message.payload.source_wan_address)
-
-            if not (lan_address == ("0.0.0.0", 0) or wan_address == ("0.0.0.0", 0)):
-                assert self._dispersy.is_valid_address(lan_address), lan_address
-                assert self._dispersy.is_valid_address(wan_address), wan_address
-
-                # get or create the introduced candidate
-                candidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
-                if candidate is None:
-                    candidate = self.create_candidate(sock_addr, message.candidate.tunnel, lan_address, wan_address, u"unknown")
-                else:
-                    candidate.update(message.candidate.tunnel, lan_address, wan_address, u"unknown")
-
-                # reset the 'I have been introduced' timer
-                self.add_candidate(candidate)
+            if not (message.payload.source_lan_address == ("0.0.0.0", 0) or message.payload.source_wan_address == ("0.0.0.0", 0)):
+                candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, u"unknown")
                 candidate.intro(now)
-                logger.debug("received introduction to %s", candidate)
 
+                logger.debug("received punture from %s", candidate)
                 cache.puncture_candidate = candidate
 
     def create_missing_message(self, candidate, member, global_time, response_func=None, response_args=(), timeout=10.0):
