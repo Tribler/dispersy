@@ -2567,12 +2567,8 @@ class Community(object):
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._dispersy._wan_address[0] else wan_introduction_address
                 introduce = self.get_candidate(sock_introduction_addr, replace=False, lan_address=lan_introduction_address)
                 if introduce is None:
-                    # create candidate but set its state to inactive to ensure that it will not be
-                    # used.  note that we call candidate.intro to allow the candidate to be returned
-                    # by get_walk_candidate and yield_candidates
                     self._dispersy._statistics.walk_advice_incoming_response_new += 1
                     introduce = self.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
-                    introduce.inactive(now)
 
                 # reset the 'I have been introduced' timer
                 self.add_candidate(introduce)
@@ -2846,14 +2842,8 @@ class Community(object):
                 # get or create the introduced candidate
                 candidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
                 if candidate is None:
-                    # create candidate but set its state to inactive to ensure that it will not be
-                    # used.  note that we call candidate.intro to allow the candidate to be returned
-                    # by get_walk_candidate
                     candidate = self.create_candidate(sock_addr, message.candidate.tunnel, lan_address, wan_address, u"unknown")
-                    candidate.inactive(now)
-
                 else:
-                    # update candidate
                     candidate.update(message.candidate.tunnel, lan_address, wan_address, u"unknown")
 
                 # reset the 'I have been introduced' timer
