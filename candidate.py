@@ -177,12 +177,6 @@ class WalkCandidate(Candidate):
         """
         return self._associations
 
-    def is_obsolete(self, now):
-        """
-        Returns True if this candidate exceeded the CANDIDATE_LIFETIME.
-        """
-        return max(self._last_walk, self._last_stumble, self._last_intro) + CANDIDATE_LIFETIME < now
-
     def age(self, now, category=u""):
         """
         Returns the time between NOW and the most recent walk, stumble, or intro (depending on
@@ -202,25 +196,9 @@ class WalkCandidate(Candidate):
         mapping = {u"walk": now - self._last_walk,
                    u"stumble": now - self._last_stumble,
                    u"intro": now - self._last_intro,
-                   u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
+                   None: now - max(self._last_walk, self._last_stumble, self._last_intro)}
 
         return mapping[category]
-
-    def inactive(self, now):
-        """
-        Called to set this candidate to inactive.
-        """
-        self._last_walk = now - CANDIDATE_WALK_LIFETIME
-        self._last_stumble = now - CANDIDATE_STUMBLE_LIFETIME
-        self._last_intro = now - CANDIDATE_INTRO_LIFETIME
-
-    def obsolete(self, now):
-        """
-        Called to set this candidate to obsolete.
-        """
-        self._last_walk = now - CANDIDATE_LIFETIME
-        self._last_stumble = now - CANDIDATE_LIFETIME
-        self._last_intro = now - CANDIDATE_LIFETIME
 
     def is_eligible_for_walk(self, now):
         """
@@ -246,7 +224,7 @@ class WalkCandidate(Candidate):
 
     def get_category(self, now):
         """
-        Returns the category (u"walk", u"stumble", u"intro", or u"none") depending on the current
+        Returns the category (u"walk", u"stumble", u"intro", or None) depending on the current
         time NOW.
         """
         assert isinstance(now, float), type(now)
@@ -260,7 +238,7 @@ class WalkCandidate(Candidate):
         if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
             return u"intro"
 
-        return u"none"
+        return None
 
     def walk(self, now):
         """

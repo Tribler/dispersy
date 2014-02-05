@@ -56,16 +56,16 @@ class IntroductionRequestCache(NumberCache):
 
     def on_timeout(self):
         if not self._introduction_response_received:
-            # helper_candidate did not respond to a request message in this community.  after some time
-            # inactive candidates become obsolete and will be removed by
-            # _periodically_cleanup_candidates
+            # helper_candidate did not respond to a request message in this
+            # community.  The obsolete candidates will be removed by the
+            # dispersy_get_walk_candidate() in community.
 
             logger.debug("walker timeout for %s", self.helper_candidate)
 
             self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
 
-            # set the candidate to obsolete
-            self.helper_candidate.obsolete(time())
+            # set the walk repsonse to be invalid
+            self.helper_candidate.walk_response(-1)
 
     def _check_if_both_received(self):
         if self._introduction_response_received and self._puncture_received:
