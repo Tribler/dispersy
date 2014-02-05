@@ -1157,21 +1157,19 @@ class NoDefBinaryConversion(Conversion):
             member_id = data[offset:offset + 20]
             offset += 20
 
-            members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
-            if not members:
-                raise DelayPacketByMissingMember(self._community, member_id)
-
-            # signatures are enabled, verify that the signature matches the member sha1
-            # identifier
-            for member in members:
+            member = self._community.dispersy.get_member_from_id(member_id)
+            # If signatures and verification are enabled, verify that the signature matches the member sha1 identifier
+            if member and member.has_identity(self._community):
                 first_signature_offset = len(data) - member.signature_length
-                if (not placeholder.verify and len(members) == 1) or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
+                if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
                     placeholder.offset = offset
                     placeholder.first_signature_offset = first_signature_offset
                     placeholder.authentication = MemberAuthentication.Implementation(authentication, member, is_signed=True)
                     return
-
-            raise DelayPacketByMissingMember(self._community, member_id)
+                else:
+                    raise DropPacket("Verification failed (_decode_member_authentication sha1)")
+            else:
+                raise DelayPacketByMissingMember(self._community, member_id)
 
         elif authentication.encoding == "bin":
             if len(data) < offset + 2:

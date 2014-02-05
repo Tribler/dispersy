@@ -60,7 +60,7 @@ from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution,
                            GlobalTimePruning)
-from .logger import get_logger
+from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (Packet, Message, DropMessage, DelayMessage, DelayMessageByProof, DelayMessageBySequence,
                       DelayMessageByMissingMessage, DropPacket, DelayPacket)
@@ -588,43 +588,44 @@ class Dispersy(object):
         assert len(mid) == 20, len(mid)
         return self._member_cache_by_hash.get(mid) or DummyMember(self, mid)
 
-    def get_members_from_id(self, mid):
+    def get_member_from_id(self, mid):
         """
-        Returns zero or more Member instances associated with mid, where mid is the sha1 digest of a
-        member public key.
+        Returns None or the Member instance associated with mid, where mid is the sha1 digest of a member public key.
 
-        As we are using only 20 bytes to represent the actual member public key, this method may
-        return multiple possible Member instances.  In this case, other ways must be used to figure
-        out the correct Member instance.  For instance: if a signature or encryption is available,
-        all Member instances could be used, but only one can succeed in verifying or decrypting.
+        Since we may not have the public key associated to MID, this method may return None.  In such a case it is
+        sometimes possible to raise DelayPacketByMissingMember to obtain the public key.
 
-        Since we may not have the public key associated to MID, this method may return an empty
-        list.  In such a case it is sometimes possible to DelayPacketByMissingMember to obtain the
-        public key.
+        @param mid: The 20 byte sha1 digest indicating a member.  @type mid: string
 
-        @param mid: The 20 byte sha1 digest indicating a member.
-        @type mid: string
+        @return: The Member instance associated with the key or None.  @rtype: Member
 
-        @return: A list containing zero or more Member instances.
-        @rtype: [Member]
-
-        @note: This returns -any- Member, it may not be a member that is part of this community.
         """
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
         member = self._member_cache_by_hash.get(mid)
-        if member:
-            return [member]
+        if not member:
+            members = [self.get_member(str(public_key))
+                       for public_key,
+                       in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
+                       if public_key]
+            if members:
+                # Register the unlikely event of a hash collision
+                if len(members) > 1:
+                    logger.warning("Found several public keys matching mid %s: %s\nReturning the first one.",
+                        mid, str((str(member) for member in members)))
+                    members.sort()
+                member = members[0]
+            else:
+                member = None
+        return member
 
-        else:
-            # note that this allows a security attack where someone might obtain a crypographic
-            # key that has the same sha1 as the master member, however unlikely.  the only way to
-            # prevent this, as far as we know, is to increase the size of the community
-            # identifier, for instance by using sha256 instead of sha1.
-            return [self.get_member(str(public_key))
-                    for public_key,
-                    in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
-                    if public_key]
+    @deprecated("Use get_member_from_id() instead")
+    def get_members_from_id(self, mid):
+        """
+        Deprecated, use get_member_from_id()
+        """
+        member = self.get_member_from_id(mid)
+        return [member] if member else []
 
     def get_member_from_database_id(self, database_id):
         """
