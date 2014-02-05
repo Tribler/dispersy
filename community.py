@@ -1553,7 +1553,7 @@ class Community(object):
         Returns the number of candidates that were removed.
         """
         now = time()
-        obsolete_candidates = [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.get_category(now) == u"none"]
+        obsolete_candidates = [(key, candidate) for key, candidate in self._candidates.iteritems() if candidate.get_category(now) is None]
         for key, candidate in obsolete_candidates:
             logger.debug("removing obsolete candidate %s", candidate)
             del self._candidates[key]

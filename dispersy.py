@@ -2544,7 +2544,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 if community.get_classification() == u"PreviewChannelCommunity":
                     continue
 
-                categories = {u"walk": [], u"stumble": [], u"intro": [], u"none": []}
+                categories = {u"walk": [], u"stumble": [], u"intro": [], None: []}
                 for candidate in community.candidates.itervalues():
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
@@ -2557,7 +2557,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     for age, candidate in sorted(aged):
                         summary.debug("%5.1fs %s%s%s %-7s %-13s %s",
                                       min(age, 999.0),
-                                      "O" if candidate.get_category(now) == u"none" else " ",
+                                      "O" if candidate.get_category(now) is None else " ",
                                       "E" if candidate.is_eligible_for_walk(now) else " ",
                                       "B" if isinstance(candidate, BootstrapCandidate) else " ",
                                       category,

@@ -127,7 +127,7 @@ class TestOverlay(DispersyTestFunc):
                          len([_ for _, category in info.candidates if category == u"walk"]),
                          len([_ for _, category in info.candidates if category == u"stumble"]),
                          len([_ for _, category in info.candidates if category == u"intro"]),
-                         len([_ for _, category in info.candidates if category == u"none"]))
+                         len([_ for _, category in info.candidates if category is None]))
             summary.debug("bootstrap walking: %d/%d ~%.1f%%", info.bootstrap_success, info.bootstrap_attempt, info.bootstrap_ratio)
             summary.debug("candidate walking: %d/%d ~%.1f%%", info.candidate_success, info.candidate_attempt, info.candidate_ratio)
 
@@ -172,7 +172,7 @@ class TestOverlay(DispersyTestFunc):
                         len([_ for _, category in info.candidates if category == u"walk"]),
                         len([_ for _, category in info.candidates if category == u"stumble"]),
                         len([_ for _, category in info.candidates if category == u"intro"]),
-                        len([_ for _, category in info.candidates if category == u"none"]),
+                        len([_ for _, category in info.candidates if category is None]),
                         info.bootstrap_attempt,
                         info.bootstrap_success,
                         info.candidate_attempt,
@@ -186,7 +186,7 @@ class TestOverlay(DispersyTestFunc):
         average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"walk"]) for info in history) / len(history)
         average_stumble_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"stumble"]) for info in history) / len(history)
         average_intro_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"intro"]) for info in history) / len(history)
-        average_none_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"none"]) for info in history) / len(history)
+        average_none_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category is None]) for info in history) / len(history)
 
         # write results for this run
         with open("%s_results.txt" % cid_hex, "w+") as handle:

@@ -64,6 +64,9 @@ class IntroductionRequestCache(NumberCache):
 
             self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
 
+            # set the walk repsonse to be invalid
+            self.helper_candidate.walk_response(-1)
+
     def _check_if_both_received(self):
         if self._introduction_response_received and self._puncture_received:
             self.community.request_cache.pop(self.identifier)

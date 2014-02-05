@@ -196,7 +196,7 @@ class WalkCandidate(Candidate):
         mapping = {u"walk": now - self._last_walk,
                    u"stumble": now - self._last_stumble,
                    u"intro": now - self._last_intro,
-                   u"none": now - max(self._last_walk, self._last_stumble, self._last_intro)}
+                   None: now - max(self._last_walk, self._last_stumble, self._last_intro)}
 
         return mapping[category]
 
@@ -227,7 +227,7 @@ class WalkCandidate(Candidate):
 
     def get_category(self, now):
         """
-        Returns the category (u"walk", u"stumble", u"intro", or u"none") depending on the current
+        Returns the category (u"walk", u"stumble", u"intro", or None) depending on the current
         time NOW.
         """
         assert isinstance(now, float), type(now)
@@ -241,7 +241,7 @@ class WalkCandidate(Candidate):
         if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
             return u"intro"
 
-        return u"none"
+        return None
 
     def walk(self, now, timeout_adjustment):
         """
