@@ -2283,7 +2283,6 @@ class Community(object):
         #
         # process the walker part of the request
         #
-
         for message in messages:
             payload = message.payload
             candidate = message.candidate
@@ -2305,7 +2304,7 @@ class Community(object):
                 responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier)))
 
                 # create puncture request
-                requests.append(meta_puncture_request.impl(distribution=(self.global_time,), destination=(introduced,), payload=(source_lan_address, source_wan_address, payload.identifier)))
+                requests.append(meta_puncture_request.impl(distribution=(self.global_time,), destination=(introduced,), payload=(payload.source_lan_address, payload.source_wan_address, payload.identifier)))
 
             else:
                 logger.debug("responding to %s without an introduction %s", candidate, type(self))
