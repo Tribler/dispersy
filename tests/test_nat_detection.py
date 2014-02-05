@@ -21,7 +21,7 @@ class TestNATDetection(DispersyTestFunc):
 
         # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
         # the current code this results in the CANDIDATE to remain 'obsolete'.
-        self.assertTrue(candidate.get_category(time()) is None)
+        self.assertIsNone(candidate.get_category(time()))
 
         self.assertNotEqual(self._dispersy.lan_address, self._dispersy.wan_address)
         self.assertEqual(self._dispersy.connection_type, u"unknown")
@@ -35,7 +35,7 @@ class TestNATDetection(DispersyTestFunc):
 
             # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
             # the current code this results in the CANDIDATE to remain 'obsolete'.
-            self.assertTrue(candidate.get_category(time()) is None)
+            self.assertIsNone(candidate.get_category(time()))
 
             # one vote is enough, but more won't hurt
             self.assertEqual(self._dispersy.lan_address, self._dispersy.wan_address)
@@ -50,7 +50,7 @@ class TestNATDetection(DispersyTestFunc):
 
             # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
             # the current code this results in the CANDIDATE to remain 'obsolete'.
-            self.assertTrue(candidate.get_category(time()) is None)
+            self.assertIsNone(candidate.get_category(time()))
 
             if i > 0:
                 # two votes are needed, but more won't hurt
@@ -104,7 +104,7 @@ class TestNATDetection(DispersyTestFunc):
 
         # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
         # the current code this results in the CANDIDATE to remain 'obsolete'.
-        self.assertTrue(candidate.get_category(time()) is None)
+        self.assertIsNone(candidate.get_category(time()))
         self.assertEqual(community.cleanup_candidates(), 2)
 
         for i in range(2):
