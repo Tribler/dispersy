@@ -2267,21 +2267,15 @@ class Community(object):
         #
         for message in messages:
             candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, message.payload.connection_type)
+            candidate.stumble(now)
             message._candidate = candidate
 
-            payload = message.payload
-
             # apply vote to determine our WAN address
-            self._dispersy.wan_address_vote(payload.destination_address, candidate)
+            self._dispersy.wan_address_vote(message.payload.destination_address, candidate)
 
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
             candidate.associate(message.authentication.member)
-
-            # update sender candidate
-            source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
-            candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
-            candidate.stumble(now)
 
             self.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
