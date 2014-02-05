@@ -2542,7 +2542,7 @@ class Community(object):
             # until we implement a proper 3-way handshake we are going to assume that the creator of
             # this message is associated to this candidate
             candidate.associate(message.authentication.member)
-            candidate.walk_response()
+            candidate.walk_response(now)
             self.filter_duplicate_candidate(candidate)
             logger.debug("introduction response from %s", candidate)
 
@@ -2623,7 +2623,7 @@ class Community(object):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
-        destination.walk(time(), cache.timeout_delay)
+        destination.walk(time())
         self.add_candidate(destination)
 
         # decide if the requested node should introduce us to someone else

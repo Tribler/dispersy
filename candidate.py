@@ -107,7 +107,7 @@ class WalkCandidate(Candidate):
         self._associations = set()
 
         # properties to determine the category
-        self._timeout_adjustment = 0.0
+        self._last_walk_reply = 0.0
         self._last_walk = 0.0
         self._last_stumble = 0.0
         self._last_intro = 0.0
@@ -135,7 +135,7 @@ class WalkCandidate(Candidate):
     def merge(self, other):
         assert isinstance(other, WalkCandidate), type(other)
         self._associations.update(other._associations)
-        self._timeout_adjustment = max(self._timeout_adjustment, other._timeout_adjustment)
+        self._last_walk_reply = max(self._last_walk_reply, other._last_walk_reply)
         self._last_walk = max(self._last_walk, other._last_walk)
         self._last_stumble = max(self._last_stumble, other._last_stumble)
         self._last_intro = max(self._last_intro, other._last_intro)
@@ -230,10 +230,7 @@ class WalkCandidate(Candidate):
         - SELF is either walk, stumble, or intro; and
         - the previous step is more than CANDIDATE_ELIGIBLE_DELAY ago.
         """
-        return (self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and
-                (self._last_walk + self._timeout_adjustment <= now < self._last_walk + CANDIDATE_WALK_LIFETIME or
-                 now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME or
-                 now < self._last_intro + CANDIDATE_INTRO_LIFETIME))
+        return (self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and self.get_category(now) != u"none")
 
     @property
     def last_walk(self):
@@ -254,7 +251,7 @@ class WalkCandidate(Candidate):
         """
         assert isinstance(now, float), type(now)
 
-        if self._last_walk + self._timeout_adjustment <= now < self._last_walk + CANDIDATE_WALK_LIFETIME:
+        if now < self._last_walk_reply + CANDIDATE_WALK_LIFETIME:
             return u"walk"
 
         if now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
@@ -265,20 +262,20 @@ class WalkCandidate(Candidate):
 
         return u"none"
 
-    def walk(self, now, timeout_adjustment):
+    def walk(self, now):
         """
         Called when we are about to send an introduction-request to this candidate.
         """
         assert isinstance(now, float), type(now)
-        assert isinstance(timeout_adjustment, float), type(timeout_adjustment)
         self._last_walk = now
-        self._timeout_adjustment = timeout_adjustment
 
-    def walk_response(self):
+    def walk_response(self, now):
         """
         Called when we received an introduction-response to this candidate.
         """
-        self._timeout_adjustment = 0.0
+        assert isinstance(now, float), type(now)
+        assert self._last_walk_reply <= now, self._last_walk_reply
+        self._last_walk_reply = now
 
     def stumble(self, now):
         """
