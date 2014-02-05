@@ -28,7 +28,11 @@ def print_unittest_combinations():
     options = []
     for length in xrange(len(flags)):
         for string in combinations(flags, length):
+            # receiving a reply without sending a request cannot happen, don't test
             if 'r' in string and not 'w' in string:
+                continue
+            # being eligable overwrites walked and received response
+            if 'e' in string and ('w' in string or 'r' in string):
                 continue
 
             s_func = "_" + "".join(string) if string else ""
@@ -79,7 +83,6 @@ class TestCandidates(DispersyTestFunc):
 
     Note that many variations of flags exist, multiple variations are generated using print_unittest_combinations.
     """
-
     def test_no_candidates(self): return self.check_candidates([])
     def test_one_candidate(self): return self.check_candidates([""])
     def test_two_candidates(self): return self.check_candidates(["", ""])
@@ -114,9 +117,6 @@ class TestCandidates(DispersyTestFunc):
     def test_one_wr_candidate(self): return self.check_candidates(["wr"])
     def test_two_wr_candidates(self): return self.check_candidates(["wr", "wr"])
     def test_many_wr_candidates(self): return self.check_candidates(["wr"] * 22)
-    def test_one_we_candidate(self): return self.check_candidates(["we"])
-    def test_two_we_candidates(self): return self.check_candidates(["we", "we"])
-    def test_many_we_candidates(self): return self.check_candidates(["we"] * 22)
     def test_one_ws_candidate(self): return self.check_candidates(["ws"])
     def test_two_ws_candidates(self): return self.check_candidates(["ws", "ws"])
     def test_many_ws_candidates(self): return self.check_candidates(["ws"] * 22)
@@ -135,9 +135,6 @@ class TestCandidates(DispersyTestFunc):
     def test_one_twr_candidate(self): return self.check_candidates(["twr"])
     def test_two_twr_candidates(self): return self.check_candidates(["twr", "twr"])
     def test_many_twr_candidates(self): return self.check_candidates(["twr"] * 22)
-    def test_one_twe_candidate(self): return self.check_candidates(["twe"])
-    def test_two_twe_candidates(self): return self.check_candidates(["twe", "twe"])
-    def test_many_twe_candidates(self): return self.check_candidates(["twe"] * 22)
     def test_one_tws_candidate(self): return self.check_candidates(["tws"])
     def test_two_tws_candidates(self): return self.check_candidates(["tws", "tws"])
     def test_many_tws_candidates(self): return self.check_candidates(["tws"] * 22)
@@ -153,75 +150,36 @@ class TestCandidates(DispersyTestFunc):
     def test_one_tsi_candidate(self): return self.check_candidates(["tsi"])
     def test_two_tsi_candidates(self): return self.check_candidates(["tsi", "tsi"])
     def test_many_tsi_candidates(self): return self.check_candidates(["tsi"] * 22)
-    def test_one_wre_candidate(self): return self.check_candidates(["wre"])
-    def test_two_wre_candidates(self): return self.check_candidates(["wre", "wre"])
-    def test_many_wre_candidates(self): return self.check_candidates(["wre"] * 22)
     def test_one_wrs_candidate(self): return self.check_candidates(["wrs"])
     def test_two_wrs_candidates(self): return self.check_candidates(["wrs", "wrs"])
     def test_many_wrs_candidates(self): return self.check_candidates(["wrs"] * 22)
     def test_one_wri_candidate(self): return self.check_candidates(["wri"])
     def test_two_wri_candidates(self): return self.check_candidates(["wri", "wri"])
     def test_many_wri_candidates(self): return self.check_candidates(["wri"] * 22)
-    def test_one_wes_candidate(self): return self.check_candidates(["wes"])
-    def test_two_wes_candidates(self): return self.check_candidates(["wes", "wes"])
-    def test_many_wes_candidates(self): return self.check_candidates(["wes"] * 22)
-    def test_one_wei_candidate(self): return self.check_candidates(["wei"])
-    def test_two_wei_candidates(self): return self.check_candidates(["wei", "wei"])
-    def test_many_wei_candidates(self): return self.check_candidates(["wei"] * 22)
     def test_one_wsi_candidate(self): return self.check_candidates(["wsi"])
     def test_two_wsi_candidates(self): return self.check_candidates(["wsi", "wsi"])
     def test_many_wsi_candidates(self): return self.check_candidates(["wsi"] * 22)
     def test_one_esi_candidate(self): return self.check_candidates(["esi"])
     def test_two_esi_candidates(self): return self.check_candidates(["esi", "esi"])
     def test_many_esi_candidates(self): return self.check_candidates(["esi"] * 22)
-    def test_one_twre_candidate(self): return self.check_candidates(["twre"])
-    def test_two_twre_candidates(self): return self.check_candidates(["twre", "twre"])
-    def test_many_twre_candidates(self): return self.check_candidates(["twre"] * 22)
     def test_one_twrs_candidate(self): return self.check_candidates(["twrs"])
     def test_two_twrs_candidates(self): return self.check_candidates(["twrs", "twrs"])
     def test_many_twrs_candidates(self): return self.check_candidates(["twrs"] * 22)
     def test_one_twri_candidate(self): return self.check_candidates(["twri"])
     def test_two_twri_candidates(self): return self.check_candidates(["twri", "twri"])
     def test_many_twri_candidates(self): return self.check_candidates(["twri"] * 22)
-    def test_one_twes_candidate(self): return self.check_candidates(["twes"])
-    def test_two_twes_candidates(self): return self.check_candidates(["twes", "twes"])
-    def test_many_twes_candidates(self): return self.check_candidates(["twes"] * 22)
-    def test_one_twei_candidate(self): return self.check_candidates(["twei"])
-    def test_two_twei_candidates(self): return self.check_candidates(["twei", "twei"])
-    def test_many_twei_candidates(self): return self.check_candidates(["twei"] * 22)
     def test_one_twsi_candidate(self): return self.check_candidates(["twsi"])
     def test_two_twsi_candidates(self): return self.check_candidates(["twsi", "twsi"])
     def test_many_twsi_candidates(self): return self.check_candidates(["twsi"] * 22)
     def test_one_tesi_candidate(self): return self.check_candidates(["tesi"])
     def test_two_tesi_candidates(self): return self.check_candidates(["tesi", "tesi"])
     def test_many_tesi_candidates(self): return self.check_candidates(["tesi"] * 22)
-    def test_one_wres_candidate(self): return self.check_candidates(["wres"])
-    def test_two_wres_candidates(self): return self.check_candidates(["wres", "wres"])
-    def test_many_wres_candidates(self): return self.check_candidates(["wres"] * 22)
-    def test_one_wrei_candidate(self): return self.check_candidates(["wrei"])
-    def test_two_wrei_candidates(self): return self.check_candidates(["wrei", "wrei"])
-    def test_many_wrei_candidates(self): return self.check_candidates(["wrei"] * 22)
     def test_one_wrsi_candidate(self): return self.check_candidates(["wrsi"])
     def test_two_wrsi_candidates(self): return self.check_candidates(["wrsi", "wrsi"])
     def test_many_wrsi_candidates(self): return self.check_candidates(["wrsi"] * 22)
-    def test_one_wesi_candidate(self): return self.check_candidates(["wesi"])
-    def test_two_wesi_candidates(self): return self.check_candidates(["wesi", "wesi"])
-    def test_many_wesi_candidates(self): return self.check_candidates(["wesi"] * 22)
-    def test_one_twres_candidate(self): return self.check_candidates(["twres"])
-    def test_two_twres_candidates(self): return self.check_candidates(["twres", "twres"])
-    def test_many_twres_candidates(self): return self.check_candidates(["twres"] * 22)
-    def test_one_twrei_candidate(self): return self.check_candidates(["twrei"])
-    def test_two_twrei_candidates(self): return self.check_candidates(["twrei", "twrei"])
-    def test_many_twrei_candidates(self): return self.check_candidates(["twrei"] * 22)
     def test_one_twrsi_candidate(self): return self.check_candidates(["twrsi"])
     def test_two_twrsi_candidates(self): return self.check_candidates(["twrsi", "twrsi"])
     def test_many_twrsi_candidates(self): return self.check_candidates(["twrsi"] * 22)
-    def test_one_twesi_candidate(self): return self.check_candidates(["twesi"])
-    def test_two_twesi_candidates(self): return self.check_candidates(["twesi", "twesi"])
-    def test_many_twesi_candidates(self): return self.check_candidates(["twesi"] * 22)
-    def test_one_wresi_candidate(self): return self.check_candidates(["wresi"])
-    def test_two_wresi_candidates(self): return self.check_candidates(["wresi", "wresi"])
-    def test_many_wresi_candidates(self): return self.check_candidates(["wresi"] * 22)
     def test_mixed_1_candidates(self): return self.check_candidates([''])
     def test_mixed_2_candidates(self): return self.check_candidates(['', 't'])
     def test_mixed_3_candidates(self): return self.check_candidates(['', 't', 'w'])
@@ -233,42 +191,27 @@ class TestCandidates(DispersyTestFunc):
     def test_mixed_9_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts'])
     def test_mixed_10_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti'])
     def test_mixed_11_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr'])
-    def test_mixed_12_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we'])
-    def test_mixed_13_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws'])
-    def test_mixed_14_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi'])
-    def test_mixed_15_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es'])
-    def test_mixed_16_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei'])
-    def test_mixed_17_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si'])
-    def test_mixed_18_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr'])
-    def test_mixed_19_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe'])
-    def test_mixed_20_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws'])
-    def test_mixed_21_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi'])
-    def test_mixed_22_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes'])
-    def test_mixed_23_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei'])
-    def test_mixed_24_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi'])
-    def test_mixed_25_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre'])
-    def test_mixed_26_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs'])
-    def test_mixed_27_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri'])
-    def test_mixed_28_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes'])
-    def test_mixed_29_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei'])
-    def test_mixed_30_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi'])
-    def test_mixed_31_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi'])
-    def test_mixed_32_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre'])
-    def test_mixed_33_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs'])
-    def test_mixed_34_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri'])
-    def test_mixed_35_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes'])
-    def test_mixed_36_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei'])
-    def test_mixed_37_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi'])
-    def test_mixed_38_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi'])
-    def test_mixed_39_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres'])
-    def test_mixed_40_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei'])
-    def test_mixed_41_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi'])
-    def test_mixed_42_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi'])
-    def test_mixed_43_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'twres'])
-    def test_mixed_44_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'twres', 'twrei'])
-    def test_mixed_45_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'twres', 'twrei', 'twrsi'])
-    def test_mixed_46_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'twres', 'twrei', 'twrsi', 'twesi'])
-    def test_mixed_47_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'we', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'twe', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wre', 'wrs', 'wri', 'wes', 'wei', 'wsi', 'esi', 'twre', 'twrs', 'twri', 'twes', 'twei', 'twsi', 'tesi', 'wres', 'wrei', 'wrsi', 'wesi', 'twres', 'twrei', 'twrsi', 'twesi', 'wresi'])
+    def test_mixed_12_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws'])
+    def test_mixed_13_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi'])
+    def test_mixed_14_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es'])
+    def test_mixed_15_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei'])
+    def test_mixed_16_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si'])
+    def test_mixed_17_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr'])
+    def test_mixed_18_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws'])
+    def test_mixed_19_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi'])
+    def test_mixed_20_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes'])
+    def test_mixed_21_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei'])
+    def test_mixed_22_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi'])
+    def test_mixed_23_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs'])
+    def test_mixed_24_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri'])
+    def test_mixed_25_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi'])
+    def test_mixed_26_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi'])
+    def test_mixed_27_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs'])
+    def test_mixed_28_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri'])
+    def test_mixed_29_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi'])
+    def test_mixed_30_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi', 'tesi'])
+    def test_mixed_31_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi', 'tesi', 'wrsi'])
+    def test_mixed_32_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi', 'tesi', 'wrsi', 'twrsi'])
 
     @staticmethod
     def create_candidates(community, all_flags):
@@ -315,10 +258,7 @@ class TestCandidates(DispersyTestFunc):
             Returns True when the flags correspond with a Candidate that should be returned by
             dispersy_yield_candidates.
             """
-            return ("s" in flags or
-                    "e" in flags or
-                    "i" in flags or
-                    ("w" in flags and "r" in flags))
+            return ("s" in flags or "e" in flags or "i" in flags or "r" in flags)
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
@@ -329,9 +269,7 @@ class TestCandidates(DispersyTestFunc):
             Returns True when the flags correspond with a Candidate that should be returned by
             dispersy_yield_verified_candidates.
             """
-            return ("s" in flags or
-                    "e" in flags or
-                    ("w" in flags and "r" in flags))
+            return ("s" in flags or "e" in flags or "r" in flags)
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
@@ -356,7 +294,6 @@ class TestCandidates(DispersyTestFunc):
                 # the candidate has the 'introduce' but not the 'walk' flag, i.e. it is known but we have not recently
                 # walked towards it
                 return True
-
             return False
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
@@ -368,39 +305,23 @@ class TestCandidates(DispersyTestFunc):
             Returns True when the flags correspond with a Candidate that should be returned by
             dispersy_get_introduce_candidate.
             """
-            if exclude_candidate and exclude_candidate == candidate:
-                return
+            if exclude_candidate:
+                if exclude_candidate == candidate:
+                    return
 
-            if exclude_candidate and not exclude_candidate.tunnel and candidate.tunnel:
-                return
+                if not exclude_candidate.tunnel and candidate.tunnel:
+                    return
 
             if "s" in flags:
-                return "s"
+                return True
 
-            if ("e" in flags or
-                ("w" in flags and "r" in flags)):
-                return "w"
+            if "e" in flags:
+                return True
 
-        # introduce candidates are chosen from two pools, W and S.  With both pools chosen equally often, regardless of
-        # the size of the pools.  Hence, candidates in smaller pools will be represented more often in the result.
+            if "r" in flags:
+                return True
 
-        walk = [candidate
-                for flags, candidate
-                in zip(all_flags, candidates)
-                if filter_func(flags, candidate) == "w"]
-
-        stumble = [candidate
-                   for flags, candidate
-                   in zip(all_flags, candidates)
-                   if filter_func(flags, candidate) == "s"]
-
-        if walk and stumble:
-            factor = gcd(len(stumble), len(walk))
-            pool = (walk * (len(stumble) / factor)) + (stumble * (len(walk) / factor))
-        else:
-            pool = walk + stumble
-
-        return sorted(pool)
+        return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags, candidate)]
 
     @call_on_dispersy_thread
     def check_candidates(self, all_flags):
@@ -408,14 +329,14 @@ class TestCandidates(DispersyTestFunc):
         assert all(isinstance(flags, str) for flags in all_flags)
 
         def compare(selection, actual):
-            selection = ["%s:%d" % c.sock_addr if c else None for c in selection]
-            actual = ["%s:%d" % c.sock_addr if c else None for c in actual]
+            selection = set(["%s:%d" % c.sock_addr if c else None for c in selection])
+            actual = set(["%s:%d" % c.sock_addr if c else None for c in actual])
             try:
-                self.assertEquals(set(selection), set(actual))
+                self.assertEquals(selection, actual)
             except:
                 print "FLAGS ", all_flags
-                print "SELECT", selection
-                print "ACTUAL", actual
+                print "SELECT", sorted(selection)
+                print "ACTUAL", sorted(actual)
                 raise
 
         # MAX_CALLS determines the number of times that an interface method is called, it should be more than zero and
