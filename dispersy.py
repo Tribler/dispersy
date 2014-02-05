@@ -1615,7 +1615,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         self._statistics.received_count += len(packets)
 
-        sort_key = lambda tup: (tup[1][2:22], tup[1][22])  # community ID, message meta type
+        sort_key = lambda tup: (tup[1][2:22], tup[1][1], tup[1][22])  # community ID, community version, message meta type
         groupby_key = lambda tup: tup[1][2:22]  # community ID
         for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community

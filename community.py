@@ -1805,7 +1805,7 @@ class Community(object):
         assert isinstance(timestamp, float), timestamp
 
         messages = []
-        for message_type, iterator in groupby(packets, key=lambda tup: tup[1][22]):
+        for _, iterator in groupby(packets, key=lambda tup: (tup[1][1], tup[1][22])):
             cur_packets = list(iterator)
             # find associated conversion
             try:
