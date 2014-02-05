@@ -1471,17 +1471,20 @@ class Community(object):
                   if (other.wan_address[0] == wan_address[0] and
                       other.lan_address == lan_address)]
 
-        # merge and remove existing candidates in favor of the new CANDIDATE
-        for other in others:
-            # all except for the CANDIDATE
-            if not other == candidate:
-                logger.warning("removing %s %s in favor of %s %s",
-                               other.sock_addr, other,
-                               candidate.sock_addr, candidate)
-                candidate.merge(other)
-                del self._candidates[other.sock_addr]
-                self._dispersy.wan_address_unvote(other)
-        self.add_candidate(candidate)
+        if others:
+            # merge and remove existing candidates in favor of the new CANDIDATE
+            for other in others:
+                # all except for the CANDIDATE
+                if not other == candidate:
+                    logger.warning("removing %s %s in favor of %s %s",
+                                   other.sock_addr, other,
+                                   candidate.sock_addr, candidate)
+                    candidate.merge(other)
+                    del self._candidates[other.sock_addr]
+                    self._dispersy.wan_address_unvote(other)
+
+            # add this candidate to make sure it didn't get removed in the del call
+            self.add_candidate(candidate)
 
     def handle_missing_messages(self, messages, *classes):
         if __debug__:
@@ -2271,7 +2274,6 @@ class Community(object):
             source_lan_address, source_wan_address = self._dispersy.estimate_lan_and_wan_addresses(candidate.sock_addr, payload.source_lan_address, payload.source_wan_address)
             candidate.update(candidate.tunnel, source_lan_address, source_wan_address, payload.connection_type)
             candidate.stumble(now)
-            self.add_candidate(candidate)
 
             self.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
@@ -2571,7 +2573,6 @@ class Community(object):
                     introduce = self.create_candidate(sock_introduction_addr, payload.tunnel, lan_introduction_address, wan_introduction_address, u"unknown")
 
                 # reset the 'I have been introduced' timer
-                self.add_candidate(introduce)
                 introduce.intro(now)
                 self.filter_duplicate_candidate(introduce)
                 logger.debug("received introduction to %s from %s", introduce, candidate)
@@ -2615,7 +2616,6 @@ class Community(object):
 
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
         destination.walk(time())
-        self.add_candidate(destination)
 
         # decide if the requested node should introduce us to someone else
         # advice = random() < 0.5 or len(community.candidates) <= 5
@@ -2847,7 +2847,6 @@ class Community(object):
                     candidate.update(message.candidate.tunnel, lan_address, wan_address, u"unknown")
 
                 # reset the 'I have been introduced' timer
-                self.add_candidate(candidate)
                 candidate.intro(now)
                 logger.debug("received introduction to %s", candidate)
 
