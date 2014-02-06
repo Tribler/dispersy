@@ -312,15 +312,21 @@ class LastSyncDistribution(SyncDistribution):
         def history_size(self):
             return self._meta._history_size
 
-    def __init__(self, synchronization_direction, priority, history_size, pruning=NoPruning()):
+    def __init__(self, synchronization_direction, priority, history_size, pruning=NoPruning(), custom_callback=None):
         assert isinstance(history_size, int)
         assert history_size > 0
+        assert not custom_callback or isinstance(custom_callback, tuple), u"callback should tuple of two methods (0) check (1) delete."
         super(LastSyncDistribution, self).__init__(synchronization_direction, priority, pruning)
         self._history_size = history_size
+        self._custom_callback = custom_callback
 
     @property
     def history_size(self):
         return self._history_size
+
+    @property
+    def custom_callback(self, ):
+        return self._custom_callback
 
 
 class DirectDistribution(Distribution):
