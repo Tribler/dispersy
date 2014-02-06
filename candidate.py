@@ -48,10 +48,6 @@ class Candidate(object):
     def tunnel(self):
         return self._tunnel
 
-    def get_destination_address(self, wan_address):
-        logger.debug("deprecated.  use candidate.sock_addr instead")
-        return self._sock_addr
-
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
 
