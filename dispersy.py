@@ -163,7 +163,6 @@ class Dispersy(object):
 
         # loaded communities.  cid:Community pairs.
         self._communities = {}
-        self._walker_commmunities = []
 
         self._check_distribution_batch_map = {DirectDistribution: self._check_direct_distribution_batch,
                                               FullSyncDistribution: self._check_full_sync_distribution_batch,
@@ -331,7 +330,7 @@ class Dispersy(object):
             # first attempt will block for at most TIMEOUT seconds
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
             # give low priority to ensure that on_results is called before the call returns
-            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority=-128)
+            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority= -128)
 
             if not bootstrap.are_resolved:
                 # unable to resolve all... retry until successful
@@ -660,14 +659,8 @@ class Dispersy(object):
         assert isinstance(community, Community)
         logger.debug("%s %s", community.cid.encode("HEX"), community.get_classification())
         assert not community.cid in self._communities
-        assert not community in self._walker_commmunities
         self._communities[community.cid] = community
         community.dispersy_check_database()
-
-        if community.dispersy_enable_candidate_walker:
-            self._walker_commmunities.insert(0, community)
-            # restart walker scheduler
-            self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
 
         # count the number of times that a community was attached
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
@@ -696,21 +689,11 @@ class Dispersy(object):
         if __debug__:
             from .community import Community
         assert isinstance(community, Community)
-        logger.debug("%s %s", community.cid.encode("HEX"), community.get_classification())
         assert community.cid in self._communities
         assert self._communities[community.cid] == community
-        assert not community.dispersy_enable_candidate_walker or community in self._walker_commmunities, [community.dispersy_enable_candidate_walker, community in self._walker_commmunities]
-        del self._communities[community.cid]
 
-        # stop walker
-        if community.dispersy_enable_candidate_walker:
-            self._walker_commmunities.remove(community)
-            if self._walker_commmunities:
-                # restart walker scheduler
-                self._callback.replace_register(self._pending_callbacks[u"candidate-walker"], self._candidate_walker)
-            else:
-                # stop walker scheduler
-                self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
+        logger.debug("Community %s %s is detached", community.cid.encode("HEX"), community.get_classification())
+        del self._communities[community.cid]
 
         # remove any items that are left in the cache
         community.purge_batch_cache()
@@ -2441,77 +2424,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             logger.warning("Dispersy is already stopping, ignoring second call to Dispersy.stop()")
             return False
 
-    def _candidate_walker(self):
-        """
-        Periodically select a candidate and take a step in the network.
-        """
-        walker_communities = self._walker_commmunities
-
-        steps = 0
-        start = time()
-
-        # delay will never be less than 0.1, hence we can accommodate 50 communities before the
-        # interval between each step becomes larger than 5.0 seconds
-        optimaldelay = max(0.1, 5.0 / len(walker_communities))
-        logger.debug("there are %d walker enabled communities.  pausing %ss (on average) between each step", len(walker_communities), optimaldelay)
-
-        if __debug__:
-            RESETS = 0
-            STEPS = 0
-            START = start
-            DELAY = 0.0
-            for community in walker_communities:
-                community.__MOST_RECENT_WALK = 0.0
-
-        for community in walker_communities:
-            community.__most_recent_sync = 0.0
-
-        while True:
-            community = walker_communities.pop(0)
-            walker_communities.append(community)
-
-            actualtime = time()
-            allow_sync = community.dispersy_enable_bloom_filter_sync and actualtime - community.__most_recent_sync > 4.5
-            logger.debug("previous sync was %.1f seconds ago %s", actualtime - community.__most_recent_sync, "" if allow_sync else "(no sync this cycle)")
-            if allow_sync:
-                community.__most_recent_sync = actualtime
-
-            if __debug__:
-                NOW = time()
-                OPTIMALSTEPS = (NOW - START) / optimaldelay
-                STEPDIFF = NOW - community.__MOST_RECENT_WALK
-                community.__MOST_RECENT_WALK = NOW
-                logger.debug("%s taking step every %.2fs in %d communities.  steps: %d/%d ~%.2f.  diff: %.1f.  resets: %d",
-                             community.cid.encode("HEX"), DELAY, len(walker_communities), steps, int(OPTIMALSTEPS), (-1.0 if OPTIMALSTEPS == 0.0 else (STEPS / OPTIMALSTEPS)), STEPDIFF, RESETS)
-                STEPS += 1
-
-            # walk
-            assert community.dispersy_enable_candidate_walker
-            assert community.dispersy_enable_candidate_walker_responses
-            try:
-                community.take_step(allow_sync)
-                steps += 1
-            except Exception:
-                logger.exception("%s causes an exception during take_step", community.cid.encode("HEX"))
-
-            optimaltime = start + steps * optimaldelay
-            actualtime = time()
-
-            if optimaltime + 5.0 < actualtime:
-                # way out of sync!  reset start time
-                logger.warning("can not keep up!  resetting walker start time!")
-                start = actualtime
-                steps = 0
-                self._statistics.walk_reset += 1
-                if __debug__:
-                    DELAY = 0.0
-                    RESETS += 1
-
-            else:
-                if __debug__:
-                    DELAY = max(0.0, optimaltime - actualtime)
-                yield max(0.0, optimaltime - actualtime)
-
     def _stats_detailed_candidates(self):
         """
         Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
@@ -2527,13 +2439,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             yield 5.0
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d; reset %d",
+            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d",
                           self._statistics.walk_attempt,
                           self._statistics.walk_success,
                           self._statistics.walk_invalid_response_identifier,
                           self._statistics.walk_bootstrap_attempt,
-                          self._statistics.walk_bootstrap_success,
-                          self._statistics.walk_reset)
+                          self._statistics.walk_bootstrap_success)
             summary.debug("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
                           self._statistics.walk_advice_outgoing_request,
                           self._statistics.walk_advice_incoming_response,

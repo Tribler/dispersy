@@ -366,6 +366,10 @@ class Community(object):
         # statistics...
         self._statistics = CommunityStatistics(self)
 
+        # start walker, if needed
+        if self.dispersy_enable_candidate_walker:
+            self._dispersy.callback.register(self.take_step)
+
     @property
     def candidates(self):
         """
@@ -1104,16 +1108,23 @@ class Community(object):
             assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
-    def take_step(self, allow_sync):
-        if self.cid in self._dispersy._communities:
-            candidate = self.dispersy_get_walk_candidate()
-            if candidate:
-                logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
-                self.create_introduction_request(candidate, allow_sync)
-                return True
-            else:
-                logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
-                return False
+    def take_step(self):
+        most_recent_sync = None
+        while True:
+            # if cid not in self._dispersy._communities it is detached, but not unloaded
+            if self.cid in self._dispersy._communities:
+                now = time()
+                logger.debug("previous sync was %.1f seconds ago", now - most_recent_sync if most_recent_sync else -1)
+
+                candidate = self.dispersy_get_walk_candidate()
+                if candidate:
+                    logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+                    self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
+                else:
+                    logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
+                most_recent_sync = time()
+
+            yield 5.0
 
     @documentation(Dispersy.get_message)
     def get_dispersy_message(self, member, global_time):

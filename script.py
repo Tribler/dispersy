@@ -334,7 +334,6 @@ class ScenarioScriptBase(ScriptBase):
                               'delay_timeout': self._dispersy.statistics.delay_timeout,
                               'walk_attempt': self._dispersy.statistics.walk_attempt,
                               'walk_success': self._dispersy.statistics.walk_success,
-                              'walk_reset': self._dispersy.statistics.walk_reset,
                               'conn_type': self._dispersy.statistics.connection_type,
                               'bloom': bloom,
                               'candidates': candidates}
