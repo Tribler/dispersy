@@ -1448,7 +1448,14 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # refuse messages that have been pruned (or soon will be)
         messages = [DropMessage(message, "message has been pruned") if isinstance(message, Message.Implementation) and not message.distribution.pruning.is_active() else message for message in messages]
 
-        if isinstance(meta.authentication, MemberAuthentication):
+        # for meta data messages
+        if meta.distribution.custom_callback:
+            unique = set()
+            times = {}
+            messages = [message if isinstance(message, DropMessage) else meta.distribution.custom_callback[0](unique, times, message) for message in messages]
+
+        # default behaviour
+        elif isinstance(meta.authentication, MemberAuthentication):
             # a message is considered unique when (creator, global-time), i.r. (authentication.member,
             # distribution.global_time), is unique.  UNIQUE is used in the check_member_and_global_time
             # function
@@ -1737,28 +1744,34 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         if isinstance(meta.distribution, LastSyncDistribution):
             # delete packets that have become obsolete
             items = set()
-            if is_double_member_authentication:
-                order = lambda member1, member2: (member1, member2) if member1 < member2 else (member2, member1)
-                for member1, member2 in set(order(message.authentication.members[0].database_id, message.authentication.members[1].database_id) for message in messages):
-                    assert member1 < member2, [member1, member2]
-                    all_items = list(self._database.execute(u"""
+            # handle metadata message
+            if meta.distribution.custom_callback:
+                items = meta.distribution.custom_callback[1](messages)
+
+            # default behaviour
+            else:
+                if is_double_member_authentication:
+                    order = lambda member1, member2: (member1, member2) if member1 < member2 else (member2, member1)
+                    for member1, member2 in set(order(message.authentication.members[0].database_id, message.authentication.members[1].database_id) for message in messages):
+                        assert member1 < member2, [member1, member2]
+                        all_items = list(self._database.execute(u"""
 SELECT sync.id, sync.global_time
 FROM sync
 JOIN double_signed_sync ON double_signed_sync.sync = sync.id
 WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed_sync.member2 = ?
 ORDER BY sync.global_time, sync.packet""", (meta.database_id, member1, member2)))
-                    if len(all_items) > meta.distribution.history_size:
-                        items.update(all_items[:len(all_items) - meta.distribution.history_size])
+                        if len(all_items) > meta.distribution.history_size:
+                            items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
-            else:
-                for member_database_id in set(message.authentication.member.database_id for message in messages):
-                    all_items = list(self._database.execute(u"""
+                else:
+                    for member_database_id in set(message.authentication.member.database_id for message in messages):
+                        all_items = list(self._database.execute(u"""
 SELECT id, global_time
 FROM sync
 WHERE meta_message = ? AND member = ?
 ORDER BY global_time""", (meta.database_id, member_database_id)))
-                    if len(all_items) > meta.distribution.history_size:
-                        items.update(all_items[:len(all_items) - meta.distribution.history_size])
+                        if len(all_items) > meta.distribution.history_size:
+                            items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
             if items:
                 self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
@@ -2208,6 +2221,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 # ensure that we have only history-size messages per member
                 #
                 if isinstance(meta.distribution, LastSyncDistribution):
+                    if meta.distribution.custom_callback:
+                        continue
+
                     if isinstance(meta.authentication, MemberAuthentication):
                         counter = 0
                         counter_member_id = 0
