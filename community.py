@@ -357,11 +357,15 @@ class Community(object):
 
         # Initialize all the candidate iterators
         self._candidates = OrderedDict()
+
         self._walked_candidates = self._iter_category(u'walk')
         self._stumbled_candidates = self._iter_category(u'stumble')
         self._introduced_candidates = self._iter_category(u'intro')
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
-        self._bootstrap_candidates = self._iter_bootstrap()
+
+        self._bootstrap_candidates = dict()
+        self._bootstrap_candidates_iterator = self._iter_bootstrap()
+        self.update_bootstrap_candidates(self._dispersy.bootstrap_candidates)
 
         # statistics...
         self._statistics = CommunityStatistics(self)
@@ -1199,7 +1203,7 @@ class Community(object):
         while True:
             no_result = True
 
-            bootstrap_candidates = list(self._dispersy.bootstrap_candidates)
+            bootstrap_candidates = self._bootstrap_candidates.values()
             for candidate in bootstrap_candidates:
                 if candidate.is_eligible_for_walk(time()):
                     no_result = False
@@ -1218,7 +1222,7 @@ class Community(object):
         The returned 'walk', 'stumble', and 'intro' candidates are randomised on every call and
         returned only once each.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         now = time()
         candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble", u"intro")]
@@ -1232,7 +1236,7 @@ class Community(object):
         The returned 'walk' and 'stumble' candidates are randomised on every call and returned only
         once each.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         now = time()
         candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble")]
@@ -1245,7 +1249,7 @@ class Community(object):
         This method is used by the walker to choose the candidates to introduce when an introduction
         request is received.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         first_candidates = [None, None]
         while True:
@@ -1301,7 +1305,7 @@ class Community(object):
         # bootstrap peers can not be visited multiple times within 55 seconds.  this is handled by
         # the Candidate.is_eligible_for_walk(...) method
 
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
+        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
 
         from sys import maxsize
 
@@ -1350,7 +1354,7 @@ class Community(object):
                                 return intro
 
             else:  # ~.5%
-                candidate = self._bootstrap_candidates.next()
+                candidate = self._bootstrap_candidates_iterator.next()
                 if candidate:
                     logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0], category_sizes[1], category_sizes[2], candidate)
                     return candidate
@@ -1390,7 +1394,7 @@ class Community(object):
         4. Or returns None
         """
         # use existing (bootstrap) candidate
-        candidate = self._candidates.get(sock_addr) or self._dispersy._bootstrap_candidates.get(sock_addr)
+        candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
         logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
 
         if candidate is None:
@@ -1446,7 +1450,7 @@ class Community(object):
     def add_candidate(self, candidate):
         if not isinstance(candidate, BootstrapCandidate):
             assert isinstance(candidate, WalkCandidate), type(candidate)
-            assert candidate.sock_addr not in self._dispersy._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+            assert candidate.sock_addr not in self._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
 
             if candidate.sock_addr not in self._candidates:
                 self._candidates[candidate.sock_addr] = candidate
@@ -1459,11 +1463,10 @@ class Community(object):
         This method will ensure that none of the self._candidates point to a known
         BootstrapCandidate.
         """
+        self._bootstrap_candidates.clear()
         for candidate in candidates:
+            self._bootstrap_candidates[candidate.sock_addr] = BootstrapCandidate(candidate.sock_addr, candidate.tunnel)
             self._candidates.pop(candidate.sock_addr, None)
-
-        assert len(set(self._candidates.iterkeys()) & set(bsc.sock_addr for bsc in self._dispersy.bootstrap_candidates)) == 0, \
-            "candidates and bootstrap candidates must be separate"
 
     def get_candidate_mid(self, mid):
         members = self._dispersy.get_members_from_id(mid)
