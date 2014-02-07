@@ -248,7 +248,7 @@ class WalkCandidate(Candidate):
         Called when we received an introduction-response to this candidate.
         """
         assert isinstance(now, float), type(now)
-        assert self._last_walk_reply <= now, self._last_walk_reply
+        assert now == -1.0 or self._last_walk_reply <= now, self._last_walk_reply
         self._last_walk_reply = now
 
     def stumble(self, now):
