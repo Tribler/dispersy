@@ -19,11 +19,11 @@ from M2Crypto import EC
 # Note that both explicit and implicit relative imports are based on the name of the current
 # module. Since the name of the main module is always "__main__", modules intended for use as the
 # main module of a Python application should always use absolute imports.
-from dispersy.crypto import ECCrypto
+from dispersy.crypto import ECCrypto, _CURVES
 
 def ec_name(eccrypto, curve):
     assert isinstance(curve, unicode)
-    curve_id = eccrypto._CURVES[curve]
+    curve_id = _CURVES[curve]
 
     for name in dir(EC):
         value = getattr(EC, name)
@@ -57,7 +57,7 @@ def main():
     parser.add_argument("curves",
                         metavar="CURVE",
                         nargs="+",
-                        choices=sorted([str(curve) for curve in eccrypto.get_security_levels()]),
+                        choices=sorted([str(curve) for curve in eccrypto.security_levels]),
                         help="EC curves to create")
     args = parser.parse_args()
 
