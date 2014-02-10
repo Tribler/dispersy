@@ -2112,10 +2112,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
             # 12/10/11 Boudewijn: verify that we do not have to many packets in the database
             if __debug__:
-                if not is_double_member_authentication:
+                if not is_double_member_authentication and meta.distribution.custom_callback is None:
                     for message in messages:
                         history_size, = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
-                        assert history_size <= message.distribution.history_size, [count, message.distribution.history_size, message.authentication.member.database_id]
+                        assert history_size <= message.distribution.history_size, [history_size, message.distribution.history_size, message.authentication.member.database_id]
 
         # update the global time
         meta.community.update_global_time(highest_global_time)
