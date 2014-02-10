@@ -1338,13 +1338,6 @@ class NoDefBinaryConversion(Conversion):
         # authentication
         decode_functions.authentication(placeholder)
         assert isinstance(placeholder.authentication, Authentication.Implementation)
-        # drop packet if the creator is blacklisted.  we would prefer to do this in dispersy.py,
-        # however, decoding the payload can cause DelayPacketByMissingMessage to be raised for
-        # dispersy-undo messages, and the last thing that we want is to request messages from a
-        # blacklisted member
-        if isinstance(placeholder.meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)) and placeholder.authentication.member.must_blacklist:
-            self._community.dispersy.send_malicious_proof(self._community, placeholder.authentication.member, candidate)
-            raise DropPacket("Creator is blacklisted")
 
         # resolution
         decode_functions.resolution(placeholder)

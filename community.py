@@ -1578,19 +1578,6 @@ class Community(object):
         elif message.payload.is_hard_kill:
             return HardKilledCommunity
 
-    def dispersy_malicious_member_detected(self, member, packets):
-        """
-        Proof has been found that MEMBER is malicious
-
-        @param member: The malicious member.
-        @type member: Member
-
-        @param packets: One or more packets proving that the member is malicious.  All packets must
-         be associated to the same community.
-        @type packets: [Packet]
-        """
-        pass
-
     def get_meta_message(self, name):
         """
         Returns the meta message by its name.
@@ -1956,15 +1943,13 @@ class Community(object):
 
         The messages are processed with the following steps:
 
-         1. Messages created by a member in our blacklist are droped.
+         1. Messages that are old or duplicate, based on their distribution policy, are dropped.
 
-         2. Messages that are old or duplicate, based on their distribution policy, are dropped.
+         2. The meta.check_callback(...) is used to allow messages to be dropped or delayed.
 
-         3. The meta.check_callback(...) is used to allow messages to be dropped or delayed.
+         3. Messages are stored, based on their distribution policy.
 
-         4. Messages are stored, based on their distribution policy.
-
-         5. The meta.handle_callback(...) is used to process the messages.
+         4. The meta.handle_callback(...) is used to process the messages.
 
         @param packets: The sequence of messages with the same meta message from the same community.
         @type packets: [Message.Implementation]
@@ -3545,9 +3530,6 @@ class Community(object):
                 # 2. cleanup sync table.  everything except what we need to tell others this
                 # community is no longer available
                 self._dispersy._database.execute(u"DELETE FROM sync WHERE community = ? AND id NOT IN (" + u", ".join(u"?" for _ in packet_ids) + ")", [self.database_id] + list(packet_ids))
-
-                # 3. cleanup the malicious_proof table.  we need nothing here anymore
-                self._dispersy._database.execute(u"DELETE FROM malicious_proof WHERE community = ?", (self.database_id,))
 
             self._dispersy.reclassify_community(self, new_classification)
 
