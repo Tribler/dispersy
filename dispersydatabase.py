@@ -18,14 +18,14 @@ if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
 
 
-LATEST_VERSION = 17
+LATEST_VERSION = 18
 
 schema = u"""
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
- public_key BLOB,                               -- member public key
- tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
+ public_key BLOB);                              -- member public key
+
 CREATE INDEX member_mid_index ON member(mid);
 
 CREATE TABLE private_key(
@@ -380,11 +380,35 @@ UPDATE option SET value = '17' WHERE key = 'database_version';
 
             # upgrade from version 17 to version 18
             if database_version < 18:
-                # there is no version 18 yet...
-                # logger.debug("upgrade database %d -> %d", database_version, 18)
-                # self.executescript(u"""UPDATE option SET value = '18' WHERE key = 'database_version';""")
+                # In version 18, we remove the tags column as we don't have blackisting anymore
+                logger.debug("upgrade database %d -> %d", database_version, 18)
+                self.executescript(u"""
+-- move / remove old member table
+DROP INDEX IF EXISTS member_mid_index;
+ALTER TABLE member RENAME TO old_member;
+-- create new member table
+CREATE TABLE member(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB,                               -- member public key
+ );
+CREATE INDEX member_mid_index ON member(mid);
+-- fill new member table with old data
+INSERT INTO member (id, mid, public_key) SELECT id, mid, public_key FROM old_member;
+-- remove old member table
+DROP TABLE old_member;
+-- update database version
+UPDATE option SET value = '18' WHERE key = 'database_version';
+""")
+                self.commit()
+                logger.debug("upgrade database %d -> %d (done)", database_version, 18)
+
+            if database_version < 19:
+                # there is no version 19 yet...
+                # logger.debug("upgrade database %d -> %d", database_version, 19)
+                # self.executescript(u"""UPDATE option SET value = '19' WHERE key = 'database_version';""")
                 # self.commit()
-                # logger.debug("upgrade database %d -> %d (done)", database_version, 18)
+                # logger.debug("upgrade database %d -> %d (done)", database_version, 19)
                 pass
 
         return LATEST_VERSION
