@@ -73,12 +73,6 @@ CREATE TABLE sync(
 CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
 CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
 
-CREATE TABLE malicious_proof(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- community INTEGER REFERENCES community(id),
- member INTEGER REFERENCES name(id),
- packet BLOB);
-
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '""" + str(LATEST_VERSION) + """');
 """
@@ -397,6 +391,8 @@ CREATE INDEX member_mid_index ON member(mid);
 INSERT INTO member (id, mid, public_key) SELECT id, mid, public_key FROM old_member;
 -- remove old member table
 DROP TABLE old_member;
+-- remove table malicious_proof
+DROP TABLE IF EXISTS malicious_proof;
 -- update database version
 UPDATE option SET value = '18' WHERE key = 'database_version';
 """)
