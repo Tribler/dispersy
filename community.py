@@ -1943,7 +1943,7 @@ class Community(object):
 
         The messages are processed with the following steps:
 
-         1. Messages that are old or duplicate, based on their distribution policy, are dropped.
+         1. Messages that are superseded or duplicate, based on their distribution policy, are dropped.
 
          2. The meta.check_callback(...) is used to allow messages to be dropped or delayed.
 
@@ -2426,40 +2426,38 @@ class Community(object):
                 undone = 0
 
             if undone and message.name == u"dispersy-undo-own":
-                # the dispersy-undo-own message is a curious beast.  Anyone is allowed to create one
-                # (regardless of the community settings) and everyone is responsible to propagate
-                # these messages.  A malicious member could create an infinite number of
-                # dispersy-undo-own messages and thereby take down a community.
+                # the dispersy-undo-own message is a curious beast.  Anyone is allowed to create one (regardless of the
+                # community settings) and everyone is responsible to propagate these messages.  A malicious member can
+                # create an infinite number of dispersy-undo-own messages and thereby take down a community.
                 #
-                # to prevent this, we allow only one dispersy-undo-own message per message.  When we
-                # detect a second message, the member is declared to be malicious and blacklisted.
-                # The proof of being malicious is forwarded to other nodes.  The malicious node is
-                # now limited to creating only one dispersy-undo-own message per message that she
-                # creates.  And that can be limited by revoking her right to create messages.
+                # To mitigate this, we allow only one dispersy-undo-own message per message.  The malicious node is now
+                # limited to creating only one dispersy-undo-own message per message that she creates.  And that can be
+                # limited by revoking her right to create messages.
 
                 # search for the second offending dispersy-undo message
                 member = message.authentication.member
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
-                for packet_id, packet in self._dispersy._database.execute(u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
-                                                                         (self.database_id, member.database_id, undo_own_meta.database_id)):
-                    msg = Packet(undo_own_meta, str(packet), packet_id).load_message()
-                    if message.payload.global_time == msg.payload.global_time:
-                        logger.warning("detected malicious behavior")
-                        self._dispersy.declare_malicious_member(member, [msg, message])
-
-                        # the sender apparently does not have the offending dispersy-undo message, lets give
-                        self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, msg.name)
-                        self._dispersy._endpoint.send([message.candidate], [msg.packet])
-
+                for packet_id, packet in self._dispersy._database.execute(
+                        u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
+                        (self.database_id, member.database_id, undo_own_meta.database_id)):
+                    db_msg = Packet(undo_own_meta, str(packet), packet_id).load_message()
+                    if message.payload.global_time == db_msg.payload.global_time:
                         if member == self.my_member:
-                            logger.error("fatal error.  apparently we are malicious")
+                            logger.exception("We created a duplicate undo-own message")
+                        else:
+                            logger.warning("Someone else created a duplicate undo-own message")
 
-                        yield DropMessage(message, "the message proves that the member is malicious")
-                        break
-
+                        if message.packet < db_msg.packet:
+                            # The sender apparently does not have the higher dispersy-undo message, lets give it to him
+                            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
+                            self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
+                            yield DropMessage(message, "the message proves that the member is malicious")
+                            break
+                        else:
+                            self._dispersy._database.execute(u"DELETE FROM sync WHERE id = ?",
+                                                             ((db_msg.packet_id,)))
                 else:
-                    # did not break, hence, the message is not malicious.  more than one members
-                    # undid this message
+                    # did not break, hence, the message is not malicious.  more than one members undid this message.
                     yield message
 
                 # continue.  either the message was malicious or it has already been yielded
