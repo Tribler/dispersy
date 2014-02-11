@@ -40,8 +40,5 @@ class TestDestroyCommunity(DispersyTestFunc):
         self.assertFalse(message.payload.is_soft_kill)
         self.assertTrue(message.payload.is_hard_kill)
 
-        # the malicious_proof table must be empty
-        self.assertEqual(list(self._dispersy.database.execute(u"SELECT * FROM malicious_proof WHERE community = ?", (community.database_id,))), [])
-
         # the database should have been cleaned
         # todo
