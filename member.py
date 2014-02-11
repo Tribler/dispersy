@@ -213,16 +213,6 @@ class Member(DummyMember):
                 self._has_identity.add(community.cid)
                 return True
 
-    # TODO(emilon): decide what to do with this
-    @property
-    def must_store(self):
-        return u"store" in self._tags
-
-    # TODO(emilon): decide what to do with this
-    @must_store.setter
-    def must_store(self, value):
-        return self._set_tag(u"store", value)
-
     def verify(self, data, signature, offset=0, length=0):
         """
         Verify that DATA, starting at OFFSET up to LENGTH bytes, was signed by this member and
