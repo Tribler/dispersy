@@ -18,14 +18,14 @@ if "--apswtrace" in getattr(sys, "argv", []):
     from .database import APSWDatabase as Database
 
 
-LATEST_VERSION = 17
+LATEST_VERSION = 18
 
 schema = u"""
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
- public_key BLOB,                               -- member public key
- tags TEXT DEFAULT '');                         -- comma separated tags: store, ignore, and blacklist
+ public_key BLOB);                              -- member public key
+
 CREATE INDEX member_mid_index ON member(mid);
 
 CREATE TABLE private_key(
@@ -72,12 +72,6 @@ CREATE TABLE sync(
  UNIQUE(community, member, global_time));
 CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
 CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
-
-CREATE TABLE malicious_proof(
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- community INTEGER REFERENCES community(id),
- member INTEGER REFERENCES name(id),
- packet BLOB);
 
 CREATE TABLE option(key TEXT PRIMARY KEY, value BLOB);
 INSERT INTO option(key, value) VALUES('database_version', '""" + str(LATEST_VERSION) + """');
@@ -380,11 +374,37 @@ UPDATE option SET value = '17' WHERE key = 'database_version';
 
             # upgrade from version 17 to version 18
             if database_version < 18:
-                # there is no version 18 yet...
-                # logger.debug("upgrade database %d -> %d", database_version, 18)
-                # self.executescript(u"""UPDATE option SET value = '18' WHERE key = 'database_version';""")
+                # In version 18, we remove the tags column as we don't have blackisting anymore
+                logger.debug("upgrade database %d -> %d", database_version, 18)
+                self.executescript(u"""
+-- move / remove old member table
+DROP INDEX IF EXISTS member_mid_index;
+ALTER TABLE member RENAME TO old_member;
+-- create new member table
+CREATE TABLE member(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB,                               -- member public key
+ );
+CREATE INDEX member_mid_index ON member(mid);
+-- fill new member table with old data
+INSERT INTO member (id, mid, public_key) SELECT id, mid, public_key FROM old_member;
+-- remove old member table
+DROP TABLE old_member;
+-- remove table malicious_proof
+DROP TABLE IF EXISTS malicious_proof;
+-- update database version
+UPDATE option SET value = '18' WHERE key = 'database_version';
+""")
+                self.commit()
+                logger.debug("upgrade database %d -> %d (done)", database_version, 18)
+
+            if database_version < 19:
+                # there is no version 19 yet...
+                # logger.debug("upgrade database %d -> %d", database_version, 19)
+                # self.executescript(u"""UPDATE option SET value = '19' WHERE key = 'database_version';""")
                 # self.commit()
-                # logger.debug("upgrade database %d -> %d (done)", database_version, 18)
+                # logger.debug("upgrade database %d -> %d (done)", database_version, 19)
                 pass
 
         return LATEST_VERSION

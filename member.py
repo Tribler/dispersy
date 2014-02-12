@@ -115,7 +115,7 @@ class Member(DummyMember):
 
         ec_pub = dispersy.crypto.key_from_public_bin(public_key)
         mid = dispersy.crypto.key_to_hash(ec_pub)
-        for database_id, public_key_from_db, tags in database.execute(u"SELECT id, public_key, tags FROM member WHERE mid = ?", (buffer(mid),)):
+        for database_id, public_key_from_db in database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)):
             public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
             if public_key_from_db == public_key:
                 break
@@ -130,7 +130,6 @@ class Member(DummyMember):
             # did not break, hence the public key is not yet in the database
             database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
             database_id = database.last_insert_rowid
-            tags = u""
 
         try:
             private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
@@ -154,13 +153,7 @@ class Member(DummyMember):
         self._private_key = private_key
         self._ec = self._crypto.key_from_private_bin(private_key) if private_key else ec_pub
         self._signature_length = self._crypto.get_signature_length(self._ec)
-        self._tags = [tag for tag in tags.split(",") if tag]
         self._has_identity = set()
-
-        if __debug__:
-            assert len(set(self._tags)) == len(self._tags), ("there are duplicate tags", self._tags)
-            for tag in self._tags:
-                assert tag in (u"store", u"ignore", u"blacklist"), tag
 
         logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
 
@@ -219,50 +212,6 @@ class Member(DummyMember):
             else:
                 self._has_identity.add(community.cid)
                 return True
-
-    def _set_tag(self, tag, value):
-        assert isinstance(tag, unicode)
-        assert tag in [u"store", u"ignore", u"blacklist"]
-        assert isinstance(value, bool)
-        logger.debug("mid:%s set tag %s -> %s", self._mid.encode("HEX"), tag, value)
-        if value:
-            if tag in self._tags:
-                # the tag is already set
-                return False
-            self._tags.append(tag)
-
-        else:
-            if not tag in self._tags:
-                # the tag isn't there to begin with
-                return False
-            self._tags.remove(tag)
-
-        self._database.execute(u"UPDATE member SET tags = ? WHERE id = ?", (u",".join(sorted(self._tags)), self._database_id))
-        return True
-
-    @property
-    def must_store(self):
-        return u"store" in self._tags
-
-    @must_store.setter
-    def must_store(self, value):
-        return self._set_tag(u"store", value)
-
-    @property
-    def must_ignore(self):
-        return u"ignore" in self._tags
-
-    @must_ignore.setter
-    def must_ignore(self, value):
-        return self._set_tag(u"ignore", value)
-
-    @property
-    def must_blacklist(self):
-        return u"blacklist" in self._tags
-
-    @must_blacklist.setter
-    def must_blacklist(self, value):
-        return self._set_tag(u"blacklist", value)
 
     def verify(self, data, signature, offset=0, length=0):
         """

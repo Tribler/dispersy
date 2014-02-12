@@ -216,15 +216,11 @@ class TestUndo(DispersyTestFunc):
         self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
-    def test_node_malicious_undo(self):
-        """
-        SELF gives NODE permission to undo, NODE generates a message and then undoes it twice.  The
-        second undo can cause nodes to keep syncing packets that other nodes will keep dropping
-        (because you can only drop a message once, but the two messages are binary unique).
+    def test_node_double_undo(self):
+        """Make sure that in the event of receiving two undo messages from the same member, only the highest one will be kept,
+        and in case of receiving a lower one, that we will send the higher one back to the sender.
 
-        Sending two undoes for the same message is considered malicious behavior, resulting in:
-         1. the offending node must be put on the blacklist
-         2. the proof of malicious behaviour must be forwarded to other nodes
+        SELF gives NODE permission to undo, NODE generates a message and then undoes it twice.  Only one of the two undo messages should be kept.
         """
         community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
@@ -253,13 +249,10 @@ class TestUndo(DispersyTestFunc):
         node.give_message(undo2)
         yield 0.1
 
-        # check that the member is declared malicious
-        self.assertTrue(self._dispersy.get_member(node.my_member.public_key).must_blacklist)
-
-        # all messages for the malicious member must be removed
+        # Only one of the packets should be on the DB (+ identity message and the full-sync-text) = 3
         packets = list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ?",
                                                        (community.database_id, node.my_member.database_id)))
-        self.assertEqual(packets, [])
+        self.assertEqual(len(packets), 3)
 
         node2 = DebugNode(community)
 
@@ -268,16 +261,20 @@ class TestUndo(DispersyTestFunc):
 
         # ensure we don't obtain the messages from the socket cache
         yield 0.1
-        node2.drop_packets()
 
         # propagate a message from the malicious member
         logger.debug("giving faulty message %s", message)
         node2.give_message(message)
         yield 0.1
+        low_message, high_message = sorted([undo1, undo2], key=lambda message: message.packet)
+        node2.give_message(high_message)
+        yield 0.1
+        node2.give_message(low_message)
+        yield 0.1
 
-        # we should receive proof that NODE is malicious
-        malicious_packets = [packet for _, packet in node2.receive_packets()]
-        self.assertEqual(sorted(malicious_packets), sorted([undo1.packet, undo2.packet]))
+        # SELF should send the first message back when receiving the second one (its "higher" than the one just received)
+        undo_packets = [packet for _, packet in node2.receive_packets()]
+        self.assertEqual(undo_packets, [high_message.packet])
 
         # cleanup
         community.create_destroy_community(u"hard-kill")
