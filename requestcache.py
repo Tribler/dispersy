@@ -74,7 +74,7 @@ class NumberCache(Cache):
 
     def __init__(self, request_cache, *create_identifier_args):
         # find an unclaimed identifier
-        while True:
+        for _ in xrange(1000):
             number = self.create_number(*create_identifier_args)
             assert isinstance(number, (int, long)), type(number)
 
@@ -83,10 +83,26 @@ class NumberCache(Cache):
                 super(NumberCache, self).__init__(identifier)
                 self._number = number
                 break
+        else:
+            raise RuntimeError("Could not find an identifier that isn't in use")
 
     @property
     def number(self):
         return self._number
+
+
+class FixedNumberCache(NumberCache):
+
+    def __init__(self, request_cache, *create_identifier_args):
+        number = self.create_number(*create_identifier_args)
+        assert isinstance(number, (int, long)), type(number)
+
+        identifier = self.create_identifier(number, *create_identifier_args)
+        if request_cache.has(identifier):
+            raise RuntimeError("This identifier is already in use '%s'" % identifier)
+
+        super(NumberCache, self).__init__(identifier)
+        self._number = number
 
 
 class RequestCache(object):
