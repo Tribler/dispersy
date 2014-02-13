@@ -123,4 +123,4 @@ class TestRequestCache(DispersyTestFunc):
         self.assertEqual(request_cache.add(cache), cache)
         self.assertTrue(request_cache.has(cache.identifier))
 
-        self.assertRaises(RuntimeError, request_cache.add, cache)
+        self.assertRaises(RuntimeError, Cache, request_cache, force_number=1)
