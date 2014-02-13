@@ -236,7 +236,7 @@ class Community(object):
         assert dispersy.callback.is_current_thread
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
-        return [dispersy.get_member(str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
+        return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
                 for mid, public_key,
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
@@ -303,7 +303,7 @@ class Community(object):
 
         self._cid = master.mid
         self._master_member = master
-        self._my_member = self._dispersy.get_member(str(member_public_key))
+        self._my_member = self._dispersy.get_member(public_key=str(member_public_key))
         logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
@@ -416,7 +416,7 @@ class Community(object):
             else:
                 if public_key:
                     logger.debug("%s found master member", self._cid.encode("HEX"))
-                    self._master_member = self._dispersy.get_member(str(public_key))
+                    self._master_member = self._dispersy.get_member(public_key=str(public_key))
                     assert self._master_member.public_key
                     break
 
@@ -1469,10 +1469,8 @@ class Community(object):
             self._candidates.pop(candidate.sock_addr, None)
 
     def get_candidate_mid(self, mid):
-        members = self._dispersy.get_members_from_id(mid)
-        if members:
-            member = members[0]
-
+        member = self._dispersy.get_member(mid=mid)
+        if member:
             for candidate in self._candidates.itervalues():
                 if candidate.is_associated(member):
                     return candidate
@@ -1789,6 +1787,27 @@ class Community(object):
                                      self.on_puncture)])
 
         return messages
+
+    def get_member(self, *argv, **kwargs):
+        assert not argv, "Only named arguments are allowed"
+        mid=kwargs.pop("mid","")
+        public_key=kwargs.pop("public_key","")
+        private_key=kwargs.pop("private_key", "")
+        assert sum(map(bool, (mid, public_key, private_key))) == 1, \
+            "Only one of the three optional arguments may be passed: %s" % str((mid, public_key, private_key))
+        assert not kwargs, "Unexpected keyword arg received: %s" % kwargs
+        assert isinstance(mid, str)
+        assert isinstance(public_key, str)
+        assert isinstance(private_key, str)
+        assert not mid or len(mid) == 20
+        assert not public_key or self._dispersy.crypto.is_valid_public_bin(public_key)
+        assert not private_key or self._dispersy.crypto.is_valid_private_bin(private_key)
+
+        member = self._dispersy.get_member(mid=mid, public_key=public_key, private_key=private_key)
+        # We only need to check if this member has an identity message in this community if we still don't have the full
+        # public key
+        if not mid or (member and member.has_identity(self)):
+            return member
 
     def _generic_timeline_check(self, messages):
         meta = messages[0].meta
@@ -3250,7 +3269,7 @@ class Community(object):
 
         >>> # Authorize Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = dispersy.get_member(bob_public_key)
+        >>> bob = dispersy.get_member(public_key=bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_authorize(self, [(bob, msg, u'permit')])
 
@@ -3324,7 +3343,7 @@ class Community(object):
 
         >>> # Revoke the right of Bob to use Permit payload for 'some-message'
         >>> from Payload import Permit
-        >>> bob = dispersy.get_member(bob_public_key)
+        >>> bob = dispersy.get_member(public_key=bob_public_key)
         >>> msg = self.get_meta_message(u"some-message")
         >>> self.create_revoke(community, [(bob, msg, u'permit')])
 

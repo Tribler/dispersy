@@ -1,6 +1,7 @@
 from .logger import get_logger
 logger = get_logger(__name__)
 
+from M2Crypto.EC import EC_pub, EC
 
 class DummyMember(object):
 
@@ -99,35 +100,41 @@ class DummyMember(object):
 
 class Member(DummyMember):
 
-    def __init__(self, dispersy, public_key, private_key=""):
+    def __init__(self, dispersy, key):
         """
         Create a new Member instance.
         """
         if __debug__:
             from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(public_key, str)
-        assert isinstance(private_key, str)
-        assert dispersy.crypto.is_valid_public_bin(public_key), public_key.encode("HEX")
-        assert private_key == "" or dispersy.crypto.is_valid_private_bin(private_key), private_key.encode("HEX")
-
+        assert isinstance(key, (EC, EC_pub))
         database = dispersy.database
 
-        ec_pub = dispersy.crypto.key_from_public_bin(public_key)
-        mid = dispersy.crypto.key_to_hash(ec_pub)
-        for database_id, public_key_from_db in database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)):
+        public_key = dispersy.crypto.key_to_bin(key.pub())
+
+        if key.__class__ is EC:
+            private_key = key
+        else:
+            private_key = None
+        mid = dispersy.crypto.key_to_hash(key.pub())
+
+        row = database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)).fetchone()
+        if row:
+            database_id, public_key_from_db = row
+
             public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
-            if public_key_from_db == public_key:
-                break
 
-            if public_key_from_db == "":
-                database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
-                break
-
-            logger.warning("multiple public keys having the same SHA1 digest.  this is very unlikely to occur [%s] [%s]", public_key.encode("HEX"), public_key_from_db.encode("HEX"))
+            if public_key_from_db != public_key:
+                if public_key_from_db:
+                    logger.warning("Received public key doesn't match with the one in the database (hash collision?) [%s] [%s]",
+                                   public_key, public_key_from_db)
+                    assert False
+                else:
+                    # We have the MID but the public key is missing, let's sort that out.
+                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
 
         else:
-            # did not break, hence the public key is not yet in the database
+            # This MID/public key is not yet in the database, store it.
             database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
             database_id = database.last_insert_rowid
 
@@ -139,11 +146,13 @@ class Member(DummyMember):
         except StopIteration:
             private_key_from_db = ""
 
+        # Store the key only if we have the private key pair and it didn't come from the DB
         if private_key and not private_key_from_db:
-            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(private_key)))
+            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(dispersy.crypto.key_to_bin(private_key))))
 
         elif private_key_from_db:
             private_key = private_key_from_db
+            key = dispersy.crypto.key_from_private_bin(private_key)
 
         self._crypto = dispersy.crypto
         self._database = database
@@ -151,7 +160,7 @@ class Member(DummyMember):
         self._mid = mid
         self._public_key = public_key
         self._private_key = private_key
-        self._ec = self._crypto.key_from_private_bin(private_key) if private_key else ec_pub
+        self._ec = key
         self._signature_length = self._crypto.get_signature_length(self._ec)
         self._has_identity = set()
 
@@ -202,7 +211,6 @@ class Member(DummyMember):
 
         if community.cid in self._has_identity:
             return True
-
         else:
             try:
                 self._database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",

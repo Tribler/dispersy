@@ -250,7 +250,7 @@ class ScenarioScript(ScriptBase):
         if self._my_member is None:
             self._my_member = self._dispersy.get_new_member(self.my_member_security)
         if self._master_member is None:
-            self._master_member = self._dispersy.get_member(self.master_member_public_key)
+            self._master_member = self._dispersy.get_member(public_key=self.master_member_public_key)
 
         if filepath:
             source_database_filename = path.join(self._kargs["localcodedir"], filepath)

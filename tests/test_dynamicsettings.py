@@ -231,7 +231,7 @@ class TestDynamicSettings(DispersyTestFunc):
         community.create_dynamic_settings([(meta, linear)])
 
         # give permission to node
-        community.create_authorize([(self._dispersy.get_member(node.my_member.public_key), meta, u"permit")])
+        community.create_authorize([(self._dispersy.get_member(public_key=node.my_member.public_key), meta, u"permit")])
 
         # NODE creates a message (should allow, linear resolution and we have permission)
         global_time = community.global_time + 1

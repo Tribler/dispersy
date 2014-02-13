@@ -275,14 +275,9 @@ class NoDefBinaryConversion(Conversion):
 
         member_id = data[offset:offset + 20]
         offset += 20
-        members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
-        if not members:
+        member = self._community.get_member(mid=member_id)
+        if member is None:
             raise DelayPacketByMissingMember(self._community, member_id)
-        elif len(members) > 1:
-            # this is unrecoverable.  a member id without a signature is simply not globally unique.
-            # This can occur when two or more nodes have the same sha1 hash.  Very unlikely.
-            raise DropPacket("Unrecoverable: ambiguous member")
-        member = members[0]
 
         decode_functions = self._decode_message_map.get(data[offset])
         if decode_functions is None:
@@ -327,7 +322,7 @@ class NoDefBinaryConversion(Conversion):
         key = data[offset:offset + key_length]
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
-        member = self._community.dispersy.get_member(key)
+        member = self._community.dispersy.get_member(public_key=key)
         if not member.has_identity(self._community):
             raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
@@ -378,7 +373,7 @@ class NoDefBinaryConversion(Conversion):
         key = data[offset:offset + key_length]
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
-        member = self._community.dispersy.get_member(key)
+        member = self._community.dispersy.get_member(public_key=key)
         if not member.has_identity(self._community):
             raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
@@ -523,7 +518,7 @@ class NoDefBinaryConversion(Conversion):
             key = data[offset:offset + key_length]
             if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_authorize)")
-            member = self._community.dispersy.get_member(key)
+            member = self._community.dispersy.get_member(public_key=key)
             if not member.has_identity(self._community):
                 raise DelayPacketByMissingMember(self._community, member.mid)
             offset += key_length
@@ -620,7 +615,7 @@ class NoDefBinaryConversion(Conversion):
             key = data[offset:offset + key_length]
             if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_revoke)")
-            member = self._community.dispersy.get_member(key)
+            member = self._community.dispersy.get_member(public_key=key)
             if not member.has_identity(self._community):
                 raise DelayPacketByMissingMember(self._community, member.mid)
             offset += key_length
@@ -697,7 +692,7 @@ class NoDefBinaryConversion(Conversion):
         public_key = data[offset:offset + key_length]
         if not self._community.dispersy.crypto.is_valid_public_bin(public_key):
             raise DropPacket("Invalid cryptographic key (_decode_revoke)")
-        member = self._community.dispersy.get_member(public_key)
+        member = self._community.dispersy.get_member(public_key=public_key)
         if not member.has_identity(self._community):
             raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
@@ -727,7 +722,7 @@ class NoDefBinaryConversion(Conversion):
         key = data[offset:offset + key_length]
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_proof)")
-        member = self._community.dispersy.get_member(key)
+        member = self._community.dispersy.get_member(public_key=key)
         if not member.has_identity(self._community):
             raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
@@ -1157,9 +1152,9 @@ class NoDefBinaryConversion(Conversion):
             member_id = data[offset:offset + 20]
             offset += 20
 
-            member = self._community.dispersy.get_member_from_id(member_id)
+            member = self._community.get_member(mid=member_id)
             # If signatures and verification are enabled, verify that the signature matches the member sha1 identifier
-            if member and member.has_identity(self._community):
+            if member:
                 first_signature_offset = len(data) - member.signature_length
                 if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
                     placeholder.offset = offset
@@ -1184,19 +1179,16 @@ class NoDefBinaryConversion(Conversion):
             if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_member_authentication)")
 
-            member = self._community.dispersy.get_member(key)
+            member = self._community.get_member(public_key=key)
+            if member:
+                first_signature_offset = len(data) - member.signature_length
 
-            # TODO we should ensure that member.has_identity(self._community), however, the
-            # exception is the dispersy-identity message.  hence we need the placeholder parameter
-            # to check this
-            first_signature_offset = len(data) - member.signature_length
-
-            # signatures are enabled, verify that the signature matches the member sha1 identifier
-            if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
-                placeholder.offset = offset
-                placeholder.first_signature_offset = first_signature_offset
-                placeholder.authentication = MemberAuthentication.Implementation(authentication, member, is_signed=True)
-                return
+                # signatures are enabled, verify that the signature matches the member sha1 identifier
+                if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
+                    placeholder.offset = offset
+                    placeholder.first_signature_offset = first_signature_offset
+                    placeholder.authentication = MemberAuthentication.Implementation(authentication, member, is_signed=True)
+                    return
 
             raise DropPacket("Invalid signature")
 
@@ -1210,46 +1202,32 @@ class NoDefBinaryConversion(Conversion):
         data = placeholder.data
 
         if authentication.encoding == "sha1":
-            def iter_options(members_ids):
-                """
-                members_ids = [[m1_a, m1_b], [m2_a], [m3_a, m3_b]]
-                --> m1_a, m2_a, m3_a
-                --> m1_a, m2_a, m3_b
-                --> m1_b, m2_a, m3_a
-                --> m1_b, m2_a, m3_b
-                """
-                if members_ids:
-                    for member_id in members_ids[0]:
-                        for others in iter_options(members_ids[1:]):
-                            yield [member_id] + others
-                else:
-                    yield []
-
-            members_ids = []
+            member_ids = []
             for _ in range(2):
                 member_id = data[offset:offset + 20]
-                members = [member for member in self._community.dispersy.get_members_from_id(member_id) if member.has_identity(self._community)]
-                if not members:
+                member = self._community.get_member(mid=member_id)
+                if not member:
                     raise DelayPacketByMissingMember(self._community, member_id)
                 offset += 20
-                members_ids.append(members)
-
-            for members in iter_options(members_ids):
+                member_ids.append(member)
+            # TODO(emilon): Make sure that the MID's and the signatures are always in the same order so we can remove
+            # this for loop.
+            for members in (member_ids, reversed(member_ids)):
                 # try this member combination
                 first_signature_offset = len(data) - sum([member.signature_length for member in members])
                 signature_offset = first_signature_offset
                 signatures = ["", ""]
                 found_valid_combination = True
-                for index, member in zip(range(2), members):
+                for index, member in enumerate(members):
                     signature = data[signature_offset:signature_offset + member.signature_length]
                     # logging.info("INDEX: %d", index)
                     # logging.info("%s", signature.encode('HEX'))
                     if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
                         signatures[index] = ""
 
-                    elif (not placeholder.verify and len(members) == 1) or member.verify(data, data[signature_offset:signature_offset + member.signature_length], length=first_signature_offset):
+                    elif ((not placeholder.verify and len(members) == 1) or
+                          member.verify(data, signature, length=first_signature_offset)):
                         signatures[index] = signature
-
                     else:
                         found_valid_combination = False
                         break
@@ -1259,12 +1237,9 @@ class NoDefBinaryConversion(Conversion):
                 if found_valid_combination:
                     placeholder.offset = offset
                     placeholder.first_signature_offset = first_signature_offset
-                    placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members, signatures=signatures)
+                    placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members,
+                                                                                           signatures=signatures)
                     return
-
-            # we have no idea which member we are missing, hence we request a random one.  in the future
-            # we should request all members instead
-            raise DelayPacketByMissingMember(self._community, choice(members_ids[0]))
 
         elif authentication.encoding == "bin":
             if len(data) < offset + 4:
@@ -1283,7 +1258,7 @@ class NoDefBinaryConversion(Conversion):
             if not self._community.dispersy.crypto.is_valid_public_bin(key2):
                 raise DropPacket("Invalid cryptographic key2 (_decode_double_member_authentication)")
 
-            members = [self._community.dispersy.get_member(key1), self._community.dispersy.get_member(key2)]
+            members = [self._community.dispersy.get_member(public_key=key1), self._community.dispersy.get_member(public_key=key2)]
 
             second_signature_offset = len(data) - members[1].signature_length
             first_signature_offset = second_signature_offset - members[0].signature_length
