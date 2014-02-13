@@ -112,6 +112,9 @@ class TestRequestCache(DispersyTestFunc):
             def create_identifier(number, force_number= -1):
                 return u"request-cache:test:%d" % (number,)
 
+            def __init__(self, request_cache, force_number= -1):
+                NumberCache.__init__(self, request_cache, force_number)
+
         request_cache = RequestCache(self._dispersy.callback)
 
         cache = Cache(request_cache, force_number=1)
