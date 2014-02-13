@@ -97,3 +97,27 @@ class TestRequestCache(DispersyTestFunc):
         self.assertFalse(request_cache.has(cache.identifier))
         self.assertIsNone(request_cache.get(cache.identifier))
         self.assertIsNone(request_cache.pop(cache.identifier))
+
+    @call_on_dispersy_thread
+    def test_force_number(self):
+        """
+        Tests numbercache with force_number
+        """
+        class Cache(NumberCache):
+            @staticmethod
+            def create_number(force_number= -1):
+                return force_number
+
+            @staticmethod
+            def create_identifier(number, force_number= -1):
+                return u"request-cache:test:%d" % (number,)
+
+        request_cache = RequestCache(self._dispersy.callback)
+
+        cache = Cache(request_cache, force_number=1)
+
+        self.assertFalse(request_cache.has(cache.identifier))
+        self.assertEqual(request_cache.add(cache), cache)
+        self.assertTrue(request_cache.has(cache.identifier))
+
+        self.assertRaises(RuntimeError, request_cache.add, (cache,))
