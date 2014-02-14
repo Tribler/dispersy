@@ -39,7 +39,7 @@ of, the name it uses as an internal identifier, and the class that will contain 
 import logging
 import os
 import sys
-from collections import defaultdict
+from collections import defaultdict, Iterable
 from itertools import groupby, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
@@ -1581,7 +1581,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         Returns a list with messages representing each packet or None when no conversion is
         possible.
         """
-        assert isinstance(packets, (list, tuple)), type(packets)
+        assert isinstance(packets, Iterable), type(packets)
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
