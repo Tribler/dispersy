@@ -323,7 +323,6 @@ class Community(object):
         # define all available conversions
         self._conversions = self.initiate_conversions()
         if __debug__:
-            from .conversion import Conversion
             assert len(self._conversions) > 0, len(self._conversions)
             assert all(isinstance(conversion, Conversion) for conversion in self._conversions), [type(conversion) for conversion in self._conversions]
 
