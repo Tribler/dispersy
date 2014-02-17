@@ -318,7 +318,7 @@ class TestUndo(DispersyTestFunc):
         self.assertEqual(undo.packet, undone_packet)
 
         # check that the member is not declared malicious
-        self.assertFalse(self._dispersy.get_member(node.my_member.public_key).must_blacklist)
+        self.assertFalse(self._dispersy.get_member(public_key=node.my_member.public_key).must_blacklist)
 
         # cleanup
         community.create_destroy_community(u"hard-kill")

@@ -39,7 +39,7 @@ of, the name it uses as an internal identifier, and the class that will contain 
 import logging
 import os
 import sys
-from collections import defaultdict
+from collections import defaultdict, Iterable
 from itertools import groupby, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
@@ -519,36 +519,51 @@ class Dispersy(object):
     def get_progress_handlers(self):
         return self._progress_handlers
 
-    def get_member(self, public_key, private_key=""):
-        """
-        Returns a Member instance associated with public_key.
+    def get_member(self, *argv, **kwargs):
+        """Returns a Member instance associated with public_key.
 
-        Since we have the public_key, we can create this user when it didn't already exist.  Hence,
-        this method always succeeds.
+        Since we have the public_key, we can create this user if it doesn't yet.  Hence, this method always succeeds.
 
         @param public_key: The public key of the member we want to obtain.
+        @param private_key: The public/private key pair of the member we want to obtain.
         @type public_key: string
+        @type private_key: string
 
         @return: The Member instance associated with public_key.
         @rtype: Member
-
-        @note: This returns -any- Member, it may not be a member that is part of this community.
-
-        @todo: Since this method returns Members that are not specifically bound to any community,
-         this method should be moved to Dispersy
         """
+        assert not argv, "Only named arguments are allowed"
+        mid=kwargs.pop("mid","")
+        public_key=kwargs.pop("public_key","")
+        private_key=kwargs.pop("private_key", "")
+        assert sum(map(bool, (mid, public_key, private_key))) == 1, \
+            "Only one of the three optional arguments may be passed: %s" % str((mid, public_key, private_key))
+        assert not kwargs, "Unexpected keyword arg received: %s" % kwargs
+        assert isinstance(mid, str)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
+        assert not mid or len(mid) == 20
+        assert not public_key or self.crypto.is_valid_public_bin(public_key)
+        assert not private_key or self.crypto.is_valid_private_bin(private_key)
+
+        if mid:
+            return self.get_member_from_id(mid)
+
         member = self._member_cache_by_public_key.get(public_key)
         if member:
             if private_key and not member.private_key:
                 member.set_private_key(private_key)
 
         else:
-            member = Member(self, public_key, private_key)
+            if public_key:
+                key = self.crypto.key_from_public_bin(public_key)
+            else:
+                key = self.crypto.key_from_private_bin(private_key)
+
+            member = Member(self, key)
 
             # store in caches
-            self._member_cache_by_public_key[public_key] = member
+            self._member_cache_by_public_key[member.public_key] = member
             self._member_cache_by_hash[member.mid] = member
             self._member_cache_by_database_id[member.database_id] = member
 
@@ -566,7 +581,7 @@ class Dispersy(object):
         """
         assert isinstance(securitylevel, unicode), type(securitylevel)
         key = self.crypto.generate_key(securitylevel)
-        return self.get_member(self.crypto.key_to_bin(key.pub()), self.crypto.key_to_bin(key))
+        return self.get_member(private_key=self.crypto.key_to_bin(key))
 
     def get_temporary_member_from_id(self, mid):
         """
@@ -603,7 +618,7 @@ class Dispersy(object):
         assert len(mid) == 20, len(mid)
         member = self._member_cache_by_hash.get(mid)
         if not member:
-            members = [self.get_member(str(public_key))
+            members = [self.get_member(public_key=str(public_key))
                        for public_key,
                        in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
                        if public_key]
@@ -618,7 +633,7 @@ class Dispersy(object):
                 member = None
         return member
 
-    @deprecated("Use get_member_from_id() instead")
+    @deprecated("Use get_member() instead")
     def get_members_from_id(self, mid):
         """
         Deprecated, use get_member_from_id()
@@ -639,7 +654,7 @@ class Dispersy(object):
             except StopIteration:
                 pass
             else:
-                member = self.get_member(str(public_key))
+                member = self.get_member(public_key=str(public_key))
         return member
 
     def attach_community(self, community):
@@ -801,7 +816,7 @@ class Dispersy(object):
                     if load or (auto_load and auto_load_flag):
 
                         if classification in self._auto_load_communities:
-                            master = self.get_member(str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
+                            master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
                             cls, args, kargs = self._auto_load_communities[classification]
                             community = cls.load_community(self, master, *args, **kargs)
                             assert master.mid in self._communities
@@ -1566,7 +1581,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         Returns a list with messages representing each packet or None when no conversion is
         possible.
         """
-        assert isinstance(packets, (list, tuple)), type(packets)
+        assert isinstance(packets, Iterable), type(packets)
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
@@ -1650,7 +1665,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             assert message.authentication.is_signed
             assert not message.packet[-10:] == "\x00" * 10, message.packet[-10:].encode("HEX")
             # we must have the identity message as well
-            assert message.authentication.encoding == "bin" or message.authentication.member.has_identity(message.community), [message, message.community, message.authentication.member.database_id]
+            assert message.authentication.encoding == "bin" or message.authentication.member.has_identity(message.community), [message.authentication.encoding, message.community, message.authentication.member.database_id, message.name]
 
             logger.debug("%s %d@%d", message.name, message.authentication.member.database_id, message.distribution.global_time)
 

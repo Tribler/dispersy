@@ -2,11 +2,13 @@
 *.pyo
 *_flymake.py
 *~
+/.#*
 /.coverage
 /.noseids
 /.ropeproject/config.py
 /TAGS
 /coverage.xml
+/flycheck_*
 /nosetests.xml
 /skip_nosetests.xml
 /tests/.noseids
