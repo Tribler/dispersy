@@ -296,14 +296,16 @@ class Community(object):
         self._batch_cache = {}
 
         try:
-            self._database_id, member_public_key, self._database_version = self._dispersy.database.execute(u"SELECT community.id, member.public_key, database_version FROM community JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
+            self._database_id, member_private_key, self._database_version = self._dispersy.database.execute(u"SELECT \
+            community.id, private_key.private_key, database_version FROM community \
+            JOIN private_key ON private_key.member = community.member WHERE master = ?", (master.database_id,)).next()
         except StopIteration:
             raise ValueError(u"Community not found in database [" + master.mid.encode("HEX") + "]")
         logger.debug("database id:   %d", self._database_id)
 
         self._cid = master.mid
         self._master_member = master
-        self._my_member = self._dispersy.get_member(public_key=str(member_public_key))
+        self._my_member = self._dispersy.get_member(private_key=str(member_private_key))
         logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
