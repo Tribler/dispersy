@@ -1190,44 +1190,32 @@ class NoDefBinaryConversion(Conversion):
         data = placeholder.data
 
         if authentication.encoding == "sha1":
-            member_ids = []
+            members = []
             for _ in range(2):
                 member_id = data[offset:offset + 20]
                 member = self._community.get_member(mid=member_id)
                 if not member:
                     raise DelayPacketByMissingMember(self._community, member_id)
                 offset += 20
-                member_ids.append(member)
-            # TODO(emilon): Make sure that the MID's and the signatures are always in the same order so we can remove
-            # this for loop.
-            for members in (member_ids, reversed(member_ids)):
-                # try this member combination
-                first_signature_offset = len(data) - sum([member.signature_length for member in members])
-                signature_offset = first_signature_offset
-                signatures = ["", ""]
-                found_valid_combination = True
-                for index, member in enumerate(members):
-                    signature = data[signature_offset:signature_offset + member.signature_length]
-                    # logging.info("INDEX: %d", index)
-                    # logging.info("%s", signature.encode('HEX'))
-                    if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
-                        signatures[index] = ""
+                members.append(member)
 
-                    elif ((not placeholder.verify and len(members) == 1) or
-                          member.verify(data, signature, length=first_signature_offset)):
-                        signatures[index] = signature
-                    else:
-                        found_valid_combination = False
-                        break
-                    signature_offset += member.signature_length
+            first_signature_offset = len(data) - sum([member.signature_length for member in members])
+            signature_offset = first_signature_offset
+            signatures = ["", ""]
+            for index, member in enumerate(members):
+                signature = data[signature_offset:signature_offset + member.signature_length]
+                # logging.info("INDEX: %d", index)
+                # logging.info("%s", signature.encode('HEX'))
+                if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
+                    signatures[index] = ""
 
-                # found a valid combination
-                if found_valid_combination:
-                    placeholder.offset = offset
-                    placeholder.first_signature_offset = first_signature_offset
-                    placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members,
-                                                                                           signatures=signatures)
-                    return
+                elif ((not placeholder.verify and len(members) == 1) or
+                      member.verify(data, signature, length=first_signature_offset)):
+                    signatures[index] = signature
+                else:
+                    return DropPacket("Invalid double signature (_decode_double_member_authentication bin)")
+
+                signature_offset += member.signature_length
 
         elif authentication.encoding == "bin":
             if len(data) < offset + 4:
@@ -1258,13 +1246,13 @@ class NoDefBinaryConversion(Conversion):
 
                 elif placeholder.verify and not member.verify(data, signatures[index], length=first_signature_offset):
                     raise DropPacket("Signature does not match public key")
-
-            placeholder.offset = offset
-            placeholder.first_signature_offset = first_signature_offset
-            placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members, signatures=signatures)
-
         else:
             raise NotImplementedError(authentication.encoding)
+
+        placeholder.offset = offset
+        placeholder.first_signature_offset = first_signature_offset
+        placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members,
+                                                                               signatures=signatures)
 
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
