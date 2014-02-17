@@ -323,8 +323,6 @@ class NoDefBinaryConversion(Conversion):
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(public_key=key)
-        if not member.has_identity(self._community):
-            raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
 
         # there must be at least one global time in the packet
@@ -374,8 +372,6 @@ class NoDefBinaryConversion(Conversion):
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
         member = self._community.dispersy.get_member(public_key=key)
-        if not member.has_identity(self._community):
-            raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
 
         if len(data) < offset + 1:
@@ -519,8 +515,6 @@ class NoDefBinaryConversion(Conversion):
             if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_authorize)")
             member = self._community.dispersy.get_member(public_key=key)
-            if not member.has_identity(self._community):
-                raise DelayPacketByMissingMember(self._community, member.mid)
             offset += key_length
 
             messages_length, = self._struct_B.unpack_from(data, offset)
@@ -616,8 +610,6 @@ class NoDefBinaryConversion(Conversion):
             if not self._community.dispersy.crypto.is_valid_public_bin(key):
                 raise DropPacket("Invalid cryptographic key (_decode_revoke)")
             member = self._community.dispersy.get_member(public_key=key)
-            if not member.has_identity(self._community):
-                raise DelayPacketByMissingMember(self._community, member.mid)
             offset += key_length
 
             messages_length, = self._struct_B.unpack_from(data, offset)
@@ -693,8 +685,6 @@ class NoDefBinaryConversion(Conversion):
         if not self._community.dispersy.crypto.is_valid_public_bin(public_key):
             raise DropPacket("Invalid cryptographic key (_decode_revoke)")
         member = self._community.dispersy.get_member(public_key=public_key)
-        if not member.has_identity(self._community):
-            raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
 
         if len(data) < offset + 8:
@@ -723,8 +713,6 @@ class NoDefBinaryConversion(Conversion):
         if not self._community.dispersy.crypto.is_valid_public_bin(key):
             raise DropPacket("Invalid cryptographic key (_decode_missing_proof)")
         member = self._community.dispersy.get_member(public_key=key)
-        if not member.has_identity(self._community):
-            raise DelayPacketByMissingMember(self._community, member.mid)
         offset += key_length
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time)
