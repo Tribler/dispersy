@@ -179,12 +179,10 @@ class DebugNode(object):
         dispersy-introduction-request message.
         """
         ec = self._dispersy.crypto.generate_key(u"low")
-        self._my_member = Member(self._dispersy, ec)
-        self._community._my_member = self._my_member
-
-        # remove the private key from the database to ensure DebugCommunity has no access to it
-        self._dispersy.database.execute(u"DELETE FROM private_key WHERE member = ?", (self._my_member.database_id,))
-        assert self._dispersy.database.changes == 1
+        # Using get_member will allow the central node (SELF) to have access to the public and private keys of this
+        # debug node.  It will also be on the member cache dictionaries.
+        # When dispersy is deployed this obviously isn't the case.
+        self._my_member = self._dispersy.get_member(private_key=self._dispersy.crypto.key_to_bin(ec))
 
         if store_identity:
             message = self.create_dispersy_identity(2)
