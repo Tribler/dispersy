@@ -187,8 +187,7 @@ class TestSync(DispersyTestFunc):
                          ["low-priority-text"] * len(low_priority_messages))
 
     def _check_equal(self, member_database_id, message_database_id, global_times):
-        times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, member_database_id, message_database_id))]
-        times.sort()
+        times = sorted([x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, member_database_id, message_database_id))])
         self.assertEqual(times, global_times)
 
     @call_on_dispersy_thread
@@ -263,7 +262,6 @@ class TestSync(DispersyTestFunc):
 
             self._check_equal(other.my_member.database_id, message.database_id, messages_so_far)
 
-    @skip('TODO: emilon')
     @call_on_dispersy_thread
     def test_last_1_doublemember(self):
         """
@@ -283,83 +281,90 @@ class TestSync(DispersyTestFunc):
         Currently we only implement option #2.  There currently is no parameter to switch between
         these options.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        message = community.get_meta_message(u"last-1-doublemember-text")
+        message = self._community.get_meta_message(u"last-1-doublemember-text")
 
         # create node and ensure that SELF knows the node address
-        nodeA = DebugNode(community)
+        nodeA = DebugNode(self._community)
         nodeA.init_socket()
         nodeA.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeB = DebugNode(community)
+        nodeB = DebugNode(self._community)
         nodeB.init_socket()
         nodeB.init_my_member()
 
         # create node and ensure that SELF knows the node address
-        nodeC = DebugNode(community)
+        nodeC = DebugNode(self._community)
         nodeC.init_socket()
         nodeC.init_my_member()
 
-        # dump some junk data, TODO: should not use this btw in actual test...
-        # self._dispersy.database.execute(u"INSERT INTO sync (community, meta_message, member, global_time) VALUES (?, ?, 42, 9)", (community.database_id, message.database_id))
-        # sync_id = self._dispersy.database.last_insert_rowid
-        # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (42, ?)", (sync_id,))
-        # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (43, ?)", (sync_id,))
-        #
-        # self._dispersy.database.execute(u"INSERT INTO sync (community, meta_message, member, global_time) VALUES (?, ?, 4, 9)", (community.database_id, message.database_id))
-        # sync_id = self._dispersy.database.last_insert_rowid
-        # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (4, ?)", (sync_id,))
-        # self._dispersy.database.execute(u"INSERT INTO reference_member_sync (member, sync) VALUES (43, ?)", (sync_id,))
+        def create_double_signed_message(origin, destination, message, global_time):
+            logger.debug("Generating double signed message: %s", message)
+            logger.warning("CREATE_DOUBLE \n  %s\n  %s", origin.my_member.mid.encode('HEX'), destination.my_member.mid.encode('HEX'))
+            logger.warning("NODE O>: %s", origin._community.my_member.mid.encode('HEX'))
+            logger.warning("NODE D>: %s", destination._community.my_member.mid.encode('HEX'))
+            origin_mid_pre = origin._community.my_member.mid
+            destination_mid_pre = destination._community.my_member.mid
+            assert origin_mid_pre != destination_mid_pre
+
+            submsg = origin.create_last_1_doublemember_text(destination.my_member, message, global_time, sign=True)
+
+            logger.warning("NODE 2O>: %s", origin._community.my_member.mid.encode('HEX'))
+            logger.warning("NODE 2D>: %s", destination._community.my_member.mid.encode('HEX'))
+            assert origin_mid_pre == origin._community.my_member.mid
+            assert destination_mid_pre == destination._community.my_member.mid
+
+            destination.give_message(origin.create_dispersy_signature_request(12345, submsg, global_time), origin)
+            _, message = origin.receive_message(names=[u"dispersy-signature-response"])
+            return (global_time, message.payload.message)
+
+        def check_everything():
+            entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 \
+            FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
+                                                           (community.database_id, nodeA.my_member.database_id, message.database_id)))
+            self.assertEqual(len(entries), 2)
+            self.assertIn((current_global_timeB, nodeA.my_member.database_id,
+                           min(nodeA.my_member.database_id, nodeB.my_member.database_id),
+                           max(nodeA.my_member.database_id, nodeB.my_member.database_id)),
+                          entries)
+            self.assertIn((current_global_timeC, nodeA.my_member.database_id,
+                           min(nodeA.my_member.database_id, nodeC.my_member.database_id),
+                           max(nodeA.my_member.database_id, nodeC.my_member.database_id)),
+                          entries)
 
         # send a message
         global_time = 10
         other_global_time = global_time + 1
         messages = []
-        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (1)", global_time, sign=True))
-        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (1)", other_global_time, sign=True))
-        nodeA.give_messages(messages)
-        entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
-        self.assertEqual(len(entries), 2)
-        self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
-        self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
+        messages.append(create_double_signed_message(nodeA, nodeB, "should be accepted (1AB)", global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "should be accepted (1AC)", other_global_time))
 
         # send a message
         global_time = 20
         other_global_time = global_time + 1
-        messages = []
-        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (2) @%d" % global_time, global_time, sign=True))
-        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (2) @%d" % other_global_time, other_global_time, sign=True))
-        nodeA.give_messages(messages)
-        entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
-        self.assertEqual(len(entries), 2)
-        self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
-        self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
+        messages.append(create_double_signed_message(nodeA, nodeB, "should be accepted (2AB) @%d" % global_time, global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "should be accepted (2AC) @%d" % other_global_time, other_global_time))
 
         # send a message (older: should be dropped)
         old_global_time = 8
-        messages = []
-        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be dropped (1)", old_global_time, sign=True))
-        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be dropped (1)", old_global_time, sign=True))
-        nodeA.give_messages(messages)
-        entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
-        self.assertEqual(len(entries), 2)
-        self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
-        self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
 
-        yield 0.1
+        messages.append(create_double_signed_message(nodeA, nodeB, "should be dropped (1AB)", old_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "should be dropped (1AC)", old_global_time))
+
+        # nodeA should forget about these packets to be able to do the test
         nodeA.drop_packets()
 
-        # send a message (older: should be dropped)
-        old_global_time = 8
-        messages = []
-        messages.append(nodeB.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (1)", old_global_time, sign=True))
-        messages.append(nodeC.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (1)", old_global_time, sign=True))
-        nodeA.give_messages(messages)
-        entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
-        self.assertEqual(len(entries), 2)
-        self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
-        self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
+        current_global_timeB = 0
+        current_global_timeC = 0
+        while messages:
+            global_timeB, messageB = messages.pop(0)
+            global_timeC, messageC = messages.pop(0)
+
+            current_global_timeB = max(global_timeB, current_global_timeB)
+            current_global_timeC = max(global_timeC, current_global_timeC)
+
+            nodeA.give_messages((messageB, messageC))
+            check_everything()
 
         # as proof for the drop, the newest message should be sent back
         yield 0.1
@@ -372,14 +377,10 @@ class TestSync(DispersyTestFunc):
 
         # send a message (older + different member combination: should be dropped)
         old_global_time = 9
-        messages = []
-        messages.append(nodeB.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (2)", old_global_time, sign=True))
-        messages.append(nodeC.create_last_1_doublemember_text(nodeA.my_member, "should be dropped (2)", old_global_time, sign=True))
-        nodeA.give_messages(messages)
-        entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?", (community.database_id, nodeA.my_member.database_id, message.database_id)))
-        self.assertEqual(len(entries), 2)
-        self.assertIn((global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeB.my_member.database_id), max(nodeA.my_member.database_id, nodeB.my_member.database_id)), entries)
-        self.assertIn((other_global_time, nodeA.my_member.database_id, min(nodeA.my_member.database_id, nodeC.my_member.database_id), max(nodeA.my_member.database_id, nodeC.my_member.database_id)), entries)
+        create_double_signed_message(nodeB, nodeA, "should be dropped (2BA)", old_global_time)
+        create_double_signed_message(nodeC, nodeA, "should be dropped (2CA)", old_global_time)
+
+        check_everything()
 
     @skip('TODO: emilon')
     @call_on_dispersy_thread

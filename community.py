@@ -3370,20 +3370,23 @@ class Community(object):
 
         else:
             if undone:
-                logger.error("you are attempting to undo the same message twice. returning the previous undo message")
-
                 # already undone.  refuse to undo again but return the previous undo message
+                logger.error("you are attempting to undo the same message twice. trying to return the previous undo message")
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
                 undo_other_meta = self.get_meta_message(u"dispersy-undo-other")
-                for packet_id, message_id, packet in self._dispersy._database.execute(u"SELECT id, meta_message, packet FROM sync WHERE community = ? AND member = ? AND meta_message IN (?, ?)",
-                                                                                     (self.database_id, message.authentication.member.database_id, undo_own_meta.database_id, undo_other_meta.database_id)):
+                for packet_id, message_id, packet in self._dispersy._database.execute(
+                        u"SELECT id, meta_message, packet FROM sync WHERE community = ? AND member = ? AND meta_message IN (?, ?)",
+                        (self.database_id, message.authentication.member.database_id, undo_own_meta.database_id, undo_other_meta.database_id)):
+                    logger.debug("checking: %s",  message_id)
                     msg = Packet(undo_own_meta if undo_own_meta.database_id == message_id else undo_other_meta, str(packet), packet_id).load_message()
                     if message.distribution.global_time == msg.payload.global_time:
                         return msg
 
-                # could not find the undo message that caused the sync.undone to be True.  the
-                # undone was probably caused by changing permissions
-                return None
+                # TODO(emilon): Review this statement
+                # Could not find the undo message that caused the sync.undone to be True.  The undone was probably
+                # caused by changing permissions
+                logger.error("No previous message found, returning None")
+                return
 
             else:
                 # create the undo message

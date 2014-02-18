@@ -182,7 +182,7 @@ class DebugNode(object):
         # Using get_member will allow the central node (SELF) to have access to the public and private keys of this
         # debug node.  It will also be on the member cache dictionaries.
         # When dispersy is deployed this obviously isn't the case.
-        self._my_member = self._dispersy.get_member(private_key=self._dispersy.crypto.key_to_bin(ec))
+        self._community._my_member = self._my_member = self._dispersy.get_member(private_key=self._dispersy.crypto.key_to_bin(ec))
 
         if store_identity:
             message = self.create_dispersy_identity(2)
@@ -220,7 +220,7 @@ class DebugNode(object):
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
 
         logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
-        self._dispersy.on_incoming_packets([(source.my_candidate, packet) for packet in packets], cache=cache, timestamp=time())
+        self._community.on_incoming_packets([(source.my_candidate, packet) for packet in packets], cache=cache, timestamp=time())
         return packets
 
     def give_message(self, message, source, cache=False, tunnel=None):
