@@ -1015,7 +1015,7 @@ class NoDefBinaryConversion(Conversion):
         for signature, member in message.authentication.signed_members:
             if signature:
                 signatures.append(signature)
-            elif sign and member.private_key:
+            elif sign and member == self._community._my_member:
                 signature = member.sign(data)
                 message.authentication.set_signature(member, signature)
                 signatures.append(signature)
@@ -1192,6 +1192,7 @@ class NoDefBinaryConversion(Conversion):
                 offset += 20
                 members.append(member)
 
+            # TODO(emilon): From here onwards should be moved down (unify sha1 and bin behaviour once we get the members)
             first_signature_offset = len(data) - sum([member.signature_length for member in members])
             signature_offset = first_signature_offset
             signatures = ["", ""]
@@ -1206,7 +1207,7 @@ class NoDefBinaryConversion(Conversion):
                       member.verify(data, signature, length=first_signature_offset)):
                     signatures[index] = signature
                 else:
-                    return DropPacket("Invalid double signature (_decode_double_member_authentication bin)")
+                    raise DropPacket("Invalid double signature (_decode_double_member_authentication sha1)")
 
                 signature_offset += member.signature_length
 
@@ -1281,7 +1282,7 @@ class NoDefBinaryConversion(Conversion):
 
         # authentication
         decode_functions.authentication(placeholder)
-        assert isinstance(placeholder.authentication, Authentication.Implementation)
+        assert isinstance(placeholder.authentication, Authentication.Implementation), placeholder.authentication
 
         # resolution
         decode_functions.resolution(placeholder)

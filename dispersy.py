@@ -551,7 +551,45 @@ class Dispersy(object):
             else:
                 key = self.crypto.key_from_private_bin(private_key)
 
-            member = Member(self, key)
+            mid = self.crypto.key_to_hash(key.pub())
+
+            row = self.database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)).fetchone()
+            if row:
+                database_id, public_key_from_db = row
+
+                public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+
+                if public_key_from_db != public_key:
+                    if public_key_from_db:
+                        logger.warning("Received public key doesn't match with the one in the database (hash collision?)\n  Received: [%s]\n  Public:   [%s]",
+                                       public_key.encode('HEX'), public_key_from_db.encode('HEX'))
+                        assert False, mid
+                    else:
+                        # We have the MID but the public key is missing, let's sort that out.
+                        self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
+                                                                                                 database_id))
+            else:
+                # This MID/public key is not yet in the database, store it.
+                self.database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid),
+                                                                                              buffer(public_key)))
+                database_id = self.database.last_insert_rowid
+
+            try:
+                private_key_from_db, = self.database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
+                private_key_from_db = str(private_key_from_db)
+                assert self.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+            except StopIteration:
+                private_key_from_db = ""
+
+            # Store the key only if we have the private key pair and it didn't come from the DB
+            if private_key and not private_key_from_db:
+                self.database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)",
+                                      (database_id, buffer(private_key)))
+            elif private_key_from_db:
+                private_key = private_key_from_db
+                key = self.crypto.key_from_private_bin(private_key)
+
+            member = Member(self, key, database_id)
 
             # store in caches
             self._member_cache_by_public_key[member.public_key] = member

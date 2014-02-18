@@ -2096,33 +2096,12 @@ class Community(object):
             # submsg contains the double signed message (that currently contains -no- signatures)
             submsg = message.payload.message
 
-            has_private_member = False
-            try:
-                for is_signed, member in submsg.authentication.signed_members:
-                    # security: do NOT allow to accidentally sign with master member.
-                    if member == self.master_member:
-                        raise DropMessage(message, "You may never ask for a master member signature")
-
-                    # is this signature missing, and could we provide it
-                    if not is_signed and member.private_key:
-                        has_private_member = True
-                        break
-            except DropMessage as exception:
-                yield exception
-                continue
-
-            # we must be one of the members that needs to sign
-            if not has_private_member:
+            for is_signed, member in submsg.authentication.signed_members:
+                if member == self._my_member:
+                    yield message
+                    break
+            else:
                 yield DropMessage(message, "Nothing to sign")
-                continue
-
-            # we can not timeline.check the submessage because it uses the DoubleMemberAuthentication policy
-            # the message that we are signing must be valid according to our timeline
-            # if not message.community.timeline.check(submsg):
-            # raise DropMessage("Does not fit timeline")
-
-            # allow message
-            yield message
 
     def on_signature_request(self, messages):
         """
@@ -2141,9 +2120,7 @@ class Community(object):
         modified sub-message.  If so, a dispersy-signature-response message is send to the creator
         of the message, the first one in the authentication list.
 
-        If we can add multiple signatures, i.e. we have the private keys for both the message
-        creator and the second member, the allow_signature_func is called only once but multiple
-        signatures will be appended.
+        Only _my_member is used.
 
         @see: create_signature_request
 
@@ -2166,7 +2143,6 @@ class Community(object):
                                            payload=(message.payload.identifier, submsg)))
 
         if responses:
-            # TODO(emilon): Is this right? (quick hack while moving it away from dispersy.py)
             self.dispersy._forward(responses)
 
     def check_signature_response(self, messages):
@@ -2184,6 +2160,10 @@ class Community(object):
 
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
+
+            if any(signature == "" and member != self._my_member for signature, member in
+                   new_submsg.authentication.signed_members):
+                yield DropMessage(message, "message isn't signed by the other party")
 
             if not old_submsg.meta == new_submsg.meta:
                 yield DropMessage(message, "meta message may not change")
@@ -2227,7 +2207,7 @@ class Community(object):
             if result:
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
-                    if not signature and member.private_key:
+                    if not signature and member == self._my_member:
                         new_submsg.authentication.set_signature(member, member.sign(new_body))
 
                 assert new_submsg.authentication.is_signed
