@@ -63,7 +63,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            community = Community.create_community(self._dispersy, self._my_member)
+            community = Community.create_community(self._dispersy, self._community._my_member)
             nodes = [DebugNode(community).init_socket().init_my_member(candidate=False, identity=False) for _ in xrange(1)]
 
             # nodes send introduction request
