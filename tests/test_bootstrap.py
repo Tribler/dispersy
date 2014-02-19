@@ -62,6 +62,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 @property
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
+
             community = Community.create_community(self._dispersy, self._my_member)
             nodes = [DebugNode(community).init_socket().init_my_member(candidate=False, identity=False) for _ in xrange(1)]
 
@@ -78,6 +79,7 @@ class TestBootstrapServers(DispersyTestFunc):
 
             # nodes receive missing identity
             yield 1.0
+
             for node in nodes:
                 (_, message), = node.receive_messages(names=[u"dispersy-missing-identity"], counts=[1])
                 self.assertEqual(message.payload.mid, node.my_member.mid)

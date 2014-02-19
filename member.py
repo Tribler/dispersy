@@ -6,8 +6,7 @@ from M2Crypto.EC import EC_pub, EC
 class DummyMember(object):
 
     def __init__(self, dispersy, mid):
-        if __debug__:
-            from .dispersy import Dispersy
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
@@ -104,8 +103,7 @@ class Member(DummyMember):
         """
         Create a new Member instance.
         """
-        if __debug__:
-            from .dispersy import Dispersy
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(key, (EC, EC_pub))
         database = dispersy.database
@@ -205,9 +203,8 @@ class Member(DummyMember):
         """
         Returns True when we have a dispersy-identity message for this member in COMMUNITY.
         """
-        if __debug__:
-            from .community import Community
-            assert isinstance(community, Community)
+        from .community import Community
+        assert isinstance(community, Community)
 
         if community.cid in self._has_identity:
             return True

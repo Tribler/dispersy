@@ -17,7 +17,6 @@ global_time.
 from abc import ABCMeta, abstractmethod
 from .meta import MetaObject
 
-
 class Pruning(MetaObject):
 
     class Implementation(MetaObject.Implementation):
@@ -135,8 +134,7 @@ class Distribution(MetaObject):
         """
         Setup is called after the meta message is initially created.
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
 
@@ -231,8 +229,7 @@ class SyncDistribution(Distribution):
         It is used to determine the current sequence number, based on
         which messages are already in the database.
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
         # pruning requires information from the community

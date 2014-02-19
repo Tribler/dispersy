@@ -1,6 +1,5 @@
 from ..logger import get_logger
 from ..message import Message
-from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
@@ -8,43 +7,46 @@ logger = get_logger(__name__)
 
 class TestUndo(DispersyTestFunc):
 
+    def _check_database(self, member_database_id, message_global_times, messages_undone):
+        for undone, global_time in zip(messages_undone, message_global_times):
+            is_undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                                          (self._community.database_id, member_database_id, global_time)).next()
+
+            self.assertIsInstance(is_undone, int)
+            self.assertGreaterEqual(is_undone, 0)
+
+            is_undone = 'undone' if is_undone > 0 else 'done'
+            self.assertEqual(is_undone, undone)
+
     @call_on_dispersy_thread
     def test_self_undo_own(self):
         """
-        SELF generates a few messages and then undoes them.
+        NODE generates a few messages and then undoes them.
 
         This is always allowed.  In fact, no check is made since only externally received packets
         will be checked.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+
+        node = DebugNode(self._community)
+        node.init_socket()
+        node.init_my_member()
 
         # create messages
-        messages = [community.create_full_sync_text("Should undo #%d" % i, forward=False) for i in xrange(10)]
+        messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
+        node.give_messages(messages, node)
 
         # check that they are in the database and are NOT undone
-        for message in messages:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, community.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
+        self._check_database(node.my_member.database_id, range(10, 20), ['done'] * 10)
 
         # undo all messages
-        undoes = [community.create_undo(message, forward=False) for message in messages]
+        undoes = [node.create_dispersy_undo_own(message, i + 100, i + 1) for i, message in enumerate(messages)]
+        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
+
+        node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        for undo, message in zip(undoes, messages):
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, community.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(undo.packet_id,)])
-
-        # check that all the undo messages are in the database and are NOT undone
-        for message in undoes:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, community.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill", forward=False)
-        self._dispersy.get_community(community.cid).unload_community()
+        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
+        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
 
     @call_on_dispersy_thread
     def test_self_undo_other(self):
@@ -54,397 +56,218 @@ class TestUndo(DispersyTestFunc):
         This is always allowed.  In fact, no check is made since only externally received packets
         will be checked.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
         node.init_my_member()
-
-        # NODE creates messages
-        messages = [node.create_full_sync_text("Should undo #%d" % global_time, global_time) for global_time in xrange(10, 20)]
-        node.give_messages(messages)
-
-        # check that they are in the database and are NOT undone
-        for message in messages:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # SELF undoes all messages
-        undoes = [community.create_undo(message, forward=False) for message in messages]
-
-        # check that they are in the database and ARE undone
-        for undo, message in zip(undoes, messages):
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(undo.packet_id,)])
-
-        # check that all the undo messages are in the database and are NOT undone
-        for message in undoes:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, community.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill", forward=False)
-        self._dispersy.get_community(community.cid).unload_community()
-
-    @call_on_dispersy_thread
-    def test_node_undo_own(self):
-        """
-        SELF gives NODE permission to undo, NODE generates a few messages and then undoes them.
-        """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
-        node.init_socket()
-        node.init_my_member()
-
-        # SELF grants undo permission to NODE
-        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create messages
-        messages = [node.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
-        node.give_messages(messages)
+        messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
+        node.give_messages(messages, node)
 
         # check that they are in the database and are NOT undone
-        for message in messages:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
+        self._check_database(node.my_member.database_id, range(10, 20), ['done'] * 10)
 
-        # undo all messages
-        sequence_number = 1
-        undoes = [node.create_dispersy_undo_own(message, message.distribution.global_time + 100, sequence_number + i) for i, message in enumerate(messages)]
-        node.give_messages(undoes)
+        # SELF undoes all messages
+        undoes = [self._community.create_undo(message, forward=False) for message in messages]
+        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
+
+        node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        for undo, message in zip(undoes, messages):
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(len(undone), 1)
-            undone_packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE id = ?", (undone[0][0],)).next()
-            undone_packet = str(undone_packet)
-            self.assertEqual(undo.packet, undone_packet)
-
-        # check that all the undo messages are in the database and are NOT undone
-        for message in undoes:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
+        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
 
     @call_on_dispersy_thread
     def test_node_undo_other(self):
         """
-        SELF gives NODE1 permission to undo, NODE2 generates a few messages and then NODE1 undoes
+        SELF gives NODE permission to undo, OTHER generates a few messages and then NODE undoes
         them.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+        node = DebugNode(self._community)
+        node.init_socket()
+        node.init_my_member()
 
-        node1 = DebugNode(community)
-        node1.init_socket()
-        node1.init_my_member()
+        other = DebugNode(self._community)
+        other.init_socket()
+        other.init_my_member()
 
-        node2 = DebugNode(community)
-        node2.init_socket()
-        node2.init_my_member()
+        # SELF grants undo permission to NODE
+        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
-        # SELF grants undo permission to NODE1
-        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
-
-        # NODE2 creates messages
-        messages = [node2.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
-        node2.give_messages(messages)
+        # OTHER creates messages
+        messages = [other.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
+        self._dispersy._store(messages)
 
         # check that they are in the database and are NOT undone
-        for message in messages:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node2.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
+        self._check_database(other.my_member.database_id, range(10, 20), ['done'] * 10)
 
-        # NODE1 undoes all messages
-        sequence_number = 1
-        undoes = [node1.create_dispersy_undo_other(message, message.distribution.global_time + 100, sequence_number + i) for i, message in enumerate(messages)]
-        node1.give_messages(undoes)
+        # NODE undoes all messages
+        undoes = [node.create_dispersy_undo_other(message, message.distribution.global_time + 100, 1 + i) for i, message in enumerate(messages)]
+        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
+        node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        for undo, message in zip(undoes, messages):
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node2.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(len(undone), 1)
-            undone_packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE id = ?", (undone[0][0],)).next()
-            undone_packet = str(undone_packet)
-            self.assertEqual(undo.packet.encode("HEX"), undone_packet.encode("HEX"))
-
-        # check that all the undo messages are in the database and are NOT undone
-        for message in undoes:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node1.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
+        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
 
     @call_on_dispersy_thread
-    def test_self_malicious_undo(self):
+    def test_self_attempt_undo_twice(self):
         """
-        SELF generated a message and then undoes it twice.  The dispersy core should ensure that
-        (given that the message was processed, hence update=True) that the second undo is refused
-        and the first undo should be returned instead.
+        NODE generated a message and then undoes it twice. The dispersy core should ensure that
+        that the second undo is refused and the first undo message should be returned instead.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+        node = DebugNode(self._community)
+        node.init_socket()
+        node.init_my_member()
 
         # create message
-        message = community.create_full_sync_text("Should undo")
+        message = node.create_full_sync_text("Should undo @%d" % 1, 1)
+        self._dispersy._store([message])
 
         # undo once
-        undo1 = community.create_undo(message)
+        undo1 = node._community.create_undo(message)
         self.assertIsInstance(undo1, Message.Implementation)
 
-        # undo twice.  instead of a new dispersy-undo, a new instance of the previous UNDO1 must be
-        # returned
-        undo2 = community.create_undo(message)
+        # attempt to undo for the second time
+        undo2 = node._community.create_undo(message)
+        self.assertIsInstance(undo2, Message.Implementation)
         self.assertEqual(undo1.packet, undo2.packet)
 
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
-    def test_node_double_undo(self):
-        """Make sure that in the event of receiving two undo messages from the same member, only the highest one will be kept,
+    def test_node_resolve_undo_twice(self):
+        """
+        Make sure that in the event of receiving two undo messages from the same member, only the highest one will be kept,
         and in case of receiving a lower one, that we will send the higher one back to the sender.
 
         SELF gives NODE permission to undo, NODE generates a message and then undoes it twice.  Only one of the two undo messages should be kept.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
         node.init_my_member()
 
+        other = DebugNode(self._community)
+        other.init_socket()
+        other.init_my_member()
+
         # SELF grants undo permission to NODE
-        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create message
-        global_time = 10
-        message = node.create_full_sync_text("Should undo @%d" % global_time, global_time)
-        node.give_message(message)
+        message = node.create_full_sync_text("Should undo @%d" % 10, 10)
+        node.give_message(message, node)
 
         # undo once
-        global_time = 20
-        sequence_number = 1
-        undo1 = node.create_dispersy_undo_own(message, global_time, sequence_number)
-        node.give_message(undo1)
+        undo1 = node.create_dispersy_undo_own(message, 11, 1)
+        node.give_message(undo1, node)
 
         # undo twice
-        global_time = 30
-        sequence_number = 2
-        undo2 = node.create_dispersy_undo_own(message, global_time, sequence_number)
-        node.give_message(undo2)
-        yield 0.1
+        undo2 = node.create_dispersy_undo_own(message, 12, 2)
+        node.give_message(undo2, node)
 
         # Only one of the packets should be on the DB (+ identity message and the full-sync-text) = 3
         packets = list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ?",
-                                                       (community.database_id, node.my_member.database_id)))
+                                                       (self._community.database_id, node.my_member.database_id)))
         self.assertEqual(len(packets), 3)
 
-        node2 = DebugNode(community)
 
-        node2.init_socket()
-        node2.init_my_member()
-
-        # ensure we don't obtain the messages from the socket cache
-        yield 0.1
-
-        # propagate a message from the malicious member
-        logger.debug("giving faulty message %s", message)
-        node2.give_message(message)
-        yield 0.1
         low_message, high_message = sorted([undo1, undo2], key=lambda message: message.packet)
-        node2.give_message(high_message)
-        yield 0.1
-        node2.give_message(low_message)
-        yield 0.1
+        other.give_message(message, node)
+        other.give_message(high_message, node)
+        other.give_message(low_message, node)
 
-        # SELF should send the first message back when receiving the second one (its "higher" than the one just received)
-        undo_packets = [packet for _, packet in node2.receive_packets()]
+        # OTHER should send the first message back when receiving the second one (its "higher" than the one just received)
+        undo_packets = [packet for _, packet in node.receive_packets()]
         self.assertEqual(undo_packets, [high_message.packet])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
-    @call_on_dispersy_thread
-    def test_node_non_malicious_undo(self):
-        """
-        SELF gives NODE permission to undo, NODE generates a message, SELF generates an undo, NODE
-        generates an undo.  The second undo should NOT cause NODE of SELF to be marked as malicious.
-        """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
-        node.init_socket()
-        node.init_my_member()
-
-        # SELF grants undo permission to NODE
-        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
-
-        # create message
-        global_time = 10
-        message = node.create_full_sync_text("Should undo @%d" % global_time, global_time)
-        node.give_message(message)
-
-        # SELF undoes
-        community.create_undo(message)
-
-        # NODE undoes
-        global_time = 30
-        sequence_number = 1
-        undo = node.create_dispersy_undo_own(message, global_time, sequence_number)
-        node.give_message(undo)
-
-        # check that they are in the database and ARE undone
-        undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                      (community.database_id, message.authentication.member.database_id, message.distribution.global_time)))
-        self.assertEqual(len(undone), 1)
-        undone_packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE id = ?", (undone[0][0],)).next()
-        undone_packet = str(undone_packet)
-        self.assertEqual(undo.packet, undone_packet)
-
-        # check that the member is not declared malicious
-        self.assertFalse(self._dispersy.get_member(public_key=node.my_member.public_key).must_blacklist)
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_missing_message(self):
         """
         SELF gives NODE permission to undo, NODE generates a few messages without sending them to
-        SELF.  Following, NODE undoes the messages and sends the undo messages to SELF.  SELF must
-        now use a dispersy-missing-message to request the messages that are about to be undone.  The
+        OTHER. Following, NODE undoes the messages and sends the undo messages to OTHER. OTHER must
+        now use a dispersy-missing-message to request the messages that are about to be undone. The
         messages need to be processed and subsequently undone.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
         node.init_my_member()
 
+        other = DebugNode(self._community)
+        other.init_socket()
+        other.init_my_member()
+
         # SELF grants undo permission to NODE
-        community.create_authorize([(node.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create messages
-        messages = [node.create_full_sync_text("Should undo @%d" % global_time, global_time) for global_time in xrange(10, 20)]
+        messages = [node.create_full_sync_text("Should undo @%d" % i, i + 10) for i in xrange(10)]
 
         # undo all messages
         sequence_number = 1
         undoes = [node.create_dispersy_undo_own(message, message.distribution.global_time + 100, i + sequence_number) for i, message in enumerate(messages)]
-        node.give_messages(undoes)
+        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
+
+        # send undoes to OTHER
+        other.give_messages(undoes, node)
 
         # receive the dispersy-missing-message messages
         global_times = [message.distribution.global_time for message in messages]
         global_time_requests = []
         for _ in xrange(len(messages)):
-            _, message = node.receive_message(message_names=[u"dispersy-missing-message"])
+            _, message = node.receive_message(names=[u"dispersy-missing-message"])
             self.assertEqual(message.payload.member.public_key, node.my_member.public_key)
             global_time_requests.extend(message.payload.global_times)
         self.assertEqual(sorted(global_times), sorted(global_time_requests))
 
         # give all 'delayed' messages
-        node.give_messages(messages)
-
-        yield sum(community.get_meta_message(name).batch.max_window for name in [u"full-sync-text", u"dispersy-undo-own", u"dispersy-undo-other"])
-        yield 2.0
+        other.give_messages(messages, node)
 
         # check that they are in the database and ARE undone
-        for undo, message in zip(undoes, messages):
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(len(undone), 1)
-            undone_packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE id = ?", (undone[0][0],)).next()
-            undone_packet = str(undone_packet)
-            self.assertEqual(undo.packet, undone_packet)
-
-        # check that all the undo messages are in the database and are NOT undone
-        for message in undoes:
-            undone = list(self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (community.database_id, node.my_member.database_id, message.distribution.global_time)))
-            self.assertEqual(undone, [(0,)])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
+        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
 
     @call_on_dispersy_thread
     def test_revoke_simple(self):
         """
-        SELF gives NODE1 permission to undo, SELF revokes this permission.
+        SELF gives NODE permission to undo, SELF revokes this permission.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
+        node = DebugNode(self._community)
+        node.init_socket()
+        node.init_my_member()
 
-        node1 = DebugNode(community)
-        node1.init_socket()
-        node1.init_my_member()
+        # SELF grants undo permission to NODE
+        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
-        # SELF grants undo permission to NODE1
-        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
-
-        # SELF revoke undo permission from NODE1
-        community.create_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        # SELF revoke undo permission from NODE
+        self._community.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
     @call_on_dispersy_thread
     def test_revoke_causing_undo(self):
         """
-        SELF gives NODE1 permission to undo, SELF created a message, NODE1 undoes the message, SELF
+        SELF gives NODE permission to undo, OTHER created a message, NODE undoes the message, SELF
         revokes the undo permission AFTER the message was undone -> the message is not re-done.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
-        node1 = DebugNode(community)
-        node1.init_socket()
-        node1.init_my_member()
+        node = DebugNode(self._community)
+        node.init_socket()
+        node.init_my_member()
 
-        # SELF grants undo permission to NODE1
-        community.create_authorize([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
+        other = DebugNode(self._community)
+        other.init_socket()
+        other.init_my_member()
 
-        # SELF creates a message
-        message = community.create_full_sync_text("will be undone")
-        self.assert_message_stored(community, community.my_member, message.distribution.global_time)
+        # SELF grants undo permission to NODE
+        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
 
-        # NODE1 undoes the message
-        sequence_number = 1
-        node1.give_message(node1.create_dispersy_undo_other(message, message.distribution.global_time + 1, sequence_number))
-        self.assert_message_stored(community, community.my_member, message.distribution.global_time, undone="undone")
+        # OTHER creates a message
+        message = other.create_full_sync_text("will be undone", 42)
+        other.give_message(message, other)
+        self._check_database(other.my_member.database_id, [42], ['done'])
 
-        # SELF revoke undo permission from NODE1
-        community.create_revoke([(node1.my_member, community.get_meta_message(u"full-sync-text"), u"undo")])
-        self.assert_message_stored(community, community.my_member, message.distribution.global_time, undone="undone")
+        # NODE undoes the message
+        undo = node.create_dispersy_undo_other(message, message.distribution.global_time + 1, 1)
+        other.give_message(undo, node)
+        self._check_database(other.my_member.database_id, [42], ['undone'])
 
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
-    def assert_message_stored(self, community, member, global_time, undone="done"):
-        self.assertIsInstance(undone, str)
-        self.assertIn(undone, ("done", "undone"))
-
-        try:
-            actual_undone, = community.dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?", (community.database_id, member.database_id, global_time)).next()
-        except StopIteration:
-            self.fail("Message must be stored in the database")
-
-        self.assertIsInstance(actual_undone, int)
-        self.assertGreaterEqual(actual_undone, 0)
-        self.assertTrue((undone == "done" and actual_undone == 0) or undone == "undone" and 0 < actual_undone,)
+        # SELF revoke undo permission from NODE
+        self._community.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._check_database(other.my_member.database_id, [42], ['undone'])

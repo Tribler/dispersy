@@ -13,7 +13,6 @@ creator of this message.
 from abc import ABCMeta, abstractproperty
 from .meta import MetaObject
 
-
 class Authentication(MetaObject):
 
     """
@@ -37,8 +36,7 @@ class Authentication(MetaObject):
             pass
 
         def setup(self, message_impl):
-            if __debug__:
-                from .message import Message
+            from .message import Message
             assert isinstance(message_impl, Message.Implementation)
 
     def setup(self, message):
@@ -53,8 +51,7 @@ class Authentication(MetaObject):
         @param message: The meta message.  Note that self is message.authentication.
         @type message: Message
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
 
@@ -116,8 +113,7 @@ class MemberAuthentication(Authentication):
              decoding a message.
             @type is_signed: bool
             """
-            if __debug__:
-                from .member import Member
+            from .member import Member
             assert isinstance(member, Member)
             assert isinstance(is_signed, bool)
             super(MemberAuthentication.Implementation, self).__init__(meta)
@@ -224,8 +220,7 @@ class DoubleMemberAuthentication(Authentication):
              be given when decoding a message.
             @type signatures: list containing strings
             """
-            if __debug__:
-                from .member import Member
+            from .member import Member
             assert isinstance(members, list), type(members)
             assert len(members) == 2
             assert all(isinstance(member, Member) for member in members)
@@ -287,7 +282,7 @@ class DoubleMemberAuthentication(Authentication):
             list is given with (signature, Member) tuples, where the signature is either a verified
             signature or an empty string.
 
-            @rtype: list containing (string, Member) tules
+            @rtype: list containing (string, Member) tuples
             """
             return zip(self._signatures, self._members)
 
@@ -315,8 +310,7 @@ class DoubleMemberAuthentication(Authentication):
             self._regenerate_packet_func()
 
         def setup(self, message_impl):
-            if __debug__:
-                from .message import Message
+            from .message import Message
             assert isinstance(message_impl, Message.Implementation)
             self._regenerate_packet_func = message_impl.regenerate_packet
 

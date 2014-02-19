@@ -18,11 +18,10 @@ from .authentication import NoAuthentication, MemberAuthentication, DoubleMember
 from .bloomfilter import BloomFilter
 from .cache import (SignatureRequestCache, IntroductionRequestCache, MissingMemberCache, MissingMessageCache, MissingSomethingCache,
                     MissingLastMessageCache, MissingProofCache, MissingSequenceOverviewCache, MissingSequenceCache)
-from .candidate import Candidate, WalkCandidate, BootstrapCandidate
+from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import documentation, runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
-from .dispersy import Dispersy
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
@@ -36,13 +35,10 @@ from .requestcache import RequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
+from authentication import DoubleMemberAuthentication
 
 
-try:
-    # python 2.7 only...
-    from collections import OrderedDict
-except ImportError:
-    from .python27_ordereddict import OrderedDict
+from collections import OrderedDict
 
 
 logger = get_logger(__name__)
@@ -103,6 +99,7 @@ class Community(object):
         @return: The created community instance.
         @rtype: Community
         """
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
@@ -199,6 +196,7 @@ class Community(object):
         @return: The created community instance.
         @rtype: Community
         """
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
         assert isinstance(my_member, Member), type(my_member)
@@ -232,6 +230,7 @@ class Community(object):
 
     @classmethod
     def get_master_members(cls, dispersy):
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert dispersy.callback.is_current_thread
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
@@ -254,6 +253,7 @@ class Community(object):
         @return: The community identified by master.
         @rtype: Community
         """
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
         assert dispersy.callback.is_current_thread
@@ -278,6 +278,7 @@ class Community(object):
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
         """
+        from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
         assert dispersy.callback.is_current_thread
@@ -552,18 +553,6 @@ class Community(object):
         @rtype: float
         """
         return 0.01
-
-    # @property
-    # def dispersy_sync_bloom_filter_redundancy(self):
-    #     """
-    #     The number of bloom filters, each with a unique prefix, that are used to represent one sync
-    #     range.
-
-    #     The effective error rate for a sync range then becomes redundancy * error_rate.
-
-    #     @rtype: int
-    #     """
-    #     return 3
 
     @property
     def dispersy_sync_bloom_filter_bits(self):
@@ -1085,9 +1074,7 @@ class Community(object):
 
         Raises KeyError(message) when no conversion is available.
         """
-        if __debug__:
-            from .message import Message
-            assert isinstance(message, (Message, Message.Implementation)), type(message)
+        assert isinstance(message, (Message, Message.Implementation)), type(message)
 
         for conversion in reversed(self._conversions):
             if conversion.can_encode_message(message):
@@ -1108,9 +1095,7 @@ class Community(object):
         @param conversion: The new conversion instance.
         @type conversion: Conversion
         """
-        if __debug__:
-            from .conversion import Conversion
-            assert isinstance(conversion, Conversion)
+        assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
     def take_step(self):
@@ -1130,10 +1115,6 @@ class Community(object):
                 most_recent_sync = time()
 
             yield 5.0
-
-    @documentation(Dispersy.get_message)
-    def get_dispersy_message(self, member, global_time):
-        return self._dispersy.get_message(self, member, global_time)
 
     def _iter_category(self, category, strict=True):
         # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
@@ -1510,10 +1491,8 @@ class Community(object):
             self.add_candidate(candidate)
 
     def handle_missing_messages(self, messages, *classes):
-        if __debug__:
-            from .message import Message
-            assert all(isinstance(message, Message.Implementation) for message in messages), [type(message) for message in messages]
-            assert all(issubclass(cls, MissingSomethingCache) for cls in classes), [type(cls) for cls in classes]
+        assert all(isinstance(message, Message.Implementation) for message in messages), [type(message) for message in messages]
+        assert all(issubclass(cls, MissingSomethingCache) for cls in classes), [type(cls) for cls in classes]
 
         for message in messages:
             for cls in classes:
@@ -1791,9 +1770,9 @@ class Community(object):
 
     def get_member(self, *argv, **kwargs):
         assert not argv, "Only named arguments are allowed"
-        mid=kwargs.pop("mid","")
-        public_key=kwargs.pop("public_key","")
-        private_key=kwargs.pop("private_key", "")
+        mid = kwargs.pop("mid", "")
+        public_key = kwargs.pop("public_key", "")
+        private_key = kwargs.pop("private_key", "")
         assert sum(map(bool, (mid, public_key, private_key))) == 1, \
             "Only one of the three optional arguments may be passed: %s" % str((mid, public_key, private_key))
         assert not kwargs, "Unexpected keyword arg received: %s" % kwargs
@@ -1838,7 +1817,6 @@ class Community(object):
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
 
-        messages = []
         for _, iterator in groupby(packets, key=lambda tup: (tup[1][1], tup[1][22])):
             cur_packets = list(iterator)
             # find associated conversion
@@ -2048,6 +2026,10 @@ class Community(object):
                 logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
             else:
                 logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
+
+
+            if isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
+                self.handle_missing_messages(messages, MissingMessageCache)
 
             # return the number of messages that were correctly handled (non delay, duplicates, etc)
             return len(messages)
@@ -3078,7 +3060,7 @@ class Community(object):
 
         # the members that need to sign
         members = [member for signature, member in message.authentication.signed_members if not (signature or member.private_key)]
-        assert len(members) == 1
+        assert len(members) == 1, len(members)
 
         # temporary cache object
         cache = self.request_cache.add(SignatureRequestCache(self.request_cache, members, response_func, response_args, timeout))
@@ -3315,22 +3297,6 @@ class Community(object):
         self._dispersy.store_update_forward([message], store, update, forward)
         return message
 
-    # def check_authorize(self, messages):
-    #     check = message.community.timeline.check
-
-    #     for message in messages:
-    #         allowed, proofs = check(message)
-    #         if allowed:
-
-    # ensure that the author has the authorize permission
-    #             authorize_allowed, authorize_proofs = check(messageauthor, global_time, [(message, u"authorize") for _, message, __ in permission_triplets])
-    #             if not authorize_allowed:
-    #                 yield DelayMessageByProof(message)
-
-    #             yield message
-    #         else:
-    #             yield DelayMessageByProof(message)
-
     def create_revoke(self, permission_triplets, sign_with_master=False, store=True, update=True, forward=True):
         """
         Revoke permissions from a members in a community.
@@ -3424,7 +3390,7 @@ class Community(object):
 
         else:
             if undone:
-                logger.error("you are attempting to undo the same message twice.  this should never be attempted as it is considered malicious behavior")
+                logger.error("you are attempting to undo the same message twice. returning the previous undo message")
 
                 # already undone.  refuse to undo again but return the previous undo message
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")

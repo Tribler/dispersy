@@ -1,5 +1,5 @@
+from .candidate import Candidate
 from .meta import MetaObject
-
 
 class Destination(MetaObject):
 
@@ -10,8 +10,7 @@ class Destination(MetaObject):
         """
         Setup is called after the meta message is initially created.
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
     def __str__(self):
@@ -34,8 +33,6 @@ class CandidateDestination(Destination):
             CANDIDATES is a tuple containing zero or more Candidate objects.  These will contain the
             destination addresses when the associated message is sent.
             """
-            if __debug__:
-                from .candidate import Candidate
             assert isinstance(candidates, tuple), type(candidates)
             assert len(candidates) >= 0, len(candidates)
             assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
@@ -67,8 +64,6 @@ class CommunityDestination(Destination):
             CANDIDATES is a tuple containing zero or more Candidate objects.  These will contain the
             destination addresses when the associated message is sent.
             """
-            if __debug__:
-                from .candidate import Candidate
             assert isinstance(candidates, tuple), type(candidates)
             assert len(candidates) >= 0, len(candidates)
             assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]

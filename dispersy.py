@@ -55,6 +55,7 @@ from .bootstrap import Bootstrap
 from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCache, MissingSequenceCache,
                     MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
+from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
@@ -67,18 +68,12 @@ from .message import (Packet, Message, DropMessage, DelayMessage, DelayMessageBy
 from .statistics import DispersyStatistics
 
 
-try:
-    # python 2.7 only...
-    from collections import OrderedDict
-except ImportError:
-    from .python27_ordereddict import OrderedDict
-
+from collections import OrderedDict
 
 logger = get_logger(__name__)
 
-if __debug__:
-    from .callback import Callback
-    from .endpoint import Endpoint
+from .callback import Callback
+from .endpoint import Endpoint
 
 
 class Dispersy(object):
@@ -470,8 +465,6 @@ class Dispersy(object):
 
         Returns a list with loaded communities.
         """
-        if __debug__:
-            from .community import Community
         assert self._callback.is_current_thread, "Must be called from the callback thread"
         assert issubclass(community_cls, Community), type(community_cls)
         assert isinstance(args, tuple), type(args)
@@ -501,8 +494,6 @@ class Dispersy(object):
 
         COMMUNITY is the community class that is defined.
         """
-        if __debug__:
-            from .community import Community
         assert issubclass(community, Community)
         assert community.get_classification() in self._auto_load_communities
         del self._auto_load_communities[community.get_classification()]
@@ -533,9 +524,9 @@ class Dispersy(object):
         @rtype: Member
         """
         assert not argv, "Only named arguments are allowed"
-        mid=kwargs.pop("mid","")
-        public_key=kwargs.pop("public_key","")
-        private_key=kwargs.pop("private_key", "")
+        mid = kwargs.pop("mid", "")
+        public_key = kwargs.pop("public_key", "")
+        private_key = kwargs.pop("private_key", "")
         assert sum(map(bool, (mid, public_key, private_key))) == 1, \
             "Only one of the three optional arguments may be passed: %s" % str((mid, public_key, private_key))
         assert not kwargs, "Unexpected keyword arg received: %s" % kwargs
@@ -669,8 +660,6 @@ class Dispersy(object):
         @param community: The community that will be added.
         @type community: Community
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(community, Community)
         logger.debug("%s %s", community.cid.encode("HEX"), community.get_classification())
         assert not community.cid in self._communities
@@ -701,8 +690,6 @@ class Dispersy(object):
         @param community: The community that will be added.
         @type community: Community
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(community, Community)
         assert community.cid in self._communities
         assert self._communities[community.cid] == community
@@ -734,8 +721,6 @@ class Dispersy(object):
         @param destination: The new community classification.  This must be a Community class.
         @type destination: Community class
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(source, (Community, Member))
         assert issubclass(destination, Community)
 
@@ -843,8 +828,6 @@ class Dispersy(object):
 
         Returns None if this message is not in the local database.
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
@@ -857,8 +840,6 @@ class Dispersy(object):
             return self.convert_packet_to_message(str(packet), community)
 
     def get_last_message(self, community, member, meta):
-        if __debug__:
-            from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(meta, Message)
@@ -1468,7 +1449,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         messages = sorted(messages, lambda a, b: cmp(a.distribution.global_time, b.distribution.global_time) or cmp(a.packet, b.packet))
 
         # direct messages tell us what other people believe is the current global_time
-        community = messages[0].community
         for message in messages:
             if isinstance(message.candidate, WalkCandidate):
                 message.candidate.global_time = message.distribution.global_time
@@ -1512,8 +1492,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         """
         Returns the Message representing the packet or None when no conversion is possible.
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(packet, str)
         assert isinstance(community, (type(None), Community))
         assert isinstance(load, bool)
@@ -1546,8 +1524,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         Returns the Message.Implementation representing the packet or None when no conversion is
         possible.
         """
-        if __debug__:
-            from .community import Community
         assert isinstance(packet, str), type(packet)
         assert community is None or isinstance(community, Community), type(community)
         assert isinstance(load, bool), type(load)

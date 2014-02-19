@@ -1,4 +1,5 @@
 from unittest import TestCase
+from .debugcommunity.community import DebugCommunity
 
 from ..callback import Callback
 from ..dispersy import Dispersy
@@ -9,7 +10,7 @@ logger = get_logger(__name__)
 
 def call_on_dispersy_thread(func):
     def helper(*args, **kargs):
-        return args[0]._dispersy.callback.call(func, args, kargs, priority=-1024)
+        return args[0]._dispersy.callback.call(func, args, kargs, priority= -1024)
     helper.__name__ = func.__name__
     return helper
 
@@ -63,7 +64,11 @@ class DispersyTestFunc(TestCase):
 
         self._dispersy = Dispersy(self._callback, endpoint, working_directory, database_filename)
         self._dispersy.start()
-        self._my_member = self._callback.call(self._dispersy.get_new_member, (u"low",))
+        self.create_community()
+
+    @call_on_dispersy_thread
+    def create_community(self):
+        self._community = DebugCommunity.create_community(self._dispersy, self._dispersy.get_new_member(u"low"))
 
     def tearDown(self):
         super(DispersyTestFunc, self).tearDown()
@@ -80,4 +85,4 @@ class DispersyTestFunc(TestCase):
 
         self._callback = None
         self._dispersy = None
-        self._my_member = None
+        self._community = None

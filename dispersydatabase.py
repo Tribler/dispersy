@@ -14,10 +14,6 @@ from .distribution import FullSyncDistribution
 from .logger import get_logger
 logger = get_logger(__name__)
 
-if "--apswtrace" in getattr(sys, "argv", []):
-    from .database import APSWDatabase as Database
-
-
 LATEST_VERSION = 18
 
 schema = u"""

@@ -10,8 +10,7 @@ class Resolution(MetaObject):
         """
         Setup is called after the meta message is initially created.
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
 

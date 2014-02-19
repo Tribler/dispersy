@@ -1,5 +1,3 @@
-from .debugcommunity.community import DebugCommunity
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 class TestMember(DispersyTestFunc):

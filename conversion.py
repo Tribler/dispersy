@@ -2,24 +2,18 @@ from abc import ABCMeta, abstractmethod
 from math import ceil
 from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
-from random import choice
 
-from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
+from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
+from .candidate import Candidate
 from .decorator import attach_runtime_statistics
-from .destination import CommunityDestination, CandidateDestination
-from .distribution import FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .destination import Destination, CommunityDestination, CandidateDestination
+from .distribution import Distribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
-from .resolution import PublicResolution, LinearResolution, DynamicResolution
+from .payload import Payload
+from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
 logger = get_logger(__name__)
-
-if __debug__:
-    from .authentication import Authentication
-    from .candidate import Candidate
-    from .destination import Destination
-    from .distribution import Distribution
-    from .resolution import Resolution
 
 
 class Conversion(object):
@@ -42,8 +36,7 @@ class Conversion(object):
         a proper conversion instance can be made for the Community.  '\xff' is reserved for when
         more than one byte is needed as a version indicator.
         """
-        if __debug__:
-            from .community import Community
+        from .community import Community
         assert isinstance(community, Community), type(community)
         assert isinstance(dispersy_version, str), type(dispersy_version)
         assert len(dispersy_version) == 1, dispersy_version
@@ -1308,10 +1301,8 @@ class NoDefBinaryConversion(Conversion):
             logger.warning("invalid packet size for %s data:%d; offset:%d", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
-        if __debug__:
-            from .payload import Payload
-            assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
-            assert isinstance(placeholder.offset, (int, long))
+        assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
+        assert isinstance(placeholder.offset, (int, long))
 
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
 

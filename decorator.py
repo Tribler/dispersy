@@ -5,7 +5,6 @@ from functools import wraps
 from thread import get_ident
 from threading import current_thread
 from time import time
-import logging
 import sys
 
 from .logger import get_logger

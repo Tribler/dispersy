@@ -23,23 +23,12 @@ class DebugCommunity(Community):
     def my_candidate(self):
         return Candidate(self._dispersy.lan_address, False)
 
-    @property
-    def dispersy_candidate_request_initial_delay(self):
-        # disable candidate
-        return 0.0
-
-    @property
-    def dispersy_sync_initial_delay(self):
-        # disable sync
-        return 0.0
-
     def initiate_conversions(self):
         return [DefaultConversion(self), DebugCommunityConversion(self)]
 
     #
     # helper methods to check database status
     #
-
     def fetch_packets(self, *message_names):
         return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [self.get_meta_message(name).database_id for name in message_names]))]
@@ -50,15 +39,6 @@ class DebugCommunity(Community):
         Message.Implementation instances.
         """
         return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self, verify=False)
-
-    def delete_messages(self, *message_names):
-        """
-        Deletes all packets for MESSAGE_NAMES from the database.  Returns the number of packets
-        removed.
-        """
-        self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ")",
-                                        [self.get_meta_message(name).database_id for name in message_names])
-        return self._dispersy.database.changes
 
     def initiate_meta_messages(self):
         messages = super(DebugCommunity, self).initiate_meta_messages()
@@ -190,44 +170,9 @@ class DebugCommunity(Community):
                 ])
         return messages
 
-    def create_full_sync_text(self, text, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"full-sync-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(),),
-                            payload=(text,))
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
-    def create_targeted_full_sync_text(self, text, candidates, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"full-sync-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(),),
-                            payload=(text,),
-                            destination=candidates,
-                        )
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
-    def create_full_sync_global_time_pruning_text(self, text, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"full-sync-global-time-pruning-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(),),
-                            payload=(text,))
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
     #
     # double-signed-text
     #
-
-    def create_double_signed_text(self, text, candidate, member, response_func, response_args=(), timeout=10.0, forward=True):
-        assert isinstance(candidate, Candidate)
-        meta = self.get_meta_message(u"double-signed-text")
-        message = meta.impl(authentication=([self._my_member, member],),
-                            distribution=(self.global_time,),
-                            payload=(text,))
-        return self.create_signature_request(candidate, message, response_func, response_args, timeout, forward)
-
     def allow_double_signed_text(self, message):
         """
         Received a request to sign MESSAGE.
@@ -239,48 +184,8 @@ class DebugCommunity(Community):
         if message.payload.text == "Allow=True":
             return message
 
-    #
-    # last-1-doublemember-text
-    #
     def allow_signature_func(self, message):
         return True
-
-    #
-    # protected-full-sync-text
-    #
-    def create_protected_full_sync_text(self, text, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"protected-full-sync-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(),),
-                            payload=(text,))
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
-    #
-    # dynamic-resolution-text
-    #
-    def create_dynamic_resolution_text(self, text, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"dynamic-resolution-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(),),
-                            payload=(text,))
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
-    #
-    # sequence-text
-    #
-    def create_sequence_text(self, text, store=True, update=True, forward=True):
-        meta = self.get_meta_message(u"sequence-text")
-        message = meta.impl(authentication=(self._my_member,),
-                            distribution=(self.claim_global_time(), meta.distribution.claim_sequence_number()),
-                            payload=(text,))
-        self._dispersy.store_update_forward([message], store, update, forward)
-        return message
-
-    #
-    # any text-payload
-    #
 
     def check_text(self, messages):
         for message in messages:

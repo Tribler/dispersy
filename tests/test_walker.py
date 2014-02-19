@@ -1,5 +1,4 @@
 from ..logger import get_logger
-from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
@@ -20,13 +19,15 @@ class TestWalker(DispersyTestFunc):
     def create_nodes(self, community, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
-        def generator():
-            for flags in all_flags:
-                node = DebugNode(community)
-                node.init_socket("t" in flags)
-                node.init_my_member(candidate=False)
-                yield node
-        return list(generator())
+
+        nodes = []
+        for flags in all_flags:
+            node = DebugNode(community)
+            node.init_socket("t" in flags)
+            node.init_my_member()
+            nodes.append(node)
+
+        return nodes
 
     @call_on_dispersy_thread
     def check_walker(self, all_flags):
@@ -37,11 +38,10 @@ class TestWalker(DispersyTestFunc):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
 
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        nodes = self.create_nodes(community, all_flags)
+        nodes = self.create_nodes(self._community, all_flags)
 
         # create all requests
-        requests = [node.create_dispersy_introduction_request(community.my_candidate,
+        requests = [node.create_dispersy_introduction_request(self._community.my_candidate,
                                                               node.lan_address,
                                                               node.wan_address,
                                                               True,
@@ -53,7 +53,7 @@ class TestWalker(DispersyTestFunc):
                     in enumerate(nodes, 1)]
 
         # give all requests in one batch to dispersy
-        self._dispersy.on_incoming_packets([(node.candidate, request.packet)
+        self._dispersy.on_incoming_packets([(node.my_candidate, request.packet)
                                              for node, request
                                              in zip(nodes, requests)])
 
@@ -63,7 +63,6 @@ class TestWalker(DispersyTestFunc):
 
         for node in nodes:
             _, response = node.receive_message()
-            logger.debug("SELF responded to %s's request with LAN:%s WAN:%s", node.candidate, response.payload.lan_introduction_address, response.payload.wan_introduction_address)
 
             if node.tunnel:
                 # NODE is behind a tunnel, SELF can introduce tunnelled and non-tunnelled nodes to NODE.  This is

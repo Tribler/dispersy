@@ -1,8 +1,6 @@
 from time import time
 
 from .logger import get_logger
-from .member import DummyMember, Member
-from .message import Message
 from .requestcache import Cache, NumberCache
 
 logger = get_logger(__name__)
@@ -102,6 +100,7 @@ class MissingMemberCache(MissingSomethingCache):
 
     @staticmethod
     def create_identifier(member):
+        from .member import DummyMember
         assert isinstance(member, DummyMember), type(member)
         return u"request-cache:missing-member:%s" % (member.mid.encode("HEX"),)
 
@@ -110,12 +109,14 @@ class MissingMessageCache(MissingSomethingCache):
 
     @staticmethod
     def create_identifier(member, global_time):
+        from .member import DummyMember
         assert isinstance(member, DummyMember), type(member)
         assert isinstance(global_time, (int, long)), type(global_time)
         return u"request-cache:missing-message:%s:%d" % (member.mid.encode("HEX"), global_time)
 
     @classmethod
     def create_identifier_from_message(cls, message):
+        from .message import Message
         assert isinstance(message, Message.Implementation), type(message)
         return cls.create_identifier(message.authentication.member, message.distribution.global_time)
 
@@ -124,6 +125,8 @@ class MissingLastMessageCache(MissingSomethingCache):
 
     @staticmethod
     def create_identifier(member, message):
+        from .member import DummyMember
+        from .message import Message
         assert isinstance(member, DummyMember), type(member)
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         return u"request-cache:missing-last-message:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
@@ -137,6 +140,7 @@ class MissingProofCache(MissingSomethingCache):
 
     @classmethod
     def create_identifier_from_message(cls, message):
+        from .message import Message
         assert isinstance(message, Message.Implementation), type(message)
         return cls.create_identifier()
 
@@ -152,6 +156,8 @@ class MissingSequenceOverviewCache(Cache):
 
     @staticmethod
     def create_identifier(member, message):
+        from .member import Member
+        from .message import Message
         assert isinstance(member, Member), type(member)
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         return u"request-cache:missing-sequence-overview:%s:%s" % (member.mid.encode("HEX"), message.name.encode("UTF-8"))
@@ -173,6 +179,8 @@ class MissingSequenceCache(MissingSomethingCache):
 
     @staticmethod
     def create_identifier(member, message, missing_global_time_high):
+        from .member import Member
+        from .message import Message
         assert isinstance(member, Member), type(member)
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         assert isinstance(missing_global_time_high, (int, long)), type(missing_global_time_high)
@@ -180,5 +188,6 @@ class MissingSequenceCache(MissingSomethingCache):
 
     @classmethod
     def create_identifier_from_message(cls, message):
+        from .message import Message
         assert isinstance(message, Message.Implementation), type(message)
         return cls.create_identifier(message.authentication.member, message, message.distribution.sequence_number)
