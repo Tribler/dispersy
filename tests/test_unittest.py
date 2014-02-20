@@ -48,7 +48,6 @@ class TestUnittest(DispersyTestFunc):
         " Assert within a registered task. "
         def task():
             self.assertTrue(False, "This must fail")
-        self.assertTrue(self.enable_strict)
         self._dispersy.callback.register(task)
         yield 1.0
         self.fail("Should not reach this")
@@ -59,20 +58,9 @@ class TestUnittest(DispersyTestFunc):
         " KeyError within a registered task with strict enabled. "
         def task():
             raise KeyError("This must fail")
-        self.assertTrue(self.enable_strict)
         self._dispersy.callback.register(task)
         yield 1.0
         self.fail("Should not reach this")
-
-    @call_on_dispersy_thread
-    def test_KeyError_callback(self):
-        " KeyError within a registered task. "
-        def task():
-            raise KeyError("This must be ignored")
-        self.enable_strict = False
-        self._dispersy.callback.register(task)
-        yield 1.0
-        self.assertTrue(True)
 
     @failure_to_success(AssertionError, "This must fail")
     @call_on_dispersy_thread
@@ -82,22 +70,9 @@ class TestUnittest(DispersyTestFunc):
             yield 0.1
             yield 0.1
             self.assertTrue(False, "This must fail")
-        self.assertTrue(self.enable_strict)
         self._dispersy.callback.register(task)
         yield 1.0
         self.fail("Should not reach this")
-
-    @call_on_dispersy_thread
-    def test_assert_callback_generator(self):
-        " Assert within a registered generator task. "
-        def task():
-            yield 0.1
-            yield 0.1
-            self.assertTrue(False, "This must be ignored")
-        self.enable_strict = False
-        self._dispersy.callback.register(task)
-        yield 1.0
-        self.assertTrue(True)
 
     @failure_to_success(KeyError, "This must fail")
     @call_on_dispersy_thread
@@ -107,22 +82,9 @@ class TestUnittest(DispersyTestFunc):
             yield 0.1
             yield 0.1
             raise KeyError("This must fail")
-        self.assertTrue(self.enable_strict)
         self._dispersy.callback.register(task)
         yield 1.0
         self.fail("Should not reach this")
-
-    @call_on_dispersy_thread
-    def test_KeyError_callback_generator(self):
-        " KeyError within a registered generator task. "
-        def task():
-            yield 0.1
-            yield 0.1
-            raise KeyError("This must be ignored")
-        self.enable_strict = False
-        self._dispersy.callback.register(task)
-        yield 1.0
-        self.assertTrue(True)
 
     @failure_to_success(AssertionError, "This must fail")
     @call_on_dispersy_thread
@@ -130,18 +92,6 @@ class TestUnittest(DispersyTestFunc):
         " Assert within a 'call' task. "
         def task():
             self.assertTrue(False, "This must fail")
-        self.assertTrue(self.enable_strict)
-        self._dispersy.callback.call(task)
-        yield 1.0
-        self.fail("Should not reach this")
-
-    @failure_to_success(AssertionError, "This must fail")
-    @call_on_dispersy_thread
-    def test_assert_callback_call(self):
-        " Assert within a 'call' task. "
-        def task():
-            self.assertTrue(False, "This must fail")
-        self.enable_strict = False
         self._dispersy.callback.call(task)
         yield 1.0
         self.fail("Should not reach this")
@@ -152,18 +102,6 @@ class TestUnittest(DispersyTestFunc):
         " KeyError within a 'call' task. "
         def task():
             raise KeyError("This must fail")
-        self.assertTrue(self.enable_strict)
-        self._dispersy.callback.call(task)
-        yield 1.0
-        self.fail("Should not reach this")
-
-    @failure_to_success(KeyError, "This must fail")
-    @call_on_dispersy_thread
-    def test_KeyError_callback_call(self):
-        " KeyError within a 'call' task. "
-        def task():
-            raise KeyError("This must fail")
-        self.enable_strict = False
         self._dispersy.callback.call(task)
         yield 1.0
         self.fail("Should not reach this")
@@ -176,20 +114,6 @@ class TestUnittest(DispersyTestFunc):
             yield 0.1
             yield 0.1
             self.assertTrue(False, "This must fail")
-        self.assertTrue(self.enable_strict)
-        self._dispersy.callback.call(task)
-        yield 1.0
-        self.fail("Should not reach this")
-
-    @failure_to_success(AssertionError, "This must fail")
-    @call_on_dispersy_thread
-    def test_assert_callback_call_generator(self):
-        " Assert within a 'call' generator task. "
-        def task():
-            yield 0.1
-            yield 0.1
-            self.assertTrue(False, "This must fail")
-        self.enable_strict = False
         self._dispersy.callback.call(task)
         yield 1.0
         self.fail("Should not reach this")
@@ -202,7 +126,6 @@ class TestUnittest(DispersyTestFunc):
             yield 0.1
             yield 0.1
             raise KeyError("This must fail")
-        self.assertTrue(self.enable_strict)
         self._dispersy.callback.call(task)
         yield 1.0
         self.fail("Should not reach this")
