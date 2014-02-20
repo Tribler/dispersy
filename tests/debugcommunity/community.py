@@ -6,7 +6,7 @@ from ...destination import CommunityDestination
 from ...cache import MissingSequenceCache
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...logger import get_logger
-from ...message import Message, DelayMessageByProof
+from ...message import Message, DelayMessageByProof, BatchConfiguration
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
 logger = get_logger(__name__)
 
@@ -167,6 +167,15 @@ class DebugCommunity(Community):
                         TextPayload(),
                         self.check_text,
                         self.on_text),
+                Message(self, u"batched-text",
+                        MemberAuthentication(),
+                        PublicResolution(),
+                        FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128),
+                        CommunityDestination(node_count=10),
+                        TextPayload(),
+                        self.check_text,
+                        self.on_text,
+                        batch=BatchConfiguration(max_window=5.0)),
                 ])
         return messages
 

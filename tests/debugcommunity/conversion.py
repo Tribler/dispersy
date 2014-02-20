@@ -30,6 +30,7 @@ class DebugCommunityConversion(BinaryConversion):
         self.define_meta_message(chr(113), community.get_meta_message(u"low-priority-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(114), community.get_meta_message(u"medium-priority-text"), self._encode_text, self._decode_text)
         self.define_meta_message(chr(115), community.get_meta_message(u"RANDOM-text"), self._encode_text, self._decode_text)
+        self.define_meta_message(chr(116), community.get_meta_message(u"batched-text"), self._encode_text, self._decode_text)
 
     def _encode_text(self, message):
         """

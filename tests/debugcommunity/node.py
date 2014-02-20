@@ -662,3 +662,9 @@ class DebugNode(object):
         Returns a new RANDOM-text message.
         """
         return self._create_text(u"RANDOM-text", text, global_time)
+
+    def create_batched_text(self, text, global_time):
+        """
+        Returns a new BATCHED-text message.
+        """
+        return self._create_text(u"batched-text", text, global_time)
