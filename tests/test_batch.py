@@ -29,14 +29,12 @@ class TestBatch(DispersyTestFunc):
         other.give_messages(messages, node, cache=True)
 
         # no messages may be in the database, as they need to be batched
-        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, node.my_member.database_id, messages[0].database_id)).next()
-        self.assertEqual(packets_stored, 0)
+        self.assertEqual(self.count_messages(messages[0]), 0)
 
         yield messages[0].meta.batch.max_window + 1.0
 
         # all of the messages must be stored in the database, as batch_window expired
-        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, node.my_member.database_id, messages[0].database_id)).next()
-        self.assertEqual(packets_stored, 10)
+        self.assertEqual(self.count_messages(messages[0]), 10)
 
     @call_on_dispersy_thread
     def test_multiple_batch(self):
@@ -53,14 +51,12 @@ class TestBatch(DispersyTestFunc):
             other.give_message(message, node, cache=True)
 
             # no messages may be in the database, as they need to be batched
-            packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, node.my_member.database_id, messages[0].database_id)).next()
-            self.assertEqual(packets_stored, 0)
+            self.assertEqual(self.count_messages(message), 0)
 
         yield messages[0].meta.batch.max_window + 1.0
 
         # all of the messages must be stored in the database, as batch_window expired
-        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, node.my_member.database_id, messages[0].database_id)).next()
-        self.assertEqual(packets_stored, 10)
+        self.assertEqual(self.count_messages(messages[0]), 10)
 
     @call_on_dispersy_thread
     def test_one_big_batch(self, length=1000):

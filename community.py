@@ -425,7 +425,7 @@ class Community(object):
             for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
                 if candidate:
                     logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
-                    self._dispersy.create_missing_identity(self, candidate, self._master_member, on_dispersy_identity)
+                    self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
 
             yield delay
             delay = min(300.0, delay * 1.1)

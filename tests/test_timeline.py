@@ -93,13 +93,12 @@ class TestTimeline(DispersyTestFunc):
                                     (node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"authorize")], store=False, update=False, forward=False)
 
         # NODE creates message
-        other.give_message(node.create_protected_full_sync_text("Protected message", 42), node)
+        tmessage = node.create_protected_full_sync_text("Protected message", 42)
+        other.give_message(tmessage, node)
         yield 0.11
 
         # must NOT have been stored in the database
-        nrpackets, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                       (self._community.database_id, node.my_member.database_id, 42)).next()
-        self.assertEqual(nrpackets, 0, "should not have stored, did not have permission")
+        self.assert_not_stored(tmessage)
 
         # OTHER sends dispersy-missing-proof to NODE
         _, message = node.receive_message(names=[u"dispersy-missing-proof"])
@@ -111,9 +110,7 @@ class TestTimeline(DispersyTestFunc):
         yield 0.11
 
         # must have been stored in the database
-        nrpackets, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                       (self._community.database_id, node.my_member.database_id, 42)).next()
-        self.assertEqual(nrpackets, 1, "should have been stored")
+        self.assert_is_stored(tmessage)
 
     @call_on_dispersy_thread
     def test_missing_proof(self):

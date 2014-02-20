@@ -26,6 +26,9 @@ class DebugCommunity(Community):
     def initiate_conversions(self):
         return [DefaultConversion(self), DebugCommunityConversion(self)]
 
+    def take_step(self):
+        pass
+
     #
     # helper methods to check database status
     #

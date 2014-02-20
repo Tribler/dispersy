@@ -29,15 +29,9 @@ class TestDynamicSettings(DispersyTestFunc):
         self.assertEqual(proof, [])
 
         # NODE creates a message (should allow, because the default policy is PublicResolution)
-        global_time = 10
-        other.give_message(node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, policy.implement()), node)
-
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, global_time)).next()
-            self.assertEqual(undone, 0, "must accept the message")
-        except StopIteration:
-            self.fail("must store the message")
+        message = node.create_dynamic_resolution_text("Message #%d" % 10, 10, policy.implement())
+        other.give_message(message, node)
+        self.assert_is_done(message)
 
     @call_on_dispersy_thread
     def test_change_resolution(self):
@@ -67,33 +61,24 @@ class TestDynamicSettings(DispersyTestFunc):
 
         # NODE creates a message (should allow), linear policy takes effect at globaltime + 1
         global_time = message.distribution.global_time
-        other.give_message(node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, public_policy.implement()), node)
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, global_time)).next()
-            self.assertEqual(undone, 0, "must accept the message")
-        except StopIteration:
-            self.fail("must store the message")
+
+        message = node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, public_policy.implement())
+        other.give_message(message, node)
+        self.assert_is_stored(message)
 
         # NODE creates another message (should drop), linear policy in effect
         global_time += 1
-        other.give_message(node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, public_policy.implement()), node)
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, global_time)).next()
-            self.fail("must not accept the message")
-        except StopIteration:
-            pass
+        message = node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, public_policy.implement())
+        other.give_message(message, node)
+
+        self.assert_not_stored(message)
 
         # NODE creates another message, correct policy (should drop), no permissions
         global_time += 1
-        message = node.give_message(node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, linear_policy.implement()), node)
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, global_time)).next()
-            self.fail("must not accept the message")
-        except StopIteration:
-            pass
+        message = node.create_dynamic_resolution_text("Message #%d" % global_time, global_time, linear_policy.implement())
+        other.give_message(message, node)
+
+        self.assert_not_stored(message)
 
     @call_on_dispersy_thread
     def test_change_resolution_undo(self):
@@ -101,6 +86,11 @@ class TestDynamicSettings(DispersyTestFunc):
         Change the resolution policy from default to linear, the messages already accepted should be
         undone
         """
+        def check_policy(time_low, time_high, meta, policyclass):
+            for global_time in range(time_low, time_high):
+                policy, _ = self._community.timeline.get_resolution_policy(meta, global_time)
+                self.assertIsInstance(policy, policyclass)
+
         meta = self._community.get_meta_message(u"dynamic-resolution-text")
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
@@ -126,62 +116,28 @@ class TestDynamicSettings(DispersyTestFunc):
 
         # because above policy changes were not applied (i.e. update=False) everything is still
         # PublicResolution without any proof
-        for global_time in range(1, 32):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, PublicResolution)
-            self.assertEqual(proof, [])
+        check_policy(1, 32, meta, PublicResolution)
 
         # NODE creates a message (should allow)
-        tm_global_time = 25
-        other.give_message(node.create_dynamic_resolution_text("Message #%d" % tm_global_time, tm_global_time, public.implement()), node)
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, tm_global_time)).next()
-        except StopIteration:
-            self.fail("must accept the message")
-        self.assertEqual(undone, 0, "must accept the message")
+        tmessage = node.create_dynamic_resolution_text("Message #%d" % 25, 25, public.implement())
+        other.give_message(tmessage, node)
+        self.assert_is_stored(tmessage)
 
         # process the policy change
         other.give_message(policy_linear, node)
 
-        for global_time in range(1, 12):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, PublicResolution)
-            self.assertEqual(proof, [])
+        check_policy(1, 12, meta, PublicResolution)
+        check_policy(12, 32, meta, LinearResolution)
 
-        for global_time in range(12, 32):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, LinearResolution)
-            self.assertEqual([message.packet.encode("HEX") for message in proof], [policy_linear.packet.encode("HEX")])
-
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, tm_global_time)).next()
-        except StopIteration:
-            self.fail("the message must be in the database with undone > 0")
-        self.assertGreater(undone, 0, "must be undone")
+        # policy change should have undone the tmessage
+        self.assert_is_undone(tmessage)
 
         # process the policy change
         other.give_message(policy_public, node)
 
-        for global_time in range(1, 12):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, PublicResolution)
-            self.assertEqual(proof, [])
+        check_policy(1, 12, meta, PublicResolution)
+        check_policy(12, 22, meta, LinearResolution)
+        check_policy(22, 32, meta, PublicResolution)
 
-        for global_time in range(12, 22):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, LinearResolution)
-            self.assertEqual([message.packet for message in proof], [policy_linear.packet])
-
-        for global_time in range(22, 32):
-            policy, proof = self._community.timeline.get_resolution_policy(meta, global_time)
-            self.assertIsInstance(policy, PublicResolution)
-            self.assertEqual([message.packet for message in proof], [policy_public.packet])
-
-        try:
-            undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                     (self._community.database_id, node.my_member.database_id, tm_global_time)).next()
-        except StopIteration:
-            self.fail("must accept the message")
-        self.assertEqual(undone, 0, "must be redone")
+        # policy change should have redone the tmessage
+        self.assert_is_done(tmessage)

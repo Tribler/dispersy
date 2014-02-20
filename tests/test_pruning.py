@@ -19,16 +19,6 @@ class TestPruning(DispersyTestFunc):
             self._dispersy._store(messages)
         return messages
 
-    def _check_database(self, database, messages):
-        # pruned messages should no longer exist in the database
-        for message in messages:
-            try:
-                database.execute(u"SELECT * FROM sync WHERE id = ?", (message.packet_id,)).next()
-            except StopIteration:
-                pass
-            else:
-                self.fail("Message should not be in the database")
-
     @call_on_dispersy_thread
     def test_local_creation_causes_pruning(self):
         """
@@ -68,7 +58,7 @@ class TestPruning(DispersyTestFunc):
         self.assertTrue(all(message.distribution.pruning.is_active() for message in messages), "all messages should be active")
 
         # pruned messages should no longer exist in the database
-        self._check_database(self._dispersy.database, pruned)
+        self.assert_not_stored(messages=pruned)
 
     @call_on_dispersy_thread
     def test_local_creation_of_other_messages_causes_pruning(self):
@@ -101,7 +91,7 @@ class TestPruning(DispersyTestFunc):
         self.assertTrue(all(message.distribution.pruning.is_pruned() for message in messages), "all messages should be pruned")
 
         # pruned messages should no longer exist in the database
-        self._check_database(self._dispersy.database, messages)
+        self.assert_not_stored(messages=messages)
 
     @call_on_dispersy_thread
     def test_remote_creation_causes_pruning(self):
@@ -148,7 +138,7 @@ class TestPruning(DispersyTestFunc):
         self.assertTrue(all(message.distribution.pruning.is_active() for message in messages), "all messages should be active")
 
         # pruned messages should no longer exist in the database
-        self._check_database(self._dispersy.database, pruned)
+        self.assert_not_stored(messages=pruned)
 
     @call_on_dispersy_thread
     def test_remote_creation_of_other_messages_causes_pruning(self):
@@ -187,7 +177,7 @@ class TestPruning(DispersyTestFunc):
         self.assertTrue(all(message.distribution.pruning.is_pruned() for message in messages), "all messages should be pruned")
 
         # pruned messages should no longer exist in the database
-        self._check_database(self._dispersy.database, messages)
+        self.assert_not_stored(messages=messages)
 
     @call_on_dispersy_thread
     def test_sync_response_response_filtering_inactive(self):

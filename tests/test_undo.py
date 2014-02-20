@@ -7,17 +7,6 @@ logger = get_logger(__name__)
 
 class TestUndo(DispersyTestFunc):
 
-    def _check_database(self, member_database_id, message_global_times, messages_undone):
-        for undone, global_time in zip(messages_undone, message_global_times):
-            is_undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                          (self._community.database_id, member_database_id, global_time)).next()
-
-            self.assertIsInstance(is_undone, int)
-            self.assertGreaterEqual(is_undone, 0)
-
-            is_undone = 'undone' if is_undone > 0 else 'done'
-            self.assertEqual(is_undone, undone)
-
     @call_on_dispersy_thread
     def test_self_undo_own(self):
         """
@@ -36,22 +25,21 @@ class TestUndo(DispersyTestFunc):
         node.give_messages(messages, node)
 
         # check that they are in the database and are NOT undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['done'] * 10)
+        self.assert_is_stored(messages=messages)
 
         # undo all messages
         undoes = [node.create_dispersy_undo_own(message, i + 100, i + 1) for i, message in enumerate(messages)]
-        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
 
         node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
-        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
+        self.assert_is_undone(messages=messages)
+        self.assert_is_stored(messages=undoes)
 
     @call_on_dispersy_thread
     def test_self_undo_other(self):
         """
-        NODE generates a few messages and then SELF undoes them.
+        NODE generates a few messages and then MM undoes them.
 
         This is always allowed.  In fact, no check is made since only externally received packets
         will be checked.
@@ -65,17 +53,15 @@ class TestUndo(DispersyTestFunc):
         node.give_messages(messages, node)
 
         # check that they are in the database and are NOT undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['done'] * 10)
+        self.assert_is_stored(messages=messages)
 
-        # SELF undoes all messages
+        # MM undoes all messages
         undoes = [self._community.create_undo(message, forward=False) for message in messages]
-        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
-
         node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
-        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
+        self.assert_is_undone(messages=messages)
+        self.assert_is_stored(messages=undoes)
 
     @call_on_dispersy_thread
     def test_node_undo_other(self):
@@ -99,16 +85,15 @@ class TestUndo(DispersyTestFunc):
         self._dispersy._store(messages)
 
         # check that they are in the database and are NOT undone
-        self._check_database(other.my_member.database_id, range(10, 20), ['done'] * 10)
+        self.assert_is_stored(messages=messages)
 
         # NODE undoes all messages
         undoes = [node.create_dispersy_undo_other(message, message.distribution.global_time + 100, 1 + i) for i, message in enumerate(messages)]
-        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
         node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
-        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
+        self.assert_is_undone(messages=messages)
+        self.assert_is_stored(messages=undoes)
 
     @call_on_dispersy_thread
     def test_self_attempt_undo_twice(self):
@@ -204,7 +189,6 @@ class TestUndo(DispersyTestFunc):
         # undo all messages
         sequence_number = 1
         undoes = [node.create_dispersy_undo_own(message, message.distribution.global_time + 100, i + sequence_number) for i, message in enumerate(messages)]
-        undone_globaltimes = [undo.distribution.global_time for undo in undoes]
 
         # send undoes to OTHER
         other.give_messages(undoes, node)
@@ -222,8 +206,8 @@ class TestUndo(DispersyTestFunc):
         other.give_messages(messages, node)
 
         # check that they are in the database and ARE undone
-        self._check_database(node.my_member.database_id, range(10, 20), ['undone'] * 10)
-        self._check_database(node.my_member.database_id, undone_globaltimes, ['done'] * 10)
+        self.assert_is_undone(messages=messages)
+        self.assert_is_stored(messages=undoes)
 
     @call_on_dispersy_thread
     def test_revoke_simple(self):
@@ -261,13 +245,14 @@ class TestUndo(DispersyTestFunc):
         # OTHER creates a message
         message = other.create_full_sync_text("will be undone", 42)
         other.give_message(message, other)
-        self._check_database(other.my_member.database_id, [42], ['done'])
+        self.assert_is_stored(message)
 
         # NODE undoes the message
         undo = node.create_dispersy_undo_other(message, message.distribution.global_time + 1, 1)
         other.give_message(undo, node)
-        self._check_database(other.my_member.database_id, [42], ['undone'])
+        self.assert_is_undone(message)
+        self.assert_is_stored(undo)
 
         # SELF revoke undo permission from NODE
         self._community.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
-        self._check_database(other.my_member.database_id, [42], ['undone'])
+        self.assert_is_undone(message)

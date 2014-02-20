@@ -32,14 +32,9 @@ class TestIdenticalPayload(DispersyTestFunc):
         other.give_message(messages[0], node)
         other.give_message(messages[1], node)
 
-        try:
-            packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                      (self._community.database_id, node.my_member.database_id, 42)).next()
-            packet = str(packet)
-            self.assertEqual(packet, messages[1].packet)
+        self.assert_not_stored(messages[0])
+        self.assert_is_stored(messages[1])
 
-        except StopIteration:
-            self.fail("neither message is stored")
 
     @call_on_dispersy_thread
     def test_drop_identical(self):
@@ -61,6 +56,4 @@ class TestIdenticalPayload(DispersyTestFunc):
         other.give_message(message, node)
         other.give_message(message, node)
 
-        nrpackets, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                      (self._community.database_id, node.my_member.database_id, 42)).next()
-        self.assertGreater(nrpackets, 0, "message isn't stored")
+        self.assert_is_stored(message)
