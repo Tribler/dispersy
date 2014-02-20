@@ -1,9 +1,9 @@
 from .logger import get_logger
 logger = get_logger(__name__)
 
-if __debug__:
-    from .member import Member
+from .member import Member
 
+if __debug__:
     def is_address(address):
         assert isinstance(address, tuple), type(address)
         assert len(address) == 2, len(address)

@@ -5,6 +5,7 @@ from unittest import skipUnless
 from collections import defaultdict
 
 from ..conversion import DefaultConversion
+from ..community import Community
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
@@ -42,9 +43,9 @@ class TestOverlay(DispersyTestFunc):
                 _, payload = super(Conversion, self)._decode_introduction_request(placeholder, offset, data)
                 return len(data), payload
 
-        class Community(DebugCommunity):
+        class WCommunity(DebugCommunity):
             def __init__(self, dispersy, master):
-                super(Community, self).__init__(dispersy, master)
+                super(WCommunity, self).__init__(dispersy, master)
                 if enable_fast_walker:
                     self.dispersy.callback.register(self.fast_walker)
 
@@ -54,6 +55,10 @@ class TestOverlay(DispersyTestFunc):
             def dispersy_claim_sync_bloom_filter(self, request_cache):
                 # we only want to walk in the community, not exchange data
                 return None
+
+            def take_step(self):
+                for sleep in Community.take_step(self):
+                    yield sleep
 
             def fast_walker(self):
                 for _ in xrange(10):
@@ -97,7 +102,7 @@ class TestOverlay(DispersyTestFunc):
         cid = cid_hex.decode("HEX")
 
         self._dispersy.statistics.enable_debug_statistics(True)
-        community = Community.join_community(self._dispersy, self._dispersy.get_temporary_member_from_id(cid), self._my_member)
+        community = WCommunity.join_community(self._dispersy, self._dispersy.get_temporary_member_from_id(cid), self._community._my_member)
         summary.info(community.cid.encode("HEX"))
 
         history = []

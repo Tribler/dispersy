@@ -10,13 +10,12 @@ from abc import ABCMeta, abstractmethod
 from sqlite3 import Connection, Error
 import logging
 import sys
+import thread
 
 from .decorator import attach_runtime_statistics
 from .logger import get_logger
 logger = get_logger(__name__)
 
-if __debug__:
-    import thread
 
 if "--explain-query-plan" in getattr(sys, "argv", []):
     _explain_query_plan_logger = get_logger("explain-query-plan")
@@ -436,105 +435,3 @@ class Database(object):
     def detach_commit_callback(self, func):
         assert func in self._commit_callbacks
         self._commit_callbacks.remove(func)
-
-
-class APSWDatabase(Database):
-
-    def _connect(self):
-        import apsw
-        self._connection = apsw.Connection(self._file_path)
-        self._cursor = self._connection.cursor()
-
-    def _initial_statements(self):
-        super(APSWDatabase, self)._initial_statements()
-        self.execute("BEGIN")
-
-    def execute(self, statement, bindings=()):
-        if __debug__:
-            assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-            assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-            assert self._debug_thread_ident != 0, "please call database.open() first"
-            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-            assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
-
-            # bindings may not be strings, text must be given as unicode strings while binary data,
-            # i.e. blobs, must be given as a buffer(...)
-            if isinstance(bindings, dict):
-                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
-            else:
-                tests = (not isinstance(binding, str) for binding in bindings)
-            assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
-
-        logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
-        return self._cursor.execute(statement, bindings)
-
-    def executescript(self, statements):
-        return self.execute(statements)
-
-    def executemany(self, statement, sequenceofbindings):
-        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        if __debug__:
-            # we allow GeneratorType but must convert it to a list in __debug__ mode since a
-            # generator can only iterate once
-            from types import GeneratorType
-            is_iterator = isinstance(sequenceofbindings, GeneratorType)
-            if is_iterator:
-                sequenceofbindings = list(sequenceofbindings)
-
-            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
-            assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
-            assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
-
-            for bindings in sequenceofbindings:
-                # bindings may not be strings, text must be given as unicode strings while binary data,
-                # i.e. blobs, must be given as a buffer(...)
-                if isinstance(bindings, dict):
-                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
-                else:
-                    tests = (not isinstance(binding, str) for binding in bindings)
-                assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB"
-
-            if is_iterator:
-                sequenceofbindings = iter(sequenceofbindings)
-
-        logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
-        return self._cursor.executemany(statement, sequenceofbindings)
-
-    @property
-    def last_insert_rowid(self):
-        """
-        The row id of the most recent insert query.
-        @rtype: int or long
-        """
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident()
-        assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
-        return self._connection.last_insert_rowid()
-
-    @property
-    def changes(self):
-        """
-        The number of changes that resulted from the most recent query.
-        @rtype: int or long
-        """
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        return self._connection.totalchanges()
-
-    def commit(self, exiting=False):
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
-        assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
-
-        logger.debug("commit [%s]", self._file_path)
-        result = self.execute("COMMIT;BEGIN")
-        for callback in self._commit_callbacks:
-            try:
-                callback(exiting=exiting)
-            except Exception as exception:
-                logger.debug("%s [%s]", exception, self._file_path)
-        return result

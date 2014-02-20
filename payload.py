@@ -1,8 +1,7 @@
 from .meta import MetaObject
+from .bloomfilter import BloomFilter
 
 if __debug__:
-    from .bloomfilter import BloomFilter
-
     def is_address(address):
         assert isinstance(address, tuple), type(address)
         assert len(address) == 2, len(address)
@@ -22,8 +21,7 @@ class Payload(MetaObject):
         """
         Setup is called after the meta message is initially created.
         """
-        if __debug__:
-            from .message import Message
+        from .message import Message
         assert isinstance(message, Message)
 
     def __str__(self):
@@ -376,20 +374,19 @@ class RevokePayload(Payload):
             Message, permission) pair, where permission can either be u"permit", u"authorize", or
             u"revoke".
             """
-            if __debug__:
-                from .authentication import MemberAuthentication, DoubleMemberAuthentication
-                from .resolution import PublicResolution, LinearResolution, DynamicResolution
-                from .member import Member
-                from .message import Message
-                for triplet in permission_triplets:
-                    assert isinstance(triplet, tuple)
-                    assert len(triplet) == 3
-                    assert isinstance(triplet[0], Member), triplet
-                    assert isinstance(triplet[1], Message), triplet
-                    assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet
-                    assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet
-                    assert isinstance(triplet[2], unicode), triplet
-                    assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet
+            from .authentication import MemberAuthentication, DoubleMemberAuthentication
+            from .resolution import PublicResolution, LinearResolution, DynamicResolution
+            from .member import Member
+            from .message import Message
+            for triplet in permission_triplets:
+                assert isinstance(triplet, tuple)
+                assert len(triplet) == 3
+                assert isinstance(triplet[0], Member), triplet
+                assert isinstance(triplet[1], Message), triplet
+                assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet
+                assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet
+                assert isinstance(triplet[2], unicode), triplet
+                assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet
             super(RevokePayload.Implementation, self).__init__(meta)
             self._permission_triplets = permission_triplets
 
@@ -403,9 +400,8 @@ class UndoPayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, member, global_time, packet=None):
-            if __debug__:
-                from .member import Member
-                from .message import Packet
+            from .member import Member
+            from .message import Packet
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
             assert packet is None or isinstance(packet, Packet)
@@ -429,8 +425,7 @@ class UndoPayload(Payload):
 
         @packet.setter
         def packet(self, packet):
-            if __debug__:
-                from .message import Packet
+            from .message import Packet
             assert isinstance(packet, Packet), type(packet)
             self._packet = packet
 
@@ -445,9 +440,8 @@ class MissingSequencePayload(Payload):
             are missing sequence numbers >= missing_low to <=
             missing_high.
             """
-            if __debug__:
-                from .member import Member
-                from .message import Message
+            from .member import Member
+            from .message import Message
             assert isinstance(member, Member)
             assert isinstance(message, Message)
             assert isinstance(missing_low, (int, long))
@@ -481,8 +475,7 @@ class SignaturePayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, identifier, message):
-            if __debug__:
-                from .message import Message
+            from .message import Message
             assert isinstance(identifier, int), type(identifier)
             assert 0 <= identifier < 2 ** 16, identifier
             assert isinstance(message, Message.Implementation), type(message)
@@ -560,8 +553,7 @@ class MissingMessagePayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, member, global_times):
-            if __debug__:
-                from .member import Member
+            from .member import Member
             assert isinstance(member, Member)
             assert isinstance(global_times, (tuple, list))
             assert all(isinstance(global_time, (int, long)) for global_time in global_times)
@@ -586,8 +578,7 @@ class MissingLastMessagePayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, member, message, count):
-            if __debug__:
-                from .member import Member
+            from .member import Member
             assert isinstance(member, Member)
             super(MissingLastMessagePayload.Implementation, self).__init__(meta)
             self._member = member
@@ -612,8 +603,7 @@ class MissingProofPayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, member, global_time):
-            if __debug__:
-                from .member import Member
+            from .member import Member
             assert isinstance(member, Member)
             assert isinstance(global_time, (int, long))
             assert global_time > 0
@@ -647,19 +637,18 @@ class DynamicSettingsPayload(Payload):
             @param policies: A list with the new message policies.
             @type *policies: [(meta_message, policy), ...]
             """
-            if __debug__:
-                from .message import Message
-                from .resolution import PublicResolution, LinearResolution, DynamicResolution
-                assert isinstance(policies, (tuple, list))
-                for tup in policies:
-                    assert isinstance(tup, tuple)
-                    assert len(tup) == 2
-                    message, policy = tup
-                    assert isinstance(message, Message)
-                    # currently only supporting resolution policy changes
-                    assert isinstance(message.resolution, DynamicResolution)
-                    assert isinstance(policy, (PublicResolution, LinearResolution))
-                    assert policy in message.resolution.policies, "the given policy must be one available at meta message creation"
+            from .message import Message
+            from .resolution import PublicResolution, LinearResolution, DynamicResolution
+            assert isinstance(policies, (tuple, list))
+            for tup in policies:
+                assert isinstance(tup, tuple)
+                assert len(tup) == 2
+                message, policy = tup
+                assert isinstance(message, Message)
+                # currently only supporting resolution policy changes
+                assert isinstance(message.resolution, DynamicResolution)
+                assert isinstance(policy, (PublicResolution, LinearResolution))
+                assert policy in message.resolution.policies, "the given policy must be one available at meta message creation"
 
             super(DynamicSettingsPayload.Implementation, self).__init__(meta)
             self._policies = policies

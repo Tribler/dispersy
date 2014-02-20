@@ -349,7 +349,7 @@ class TestCandidates(DispersyTestFunc):
         assert isinstance(max_calls, int)
         assert isinstance(max_iterations, int)
         assert len(all_flags) < max_iterations
-        community = NoBootstrapDebugCommunity.create_community(self._dispersy, self._my_member)
+        community = NoBootstrapDebugCommunity.create_community(self._dispersy, self._community._my_member)
         candidates = self.create_candidates(community, all_flags)
 
         # yield_candidates
@@ -410,7 +410,7 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_get_introduce_candidate(self, community_create_method=DebugCommunity.create_community):
-        community = community_create_method(self._dispersy, self._my_member)
+        community = community_create_method(self._dispersy, self._community._my_member)
         candidates = self.create_candidates(community, [""] * 5)
         expected = [None, ("127.0.0.1", 1), ("127.0.0.1", 2), ("127.0.0.1", 3), ("127.0.0.1", 4)]
         now = time()
@@ -442,12 +442,10 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_introduction_probabilities(self):
-        c = DebugCommunity.create_community(self._dispersy, self._my_member)
-
         candidates = []
         for i in range(2):
             address = ("127.0.0.1", i + 1)
-            candidate = c.create_candidate(address, False, address, address, u"unknown")
+            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
             candidates.append(candidate)
 
         # mark 1 candidate as walk, 1 as stumble
@@ -460,19 +458,18 @@ class TestCandidates(DispersyTestFunc):
         returned_walked_candidate = 0
         expected_walked_range = range(4500, 5500)
         for i in xrange(10000):
-            candidate = c.dispersy_get_introduce_candidate()
+            candidate = self._community.dispersy_get_introduce_candidate()
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
 
         assert returned_walked_candidate in expected_walked_range
 
     @call_on_dispersy_thread
     def test_walk_probabilities(self):
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
 
         candidates = []
         for i in range(3):
             address = ("127.0.0.1", i + 1)
-            candidate = community.create_candidate(address, False, address, address, u"unknown")
+            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
             candidates.append(candidate)
 
         # mark 1 candidate as walk, 1 as stumble
@@ -490,7 +487,7 @@ class TestCandidates(DispersyTestFunc):
         returned_intro_candidate = 0
         expected_intro_range = range(1975, 2975)
         for i in xrange(10000):
-            candidate = community.dispersy_get_walk_candidate()
+            candidate = self._community.dispersy_get_walk_candidate()
 
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
             returned_stumble_candidate += 1 if candidate.sock_addr[1] == 2 else 0
@@ -502,21 +499,19 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_merge_candidates(self):
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
         # let's make a list of all possible combinations which should be merged into one candidate
         candidates = []
-        candidates.append(community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1), ("1.1.1.1", 1), u"unknown"))
-        candidates.append(community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1), ("1.1.1.1", 2), u"symmetric-NAT"))
-        candidates.append(community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
-        candidates.append(community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1), ("1.1.1.1", 1), u"unknown"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1), ("1.1.1.1", 2), u"symmetric-NAT"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
 
-        community.filter_duplicate_candidate(candidates[0])
+        self._community.filter_duplicate_candidate(candidates[0])
 
         expected = [candidates[0].wan_address]
 
         got = []
-        for candidate in community._candidates.itervalues():
+        for candidate in self._community._candidates.itervalues():
             got.append(candidate.wan_address)
 
         self.assertEquals(expected, got)

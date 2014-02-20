@@ -1,7 +1,15 @@
 from abc import ABCMeta, abstractmethod
 
+from .authentication import Authentication
+from .candidate import Candidate
+from .destination import Destination
+from .distribution import Distribution
 from .logger import get_logger
 from .meta import MetaObject
+from .member import Member
+from .payload import Payload
+from .resolution import Resolution, DynamicResolution
+
 logger = get_logger(__name__)
 
 
@@ -54,8 +62,6 @@ class DelayPacketByMissingMember(DelayPacket):
 class DelayPacketByMissingLastMessage(DelayPacket):
 
     def __init__(self, community, member, message, count):
-        if __debug__:
-            from .member import Member
         assert isinstance(member, Member)
         assert isinstance(message, Message)
         assert isinstance(count, int)
@@ -71,9 +77,7 @@ class DelayPacketByMissingLastMessage(DelayPacket):
 class DelayPacketByMissingMessage(DelayPacket):
 
     def __init__(self, community, member, global_time):
-        if __debug__:
-            from .community import Community
-            from .member import Member
+        from .community import Community
         assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
@@ -107,8 +111,6 @@ class DelayMessage(Exception):
     __metaclass__ = ABCMeta
 
     def __init__(self, delayed):
-        if __debug__:
-            from .message import Message
         assert isinstance(delayed, Message.Implementation), delayed
         super(DelayMessage, self).__init__(self.__class__.__name__)
         self._delayed = delayed
@@ -174,8 +176,6 @@ class DelayMessageBySequence(DelayMessage):
 class DelayMessageByMissingMessage(DelayMessage):
 
     def __init__(self, delayed, member, global_time):
-        if __debug__:
-            from .member import Member
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
         super(DelayMessageByMissingMessage, self).__init__(delayed)
@@ -199,8 +199,6 @@ class DropMessage(Exception):
     reasons can be given with by raising a spectific subclass.
     """
     def __init__(self, dropped, msg):
-        if __debug__:
-            from .message import Message
         assert isinstance(dropped, Message.Implementation)
         assert isinstance(msg, (str, unicode))
         self._dropped = dropped
@@ -326,9 +324,7 @@ class Message(MetaObject):
     class Implementation(Packet):
 
         def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
-            if __debug__:
-                from .conversion import Conversion
-                from .candidate import Candidate
+            from .conversion import Conversion
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
             assert isinstance(authentication, meta.authentication.Implementation), "AUTHENTICATION has invalid type '%s'" % type(authentication)
             assert isinstance(resolution, meta.resolution.Implementation), "RESOLUTION has invalid type '%s'" % type(resolution)
@@ -418,13 +414,7 @@ class Message(MetaObject):
             return "<%s.%s %s>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name)
 
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload, check_callback, handle_callback, undo_callback=None, batch=None):
-        if __debug__:
-            from .community import Community
-            from .authentication import Authentication
-            from .resolution import Resolution, DynamicResolution
-            from .destination import Destination
-            from .distribution import Distribution
-            from .payload import Payload
+        from .community import Community
         assert isinstance(community, Community), "COMMUNITY has invalid type '%s'" % type(community)
         assert isinstance(name, unicode), "NAME has invalid type '%s'" % type(name)
         assert isinstance(authentication, Authentication), "AUTHENTICATION has invalid type '%s'" % type(authentication)
@@ -435,9 +425,8 @@ class Message(MetaObject):
         assert callable(check_callback)
         assert callable(handle_callback)
         assert undo_callback is None or callable(undo_callback), undo_callback
-        if __debug__:
-            if isinstance(resolution, DynamicResolution):
-                assert callable(undo_callback), "UNDO_CALLBACK must be specified when using the DynamicResolution policy"
+        if isinstance(resolution, DynamicResolution):
+            assert callable(undo_callback), "UNDO_CALLBACK must be specified when using the DynamicResolution policy"
         assert batch is None or isinstance(batch, BatchConfiguration)
         assert self.check_policy_combination(authentication, resolution, distribution, destination)
         self._community = community

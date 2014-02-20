@@ -62,26 +62,29 @@ class TestBootstrapServers(DispersyTestFunc):
                 @property
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
-            community = Community.create_community(self._dispersy, self._my_member)
-            nodes = [DebugNode(community).init_socket().init_my_member(candidate=False, identity=False) for _ in xrange(1)]
 
-            # nodes send introduction request
-            for node in nodes:
-                node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
-                                                                            node.lan_address,
-                                                                            node.wan_address,
-                                                                            True,
-                                                                            u"unknown",
-                                                                            None,
-                                                                            4242,
-                                                                            42), tracker_address)
+            community = Community.create_community(self._dispersy, self._community._my_member)
+            
+            node = DebugNode(community)
+            node.init_socket()
+            node.init_my_member()
 
-            # nodes receive missing identity
+            # node sends introduction request
+            node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
+                                                                        node.lan_address,
+                                                                        node.wan_address,
+                                                                        True,
+                                                                        u"unknown",
+                                                                        None,
+                                                                        4242,
+                                                                        42), tracker_address)
+
+            # node receives missing identity
             yield 1.0
-            for node in nodes:
-                (_, message), = node.receive_messages(names=[u"dispersy-missing-identity"], counts=[1])
-                self.assertEqual(message.payload.mid, node.my_member.mid)
-                node.send_message(node.create_dispersy_identity(2), tracker_address)
+
+            (_, message), = node.receive_messages(names=[u"dispersy-missing-identity"], counts=[1])
+            self.assertEqual(message.payload.mid, node.my_member.mid)
+            node.send_message(node.create_dispersy_identity(2), tracker_address)
 
         finally:
             yield 0.1

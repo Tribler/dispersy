@@ -1,4 +1,5 @@
 from unittest import TestCase
+from .debugcommunity.community import DebugCommunity
 
 from ..callback import Callback
 from ..dispersy import Dispersy
@@ -9,7 +10,7 @@ logger = get_logger(__name__)
 
 def call_on_dispersy_thread(func):
     def helper(*args, **kargs):
-        return args[0]._dispersy.callback.call(func, args, kargs, priority=-1024)
+        return args[0]._dispersy.callback.call(func, args, kargs, priority= -1024)
     helper.__name__ = func.__name__
     return helper
 
@@ -20,40 +21,16 @@ class DispersyTestFunc(TestCase):
     # some debugging scenarios.
     _thread_counter = 0
 
-    """
-    Setup and tear down Dispersy before and after each test method.
-
-    setUp will ensure the following members exists before each test method is called:
-    - self._callback
-    - self._dispersy
-    - self._my_member
-    - self._enable_strict
-
-    tearDown will ensure these members are properly cleaned after each test method is finished.
-    """
-
     def on_callback_exception(self, exception, is_fatal):
-        if self.enable_strict and self._dispersy and self._dispersy.callback.is_running:
+        if self._dispersy and self._dispersy.callback.is_running:
             self._dispersy.stop()
             self._dispersy = None
-
-        # consider every exception a fatal error when 'strict' is enabled
-        return self.enable_strict
-
-    @property
-    def enable_strict(self):
-        return self._enable_strict
-
-    @enable_strict.setter
-    def enable_strict(self, enable_strict):
-        assert isinstance(enable_strict, bool), type(enable_strict)
-        self._enable_strict = enable_strict
+        return True
 
     def setUp(self):
         super(DispersyTestFunc, self).setUp()
         logger.debug("setUp")
 
-        self._enable_strict = True
         DispersyTestFunc._thread_counter += 1
         self._callback = Callback("Test-%d" % (self._thread_counter,))
         self._callback.attach_exception_handler(self.on_callback_exception)
@@ -63,7 +40,9 @@ class DispersyTestFunc(TestCase):
 
         self._dispersy = Dispersy(self._callback, endpoint, working_directory, database_filename)
         self._dispersy.start()
-        self._my_member = self._callback.call(self._dispersy.get_new_member, (u"low",))
+
+        community_member = self._dispersy.callback.call(self._dispersy.get_new_member, (u"low",))
+        self._community = self._dispersy.callback.call(DebugCommunity.create_community, (self._dispersy, community_member))
 
     def tearDown(self):
         super(DispersyTestFunc, self).tearDown()
@@ -80,4 +59,48 @@ class DispersyTestFunc(TestCase):
 
         self._callback = None
         self._dispersy = None
-        self._my_member = None
+        self._community = None
+
+
+    def count_messages(self, message):
+        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, message.authentication.member.database_id, message.database_id)).next()
+        return packets_stored
+
+    def assert_is_stored(self, message=None, messages=None):
+        if messages == None:
+            messages = [message]
+
+        for message in messages:
+            try:
+                undone, packet = self._dispersy.database.execute(u"SELECT undone, packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+                self.assertEqual(undone, 0, "Message is undone")
+                self.assertEqual(str(packet), message.packet)
+            except StopIteration:
+                self.fail("Message is not stored")
+
+    def assert_not_stored(self, message=None, messages=None):
+        if messages == None:
+            messages = [message]
+
+        for message in messages:
+            try:
+                packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+
+                self.assertNotEqual(str(packet), message.packet)
+            except StopIteration:
+                pass
+
+    assert_is_done = assert_is_stored
+    def assert_is_undone(self, message=None, messages=None):
+        if messages == None:
+            messages = [message]
+
+        for message in messages:
+            try:
+                undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+                self.assertGreater(undone, 0, "Message is not undone")
+            except StopIteration:
+                self.fail("Message is not stored")

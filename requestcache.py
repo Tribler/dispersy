@@ -95,10 +95,9 @@ class RequestCache(object):
         """
         Creates a new RequestCache instance.
         """
-        if __debug__:
-            from .callback import Callback
-            assert isinstance(callback, Callback), type(callback)
-            assert callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        from .callback import Callback
+        assert isinstance(callback, Callback), type(callback)
+        assert callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
         self._callback = callback
         self._identifiers = dict()
 

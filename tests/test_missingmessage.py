@@ -1,7 +1,6 @@
 from random import shuffle
 
 from ..logger import get_logger
-from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
@@ -9,112 +8,54 @@ logger = get_logger(__name__)
 
 class TestMissingMessage(DispersyTestFunc):
 
-    @call_on_dispersy_thread
-    def test_single_request(self):
+    def _test_with_order(self, batchFUNC):
         """
-        SELF generates a few messages and NODE requests one of them.
+        NODE generates a few messages and OTHER requests them one at a time.
         """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
         node.init_my_member()
 
+        other = DebugNode(self._community)
+        other.init_socket()
+        other.init_my_member()
+
         # create messages
-        messages = []
-        for i in xrange(10):
-            messages.append(community.create_full_sync_text("Message #%d" % i))
+        messages = [node.create_full_sync_text("Message #%d" % i, i) for i in xrange(10)]
+        batches = batchFUNC(messages)
 
-        # ensure we don't obtain the messages from the socket cache
-        node.drop_packets()
-
-        for message in messages:
+        for messages in batches:
+            global_times = sorted([message.distribution.global_time for message in messages])
             # request messages
-            node.give_message(node.create_dispersy_missing_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
+            node.give_message(other.create_dispersy_missing_message(node.my_member,), other)
             yield 0.11
 
             # receive response
-            _, response = node.receive_message(message_names=[message.name])
-            self.assertEqual(response.distribution.global_time, message.distribution.global_time)
-            self.assertEqual(response.payload.text, message.payload.text)
-            logger.debug("ok @%d", response.distribution.global_time)
+            responses = []
+            for _ in range(len(messages)):
+                _, response = other.receive_message(names=[message.name])
+                responses.append(response)
 
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+            self.assertEqual(sorted(response.distribution.global_time for response in responses), global_times)
+
+    @call_on_dispersy_thread
+    def test_single_request(self):
+        def batch(messages):
+            return [[message] for message in messages]
+        self._test_with_order(batch)
 
     @call_on_dispersy_thread
     def test_single_request_out_of_order(self):
-        """
-        SELF generates a few messages and NODE requests one of them.
-        """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
-        node.init_socket()
-        node.init_my_member()
-
-        # create messages
-        messages = []
-        for i in xrange(10):
-            messages.append(community.create_full_sync_text("Message #%d" % i))
-
-        # ensure we don't obtain the messages from the socket cache
-        node.drop_packets()
-
-        shuffle(messages)
-        for message in messages:
-            # request messages
-            node.give_message(node.create_dispersy_missing_message(community.my_member, [message.distribution.global_time], 25, community.my_candidate))
-            yield 0.11
-
-            # receive response
-            _, response = node.receive_message(message_names=[message.name])
-            self.assertEqual(response.distribution.global_time, message.distribution.global_time)
-            self.assertEqual(response.payload.text, message.payload.text)
-            logger.debug("ok @%d", response.distribution.global_time)
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        def batch(messages):
+            shuffle(messages)
+            return [[message] for message in messages]
+        self._test_with_order(batch)
 
     @call_on_dispersy_thread
-    def test_triple_request(self):
-        """
-        SELF generates a few messages and NODE requests three of them.
-        """
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-
-        node = DebugNode(community)
-        node.init_socket()
-        node.init_my_member()
-
-        # create messages
-        messages = []
-        for i in xrange(10):
-            messages.append(community.create_full_sync_text("Message #%d" % i))
-        meta = messages[0].meta
-
-        # ensure we don't obtain the messages from the socket cache
-        node.drop_packets()
-
-        # request messages
-        global_times = [messages[index].distribution.global_time for index in [2, 4, 6]]
-        node.give_message(node.create_dispersy_missing_message(community.my_member, global_times, 25, community.my_candidate))
-        yield 0.11
-
-        # receive response
-        responses = []
-        _, response = node.receive_message(message_names=[meta.name])
-        responses.append(response)
-        _, response = node.receive_message(message_names=[meta.name])
-        responses.append(response)
-        _, response = node.receive_message(message_names=[meta.name])
-        responses.append(response)
-
-        self.assertEqual(sorted(response.distribution.global_time for response in responses), global_times)
-        logger.debug("ok @%s", global_times)
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+    def test_two_at_a_time(self):
+        def batch(messages):
+            batches = []
+            for i in range(0, len(messages), 2):
+                batches.append([messages[i], messages[i + 1]])
+            return batches
+        self._test_with_order(batch)

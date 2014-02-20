@@ -3,18 +3,6 @@ from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 
 
-class NonRandomYieldDebugCommunity(DebugCommunity):
-
-    def dispersy_yield_verified_candidates(self):
-        """
-        Yields unique active candidates.
-
-        The returned candidates will be sorted to avoid randomness in the tests.
-        """
-
-        return sorted(DebugCommunity.dispersy_yield_verified_candidates(self))
-
-
 class TestNeighborhood(DispersyTestFunc):
 
     def test_forward_1(self):
@@ -56,42 +44,52 @@ class TestNeighborhood(DispersyTestFunc):
         - At least `meta.destination.node_count` nodes must receive the message once provided there are enough nodes
         """
 
-        community = NonRandomYieldDebugCommunity.create_community(self._dispersy, self._my_member)
-        meta = community.get_meta_message(u"full-sync-text")
+        def dispersy_yield_verified_candidates():
+            """
+            Yields unique active candidates.
+    
+            The returned candidates will be sorted to avoid randomness in the tests.
+            """
+            return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._community))
+
+        self._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
 
         # check configuration
+        meta = self._community.get_meta_message(u"full-sync-text")
         self.assertEqual(meta.destination.node_count, 10)
 
         total_node_count = non_targeted_node_count + targeted_node_count
 
-        # provide SELF with a neighborhood
-        nodes = [DebugNode(community) for _ in xrange(total_node_count)]
+        central_node = DebugNode(self._community)
+        central_node.init_socket()
+        central_node.init_my_member()
+
+        # provide CENTRAL with a neighborhood
+        nodes = [DebugNode(self._community, central_node) for _ in xrange(total_node_count)]
         for node in nodes:
             node.init_socket()
             node.init_my_member()
 
         # SELF creates a message
-        candidates = tuple((node.candidate for node in nodes[:targeted_node_count]))
-        message = community.create_targeted_full_sync_text("Hello World!", candidates)
+        candidates = tuple((node.my_candidate for node in nodes[:targeted_node_count]))
+        message = central_node.create_targeted_full_sync_text("Hello World!", 42, candidates)
+        self._dispersy._forward([message])
         yield 0.01
 
         # check if sufficient NODES received the message (at least the first `target_count` ones)
         forwarded_node_count = 0
         for node in nodes:
-            forwarded = [m for _, m in node.receive_messages(message_names=[u"full-sync-text"])]
+            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"])]
             if node in nodes[:targeted_node_count]:
                 # They MUST have received the message
                 self.assertEqual(len(forwarded), 1)
             else:
                 # They MAY have received the message
                 self.assertIn(len(forwarded), (0, 1))
+
             if len(forwarded) == 1:
                 self.assertEqual(forwarded[0].packet, message.packet)
                 forwarded_node_count += 1
 
         # We should never send to more than node_count + targeted_node_count nodes
         self.assertEqual(forwarded_node_count, min(total_node_count, meta.destination.node_count + targeted_node_count))
-
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()

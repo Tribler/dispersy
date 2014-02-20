@@ -22,16 +22,12 @@ class TestClassification(DispersyTestFunc):
         class ClassTestB(DebugCommunity):
             pass
 
-        # no communities should exist
-        self.assertEqual([ClassTestA.load_community(self._dispersy, master) for master in ClassTestA.get_master_members(self._dispersy)], [], "Did you remove the database before running this testcase?")
-        self.assertEqual([ClassTestB.load_community(self._dispersy, master) for master in ClassTestB.get_master_members(self._dispersy)], [], "Did you remove the database before running this testcase?")
-
         # create master member
         master = self._dispersy.get_new_member(u"high")
 
         # create community
         self._dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
-                                        (master.database_id, self._my_member.database_id, ClassTestA.get_classification()))
+                                        (master.database_id, self._community._my_member.database_id, ClassTestA.get_classification()))
 
         # reclassify
         community = self._dispersy.reclassify_community(master, ClassTestB)
@@ -42,9 +38,6 @@ class TestClassification(DispersyTestFunc):
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestB.get_classification())
-
-        # cleanup
-        community.unload_community()
 
     @call_on_dispersy_thread
     def test_reclassify_loaded_community(self):
@@ -57,26 +50,20 @@ class TestClassification(DispersyTestFunc):
         class ClassTestD(DebugCommunity):
             pass
 
-        # no communities should exist
-        self.assertEqual([ClassTestC.load_community(self._dispersy, master) for master in ClassTestC.get_master_members(self._dispersy)], [], "Did you remove the database before running this testcase?")
-        self.assertEqual([ClassTestD.load_community(self._dispersy, master) for master in ClassTestD.get_master_members(self._dispersy)], [], "Did you remove the database before running this testcase?")
-
         # create community
-        community_c = ClassTestC.create_community(self._dispersy, self._my_member)
+        community_c = ClassTestC.create_community(self._dispersy, self._community._my_member)
         self.assertEqual(len(list(self._dispersy.database.execute(u"SELECT * FROM community WHERE classification = ?", (ClassTestC.get_classification(),)))), 1)
 
         # reclassify
         community_d = self._dispersy.reclassify_community(community_c, ClassTestD)
         self.assertIsInstance(community_d, ClassTestD)
         self.assertEqual(community_c.cid, community_d.cid)
+
         try:
             classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?", (community_c.master_member.database_id,)).next()
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestD.get_classification())
-
-        # cleanup
-        community_d.unload_community()
 
     @call_on_dispersy_thread
     def test_load_no_communities(self):
@@ -96,23 +83,17 @@ class TestClassification(DispersyTestFunc):
         class ClassificationLoadOneCommunities(DebugCommunity):
             pass
 
-        # no communities should exist
-        self.assertEqual([ClassificationLoadOneCommunities.load_community(self._dispersy, master) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)], [], "Did you remove the database before running this testcase?")
-
         # create master member
         master = self._dispersy.get_new_member(u"high")
 
         # create one community
         self._dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
-                                        (master.database_id, self._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
+                                        (master.database_id, self._community._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
 
         # load one community
         communities = [ClassificationLoadOneCommunities.load_community(self._dispersy, master) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
         self.assertEqual(len(communities), 1)
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
-
-        # cleanup
-        communities[0].unload_community()
 
     @call_on_dispersy_thread
     def test_load_two_communities(self):
@@ -123,30 +104,24 @@ class TestClassification(DispersyTestFunc):
         class LoadTwoCommunities(DebugCommunity):
             pass
 
-        # no communities should exist
-        self.assertEqual([LoadTwoCommunities.load_community(self._dispersy, master) for master in LoadTwoCommunities.get_master_members(self._dispersy)], [])
-
         masters = []
         # create two communities
-        community = LoadTwoCommunities.create_community(self._dispersy, self._my_member)
+        community = LoadTwoCommunities.create_community(self._dispersy, self._community._my_member)
         masters.append(community.master_member.public_key)
         community.unload_community()
 
-        community = LoadTwoCommunities.create_community(self._dispersy, self._my_member)
+        community = LoadTwoCommunities.create_community(self._dispersy, self._community._my_member)
         masters.append(community.master_member.public_key)
         community.unload_community()
 
         # load two communities
         self.assertEqual(sorted(masters), sorted(master.public_key for master in LoadTwoCommunities.get_master_members(self._dispersy)))
         communities = [LoadTwoCommunities.load_community(self._dispersy, master) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
+
         self.assertEqual(sorted(masters), sorted(community.master_member.public_key for community in communities))
         self.assertEqual(len(communities), 2)
         self.assertIsInstance(communities[0], LoadTwoCommunities)
         self.assertIsInstance(communities[1], LoadTwoCommunities)
-
-        # cleanup
-        communities[0].unload_community()
-        communities[1].unload_community()
 
     @unittest.skip("nosetests uses BufferingHandler to capture output.  This handler keeps references to the community, breaking this test.  Run nosetests --nologcapture --no-skip")
     @call_on_dispersy_thread
@@ -209,10 +184,6 @@ class TestClassification(DispersyTestFunc):
         community = ClassificationUnloadingCommunity.load_community(self._dispersy, master)
         self.assertEqual(check(), 1)
 
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
     @call_on_dispersy_thread
     def test_enable_autoload(self):
         """
@@ -224,63 +195,47 @@ class TestClassification(DispersyTestFunc):
         - Unload community
         - Send community message
         - Verify that the community got auto-loaded
-        - Undefine auto load
         """
         # create community
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        cid = community.cid
-        message = community.get_meta_message(u"full-sync-text")
+        cid = self._community.cid
+        message = self._community.get_meta_message(u"full-sync-text")
 
         # create node
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
-        node.init_my_member(candidate=False)
-        yield 0.555
+        node.init_my_member()
 
-        logger.debug("verify auto-load is enabled (default)")
-        self.assertTrue(community.dispersy_auto_load)
-        yield 0.555
+        # verify auto-load is enabled (default)
+        self.assertTrue(self._community.dispersy_auto_load)
 
-        logger.debug("define auto load")
+        # define auto load
         self._dispersy.define_auto_load(DebugCommunity)
-        yield 0.555
 
-        logger.debug("create wake-up message")
+        # create wake-up message
         global_time = 10
         wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
 
-        logger.debug("unload community")
-        community.unload_community()
-        community = None
-        node.set_community(None)
+        # unload community
+        self._community.unload_community()
+
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
         except KeyError:
             pass
-        yield 0.555
 
-        logger.debug("send community message")
-        node.give_packet(wakeup)
-        yield 0.555
+        # send community message
+        node.give_packet(wakeup, node)
 
-        logger.debug("verify that the community got auto-loaded")
+        # verify that the community got auto-loaded
         try:
             community = self._dispersy.get_community(cid)
         except KeyError:
             self.fail()
+
         # verify that the message was received
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
         self.assertIn(global_time, times)
-        yield 0.555
-
-        logger.debug("undefine auto load")
-        self._dispersy.undefine_auto_load(DebugCommunity)
-        yield 0.555
-
-        logger.debug("cleanup")
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
 
     @call_on_dispersy_thread
     def test_enable_disable_autoload(self):
@@ -288,96 +243,45 @@ class TestClassification(DispersyTestFunc):
         Test enable disable autoload.
 
         - Create community
-        - Enable auto-load (should be enabled by default)
-        - Define auto load
-        - Unload community
-        - Send community message
-        - Verify that the community got auto-loaded
         - Disable auto-load
         - Send community message
         - Verify that the community did NOT get auto-loaded
-        - Undefine auto load
         """
         # create community
-        community = DebugCommunity.create_community(self._dispersy, self._my_member)
-        cid = community.cid
-        community_database_id = community.database_id
-        master_member = community.master_member
-        message = community.get_meta_message(u"full-sync-text")
+        cid = self._community.cid
+        community_database_id = self._community.database_id
+        message = self._community.get_meta_message(u"full-sync-text")
 
         # create node
-        node = DebugNode(community)
+        node = DebugNode(self._community)
         node.init_socket()
-        node.init_my_member(candidate=False)
+        node.init_my_member()
 
-        logger.debug("verify auto-load is enabled (default)")
-        self.assertTrue(community.dispersy_auto_load)
+        # disable auto-load
+        self._community.dispersy_auto_load = False
+        self.assertFalse(self._community.dispersy_auto_load)
 
-        logger.debug("define auto load")
-        self._dispersy.define_auto_load(DebugCommunity)
+        # unload community
+        self._community.unload_community()
 
-        logger.debug("create wake-up message")
-        global_time = 10
-        wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
-
-        logger.debug("unload community")
-        community.unload_community()
-        community = None
-        node.set_community(None)
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
         except KeyError:
             pass
 
-        logger.debug("send community message")
-        node.give_packet(wakeup)
-
-        logger.debug("verify that the community got auto-loaded")
-        try:
-            community = self._dispersy.get_community(cid)
-        except KeyError:
-            self.fail()
-        # verify that the message was received
-        times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community.database_id, node.my_member.database_id, message.database_id))]
-        self.assertIn(global_time, times)
-
-        logger.debug("disable auto-load")
-        community.dispersy_auto_load = False
-        self.assertFalse(community.dispersy_auto_load)
-
-        logger.debug("create wake-up message")
-        node.set_community(community)
+        # create wake-up message
         global_time = 11
         wakeup = node.encode_message(node.create_full_sync_text("Should auto-load", global_time))
+        node.give_packet(wakeup, node)
 
-        logger.debug("unload community")
-        community.unload_community()
-        community = None
-        node.set_community(None)
+        # verify that the community did not get auto-loaded
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
         except KeyError:
             pass
 
-        logger.debug("send community message")
-        node.give_packet(wakeup)
-
-        logger.debug("verify that the community did not get auto-loaded")
-        try:
-            self._dispersy.get_community(cid, auto_load=False)
-            self.fail()
-        except KeyError:
-            pass
         # verify that the message was NOT received
         times = [x for x, in self._dispersy.database.execute(u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (community_database_id, node.my_member.database_id, message.database_id))]
         self.assertNotIn(global_time, times)
-
-        logger.debug("undefine auto load")
-        self._dispersy.undefine_auto_load(DebugCommunity)
-
-        logger.debug("cleanup")
-        community = DebugCommunity.load_community(self._dispersy, master_member)
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
