@@ -3377,7 +3377,7 @@ class Community(object):
                 for packet_id, message_id, packet in self._dispersy._database.execute(
                         u"SELECT id, meta_message, packet FROM sync WHERE community = ? AND member = ? AND meta_message IN (?, ?)",
                         (self.database_id, message.authentication.member.database_id, undo_own_meta.database_id, undo_other_meta.database_id)):
-                    logger.debug("checking: %s",  message_id)
+                    logger.debug("checking: %s", message_id)
                     msg = Packet(undo_own_meta if undo_own_meta.database_id == message_id else undo_other_meta, str(packet), packet_id).load_message()
                     if message.distribution.global_time == msg.payload.global_time:
                         return msg

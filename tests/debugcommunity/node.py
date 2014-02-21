@@ -31,12 +31,13 @@ class DebugNode(object):
     _socket_counter = 0
 
     def __init__(self, community, central_node=None):
-        assert community is None or isinstance(community, Community), type(community)
+        assert isinstance(community, Community), type(community)
         super(DebugNode, self).__init__()
 
-        self._community = copy(community)
+        self._dispersy = community.dispersy
+        self._community = type(community)(self._dispersy, community._master_member)
+
         self._central_node = central_node
-        self._dispersy = community.dispersy if community else None
         self._socket = None
         self._tunnel = False
         self._connection_type = u"unknown"
@@ -218,6 +219,8 @@ class DebugNode(object):
         assert isinstance(source, DebugNode), type(source)
         assert isinstance(cache, bool), type(cache)
         assert tunnel is None, "TUNNEL property is set using init_socket(...)"
+
+        assert self._community._my_member == self._my_member
 
         logger.debug("giving %d bytes", sum(len(packet) for packet in packets))
         self._community.on_incoming_packets([(source.my_candidate, packet) for packet in packets], cache=cache, timestamp=time())

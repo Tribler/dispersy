@@ -63,7 +63,7 @@ class DebugCommunity(Community):
                     self.check_text,
                     self.on_text),
                 Message(self, u"last-1-doublemember-text",
-                        DoubleMemberAuthentication(allow_signature_func=self.allow_signature_func),
+                        DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text),
                         PublicResolution(),
                         LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1),
                         CommunityDestination(node_count=10),
@@ -192,12 +192,9 @@ class DebugCommunity(Community):
         Must return either: a. the same message, b. a modified version of message, or c. None.
         """
         logger.debug("%s \"%s\"", message, message.payload.text)
-        assert message.payload.text in ("Allow=True", "Allow=False")
-        if message.payload.text == "Allow=True":
+        assert message.payload.text.startswith("Allow=True") or message.payload.text.startswith("Allow=False")
+        if message.payload.text.startswith("Allow=True"):
             return message
-
-    def allow_signature_func(self, message):
-        return True
 
     def check_text(self, messages):
         for message in messages:

@@ -299,18 +299,12 @@ class TestSync(DispersyTestFunc):
         nodeC.init_my_member()
 
         def create_double_signed_message(origin, destination, message, global_time):
-            logger.debug("Generating double signed message: %s", message)
-            logger.warning("CREATE_DOUBLE \n  %s\n  %s", origin.my_member.mid.encode('HEX'), destination.my_member.mid.encode('HEX'))
-            logger.warning("NODE O>: %s", origin._community.my_member.mid.encode('HEX'))
-            logger.warning("NODE D>: %s", destination._community.my_member.mid.encode('HEX'))
             origin_mid_pre = origin._community.my_member.mid
             destination_mid_pre = destination._community.my_member.mid
             assert origin_mid_pre != destination_mid_pre
 
             submsg = origin.create_last_1_doublemember_text(destination.my_member, message, global_time, sign=True)
 
-            logger.warning("NODE 2O>: %s", origin._community.my_member.mid.encode('HEX'))
-            logger.warning("NODE 2D>: %s", destination._community.my_member.mid.encode('HEX'))
             assert origin_mid_pre == origin._community.my_member.mid
             assert destination_mid_pre == destination._community.my_member.mid
 
@@ -321,7 +315,7 @@ class TestSync(DispersyTestFunc):
         def check_everything():
             entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 \
             FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
-                                                           (community.database_id, nodeA.my_member.database_id, message.database_id)))
+                                                           (self._community.database_id, nodeA.my_member.database_id, message.database_id)))
             self.assertEqual(len(entries), 2)
             self.assertIn((current_global_timeB, nodeA.my_member.database_id,
                            min(nodeA.my_member.database_id, nodeB.my_member.database_id),
@@ -336,20 +330,20 @@ class TestSync(DispersyTestFunc):
         global_time = 10
         other_global_time = global_time + 1
         messages = []
-        messages.append(create_double_signed_message(nodeA, nodeB, "should be accepted (1AB)", global_time))
-        messages.append(create_double_signed_message(nodeA, nodeC, "should be accepted (1AC)", other_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (1AB)", global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (1AC)", other_global_time))
 
         # send a message
         global_time = 20
         other_global_time = global_time + 1
-        messages.append(create_double_signed_message(nodeA, nodeB, "should be accepted (2AB) @%d" % global_time, global_time))
-        messages.append(create_double_signed_message(nodeA, nodeC, "should be accepted (2AC) @%d" % other_global_time, other_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (2AB) @%d" % global_time, global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (2AC) @%d" % other_global_time, other_global_time))
 
         # send a message (older: should be dropped)
         old_global_time = 8
-
-        messages.append(create_double_signed_message(nodeA, nodeB, "should be dropped (1AB)", old_global_time))
-        messages.append(create_double_signed_message(nodeA, nodeC, "should be dropped (1AC)", old_global_time))
+        other_old_global_time = old_global_time + 1
+        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (1AB)", old_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (1AC)", other_old_global_time))
 
         # nodeA should forget about these packets to be able to do the test
         nodeA.drop_packets()
@@ -363,22 +357,21 @@ class TestSync(DispersyTestFunc):
             current_global_timeB = max(global_timeB, current_global_timeB)
             current_global_timeC = max(global_timeC, current_global_timeC)
 
-            nodeA.give_messages((messageB, messageC))
+            nodeA.give_messages([messageB, messageC], nodeB)
             check_everything()
 
         # as proof for the drop, the newest message should be sent back
-        yield 0.1
         times = []
-        _, message = nodeA.receive_message(names=[u"last-1-doublemember-text"])
+        _, message = nodeB.receive_message(names=[u"last-1-doublemember-text"])
         times.append(message.distribution.global_time)
-        _, message = nodeA.receive_message(names=[u"last-1-doublemember-text"])
+        _, message = nodeB.receive_message(names=[u"last-1-doublemember-text"])
         times.append(message.distribution.global_time)
         self.assertEqual(sorted(times), [global_time, other_global_time])
 
         # send a message (older + different member combination: should be dropped)
         old_global_time = 9
-        create_double_signed_message(nodeB, nodeA, "should be dropped (2BA)", old_global_time)
-        create_double_signed_message(nodeC, nodeA, "should be dropped (2CA)", old_global_time)
+        create_double_signed_message(nodeB, nodeA, "Allow=True (2BA)", old_global_time)
+        create_double_signed_message(nodeC, nodeA, "Allow=True (2CA)", old_global_time)
 
         check_everything()
 
