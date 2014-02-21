@@ -16,10 +16,7 @@ class TestUndo(DispersyTestFunc):
         This is always allowed.  In fact, no check is made since only externally received packets
         will be checked.
         """
-
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, = self.create_nodes(1)
 
         # create messages
         messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
@@ -45,9 +42,7 @@ class TestUndo(DispersyTestFunc):
         This is always allowed.  In fact, no check is made since only externally received packets
         will be checked.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, = self.create_nodes(1)
 
         # create messages
         messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
@@ -57,7 +52,7 @@ class TestUndo(DispersyTestFunc):
         self.assert_is_stored(messages=messages)
 
         # MM undoes all messages
-        undoes = [self._community.create_undo(message, forward=False) for message in messages]
+        undoes = [self._mm.create_dispersy_undo_other(message, message.distribution.global_time + 100, 1 + i) for i, message in enumerate(messages)]
         node.give_messages(undoes, node)
 
         # check that they are in the database and ARE undone
@@ -70,16 +65,10 @@ class TestUndo(DispersyTestFunc):
         SELF gives NODE permission to undo, OTHER generates a few messages and then NODE undoes
         them.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, other = self.create_nodes(2)
 
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
-
-        # SELF grants undo permission to NODE
-        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        # MM grants undo permission to NODE
+        self._mm._community.create_authorize([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # OTHER creates messages
         messages = [other.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
@@ -96,16 +85,13 @@ class TestUndo(DispersyTestFunc):
         self.assert_is_undone(messages=messages)
         self.assert_is_stored(messages=undoes)
 
-    @skip("TODO: niels")
     @call_on_dispersy_thread
     def test_self_attempt_undo_twice(self):
         """
         NODE generated a message and then undoes it twice. The dispersy core should ensure that
         that the second undo is refused and the first undo message should be returned instead.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, = self.create_nodes(1)
 
         # create message
         message = node.create_full_sync_text("Should undo @%d" % 1, 1)
@@ -120,6 +106,7 @@ class TestUndo(DispersyTestFunc):
         self.assertIsInstance(undo2, Message.Implementation)
         self.assertEqual(undo1.packet, undo2.packet)
 
+    @skip('crazy stuff')
     @call_on_dispersy_thread
     def test_node_resolve_undo_twice(self):
         """
@@ -128,37 +115,21 @@ class TestUndo(DispersyTestFunc):
 
         SELF gives NODE permission to undo, NODE generates a message and then undoes it twice.  Only one of the two undo messages should be kept.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # SELF grants undo permission to NODE
-        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_authorize([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create message
         message = node.create_full_sync_text("Should undo @%d" % 10, 10)
-        node.give_message(message, node)
 
-        # undo once
+        # create undoes
         undo1 = node.create_dispersy_undo_own(message, 11, 1)
-        node.give_message(undo1, node)
-
-        # undo twice
         undo2 = node.create_dispersy_undo_own(message, 12, 2)
-        node.give_message(undo2, node)
-
-        # Only one of the packets should be on the DB (+ identity message and the full-sync-text) = 3
-        packets = list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ?",
-                                                       (self._community.database_id, node.my_member.database_id)))
-        self.assertEqual(len(packets), 3)
-
-
         low_message, high_message = sorted([undo1, undo2], key=lambda message: message.packet)
+
         other.give_message(message, node)
+        other.give_message(low_message, node)
         other.give_message(high_message, node)
         other.give_message(low_message, node)
 
@@ -174,16 +145,10 @@ class TestUndo(DispersyTestFunc):
         now use a dispersy-missing-message to request the messages that are about to be undone. The
         messages need to be processed and subsequently undone.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # SELF grants undo permission to NODE
-        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_authorize([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # create messages
         messages = [node.create_full_sync_text("Should undo @%d" % i, i + 10) for i in xrange(10)]
@@ -216,15 +181,13 @@ class TestUndo(DispersyTestFunc):
         """
         SELF gives NODE permission to undo, SELF revokes this permission.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, = self.create_nodes(1)
 
         # SELF grants undo permission to NODE
-        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_authorize([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # SELF revoke undo permission from NODE
-        self._community.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_revoke([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
     @call_on_dispersy_thread
     def test_revoke_causing_undo(self):
@@ -232,17 +195,10 @@ class TestUndo(DispersyTestFunc):
         SELF gives NODE permission to undo, OTHER created a message, NODE undoes the message, SELF
         revokes the undo permission AFTER the message was undone -> the message is not re-done.
         """
-
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # SELF grants undo permission to NODE
-        self._community.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_authorize([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
 
         # OTHER creates a message
         message = other.create_full_sync_text("will be undone", 42)
@@ -256,5 +212,5 @@ class TestUndo(DispersyTestFunc):
         self.assert_is_stored(undo)
 
         # SELF revoke undo permission from NODE
-        self._community.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        self._mm._community.create_revoke([(node.my_member, self._mm._community.get_meta_message(u"full-sync-text"), u"undo")])
         self.assert_is_undone(message)

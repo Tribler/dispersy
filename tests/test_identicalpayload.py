@@ -11,13 +11,7 @@ class TestIdenticalPayload(DispersyTestFunc):
         NODE creates two messages with the same community/member/global-time.
         Sends both of them to OTHER, which should drop the "lowest" one.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # create messages
         messages = []
@@ -41,13 +35,7 @@ class TestIdenticalPayload(DispersyTestFunc):
         """
         NODE creates one message, sends it to OTHER twice
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # create messages
         message = node.create_full_sync_text("Message", 42)

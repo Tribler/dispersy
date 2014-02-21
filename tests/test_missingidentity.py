@@ -11,13 +11,7 @@ class TestMissingIdentity(DispersyTestFunc):
         """
         NODE generates a other-identity message and OTHER responds.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # use NODE to fetch the identities for OTHER
         other.give_message(node.create_dispersy_missing_identity(other.my_member, 10), node)
@@ -35,19 +29,15 @@ class TestMissingIdentity(DispersyTestFunc):
         """
         NODE generates data and sends it to SELF, resulting in SELF asking for the other identity.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member(store_identity=False)
+        node, = self.create_nodes(1)
+        other, = self.create_nodes(1, store_identity=False)
 
         # Give NODE a message from OTHER
-        node.give_message(other.create_full_sync_text("Hello World", 10), other)
+        message = other.create_full_sync_text("Hello World", 10)
+        node.give_message(message, other)
 
         # NODE must not yet process the 'Hello World' message, as it hasnt received the identity message yet
-        self.assertEqual(self._community.fetch_messages(u"full-sync-text"), [])
+        self.assert_not_stored(message)
 
         # NODE must send a other-identity to OTHER
         responses = other.receive_messages()
@@ -60,7 +50,4 @@ class TestMissingIdentity(DispersyTestFunc):
         node.give_message(other.create_dispersy_identity(2), other)
 
         # NODE must now process and store the 'Hello World' message
-        messages = self._community.fetch_messages(u"full-sync-text")
-        self.assertEqual(len(messages), 1)
-        for message in messages:
-            self.assertEqual(message.payload.text, "Hello World")
+        self.assert_is_stored(message)

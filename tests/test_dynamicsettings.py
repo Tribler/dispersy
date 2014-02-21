@@ -50,12 +50,12 @@ class TestDynamicSettings(DispersyTestFunc):
         other.init_my_member()
 
         # check default policy
-        public_policy, _ = self._community.timeline.get_resolution_policy(meta, self._community.global_time)
+        public_policy, _ = node._community.timeline.get_resolution_policy(meta, self._community.global_time)
         self.assertIsInstance(public_policy, PublicResolution)
 
         # change and check policy
         message = self._community.create_dynamic_settings([(meta, linear)])
-        linear_policy, proof = self._community.timeline.get_resolution_policy(meta, self._community.global_time + 1)
+        linear_policy, proof = node._community.timeline.get_resolution_policy(meta, self._community.global_time + 1)
         self.assertIsInstance(linear_policy, LinearResolution)
         self.assertEqual(proof, [message])
 

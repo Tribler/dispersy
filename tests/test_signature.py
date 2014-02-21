@@ -16,13 +16,7 @@ class TestSignature(DispersyTestFunc):
         """
         container = {"timeout": 0}
 
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         def on_response(request, response, modified):
             self.assertIsNone(response)
@@ -30,7 +24,7 @@ class TestSignature(DispersyTestFunc):
             return False, False, False
 
         message = other.create_double_signed_text(node.my_member, "Accept=<does not reach this point>", 1, False)
-        self._community.create_signature_request(node.my_candidate, message, on_response, timeout=1.0)
+        other._community.create_signature_request(node.my_candidate, message, on_response, timeout=1.0)
 
         yield 1.11
 
@@ -45,13 +39,7 @@ class TestSignature(DispersyTestFunc):
         """
         container = {"response": 0}
 
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         def on_response(request, response, modified):
             self.assertEqual(container["response"], 0)
@@ -61,7 +49,7 @@ class TestSignature(DispersyTestFunc):
             return False
 
         message = other.create_double_signed_text(node.my_member, "Accept=<does not matter>", 1, False)
-        self._community.create_signature_request(node.my_candidate, message, on_response, timeout=1.0)
+        other._community.create_signature_request(node.my_candidate, message, on_response, timeout=1.0)
 
         yield 0.11
 

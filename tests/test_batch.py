@@ -17,13 +17,7 @@ class TestBatch(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_one_batch(self):
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         messages = [node.create_batched_text("duplicates", i + 10) for i in range(10)]
         other.give_messages(messages, node, cache=True)
@@ -38,13 +32,7 @@ class TestBatch(DispersyTestFunc):
 
     @call_on_dispersy_thread
     def test_multiple_batch(self):
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         messages = [node.create_batched_text("duplicates", i + 10) for i in range(10)]
         for message in messages:
@@ -65,14 +53,7 @@ class TestBatch(DispersyTestFunc):
         we make one large batch (using one community) and many small batches (using many different
         communities).
         """
-
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
@@ -81,8 +62,7 @@ class TestBatch(DispersyTestFunc):
         end = time()
         self._big_batch_took = end - begin
 
-        meta = self._community.get_meta_message(u"full-sync-text")
-        count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
+        count = self.count_messages(messages[0])
         self.assertEqual(count, len(messages))
 
         if self._big_batch_took and self._small_batches_took:
@@ -95,13 +75,7 @@ class TestBatch(DispersyTestFunc):
         we make one large batch (using one community) and many small batches (using many different
         communities).
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
 
@@ -111,8 +85,7 @@ class TestBatch(DispersyTestFunc):
         end = time()
         self._small_batches_took = end - begin
 
-        meta = self._community.get_meta_message(u"full-sync-text")
-        count, = self._dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ?", (meta.database_id,)).next()
+        count = self.count_messages(messages[0])
         self.assertEqual(count, len(messages))
 
         if self._big_batch_took and self._small_batches_took:

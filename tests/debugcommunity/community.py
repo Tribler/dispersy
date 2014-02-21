@@ -29,20 +29,6 @@ class DebugCommunity(Community):
     def take_step(self):
         pass
 
-    #
-    # helper methods to check database status
-    #
-    def fetch_packets(self, *message_names):
-        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
-                                                                                [self.get_meta_message(name).database_id for name in message_names]))]
-
-    def fetch_messages(self, *message_names):
-        """
-        Fetch all packets for MESSAGE_NAMES from the database and converts them into
-        Message.Implementation instances.
-        """
-        return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self, verify=False)
-
     def initiate_meta_messages(self):
         messages = super(DebugCommunity, self).initiate_meta_messages()
         messages.extend([

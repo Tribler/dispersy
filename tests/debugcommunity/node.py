@@ -9,6 +9,7 @@ from ...logger import get_logger
 from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
+from .community import DebugCommunity
 
 logger = get_logger(__name__)
 
@@ -30,18 +31,22 @@ class DebugNode(object):
     _socket_pool = {}
     _socket_counter = 0
 
-    def __init__(self, community, central_node=None):
-        assert isinstance(community, Community), type(community)
+    def __init__(self, dispersy, communityclass=DebugCommunity, c_master_member=None):
         super(DebugNode, self).__init__()
 
-        self._dispersy = community.dispersy
-        self._community = type(community)(self._dispersy, community._master_member)
+        self._dispersy = dispersy
 
-        self._central_node = central_node
+        if c_master_member == None:
+            self._my_member = self._dispersy.get_new_member(u"low")
+            self._community = communityclass.create_community(self._dispersy, self._my_member)
+        else:
+            self._my_member = None
+            self._community = communityclass(self._dispersy, c_master_member._community._master_member)
+
+        self._central_node = c_master_member
         self._socket = None
         self._tunnel = False
         self._connection_type = u"unknown"
-        self._my_member = None
 
     @property
     def community(self):
@@ -179,6 +184,8 @@ class DebugNode(object):
         When CANDIDATE is True the central node will immediately be told that this node exist using a
         dispersy-introduction-request message.
         """
+        assert self._my_member == None
+
         ec = self._dispersy.crypto.generate_key(u"low")
         # Using get_member will allow the central node (SELF) to have access to the public and private keys of this
         # debug node.  It will also be on the member cache dictionaries.
@@ -189,15 +196,15 @@ class DebugNode(object):
             message = self.create_dispersy_identity(2)
             self.give_message(message, self)  # store identity message
 
-        if self._central_node:
-            # update identity information
-            self._central_node.give_message(message, self)
+            if self._central_node:
+                # update identity information
+                self._central_node.give_message(message, self)
 
-            # update candidate information
-            message = self.create_dispersy_introduction_request(self._community.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
-            self._central_node.give_message(message, self)
-            sleep(0.1)
-            self.receive_message(names=[u"dispersy-introduction-response"])
+                # update candidate information
+                message = self.create_dispersy_introduction_request(self._community.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
+                self._central_node.give_message(message, self)
+                sleep(0.1)
+                self.receive_message(names=[u"dispersy-introduction-response"])
 
     def encode_message(self, message):
         """
@@ -380,6 +387,17 @@ class DebugNode(object):
         if counts and not len(messages) in counts:
             raise AssertionError("Received %d messages while expecting %s messages" % (len(messages), counts))
         return messages
+
+    def fetch_packets(self, *message_names):
+        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+                                                                                [self._community.get_meta_message(name).database_id for name in message_names]))]
+
+    def fetch_messages(self, *message_names):
+        """
+        Fetch all packets for MESSAGE_NAMES from the database and converts them into
+        Message.Implementation instances.
+        """
+        return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self._community, verify=False)
 
     def create_dispersy_authorize(self, permission_triplets, sequence_number, global_time):
         """

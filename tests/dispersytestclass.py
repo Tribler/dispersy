@@ -1,5 +1,5 @@
 from unittest import TestCase
-from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 
 from ..callback import Callback
 from ..dispersy import Dispersy
@@ -41,8 +41,7 @@ class DispersyTestFunc(TestCase):
         self._dispersy = Dispersy(self._callback, endpoint, working_directory, database_filename)
         self._dispersy.start()
 
-        community_member = self._dispersy.callback.call(self._dispersy.get_new_member, (u"low",))
-        self._community = self._dispersy.callback.call(DebugCommunity.create_community, (self._dispersy, community_member))
+        self._mm = self._dispersy.callback.call(DebugNode, (self._dispersy,))
 
     def tearDown(self):
         super(DispersyTestFunc, self).tearDown()
@@ -59,11 +58,19 @@ class DispersyTestFunc(TestCase):
 
         self._callback = None
         self._dispersy = None
-        self._community = None
 
+    def create_nodes(self, amount=1, store_identity=True):
+        nodes = []
+        for _ in range(amount):
+            node = DebugNode(self._dispersy, c_master_member=self._mm)
+            node.init_socket()
+            node.init_my_member(store_identity=store_identity)
+            nodes.append(node)
+
+        return nodes
 
     def count_messages(self, message):
-        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._community.database_id, message.authentication.member.database_id, message.database_id)).next()
+        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync WHERE community = ? AND member = ? AND meta_message = ?", (self._mm._community.database_id, message.authentication.member.database_id, message.database_id)).next()
         return packets_stored
 
     def assert_is_stored(self, message=None, messages=None):
@@ -73,7 +80,7 @@ class DispersyTestFunc(TestCase):
         for message in messages:
             try:
                 undone, packet = self._dispersy.database.execute(u"SELECT undone, packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+                                                         (self._mm._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
                 self.assertEqual(undone, 0, "Message is undone")
                 self.assertEqual(str(packet), message.packet)
             except StopIteration:
@@ -86,7 +93,7 @@ class DispersyTestFunc(TestCase):
         for message in messages:
             try:
                 packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+                                                         (self._mm._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
 
                 self.assertNotEqual(str(packet), message.packet)
             except StopIteration:
@@ -100,7 +107,7 @@ class DispersyTestFunc(TestCase):
         for message in messages:
             try:
                 undone, = self._dispersy.database.execute(u"SELECT undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                         (self._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+                                                         (self._mm._community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
                 self.assertGreater(undone, 0, "Message is not undone")
             except StopIteration:
                 self.fail("Message is not stored")

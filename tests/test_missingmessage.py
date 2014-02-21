@@ -12,13 +12,7 @@ class TestMissingMessage(DispersyTestFunc):
         """
         NODE generates a few messages and OTHER requests them one at a time.
         """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         # create messages
         messages = [node.create_full_sync_text("Message #%d" % i, i) for i in xrange(10)]

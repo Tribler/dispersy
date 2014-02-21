@@ -50,29 +50,22 @@ class TestNeighborhood(DispersyTestFunc):
     
             The returned candidates will be sorted to avoid randomness in the tests.
             """
-            return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._community))
+            return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._mm._community))
 
-        self._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
+        self._mm._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
 
         # check configuration
-        meta = self._community.get_meta_message(u"full-sync-text")
+        meta = self._mm._community.get_meta_message(u"full-sync-text")
         self.assertEqual(meta.destination.node_count, 10)
 
         total_node_count = non_targeted_node_count + targeted_node_count
 
-        central_node = DebugNode(self._community)
-        central_node.init_socket()
-        central_node.init_my_member()
-
         # provide CENTRAL with a neighborhood
-        nodes = [DebugNode(self._community, central_node) for _ in xrange(total_node_count)]
-        for node in nodes:
-            node.init_socket()
-            node.init_my_member()
+        nodes = self.create_nodes(total_node_count)
 
         # SELF creates a message
         candidates = tuple((node.my_candidate for node in nodes[:targeted_node_count]))
-        message = central_node.create_targeted_full_sync_text("Hello World!", 42, candidates)
+        message = self._mm.create_targeted_full_sync_text("Hello World!", 42, candidates)
         self._dispersy._forward([message])
         yield 0.01
 

@@ -9,7 +9,7 @@ class TestIncomingMissingSequence(DispersyTestFunc):
     @call_on_dispersy_thread
     def incoming_simple_conflict_different_global_time(self):
         """
-        A broken NODE creates conflicting messages with the same sequence number that SELF should
+        A broken NODE creates conflicting messages with the same sequence number that OTHER should
         properly filter.
 
         We use the following messages:
@@ -17,77 +17,70 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         - M@6#1 :: global time 6, sequence number 1
         - etc...
 
-        TODO Same payload?  Different signatures?
         """
-        community = self._community
-        meta = community.get_meta_message(u"sequence-text")
-
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
+        node, other = self.create_nodes(2)
 
         # MSGS[GLOBAL-TIME][SEQUENCE-NUMBER]
-        with self._dispersy.database:
-            msgs = defaultdict(dict)
-            for i in xrange(1, 10):
-                for j in xrange(1, 10):
-                    msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
+        msgs = defaultdict(dict)
+        for i in xrange(1, 10):
+            for j in xrange(1, 10):
+                msgs[i][j] = node.create_sequence_text("M@%d#%d" % (i, j), i, j)
 
         # NODE must accept M@6#1
-        node.give_message(msgs[6][1])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[6][1].packet])
+        other.give_message(msgs[6][1], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[6][1].packet])
 
         # NODE must reject M@6#1 (already have this message)
-        node.give_message(msgs[6][1])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[6][1].packet])
+        other.give_message(msgs[6][1], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[6][1].packet])
 
         # NODE must prefer M@5#1 (duplicate sequence number, prefer lower global time)
-        node.give_message(msgs[5][1])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet])
+        other.give_message(msgs[5][1], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet])
 
         # NODE must reject M@6#1 (duplicate sequence number, prefer lower global time)
-        node.give_message(msgs[6][1])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet])
+        other.give_message(msgs[6][1], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet])
 
         # NODE must reject M@4#2 (global time is lower than previous global time in sequence)
-        node.give_message(msgs[4][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet])
+        other.give_message(msgs[4][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet])
 
         # NODE must reject M@5#2 (global time is lower than previous global time in sequence)
-        node.give_message(msgs[5][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet])
+        other.give_message(msgs[5][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet])
 
         # NODE must accept M@7#2
-        node.give_message(msgs[7][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[7][2].packet])
+        other.give_message(msgs[7][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[7][2].packet])
 
         # NODE must reject M@7#2 (already have this message)
-        node.give_message(msgs[7][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[7][2].packet])
+        other.give_message(msgs[7][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[7][2].packet])
 
         # NODE must prefer M@6#2 (duplicate sequence number, prefer lower global time)
-        node.give_message(msgs[6][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet])
+        other.give_message(msgs[6][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet])
 
         # NODE must reject M@7#2 (duplicate sequence number, prefer lower global time)
-        node.give_message(msgs[7][2])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet])
+        other.give_message(msgs[7][2], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet])
 
         # NODE must reject M@4#3 (global time is lower than previous global time in sequence)
-        node.give_message(msgs[4][3])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet])
+        other.give_message(msgs[4][3], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet])
 
         # NODE must reject M@6#3 (global time is lower than previous global time in sequence)
-        node.give_message(msgs[6][3])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet])
+        other.give_message(msgs[6][3], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet])
 
         # NODE must accept M@8#3
-        node.give_message(msgs[8][3])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet])
+        other.give_message(msgs[8][3], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet])
 
         # NODE must accept M@9#4
-        node.give_message(msgs[9][4])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet, msgs[9][4].packet])
+        other.give_message(msgs[9][4], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet, msgs[8][3].packet, msgs[9][4].packet])
 
         # NODE must accept M@7#3
         # It would be possible to keep M@9#4, but the way that the code is structures makes this
@@ -95,8 +88,8 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         # have to delete).  In the future we can optimize by pushing the newer messages (such as
         # M@7#3) into the waiting or incoming packet queue, this will allow them to be re-inserted
         # after M@6#2 has been fully accepted.
-        node.give_message(msgs[7][3])
-        self.assertEqual(community.fetch_packets(meta.name), [msgs[5][1].packet, msgs[6][2].packet, msgs[7][3].packet])
+        other.give_message(msgs[7][3], node)
+        self.assertEqual(other.fetch_packets(u"sequence-text"), [msgs[5][1].packet, msgs[6][2].packet, msgs[7][3].packet])
 
     def test_requests_1_1(self):
         self.requests(1, [1], (1, 1))
@@ -324,22 +317,13 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         NODE1 through NODE<NODE_COUNT> requests OTHER (non)overlapping sequences, OTHER should send back the requested messages
         only once.
         """
-        meta = self._community.get_meta_message(u"sequence-text")
+        meta = self._mm._community.get_meta_message(u"sequence-text")
 
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
-
+        other, = self.create_nodes(1)
         messages = [other.create_sequence_text("Sequence message #%d" % i, i + 10, i) for i in range(1, 11)]
         self._dispersy._store(messages)
 
-        nodes = []
-        for _ in xrange(node_count):
-            node = DebugNode(self._community)
-            node.init_socket()
-            node.init_my_member()
-
-            nodes.append(node)
+        nodes = self.create_nodes(node_count)
 
         # request missing
         sequence_numbers = set()
@@ -347,25 +331,22 @@ class TestIncomingMissingSequence(DispersyTestFunc):
             sequence_numbers.update(xrange(low, high + 1))
 
             for node in nodes:
-                other.give_message(node.create_dispersy_missing_sequence(other.my_member, meta, low, high, self._community.global_time), node, cache=True)
-
-            # one additional yield.  Dispersy should batch these requests together
-            yield 0.001
+                other.give_message(node.create_dispersy_missing_sequence(other.my_member, meta, low, high, other._community.global_time), node, cache=True)
 
             for node in nodes:
-                self.assertEqual(node.receive_messages(names=[meta.name]), [], "should not yet have any responses")
+                self.assertEqual(node.receive_messages(names=[u"sequence-text"]), [], "should not yet have any responses")
 
         yield 0.11
 
         # receive response
         for node in nodes:
             for i in responses:
-                _, response = node.receive_message(names=[meta.name])
+                _, response = node.receive_message(names=[u"sequence-text"])
                 self.assertEqual(response.distribution.sequence_number, i)
 
         # there should not be any no further responses
         for node in nodes:
-            self.assertEqual(node.receive_messages(names=[meta.name]), [], "should not yet have any responses")
+            self.assertEqual(node.receive_messages(names=[u"sequence-text"]), [], "should not yet have any responses")
 
 class TestOutgoingMissingSequence(DispersyTestFunc):
 
@@ -374,14 +355,7 @@ class TestOutgoingMissingSequence(DispersyTestFunc):
         """
         NODE sends message while OTHER doesn't have the prior sequence numbers, OTHER should request these messages.
         """
-
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member()
-
-        other = DebugNode(self._community)
-        other.init_socket()
-        other.init_my_member()
+        node, other = self.create_nodes(2)
 
         messages = [node.create_sequence_text("Sequence message #%d" % sequence, sequence + 10, sequence)
                     for sequence
@@ -402,7 +376,7 @@ class TestOutgoingMissingSequence(DispersyTestFunc):
         other.give_messages(messages[0:4], node)
         yield 0.11
 
-        packets = self._community.fetch_packets(u"sequence-text")
+        packets = other.fetch_packets(u"sequence-text")
         self.assertEqual(packets, [message.packet for message in messages[0:5]])
 
         # NODE gives #10, hence OTHER will request [#6:#9]
@@ -420,5 +394,5 @@ class TestOutgoingMissingSequence(DispersyTestFunc):
         other.give_messages(messages[5:9], node)
         yield 0.11
 
-        packets = self._community.fetch_packets(u"sequence-text")
+        packets = other.fetch_packets(u"sequence-text")
         self.assertEqual(packets, [message.packet for message in messages])
