@@ -1,17 +1,17 @@
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc
 
 
 class TestIdenticalPayload(DispersyTestFunc):
 
-    @call_on_dispersy_thread
     def test_drop_identical_payload(self):
         """
         NODE creates two messages with the same community/member/global-time.
         Sends both of them to OTHER, which should drop the "lowest" one.
         """
         node, other = self.create_nodes(2)
+        other.send_identity(node)
 
         # create messages
         messages = []
@@ -26,16 +26,15 @@ class TestIdenticalPayload(DispersyTestFunc):
         other.give_message(messages[0], node)
         other.give_message(messages[1], node)
 
-        self.assert_not_stored(messages[0])
-        self.assert_is_stored(messages[1])
+        other.assert_not_stored(messages[0])
+        other.assert_is_stored(messages[1])
 
-
-    @call_on_dispersy_thread
     def test_drop_identical(self):
         """
         NODE creates one message, sends it to OTHER twice
         """
         node, other = self.create_nodes(2)
+        other.send_identity(node)
 
         # create messages
         message = node.create_full_sync_text("Message", 42)
@@ -44,4 +43,4 @@ class TestIdenticalPayload(DispersyTestFunc):
         other.give_message(message, node)
         other.give_message(message, node)
 
-        self.assert_is_stored(message)
+        other.assert_is_stored(message)

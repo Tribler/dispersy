@@ -86,7 +86,7 @@ class NullEndpoint(Endpoint):
         return self._address
 
     def send(self, candidates, packets):
-        if any(len(packet) > 2**16 - 60 for packet in packets):
+        if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
         self._total_up += sum(len(packet) for packet in packets) * len(candidates)
 
@@ -128,15 +128,15 @@ class RawserverEndpoint(Endpoint):
         assert self._dispersy, "Should not be called before open(...)"
         return self._socket.getsockname()
 
-    def data_came_in(self, packets):
+    def data_came_in(self, packets, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
+        assert isinstance(packets, (list, tuple)), type(packets)
         # called on the Tribler rawserver
 
         # the rawserver SUCKS.  every now and then exceptions are not shown and apparently we are
         # sometimes called without any packets...
         if packets:
             self._total_down += sum(len(data) for _, data in packets)
-
             if logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
                     try:
@@ -146,9 +146,9 @@ class RawserverEndpoint(Endpoint):
                     logger.debug("%30s <- %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
                     self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
 
-            self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
+            self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time(), cache))
 
-    def dispersythread_data_came_in(self, packets, timestamp):
+    def dispersythread_data_came_in(self, packets, timestamp, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
         # iterator = ((self._dispersy.get_candidate(sock_addr), data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
         # self._dispersy.on_incoming_packets([(candidate if candidate else self._dispersy.create_candidate(WalkCandidate, sock_addr, tunnel), data[4:] if tunnel else data)
@@ -160,7 +160,7 @@ class RawserverEndpoint(Endpoint):
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data[4:] if tunnel else data)
                                             for tunnel, sock_addr, data
                                             in iterator],
-                                           True,
+                                           cache,
                                            timestamp)
 
     def send(self, candidates, packets):
@@ -170,7 +170,7 @@ class RawserverEndpoint(Endpoint):
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
-        if any(len(packet) > 2**16 - 60 for packet in packets):
+        if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)
@@ -259,6 +259,9 @@ class StandaloneEndpoint(RawserverEndpoint):
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
                 self._socket.bind((self._ip, self._port))
                 self._socket.setblocking(0)
+
+                self._port = self._socket.getsockname()[1]
+
                 logger.debug("Listening at %d", self._port)
             except socket.error:
                 self._port += 1
@@ -330,8 +333,39 @@ class StandaloneEndpoint(RawserverEndpoint):
 
                 finally:
                     if packets:
+                        logger.debug('%d came in, %d bytes in total', len(packets), sum(len(packet) for _, packet in packets))
                         self.data_came_in(packets)
 
+class ManualEnpoint(StandaloneEndpoint):
+
+    def __init__(self, *args, **kwargs):
+        StandaloneEndpoint.__init__(self, *args, **kwargs)
+        self.receive_lock = threading.RLock()
+        self.received_packets = []
+
+    def data_came_in(self, packets):
+        logger.debug('added %d packets to receivequeue, %d packets are queued in total', len(packets), len(packets) + len(self.received_packets))
+
+        with self.receive_lock:
+            self.received_packets.extend(packets)
+
+    def clear_receive_queue(self):
+        with self.receive_lock:
+            packets = self.received_packets
+            self.received_packets = []
+
+        if packets:
+            logger.debug('returning %d packets, %d bytes in total', len(packets), sum(len(packet) for _, packet in packets))
+        return packets
+
+    def process_receive_queue(self):
+        packets = self.clear_receive_queue()
+        self.process_packets(packets)
+        return packets
+
+    def process_packets(self, packets, cache=True):
+        logger.debug('processing %d packets', len(packets))
+        StandaloneEndpoint.data_came_in(self, packets, cache=cache)
 
 class TunnelEndpoint(Endpoint):
 
@@ -369,7 +403,7 @@ class TunnelEndpoint(Endpoint):
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets)
         assert all(len(packet) > 0 for packet in packets)
-        if any(len(packet) > 2**16 - 60 for packet in packets):
+        if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
         self._total_up += sum(len(data) for data in packets) * len(candidates)

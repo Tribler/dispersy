@@ -1817,6 +1817,8 @@ class Community(object):
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
 
+        logger.debug("got %d incoming packets", len(packets))
+
         for _, iterator in groupby(packets, key=lambda tup: (tup[1][1], tup[1][22])):
             cur_packets = list(iterator)
             # find associated conversion
@@ -1837,6 +1839,7 @@ class Community(object):
                         self._batch_cache[meta] = (task_identifier, timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
+                    logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
             except KeyError:
                 for candidate, packet in cur_packets:
@@ -2408,36 +2411,34 @@ class Community(object):
                 undone = 0
 
             if undone and message.name == u"dispersy-undo-own":
-                # the dispersy-undo-own message is a curious beast.  Anyone is allowed to create one (regardless of the
-                # community settings) and everyone is responsible to propagate these messages.  A malicious member can
-                # create an infinite number of dispersy-undo-own messages and thereby take down a community.
-                #
-                # To mitigate this, we allow only one dispersy-undo-own message per message.  The malicious node is now
-                # limited to creating only one dispersy-undo-own message per message that she creates.  And that can be
-                # limited by revoking her right to create messages.
-
-                # search for the second offending dispersy-undo message
+                # look for other packets we received that undid this packet
                 member = message.authentication.member
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
                 for packet_id, packet in self._dispersy._database.execute(
                         u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
                         (self.database_id, member.database_id, undo_own_meta.database_id)):
+
                     db_msg = Packet(undo_own_meta, str(packet), packet_id).load_message()
                     if message.payload.global_time == db_msg.payload.global_time:
+                        # we've found another packet which undid this packet
                         if member == self.my_member:
                             logger.exception("We created a duplicate undo-own message")
                         else:
                             logger.warning("Someone else created a duplicate undo-own message")
 
-                        if message.packet < db_msg.packet:
-                            # The sender apparently does not have the higher dispersy-undo message, lets give it to him
+                        # reply to this peer with the packet if it's smaller than the one we just received
+                        if db_msg.packet < message.packet:
+                            # the sender apparently does not have the higher dispersy-undo message, lets give it to him
                             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
                             self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
-                            yield DropMessage(message, "the message proves that the member is malicious")
+                            yield DropMessage(message, "our already stored packet replaces this one")
                             break
+
                         else:
-                            self._dispersy._database.execute(u"DELETE FROM sync WHERE id = ?",
-                                                             ((db_msg.packet_id,)))
+                            # our message was larger, mark it as undone
+                            # we cannot remove it as it has a sequence number
+                            # TODO(emilon) discuss how we're going to implement this
+                            pass
                 else:
                     # did not break, hence, the message is not malicious.  more than one members undid this message.
                     yield message
@@ -2458,9 +2459,6 @@ class Community(object):
         for meta, iterator in groupby(messages, key=lambda x: x.payload.packet.meta):
             sub_messages = list(iterator)
             meta.undo_callback([(message.payload.member, message.payload.global_time, message.payload.packet) for message in sub_messages])
-
-            # notify that global times have changed
-            # community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
 
         # this might be a response to a dispersy-missing-sequence
         self.handle_missing_messages(messages, MissingSequenceCache)
@@ -2832,24 +2830,24 @@ class Community(object):
         return sendRequest
 
     def on_missing_message(self, messages):
-        responses = []  # (candidate, packet) tuples
         for message in messages:
+
+            responses = []
             candidate = message.candidate
             member_database_id = message.payload.member.database_id
             for global_time in message.payload.global_times:
                 try:
                     packet, = self._dispersy._database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                               (self.database_id, member_database_id, global_time)).next()
+                    responses.append(str(packet))
                 except StopIteration:
                     pass
-                else:
-                    responses.append((candidate, str(packet)))
 
-        for candidate, responses in groupby(responses, key=lambda tup: tup[0]):
-            # responses is an iterator, for __debug__ we need a list
-            responses = list(responses)
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-message", len(responses))
-            self._dispersy._endpoint.send([candidate], [packet for _, packet in responses])
+            if responses:
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-message", len(responses))
+                self._dispersy._endpoint.send([candidate], responses)
+            else:
+                logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
 
     def create_missing_last_message(self, candidate, member, message, count_, response_func=None, response_args=(), timeout=10.0):
         if __debug__:
@@ -3497,6 +3495,7 @@ class Community(object):
                 # 2. cleanup sync table.  everything except what we need to tell others this
                 # community is no longer available
                 self._dispersy._database.execute(u"DELETE FROM sync WHERE community = ? AND id NOT IN (" + u", ".join(u"?" for _ in packet_ids) + ")", [self.database_id] + list(packet_ids))
+                logger.debug(packet_ids)
 
             self._dispersy.reclassify_community(self, new_classification)
 

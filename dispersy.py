@@ -1189,6 +1189,9 @@ class Dispersy(object):
                         # are signed/valid.  we need to discard one of them
                         if (global_time, packet) < (message.distribution.global_time, message.packet):
                             # we keep PACKET (i.e. the message that we currently have in our database)
+                            # reply with the packet to let the peer know
+                            self._statistics.dict_inc(self._statistics.outgoing, '-duplicate-sequence-')
+                            self._endpoint.send([message.candidate], [packet])
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
 

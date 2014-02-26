@@ -1,7 +1,7 @@
 from os import environ, getcwd, path
 from socket import getfqdn
 from subprocess import Popen, PIPE, STDOUT
-from time import time
+from time import time, sleep
 from unittest import skip, skipUnless
 
 from ..candidate import BootstrapCandidate
@@ -9,7 +9,7 @@ from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 from threading import Thread
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
@@ -17,8 +17,7 @@ summary = get_logger("test-bootstrap-summary")
 class TestBootstrapServers(DispersyTestFunc):
 
 
-    @call_on_dispersy_thread
-    def test_bootstrap_server(self):
+    def test_tracker(self):
         """
         Runs tracker.py and connects to it.
         """
@@ -52,7 +51,7 @@ class TestBootstrapServers(DispersyTestFunc):
 
         # can take a few seconds to start on older machines (or when running on a remote file
         # system)
-        yield 5.0
+        sleep(5)
 
         try:
             class Community(DebugCommunity):
@@ -63,11 +62,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            community = Community.create_community(self._dispersy, self._community._my_member)
-            
-            node = DebugNode(community)
-            node.init_socket()
-            node.init_my_member()
+            node, = self.create_nodes(1, communityclass=Community)
 
             # node sends introduction request
             node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
@@ -80,21 +75,21 @@ class TestBootstrapServers(DispersyTestFunc):
                                                                         42), tracker_address)
 
             # node receives missing identity
-            yield 1.0
-
-            (_, message), = node.receive_messages(names=[u"dispersy-missing-identity"], counts=[1])
+            _, message = node.receive_message(names=[u"dispersy-missing-identity"]).next()
             self.assertEqual(message.payload.mid, node.my_member.mid)
-            node.send_message(node.create_dispersy_identity(2), tracker_address)
+
+            packet = node.fetch_packets([u"dispersy-identity", ], node.my_member.mid)[0]
+            node.send_packet(packet)
+
+            _, message = node.receive_message(names=[u"dispersy-introduction-response"]).next()
 
         finally:
-            yield 0.1
             logger.debug("terminate tracker")
+
             tracker.terminate()  # sends SIGTERM
-            tracker.wait()
-            self.assertEqual(tracker.returncode, 0)
+            self.assertEqual(tracker.wait(), 0)
 
     @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
-    @call_on_dispersy_thread
     def test_servers_are_up(self):
         """
         Sends a dispersy-introduction-request to the trackers and counts how long it takes until the
@@ -203,7 +198,6 @@ class TestBootstrapServers(DispersyTestFunc):
         community.finish(PING_COUNT, PING_COUNT * ASSERT_MARGIN, MAX_RTT)
 
     @skip("The stress test is not actually a unittest")
-    @call_on_dispersy_thread
     def test_perform_heavy_stress_test(self):
         """
         Sends many a dispersy-introduction-request messages to a single tracker and counts how long

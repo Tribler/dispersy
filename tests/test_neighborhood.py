@@ -1,6 +1,6 @@
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 
 
 class TestNeighborhood(DispersyTestFunc):
@@ -32,7 +32,6 @@ class TestNeighborhood(DispersyTestFunc):
     def test_forward_2_targeted_5(self):
         return self.forward(2, 5)
 
-    @call_on_dispersy_thread
     def forward(self, non_targeted_node_count, targeted_node_count=0):
         """
         SELF should forward created messages at least to the specified targets.
@@ -50,12 +49,12 @@ class TestNeighborhood(DispersyTestFunc):
     
             The returned candidates will be sorted to avoid randomness in the tests.
             """
-            return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._mm._community))
+            return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._community))
 
-        self._mm._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
+        self._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
 
         # check configuration
-        meta = self._mm._community.get_meta_message(u"full-sync-text")
+        meta = self._community.get_meta_message(u"full-sync-text")
         self.assertEqual(meta.destination.node_count, 10)
 
         total_node_count = non_targeted_node_count + targeted_node_count
@@ -67,7 +66,6 @@ class TestNeighborhood(DispersyTestFunc):
         candidates = tuple((node.my_candidate for node in nodes[:targeted_node_count]))
         message = self._mm.create_targeted_full_sync_text("Hello World!", 42, candidates)
         self._dispersy._forward([message])
-        yield 0.01
 
         # check if sufficient NODES received the message (at least the first `target_count` ones)
         forwarded_node_count = 0

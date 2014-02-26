@@ -15,7 +15,7 @@ from ..candidate import CANDIDATE_ELIGIBLE_DELAY
 from ..logger import get_logger
 from ..tool.tracker import TrackerCommunity
 from .debugcommunity.community import DebugCommunity
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 logger = get_logger(__name__)
 
 
@@ -323,7 +323,7 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags, candidate)]
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def check_candidates(self, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
@@ -349,7 +349,7 @@ class TestCandidates(DispersyTestFunc):
         assert isinstance(max_calls, int)
         assert isinstance(max_iterations, int)
         assert len(all_flags) < max_iterations
-        community = NoBootstrapDebugCommunity.create_community(self._dispersy, self._community._my_member)
+        community = NoBootstrapDebugCommunity.create_community(self._dispersy, self._mm._my_member)
         candidates = self.create_candidates(community, all_flags)
 
         # yield_candidates
@@ -408,7 +408,7 @@ class TestCandidates(DispersyTestFunc):
             candidate = community.dispersy_get_walk_candidate()
             self.assertEquals(candidate, None)
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_get_introduce_candidate(self, community_create_method=DebugCommunity.create_community):
         community = community_create_method(self._dispersy, self._community._my_member)
         candidates = self.create_candidates(community, [""] * 5)
@@ -423,7 +423,7 @@ class TestCandidates(DispersyTestFunc):
 
         return community, candidates
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_tracker_get_introduce_candidate(self, community_create_method=TrackerCommunity.create_community):
         community, candidates = self.test_get_introduce_candidate(community_create_method)
 
@@ -440,7 +440,7 @@ class TestCandidates(DispersyTestFunc):
             got.append(introduce.sock_addr if introduce else None)
         self.assertEquals(expected, got)
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_introduction_probabilities(self):
         candidates = []
         for i in range(2):
@@ -463,7 +463,7 @@ class TestCandidates(DispersyTestFunc):
 
         assert returned_walked_candidate in expected_walked_range
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_walk_probabilities(self):
 
         candidates = []
@@ -497,7 +497,7 @@ class TestCandidates(DispersyTestFunc):
         assert returned_stumble_candidate in expected_stumble_range, returned_stumble_candidate
         assert returned_intro_candidate in expected_intro_range, returned_intro_candidate
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_merge_candidates(self):
         # let's make a list of all possible combinations which should be merged into one candidate
         candidates = []

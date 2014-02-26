@@ -236,14 +236,14 @@ class Member(DummyMember):
             raise RuntimeError("unable to sign data without the private key")
 
     def __eq__(self, member):
-        assert isinstance(member, DummyMember)
-        assert (self._database_id == member.database_id) == (self._mid == member.mid)
-        return self._database_id == member.database_id
+        if member:
+            assert isinstance(member, DummyMember)
+            assert (self._database_id == member.database_id) == (self._mid == member.mid)
+            return self._database_id == member.database_id
+        return False
 
     def __ne__(self, member):
-        assert isinstance(member, DummyMember)
-        assert (self._database_id == member.database_id) == (self._mid == member.mid)
-        return self._database_id != member.database_id
+        return not self == member
 
     def __cmp__(self, member):
         assert isinstance(member, DummyMember)

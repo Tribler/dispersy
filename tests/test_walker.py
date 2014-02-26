@@ -16,15 +16,13 @@ class TestWalker(DispersyTestFunc):
     def test_two_mixed_walker_b(self): return self.check_walker(["t", ""])
     def test_many_mixed_walker_b(self): return self.check_walker(["t", ""] * 11)
 
-    def create_nodes(self, community, all_flags):
+    def create_others(self, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
 
         nodes = []
         for flags in all_flags:
-            node = DebugNode(community)
-            node.init_socket("t" in flags)
-            node.init_my_member()
+            node, = self.create_nodes(tunnel="t" in flags)
             nodes.append(node)
 
         return nodes
@@ -38,10 +36,10 @@ class TestWalker(DispersyTestFunc):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
 
-        nodes = self.create_nodes(self._community, all_flags)
+        nodes = self.create_others(all_flags)
 
         # create all requests
-        requests = [node.create_dispersy_introduction_request(self._community.my_candidate,
+        requests = [node.create_dispersy_introduction_request(self._mm.my_candidate,
                                                               node.lan_address,
                                                               node.wan_address,
                                                               True,
