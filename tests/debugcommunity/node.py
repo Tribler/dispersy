@@ -136,7 +136,7 @@ class DebugNode(object):
         return self._community.get_conversion_for_message(message).encode_message(message)
 
     def give_packet(self, packet, source, cache=False):
-        self.give_packets([packet], source, cache=cache)[0]
+        self.give_packets([packet], source, cache=cache)
 
     def give_packets(self, packets, source, cache=False):
         """
@@ -704,6 +704,12 @@ class DebugNode(object):
         Returns a new full-sync-text message.
         """
         return self._create_text(u"full-sync-text", text, global_time)
+
+    def create_bin_key_text(self, text, global_time=None):
+        """
+        Returns a new full-sync-text message.
+        """
+        return self._create_text(u"bin-key-text", text, global_time)
 
     def create_targeted_full_sync_text(self, text, destination, global_time=None):
         """
