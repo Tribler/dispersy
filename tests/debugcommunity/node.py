@@ -6,6 +6,7 @@ from copy import copy
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate, WalkCandidate
 from ...community import Community
+from ...endpoint import TUNNEL_PREFIX
 from ...logger import get_logger
 from ...member import Member
 from ...message import Message
@@ -109,7 +110,7 @@ class DebugNode(object):
 
     def init_my_member(self, tunnel=False, store_identity=True):
         """
-        When STORE_IDENTITY is True this node will send the central node an introduction-request 
+        When STORE_IDENTITY is True this node will send the central node an introduction-request
         """
         self._tunnel = tunnel
         if self._central_node:
@@ -149,7 +150,7 @@ class DebugNode(object):
         assert isinstance(cache, bool), type(cache)
 
         logger.debug("%s giving %d bytes", self.my_candidate, sum(len(packet) for packet in packets))
-        self._dispersy.endpoint.process_packets([(source.lan_address, packet) for packet in packets], cache=cache)
+        self._dispersy.endpoint.process_packets([(source.lan_address, TUNNEL_PREFIX + packet if source.tunnel else packet) for packet in packets], cache=cache)
 
     def give_message(self, message, source, cache=False):
         self.give_messages([message], source, cache=cache)
@@ -175,7 +176,7 @@ class DebugNode(object):
         assert isinstance(packet, str)
         assert isinstance(candidate, Candidate)
         logger.debug("%d bytes to %s", len(packet), candidate)
-        return self._dispersy.endpoint.send([candidate], packet)
+        return self._dispersy.endpoint.send([candidate], [packet])
 
     def send_message(self, message, candidate):
         """
@@ -630,7 +631,7 @@ class DebugNode(object):
         assert isinstance(message_name, unicode), type(message_name)
         assert isinstance(text, str), type(text)
         assert isinstance(resolution, tuple), type(resolution)
-        assert isinstance(destination, tuple), type(destination)
+        assert isinstance(destination, tuple), destination
 
         meta = self._community.get_meta_message(message_name)
 
@@ -665,12 +666,17 @@ class DebugNode(object):
         assert isinstance(other, Member)
         assert isinstance(text, str)
 
+        # As each node has a separate database, a member instance from a node representing identity A can have the same
+        # database ID than one from a different node representing identity B, get our own member object based on
+        # `other`'s member ID to avoid this.
+        my_other = self._dispersy.get_member(mid=other.mid)
+
         meta = self._community.get_meta_message(message_name)
 
         if global_time == None:
             global_time = self.claim_global_time()
 
-        return meta.impl(authentication=([self._my_member, other],),
+        return meta.impl(authentication=([self._my_member, my_other],),
                          distribution=(global_time,),
                          payload=(text,),
                          sign=sign)
@@ -715,7 +721,7 @@ class DebugNode(object):
         """
         Returns a new targeted-full-sync-text message.
         """
-        return self._create_text(u"full-sync-text", text, global_time, destination=destination)
+        return self._create_text(u"full-sync-text", text, destination=destination, global_time=global_time)
 
     def create_full_sync_global_time_pruning_text(self, text, global_time=None):
         """

@@ -238,7 +238,7 @@ class Member(DummyMember):
     def __eq__(self, member):
         if member:
             assert isinstance(member, DummyMember)
-            assert (self._database_id == member.database_id) == (self._mid == member.mid)
+            assert (self._database_id == member.database_id) == (self._mid == member.mid),  (self._database_id, member.database_id, self._mid, member.mid)
             return self._database_id == member.database_id
         return False
 

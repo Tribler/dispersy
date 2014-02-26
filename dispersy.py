@@ -1630,7 +1630,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         self._statistics.received_count += len(packets)
 
-        sort_key = lambda tup: (tup[1][2:22], tup[1][1], tup[1][22])  # community ID, community version, message meta type
+        # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
+        # for identities we have already received but not processed yet. (248 == identity message ID)
+        #                                           /--------------------------\
+        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] ==  248 else tup[1][22])  # community ID, community version, message meta type
         groupby_key = lambda tup: tup[1][2:22]  # community ID
         for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community

@@ -65,23 +65,27 @@ class TestBootstrapServers(DispersyTestFunc):
             node, = self.create_nodes(1, communityclass=Community)
 
             # node sends introduction request
-            node.send_message(node.create_dispersy_introduction_request(BootstrapCandidate(tracker_address, False),
-                                                                        node.lan_address,
-                                                                        node.wan_address,
-                                                                        True,
-                                                                        u"unknown",
-                                                                        None,
-                                                                        4242,
-                                                                        42), tracker_address)
+            destination = BootstrapCandidate(tracker_address, False)
+            node.send_message(node.create_introduction_request(destination=destination,
+                                                                        source_lan = node.lan_address,
+                                                                        source_wan = node.wan_address,
+                                                                        advice = True,
+                                                                        connection_type = u"unknown",
+                                                                        sync = None,
+                                                                        identifier = 4242,
+                                                                        global_time = 42),
+                              destination)
 
             # node receives missing identity
             _, message = node.receive_message(names=[u"dispersy-missing-identity"]).next()
             self.assertEqual(message.payload.mid, node.my_member.mid)
 
             packet = node.fetch_packets([u"dispersy-identity", ], node.my_member.mid)[0]
-            node.send_packet(packet)
+            node.send_packet(packet,  destination)
 
-            _, message = node.receive_message(names=[u"dispersy-introduction-response"]).next()
+            node.process_packets()
+
+            _, message = node.receive_message(names=[u"dispersy-identity"]).next()
 
         finally:
             logger.debug("terminate tracker")
