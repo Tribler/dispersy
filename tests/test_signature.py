@@ -43,7 +43,7 @@ class TestSignature(DispersyTestFunc):
         packet = node.encode_message(message)
 
         # replace the valid signature with an invalid one
-        invalid_packet = packet[:-node.my_member.signature_length] + '0' * node.my_member.signature_length
+        invalid_packet = packet[:-node.my_member.signature_length] + 'I' * node.my_member.signature_length
         self.assertNotEqual(packet, invalid_packet)
 
         # give invalid message to OTHER
