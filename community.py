@@ -3495,7 +3495,6 @@ class Community(object):
                 # 2. cleanup sync table.  everything except what we need to tell others this
                 # community is no longer available
                 self._dispersy._database.execute(u"DELETE FROM sync WHERE community = ? AND id NOT IN (" + u", ".join(u"?" for _ in packet_ids) + ")", [self.database_id] + list(packet_ids))
-                logger.debug(packet_ids)
 
             self._dispersy.reclassify_community(self, new_classification)
 
