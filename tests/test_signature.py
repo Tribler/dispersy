@@ -75,11 +75,10 @@ class TestDoubleSign(DispersyTestFunc):
 
         self.assertEqual(container["timeout"], 1)
 
-    @skip('TODO: emilon')
     def test_response_from_node(self):
         """
-        OTHER will request a signature from NODE. OTHER will receive the signature and produce a
-        double signed message.
+        NODE will request a signature from OTHER.
+        NODE will receive the response signed by OTHER.
         """
         container = {"response": 0}
 
@@ -88,23 +87,33 @@ class TestDoubleSign(DispersyTestFunc):
 
         def on_response(request, response, modified):
             self.assertEqual(container["response"], 0)
-            self.assertTrue(response.authentication.is_signed)
+            mid_signatures = dict([(member.mid, signature) for signature, member in response.authentication.signed_members])
+            # It should be signed by OTHER
+            self.assertNotEqual(mid_signatures[other.my_member.mid], '')
+            # BUT it should not be signed by NODE yet
+            self.assertEqual(mid_signatures[node.my_member.mid], '')
+            # is_signed should be False, as it is not yet signed by both parties
+            self.assertFalse(response.authentication.is_signed)
             self.assertFalse(modified)
             container["response"] += 1
             return False
 
-        message = other.create_double_signed_text(node.my_pub_member, "Allow=True", False)
-        other.call(other._community.create_signature_request, node.my_candidate, message, on_response, timeout=1.0)
+        # NODE creates the unsigned request and sends it to OTHER
+        message = node.create_double_signed_text(other.my_pub_member, "Allow=True", False)
+        node.call(node._community.create_signature_request, other.my_candidate, message, on_response, timeout=1.0)
 
-        _, message = node.receive_message(names=[u"dispersy-signature-request"]).next()
+        # OTHER receives the request
+        _, message = other.receive_message(names=[u"dispersy-signature-request"]).next()
         submsg = message.payload.message
 
         second_signature_offset = len(submsg.packet) - other.my_member.signature_length
-        self.assertEqual(submsg.packet[second_signature_offset:], "\x00" * node.my_member.signature_length, "The first signature MUST BE \x00's.  The creator must hold control over the community+member+global_time triplet")
+        first_signature_offset = second_signature_offset - node.my_member.signature_length
+        self.assertEqual(submsg.packet[first_signature_offset:second_signature_offset], "\x00" * node.my_member.signature_length, "The first signature MUST BE 0x00's.")
+        self.assertEqual(submsg.packet[second_signature_offset:], "\x00" * other.my_member.signature_length, "The second signature MUST BE 0x00's.")
 
-        # message sent by other is ok, give it to node to process it
-        node.give_message(message, other)
-        other.process_packets()
+        # reply sent by OTHER is ok, give it to NODE to process it
+        other.give_message(message, node)
+        node.process_packets()
 
         sleep(1.5)
 
