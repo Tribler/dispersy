@@ -1,4 +1,3 @@
-from random import random
 from unittest.case import skip
 
 from .dispersytestclass import DispersyTestFunc
@@ -225,7 +224,6 @@ class TestSync(DispersyTestFunc):
         for _, message in messages_so_far:
             node.assert_is_stored(message)
 
-    @skip('TODO: emilon')
     def test_last_1_doublemember(self):
         """
         Normally the LastSyncDistribution policy stores the last N messages for each member that
@@ -260,42 +258,71 @@ class TestSync(DispersyTestFunc):
             assert origin_mid_pre == origin._community.my_member.mid
             assert destination_mid_pre == destination._community.my_member.mid
 
-            destination.give_message(origin.create_dispersy_signature_request(12345, submsg, global_time), origin)
-            _, message = origin.receive_message(names=[u"dispersy-signature-response"])
+            destination.give_message(origin.create_signature_request(12345, submsg, global_time), origin)
+            _, message = origin.receive_message(names=[u"dispersy-signature-response"]).next()
             return (global_time, message.payload.message)
 
-        def check_everything():
-            entries = list(self._dispersy.database.execute(u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2 \
-            FROM sync JOIN double_signed_sync ON double_signed_sync.sync = sync.id WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
-                                                           (self._community.database_id, nodeA.my_member.database_id, message.database_id)))
-            self.assertEqual(len(entries), 2)
-            self.assertIn((current_global_timeB, nodeA.my_member.database_id,
-                           min(nodeA.my_member.database_id, nodeB.my_member.database_id),
-                           max(nodeA.my_member.database_id, nodeB.my_member.database_id)),
-                          entries)
-            self.assertIn((current_global_timeC, nodeA.my_member.database_id,
-                           min(nodeA.my_member.database_id, nodeC.my_member.database_id),
-                           max(nodeA.my_member.database_id, nodeC.my_member.database_id)),
-                          entries)
+        def check_database_contents():
+            # TODO(emilon): This could be done better.
+            def fetch_rows():
+                return list(nodeA._dispersy.database.execute(
+                    u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2, "
+                    u"member1.mid as mid1, member2.mid as mid2 FROM sync "
+                    u"JOIN double_signed_sync ON double_signed_sync.sync = sync.id "
+                    u"JOIN member member1 ON double_signed_sync.member1 = member1.id "
+                    u"JOIN member member2 ON double_signed_sync.member2 = member2.id "
+                    u"WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
+                    (nodeA._community.database_id, nodeA.my_member.database_id, message.database_id)))
 
-        # send a message
+            entries = []
+            database_ids = {}
+            for global_time, member, sync_member1, sync_member2, mid1, mid2 in nodeA.call(fetch_rows):
+                entries.append((global_time, member, sync_member1, sync_member2))
+                database_ids[str(mid1)] = sync_member1
+                database_ids[str(mid2)] = sync_member2
+
+            # We should only have two entries: AB and AC pairs
+            self.assertEqual(len(entries), 2)
+
+            # One should be A and B
+            expectedAB = (current_global_timeB,
+                          nodeA.my_member.database_id,
+                          min(database_ids[nodeA.my_member.mid], database_ids[nodeB.my_member.mid]),
+                          max(database_ids[nodeA.my_member.mid], database_ids[nodeB.my_member.mid])
+                          )
+            self.assertIn(expectedAB, entries)
+
+            # The other should be A and C
+            expectedAC = (current_global_timeC,
+                          nodeA.my_member.database_id,
+                          min(database_ids[nodeA.my_member.mid], database_ids[nodeC.my_member.mid]),
+                          max(database_ids[nodeA.my_member.mid], database_ids[nodeC.my_member.mid])
+                          )
+            self.assertIn(expectedAC, entries)
+
+        # Send a set of messages
         global_time = 10
         other_global_time = global_time + 1
         messages = []
         messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (1AB)", global_time))
         messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (1AC)", other_global_time))
 
-        # send a message
+        # Send a newer set, the previous ones should be dropped
+        # Those two are the messages that we should have in the DB at the end of the test.
         global_time = 20
         other_global_time = global_time + 1
         messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (2AB) @%d" % global_time, global_time))
         messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (2AC) @%d" % other_global_time, other_global_time))
 
-        # send a message (older: should be dropped)
+        # Send another message (same global time: should be droped)
+        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True Duplicate global time (2ABbis) @%d" % global_time, global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True Duplicate global time (2ACbis) @%d" % other_global_time, other_global_time))
+
+        # send yet another message (older: should be dropped too)
         old_global_time = 8
         other_old_global_time = old_global_time + 1
-        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True (1AB)", old_global_time))
-        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True (1AC)", other_old_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeB, "Allow=True Should be dropped (1AB)", old_global_time))
+        messages.append(create_double_signed_message(nodeA, nodeC, "Allow=True Should be dropped (1AC)", other_old_global_time))
 
         current_global_timeB = 0
         current_global_timeC = 0
@@ -307,14 +334,13 @@ class TestSync(DispersyTestFunc):
             current_global_timeC = max(global_timeC, current_global_timeC)
 
             nodeA.give_messages([messageB, messageC], nodeB)
-            check_everything()
+            check_database_contents()
 
-        # as proof for the drop, the newest message should be sent back
+        # as proof for the drop, the more recent messages should be sent back to nodeB
         times = []
-        _, message = nodeB.receive_message(names=[u"last-1-doublemember-text"])
-        times.append(message.distribution.global_time)
-        _, message = nodeB.receive_message(names=[u"last-1-doublemember-text"])
-        times.append(message.distribution.global_time)
+        for _, message in nodeB.receive_message(names=[u"last-1-doublemember-text"]):
+            times.append(message.distribution.global_time)
+
         self.assertEqual(sorted(times), [global_time, other_global_time])
 
         # send a message (older + different member combination: should be dropped)
@@ -322,24 +348,4 @@ class TestSync(DispersyTestFunc):
         create_double_signed_message(nodeB, nodeA, "Allow=True (2BA)", old_global_time)
         create_double_signed_message(nodeC, nodeA, "Allow=True (2CA)", old_global_time)
 
-        check_everything()
-
-    @skip('TODO: emilon')
-    def test_last_1_doublemember_unique_member_global_time(self):
-        """
-        Even with double member messages, the first member is the creator and may only have one
-        message for each global time.
-        """
-        nodeA, nodeB, nodeC = self.create_nodes(3)
-        nodeA.send_identity(nodeB)
-        nodeA.send_identity(nodeC)
-
-        # send two messages
-        global_time = 10
-        messages = []
-        messages.append(nodeA.create_last_1_doublemember_text(nodeB.my_member, "should be accepted (1.1)", True, global_time))
-        messages.append(nodeA.create_last_1_doublemember_text(nodeC.my_member, "should be accepted (1.2)", True, global_time))
-
-        nodeA.give_messages(messages, nodeA)
-        nodeA.assert_is_stored(messages[0])
-        nodeA.assert_is_stored(messages[1])
+        check_database_contents()
