@@ -150,12 +150,6 @@ class RawserverEndpoint(Endpoint):
 
     def dispersythread_data_came_in(self, packets, timestamp, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
-        # iterator = ((self._dispersy.get_candidate(sock_addr), data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
-        # self._dispersy.on_incoming_packets([(candidate if candidate else self._dispersy.create_candidate(WalkCandidate, sock_addr, tunnel), data[4:] if tunnel else data)
-        #                                     for candidate, tunnel, sock_addr, data
-        #                                     in iterator],
-        #                                    True,
-        #                                    timestamp)
         iterator = ((data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data[4:] if tunnel else data)
                                             for tunnel, sock_addr, data
