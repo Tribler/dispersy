@@ -372,9 +372,9 @@ class DebugNode(object):
         return self._community.timeline.get_resolution_policy(meta, global_time)
 
     def call(self, func, *args, **kargs):
-        if not self._dispersy._callback.is_current_thread:
-            return self._dispersy._callback.call(func, args, kargs)
-        return func(*args, **kargs)
+        if self._dispersy._callback.is_current_thread:
+            return func(*args, **kargs)
+        return self._dispersy._callback.call(func, args, kargs)
 
     @call_on_dispersy_thread
     def store(self, messages):
