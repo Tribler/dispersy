@@ -1195,22 +1195,16 @@ class NoDefBinaryConversion(Conversion):
         elif authentication.encoding == "bin":
             if len(data) < offset + 4:
                 raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
-            # TODO(emilon): do this with a for loop
-            key1_length, key2_length = self._struct_HH.unpack_from(data, offset)
             offset += 4
-            if len(data) < offset + key1_length + key2_length:
-                raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
-            key1 = data[offset:offset + key1_length]
-            offset += key1_length
-            key2 = data[offset:offset + key2_length]
-            offset += key2_length
+            for key_length in self._struct_HH.unpack_from(data, placeholder.offset):
+                if len(data) < offset + key_length:
+                    raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
+                key = data[offset:offset + key_length]
+                offset += key_length
+                if not self._community.dispersy.crypto.is_valid_public_bin(key):
+                    raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
 
-            if not self._community.dispersy.crypto.is_valid_public_bin(key1):
-                raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
-            if not self._community.dispersy.crypto.is_valid_public_bin(key2):
-                raise DropPacket("Invalid cryptographic key2 (_decode_double_member_authentication)")
-
-            members = [self._community.dispersy.get_member(public_key=key1), self._community.dispersy.get_member(public_key=key2)]
+                members.append(self._community.dispersy.get_member(public_key=key))
 
         else:
             raise NotImplementedError(authentication.encoding)
