@@ -1,11 +1,8 @@
-import socket
 import sys
 from time import time, sleep
-from copy import copy
 
 from ...bloomfilter import BloomFilter
-from ...candidate import Candidate, WalkCandidate
-from ...community import Community
+from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
 from ...logger import get_logger
 from ...member import Member
