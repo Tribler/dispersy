@@ -79,10 +79,12 @@ class TestUndo(DispersyTestFunc):
 
     def test_node_resolve_undo_twice(self):
         """
-        Make sure that in the event of receiving two undo messages from the same member, only the highest one will be kept,
+        Make sure that in the event of receiving two undo messages from the same member, both will be stored,
         and in case of receiving a lower one, that we will send the higher one back to the sender.
 
-        SELF gives NODE permission to undo, NODE generates a message and then undoes it twice.  Only one of the two undo messages should be kept.
+        MM gives NODE permission to undo, NODE generates a message and then undoes it twice.
+        Both messages should be kept and the lowest one should be undone.
+
         """
         node, other = self.create_nodes(2)
         node.send_identity(other)
@@ -99,35 +101,40 @@ class TestUndo(DispersyTestFunc):
         undo1 = node.create_undo_own(message, 11, 1)
         undo2 = node.create_undo_own(message, 12, 2)
         low_message, high_message = sorted([undo1, undo2], key=lambda message: message.packet)
-
         other.give_message(message, node)
-        other.give_message(undo1, node)
-        other.give_message(undo2, node)
-        if undo2 != high_message:
-            other.give_message(high_message, node)
-
+        other.give_message(low_message, node)
+        other.give_message(high_message, node)
         # OTHER should send the first message back when receiving
         # the second one (its "higher" than the one just received)
         undo_packets = []
-        logger.debug("%d", len(undo_packets))
+
         for candidate, b in node.receive_packets():
             logger.debug(candidate)
             logger.debug(type(b))
             logger.debug("%d", len(b))
             logger.debug("before %d", len(undo_packets))
             undo_packets.append(b)
-            logger.debug("%d", len(undo_packets))
-
+            logger.debug("packets amount: %d", len(undo_packets))
             logger.debug("first undo %d", len(undo_packets[0]))
             logger.debug("%d", len(b))
 
             for x in undo_packets:
                 logger.debug("loop%d", len(x))
 
-        logger.debug("%d", len(undo_packets[0]))
+        def fetch_all_messages():
+            for row in  list(other._dispersy.database.execute(u"SELECT * FROM sync")):
+                logger.debug("_______ %s", row)
+        other.call(fetch_all_messages)
+
         logger.debug("%d", len(low_message.packet))
 
         self.assertEqual(undo_packets, [low_message.packet])
+
+        # NODE should have both messages on the database and the lowest one should be undone by the highest.
+        messages = other.fetch_messages((u"dispersy-undo-own",))
+        self.assertEquals(len(messages), 2)
+        other.assert_is_undone(low_message)
+        other.assert_is_done(high_message)
 
     def test_missing_message(self):
         """

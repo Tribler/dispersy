@@ -55,7 +55,7 @@ from .bootstrap import Bootstrap
 from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCache, MissingSequenceCache,
                     MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
-from .community import Community
+from .community import Community, DispersyDuplicatedUndo
 from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
@@ -1804,7 +1804,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return lan_address, wan_address
 
-    def store_update_forward(self, messages, store, update, forward):
+    # TODO(emilon): Now that we have removed the malicious behaviour stuff, maybe we could be a bit more relaxed with the DB syncing?
+    def store_update_forward(self, possibly_messages, store, update, forward):
         """
         Usually we need to do three things when we have a valid messages: (1) store it in our local
         database, (2) process the message locally by calling the handle_callback method, and (3)
@@ -1841,14 +1842,20 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
          be True, its inclusion is mostly to allow certain debugging scenarios.
         @type store: bool
         """
-        assert isinstance(messages, list)
-        assert len(messages) > 0
-        assert all(isinstance(message, Message.Implementation) for message in messages)
-        assert all(message.community == messages[0].community for message in messages)
-        assert all(message.meta == messages[0].meta for message in messages)
+        assert isinstance(possibly_messages, list)
         assert isinstance(store, bool)
         assert isinstance(update, bool)
         assert isinstance(forward, bool)
+
+        # Let's filter out non-Message.Implementation objects
+        messages = []
+        for thing in possibly_messages:
+            if isinstance(thing, Message.Implementation):
+                messages.append(thing)
+
+        assert len(messages) > 0
+        assert all(message.community == messages[0].community for message in messages)
+        assert all(message.meta == messages[0].meta for message in messages)
 
         logger.debug("%d %s messages (%s %s %s)", len(messages), messages[0].name, store, update, forward)
 
@@ -1858,7 +1865,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if update:
             try:
-                messages[0].handle_callback(messages)
+                messages[0].handle_callback(possibly_messages)
             except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
                 raise
             except:
