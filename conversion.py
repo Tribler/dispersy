@@ -191,6 +191,7 @@ class NoDefBinaryConversion(Conversion):
         self._struct_QL = Struct(">QL")
         self._struct_QQHHBH = Struct(">QQHHBH")
         self._struct_ccB = Struct(">ccB")
+        self._struct_4SH = Struct(">4sH")
 
         self._encode_message_map = dict()  # message.name : EncodeFunctions
         self._decode_message_map = dict()  # byte : DecodeFunctions
@@ -775,13 +776,16 @@ class NoDefBinaryConversion(Conversion):
         if len(data) < offset + 21:
             raise DropPacket("Insufficient packet size")
 
-        destination_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        destination_ip, destination_port = self._struct_4SH.unpack_from(data, offset)
+        destination_address = (inet_ntoa(destination_ip), destination_port)
         offset += 6
 
-        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_lan_ip, source_lan_port = self._struct_4SH.unpack_from(data, offset)
+        source_lan_address = (inet_ntoa(source_lan_ip), source_lan_port)
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_wan_ip, source_wan_port = self._struct_4SH.unpack_from(data, offset)
+        source_wan_address = (inet_ntoa(source_wan_ip), source_wan_port)
         offset += 6
 
         flags, identifier = self._struct_BH.unpack_from(data, offset)
@@ -851,19 +855,24 @@ class NoDefBinaryConversion(Conversion):
         if len(data) < offset + 33:
             raise DropPacket("Insufficient packet size")
 
-        destination_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        destination_ip, destination_port = self._struct_4SH.unpack_from(data, offset)
+        destination_address = (inet_ntoa(destination_ip), destination_port)
         offset += 6
 
-        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_lan_ip, source_lan_port = self._struct_4SH.unpack_from(data, offset)
+        source_lan_address = (inet_ntoa(source_lan_ip), source_lan_port)
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_wan_ip, source_wan_port = self._struct_4SH.unpack_from(data, offset)
+        source_wan_address = (inet_ntoa(source_wan_ip), source_wan_port)
         offset += 6
 
-        lan_introduction_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        introduce_lan_ip, introduce_lan_port = self._struct_4SH.unpack_from(data, offset)
+        lan_introduction_address = (inet_ntoa(introduce_lan_ip), introduce_lan_port)
         offset += 6
 
-        wan_introduction_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        introduce_wan_ip, introduce_wan_port = self._struct_4SH.unpack_from(data, offset)
+        wan_introduction_address = (inet_ntoa(introduce_wan_ip), introduce_wan_port)
         offset += 6
 
         flags, identifier, = self._struct_BH.unpack_from(data, offset)
@@ -889,10 +898,12 @@ class NoDefBinaryConversion(Conversion):
         if len(data) < offset + 14:
             raise DropPacket("Insufficient packet size")
 
-        lan_walker_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        lan_walker_ip, lan_walker_port = self._struct_4SH.unpack_from(data, offset)
+        lan_walker_address = (inet_ntoa(lan_walker_ip), lan_walker_port)
         offset += 6
 
-        wan_walker_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        wan_walker_ip, wan_walker_port = self._struct_4SH.unpack_from(data, offset)
+        wan_walker_address = (inet_ntoa(wan_walker_ip), wan_walker_port)
         offset += 6
 
         identifier, = self._struct_H.unpack_from(data, offset)
@@ -910,10 +921,12 @@ class NoDefBinaryConversion(Conversion):
         if len(data) < offset + 14:
             raise DropPacket("Insufficient packet size")
 
-        source_lan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_lan_ip, source_lan_port = self._struct_4SH.unpack_from(data, offset)
+        source_lan_address = (inet_ntoa(source_lan_ip), source_lan_port)
         offset += 6
 
-        source_wan_address = (inet_ntoa(data[offset:offset + 4]), self._struct_H.unpack_from(data, offset + 4)[0])
+        source_wan_ip, source_wan_port = self._struct_4SH.unpack_from(data, offset)
+        source_wan_address = (inet_ntoa(source_wan_ip), source_wan_port)
         offset += 6
 
         identifier, = self._struct_H.unpack_from(data, offset)
