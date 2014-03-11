@@ -1851,7 +1851,7 @@ class Community(object):
                     self._on_batch_cache(meta, batch)
             except KeyError:
                 for candidate, packet in cur_packets:
-                    logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
+                    logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
@@ -1902,7 +1902,7 @@ class Community(object):
                 messages.append(conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet))
 
             except DropPacket as exception:
-                logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
+                logger.warning("_on_batch_cache: drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % exception)
                 self._dispersy._statistics.drop_count += 1
 
@@ -2045,7 +2045,6 @@ class Community(object):
                 logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
             else:
                 logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
-
 
             if isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
                 self.handle_missing_messages(messages, MissingMessageCache)

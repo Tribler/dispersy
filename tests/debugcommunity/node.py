@@ -287,7 +287,8 @@ class DebugNode(object):
     @call_on_dispersy_thread
     def fetch_packets(self, message_names, mid=None):
         if mid:
-            return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync, member WHERE sync.member = member.id AND mid = ? AND meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+            return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync, member WHERE sync.member = member.id "
+                                                                                    u"AND mid = ? AND meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [buffer(mid), ] + [self._community.get_meta_message(name).database_id for name in message_names]))]
         return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [self._community.get_meta_message(name).database_id for name in message_names]))]

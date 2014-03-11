@@ -138,9 +138,9 @@ class TestUndo(DispersyTestFunc):
 
     def test_missing_message(self):
         """
-        NODE generates a few messages without sending them to OTHER. Following, NODE undoes the 
-        messages and sends the undo messages to OTHER. OTHER must now use a dispersy-missing-message 
-        to request the messages that are about to be undone. The messages need to be processed and 
+        NODE generates a few messages without sending them to OTHER. Following, NODE undoes the
+        messages and sends the undo messages to OTHER. OTHER must now use a dispersy-missing-message
+        to request the messages that are about to be undone. The messages need to be processed and
         subsequently undone.
         """
         node, other = self.create_nodes(2)

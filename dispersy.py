@@ -454,7 +454,7 @@ class Dispersy(object):
 
     def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
         """
-        Tell Dispersy how to load COMMUNITY is needed.
+        Tell Dispersy how to load COMMUNITY if need be.
 
         COMMUNITY_CLS is the community class that is defined.
 
@@ -1029,7 +1029,7 @@ class Dispersy(object):
         Returns True when this message is a duplicate, otherwise the message must be processed.
 
         === Problem: duplicate message ===
-        The simplest reason to reject an incoming message is when we already have it, based on the
+        The simplest reason to drop an incoming message is when we already have it, based on the
         community, member, and global time.  No further action is performed.
 
         === Problem: duplicate message, but that message is undone ===
@@ -1044,7 +1044,7 @@ class Dispersy(object):
         message may be generated.  However, because EC signatures contain a random element the
         signature will be different.
 
-        This results in continues transfers because the bloom filters identify the two messages
+        This results in continued transfers because the bloom filters identify the two messages
         as different while the community/member/global_time triplet is the same.
 
         To solve this, we will silently replace one message with the other.  We choose to keep
@@ -1386,7 +1386,8 @@ JOIN double_signed_sync ON double_signed_sync.sync = sync.id
 WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed_sync.member2 = ?
 """,
                                                                         (message.database_id,) + members))
-                        assert len(times[members]) <= message.distribution.history_size, [len(times[members]), message.distribution.history_size]
+                        assert len(times[members]) <= message.distribution.history_size, [len(times[members]),
+                                                                                         message.distribution.history_size]
                     tim = times[members]
 
                     if message.distribution.global_time in tim:
@@ -1394,7 +1395,11 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
                         if message.packet == have_packet:
                             # exact binary duplicate, do NOT process the message
-                            logger.debug("received identical message %s %s@%d from %s", message.name, members, message.distribution.global_time, message.candidate)
+                            logger.debug("received identical message %s %s@%d from %s",
+                                         message.name,
+                                         members,
+                                         message.distribution.global_time,
+                                         message.candidate)
                             return DropMessage(message, "duplicate message by binary packet (1)")
 
                         else:
@@ -1875,7 +1880,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
-        # able to regain the data eventually
+        # able to obtain the data eventually
         if store:
             my_messages = sum(message.authentication.member == message.community.my_member for message in messages)
             if my_messages:
