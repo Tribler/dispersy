@@ -371,7 +371,10 @@ class DebugNode(object):
     def call(self, func, *args, **kargs):
         if self._dispersy._callback.is_current_thread:
             return func(*args, **kargs)
-        return self._dispersy._callback.call(func, args, kargs)
+        timeout_value="_THE_CALL_TIMED_OUT_"
+        result = self._dispersy._callback.call(func, args, kargs, timeout=15.0, default=timeout_value)
+        assert result != timeout_value
+        return result
 
     @call_on_dispersy_thread
     def store(self, messages):
