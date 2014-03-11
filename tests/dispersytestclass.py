@@ -44,6 +44,7 @@ class DispersyTestFunc(TestCase):
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity):
         nodes = []
         for _ in range(amount):
+            DispersyTestFunc._thread_counter += 1
             callback = Callback("Test-%d" % (self._thread_counter,))
             callback.attach_exception_handler(self.on_callback_exception)
 
