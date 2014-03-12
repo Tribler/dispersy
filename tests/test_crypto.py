@@ -2,11 +2,7 @@ from unittest import TestCase
 
 from ..crypto import ECCrypto
 from ..logger import get_logger
-from .debugcommunity.community import DebugCommunity
-from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
 logger = get_logger(__name__)
-
 
 class TestLowLevelCrypto(TestCase):
 
@@ -82,31 +78,3 @@ class TestLowLevelCrypto(TestCase):
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
             ec_clone = self.crypto.key_from_private_pem(private)
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
-
-class TestCrypto(DispersyTestFunc):
-
-    @call_on_dispersy_thread
-    def test_invalid_public_key(self):
-        """
-        SELF receives a dispersy-identity message containing an invalid public-key.
-        """
-        node = DebugNode(self._community)
-        node.init_socket()
-        node.init_my_member(store_identity=False)
-
-        # create dispersy-identity message
-        message = node.create_dispersy_identity(10)
-
-        # replace the valid public-key with an invalid one
-        public_key = node.my_member.public_key
-        self.assertIn(public_key, message.packet)
-        invalid_packet = message.packet.replace(public_key, "I" * len(public_key))
-        self.assertNotEqual(message.packet, invalid_packet)
-
-        # give invalid message to SELF
-        node.give_packet(invalid_packet, node)
-
-        # ensure that the message was not stored in the database
-        ids = list(self._dispersy.database.execute(u"SELECT id FROM sync WHERE community = ? AND packet = ?",
-                                                   (self._community.database_id, buffer(invalid_packet))))
-        self.assertEqual(ids, [])

@@ -29,20 +29,6 @@ class DebugCommunity(Community):
     def take_step(self):
         pass
 
-    #
-    # helper methods to check database status
-    #
-    def fetch_packets(self, *message_names):
-        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
-                                                                                [self.get_meta_message(name).database_id for name in message_names]))]
-
-    def fetch_messages(self, *message_names):
-        """
-        Fetch all packets for MESSAGE_NAMES from the database and converts them into
-        Message.Implementation instances.
-        """
-        return self._dispersy.convert_packets_to_messages(self.fetch_packets(*message_names), community=self, verify=False)
-
     def initiate_meta_messages(self):
         messages = super(DebugCommunity, self).initiate_meta_messages()
         messages.extend([
@@ -63,7 +49,7 @@ class DebugCommunity(Community):
                     self.check_text,
                     self.on_text),
                 Message(self, u"last-1-doublemember-text",
-                        DoubleMemberAuthentication(allow_signature_func=self.allow_signature_func),
+                        DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text),
                         PublicResolution(),
                         LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1),
                         CommunityDestination(node_count=10),
@@ -80,6 +66,15 @@ class DebugCommunity(Community):
                         self.on_text),
                 Message(self, u"full-sync-text",
                         MemberAuthentication(),
+                        PublicResolution(),
+                        FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128),
+                        CommunityDestination(node_count=10),
+                        TextPayload(),
+                        self.check_text,
+                        self.on_text,
+                        self.undo_text),
+                Message(self, u"bin-key-text",
+                        MemberAuthentication(encoding="bin"),
                         PublicResolution(),
                         FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128),
                         CommunityDestination(node_count=10),
@@ -192,12 +187,9 @@ class DebugCommunity(Community):
         Must return either: a. the same message, b. a modified version of message, or c. None.
         """
         logger.debug("%s \"%s\"", message, message.payload.text)
-        assert message.payload.text in ("Allow=True", "Allow=False")
-        if message.payload.text == "Allow=True":
+        assert message.payload.text.startswith("Allow=True") or message.payload.text.startswith("Allow=False")
+        if message.payload.text.startswith("Allow=True"):
             return message
-
-    def allow_signature_func(self, message):
-        return True
 
     def check_text(self, messages):
         for message in messages:

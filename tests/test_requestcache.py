@@ -1,9 +1,9 @@
 from ..requestcache import RequestCache, NumberCache
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 
 class TestRequestCache(DispersyTestFunc):
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_single_cache(self):
         """
         Tests standard add, has, get, and pop behaviour.
@@ -30,7 +30,7 @@ class TestRequestCache(DispersyTestFunc):
         self.assertIsNone(request_cache.get(cache.identifier))
         self.assertIsNone(request_cache.pop(cache.identifier))
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_multiple_caches(self):
         """
         Tests standard add, has, get, and pop behaviour.
@@ -70,7 +70,7 @@ class TestRequestCache(DispersyTestFunc):
             self.assertIsNone(request_cache.get(cache.identifier))
             self.assertIsNone(request_cache.pop(cache.identifier))
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_request_cache_double_pop_bug(self):
         """
         Test that the "unexpected pop behavior when Cache.cleanup_delay > 0.0" bug is fixed.
@@ -93,7 +93,7 @@ class TestRequestCache(DispersyTestFunc):
         # remove
         self.assertEqual(request_cache.pop(cache.identifier), cache)
 
-        #pop() used to still work after the first pop()
+        # pop() used to still work after the first pop()
         self.assertFalse(request_cache.has(cache.identifier))
         self.assertIsNone(request_cache.get(cache.identifier))
         self.assertIsNone(request_cache.pop(cache.identifier))

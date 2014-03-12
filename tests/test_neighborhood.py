@@ -1,6 +1,6 @@
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 
 
 class TestNeighborhood(DispersyTestFunc):
@@ -32,7 +32,6 @@ class TestNeighborhood(DispersyTestFunc):
     def test_forward_2_targeted_5(self):
         return self.forward(2, 5)
 
-    @call_on_dispersy_thread
     def forward(self, non_targeted_node_count, targeted_node_count=0):
         """
         SELF should forward created messages at least to the specified targets.
@@ -47,7 +46,7 @@ class TestNeighborhood(DispersyTestFunc):
         def dispersy_yield_verified_candidates():
             """
             Yields unique active candidates.
-    
+
             The returned candidates will be sorted to avoid randomness in the tests.
             """
             return sorted(DebugCommunity.dispersy_yield_verified_candidates(self._community))
@@ -60,26 +59,18 @@ class TestNeighborhood(DispersyTestFunc):
 
         total_node_count = non_targeted_node_count + targeted_node_count
 
-        central_node = DebugNode(self._community)
-        central_node.init_socket()
-        central_node.init_my_member()
-
         # provide CENTRAL with a neighborhood
-        nodes = [DebugNode(self._community, central_node) for _ in xrange(total_node_count)]
-        for node in nodes:
-            node.init_socket()
-            node.init_my_member()
+        nodes = self.create_nodes(total_node_count)
 
         # SELF creates a message
         candidates = tuple((node.my_candidate for node in nodes[:targeted_node_count]))
-        message = central_node.create_targeted_full_sync_text("Hello World!", 42, candidates)
+        message = self._mm.create_targeted_full_sync_text("Hello World!", destination = candidates,  global_time = 42)
         self._dispersy._forward([message])
-        yield 0.01
 
         # check if sufficient NODES received the message (at least the first `target_count` ones)
         forwarded_node_count = 0
         for node in nodes:
-            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"])]
+            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"], timeout = 0.1)]
             if node in nodes[:targeted_node_count]:
                 # They MUST have received the message
                 self.assertEqual(len(forwarded), 1)

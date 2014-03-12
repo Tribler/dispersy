@@ -1028,7 +1028,7 @@ class NoDefBinaryConversion(Conversion):
         for signature, member in message.authentication.signed_members:
             if signature:
                 signatures.append(signature)
-            elif sign and member.private_key:
+            elif sign and member == self._community._my_member:
                 signature = member.sign(data)
                 message.authentication.set_signature(member, signature)
                 signatures.append(signature)
@@ -1194,9 +1194,9 @@ class NoDefBinaryConversion(Conversion):
         authentication = placeholder.meta.authentication
         offset = placeholder.offset
         data = placeholder.data
+        members = []
 
         if authentication.encoding == "sha1":
-            members = []
             for _ in range(2):
                 member_id = data[offset:offset + 20]
                 member = self._community.get_member(mid=member_id)
@@ -1205,55 +1205,37 @@ class NoDefBinaryConversion(Conversion):
                 offset += 20
                 members.append(member)
 
-            first_signature_offset = len(data) - sum([member.signature_length for member in members])
-            signature_offset = first_signature_offset
-            signatures = ["", ""]
-            for index, member in enumerate(members):
-                signature = data[signature_offset:signature_offset + member.signature_length]
-                # logging.info("INDEX: %d", index)
-                # logging.info("%s", signature.encode('HEX'))
-                if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
-                    signatures[index] = ""
-
-                elif ((not placeholder.verify and len(members) == 1) or
-                      member.verify(data, signature, length=first_signature_offset)):
-                    signatures[index] = signature
-                else:
-                    return DropPacket("Invalid double signature (_decode_double_member_authentication bin)")
-
-                signature_offset += member.signature_length
-
         elif authentication.encoding == "bin":
             if len(data) < offset + 4:
                 raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
-            key1_length, key2_length = self._struct_HH.unpack_from(data, offset)
             offset += 4
-            if len(data) < offset + key1_length + key2_length:
-                raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
-            key1 = data[offset:offset + key1_length]
-            offset += key1_length
-            key2 = data[offset:offset + key2_length]
-            offset += key2_length
+            for key_length in self._struct_HH.unpack_from(data, placeholder.offset):
+                if len(data) < offset + key_length:
+                    raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
+                key = data[offset:offset + key_length]
+                offset += key_length
+                if not self._community.dispersy.crypto.is_valid_public_bin(key):
+                    raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
 
-            if not self._community.dispersy.crypto.is_valid_public_bin(key1):
-                raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
-            if not self._community.dispersy.crypto.is_valid_public_bin(key2):
-                raise DropPacket("Invalid cryptographic key2 (_decode_double_member_authentication)")
+                members.append(self._community.dispersy.get_member(public_key=key))
 
-            members = [self._community.dispersy.get_member(public_key=key1), self._community.dispersy.get_member(public_key=key2)]
-
-            second_signature_offset = len(data) - members[1].signature_length
-            first_signature_offset = second_signature_offset - members[0].signature_length
-            signatures = [data[first_signature_offset:second_signature_offset], data[second_signature_offset:]]
-
-            for index, member in enumerate(members):
-                if placeholder.allow_empty_signature and signatures[index] == "\x00" * member.signature_length:
-                    signatures[index] = ""
-
-                elif placeholder.verify and not member.verify(data, signatures[index], length=first_signature_offset):
-                    raise DropPacket("Signature does not match public key")
         else:
             raise NotImplementedError(authentication.encoding)
+
+        # TODO(emilon): add a get_signatures method to the message so we can avoid computing offsets all over the place
+        second_signature_offset = len(data) - members[1].signature_length
+        first_signature_offset = second_signature_offset - members[0].signature_length
+
+        signatures = []
+        for member, signature in zip(members, (data[first_signature_offset:second_signature_offset], data[second_signature_offset:])):
+            if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
+                signatures.append("")
+            elif ((not placeholder.verify and len(members) == 1) or
+                  member.verify(data, signature, length=first_signature_offset)):
+                signatures.append(signature)
+            else:
+                raise DropPacket("Invalid double signature in position %d (_decode_double_member_authentication %s)" %
+                                 (len(signatures), authentication.encoding))
 
         placeholder.offset = offset
         placeholder.first_signature_offset = first_signature_offset
@@ -1294,7 +1276,7 @@ class NoDefBinaryConversion(Conversion):
 
         # authentication
         decode_functions.authentication(placeholder)
-        assert isinstance(placeholder.authentication, Authentication.Implementation)
+        assert isinstance(placeholder.authentication, Authentication.Implementation), placeholder.authentication
 
         # resolution
         decode_functions.resolution(placeholder)

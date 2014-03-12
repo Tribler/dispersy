@@ -1,6 +1,5 @@
 from ..logger import get_logger
-from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_dispersy_thread
+from .dispersytestclass import DispersyTestFunc
 logger = get_logger(__name__)
 
 class TestWalker(DispersyTestFunc):
@@ -16,32 +15,28 @@ class TestWalker(DispersyTestFunc):
     def test_two_mixed_walker_b(self): return self.check_walker(["t", ""])
     def test_many_mixed_walker_b(self): return self.check_walker(["t", ""] * 11)
 
-    def create_nodes(self, community, all_flags):
+    def create_others(self, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
 
         nodes = []
         for flags in all_flags:
-            node = DebugNode(community)
-            node.init_socket("t" in flags)
-            node.init_my_member()
+            node, = self.create_nodes(tunnel="t" in flags)
             nodes.append(node)
 
         return nodes
 
-    @call_on_dispersy_thread
     def check_walker(self, all_flags):
         """
         All nodes will perform a introduction request to SELF in one batch.
         """
-        logger.debug("<newline>")
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
 
-        nodes = self.create_nodes(self._community, all_flags)
+        nodes = self.create_others(all_flags)
 
         # create all requests
-        requests = [node.create_dispersy_introduction_request(self._community.my_candidate,
+        requests = [node.create_introduction_request(self._mm.my_candidate,
                                                               node.lan_address,
                                                               node.wan_address,
                                                               True,
@@ -53,7 +48,7 @@ class TestWalker(DispersyTestFunc):
                     in enumerate(nodes, 1)]
 
         # give all requests in one batch to dispersy
-        self._dispersy.on_incoming_packets([(node.my_candidate, request.packet)
+        self._mm.call(self._dispersy.on_incoming_packets, [(node.my_candidate, node.encode_message(request))
                                              for node, request
                                              in zip(nodes, requests)])
 
@@ -62,16 +57,13 @@ class TestWalker(DispersyTestFunc):
         num_non_tunnelled_nodes = len([node for node in nodes if not node.tunnel])
 
         for node in nodes:
-            _, response = node.receive_message()
+            _, response = node.receive_message().next()
+
+            # MM must not introduce NODE to itself
+            self.assertNotEquals(response.payload.lan_introduction_address, node.lan_address)
+            self.assertNotEquals(response.payload.wan_introduction_address, node.wan_address)
 
             if node.tunnel:
-                # NODE is behind a tunnel, SELF can introduce tunnelled and non-tunnelled nodes to NODE.  This is
-                # because both the tunnelled (SwiftEndpoint) and non-tunnelled (StandaloneEndpoint) nodes can handle
-                # incoming messages with the FFFFFFFF prefix)
-                if num_tunnelled_nodes + num_non_tunnelled_nodes == 1:
-                    self.assertEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
-                    self.assertEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
-
                 if num_tunnelled_nodes + num_non_tunnelled_nodes > 1:
                     self.assertNotEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
                     self.assertNotEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
@@ -80,16 +72,13 @@ class TestWalker(DispersyTestFunc):
                     self.assertIn(response.payload.lan_introduction_address, is_tunnelled_map)
 
             else:
-                # NODE is -not- behind a tunnel, SELF can only introduce non-tunnelled nodes to NODE.  This is because
+                # NODE is -not- behind a tunnel, MM can only introduce non-tunnelled nodes to NODE.  This is because
                 # only non-tunnelled (StandaloneEndpoint) nodes can handle incoming messages -without- the FFFFFFFF
                 # prefix.
-                if num_non_tunnelled_nodes == 1:
-                    self.assertEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
-                    self.assertEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
 
                 if num_non_tunnelled_nodes > 1:
                     self.assertNotEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
                     self.assertNotEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
 
                     # it may only be non-tunnelled
-                    self.assertFalse(is_tunnelled_map[response.payload.lan_introduction_address])
+                    self.assertFalse(is_tunnelled_map[response.payload.lan_introduction_address], response.payload.lan_introduction_address)

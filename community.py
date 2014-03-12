@@ -56,6 +56,14 @@ class SyncCache(object):
         self.responses_received = 0
         self.candidate = None
 
+class DispersyInternalMessage(object):
+    pass
+
+class DispersyDuplicatedUndo(DispersyInternalMessage):
+    name = candidate = u"_DUPLICATED_UNDO_"
+    def __init__(self, low_message, high_message):
+        self.low_message = low_message
+        self.high_message = high_message
 
 class Community(object):
     __metaclass__ = ABCMeta
@@ -1817,6 +1825,8 @@ class Community(object):
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
 
+        logger.debug("got %d incoming packets", len(packets))
+
         for _, iterator in groupby(packets, key=lambda tup: (tup[1][1], tup[1][22])):
             cur_packets = list(iterator)
             # find associated conversion
@@ -1837,10 +1847,11 @@ class Community(object):
                         self._batch_cache[meta] = (task_identifier, timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
+                    logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
             except KeyError:
                 for candidate, packet in cur_packets:
-                    logger.warning("drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
+                    logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
@@ -1891,7 +1902,7 @@ class Community(object):
                 messages.append(conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet))
 
             except DropPacket as exception:
-                logger.warning("drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
+                logger.warning("_on_batch_cache: drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % exception)
                 self._dispersy._statistics.drop_count += 1
 
@@ -1973,7 +1984,6 @@ class Community(object):
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "on_message_batch:%s" % message)
                 self._dispersy._statistics.drop_count += 1
                 return False
-
             else:
                 return True
 
@@ -1996,26 +2006,35 @@ class Community(object):
         # check all remaining messages on the community side.  may yield Message.Implementation,
         # DropMessage, and DelayMessage instances
         try:
-            messages = list(meta.check_callback(messages))
+            possibly_messages = list(meta.check_callback(messages))
         except:
             logger.exception("exception during check_callback for %s", meta.name)
             return 0
         # TODO(emilon): fixh _disp_check_modification in channel/community.py (tribler) so we can make a proper assert out of this.
-        assert len(messages) >= 0  # may return zero messages
-        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
+        assert len(possibly_messages) >= 0  # may return zero messages
+        assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage, DispersyInternalMessage)) for message in possibly_messages), possibly_messages
 
-        if len(messages) == 0:
+        if len(possibly_messages) == 0:
             logger.warning("%s yielded zero messages, drop, or delays.  This is allowed but likely to be an error.", meta.check_callback)
 
         # handle/remove DropMessage and DelayMessage instances
-        messages = [message for message in messages if _filter_fail(message)]
-        if not messages:
+        possibly_messages = [message for message in possibly_messages if _filter_fail(message)]
+        if not possibly_messages:
             return 0
 
-        logger.debug("in... %d %s messages from %s", len(messages), meta.name, " ".join(str(candidate) for candidate in set(message.candidate for message in messages)))
+        other = []
+        messages = []
+        for thing in possibly_messages:
+            if isinstance(thing, DispersyInternalMessage):
+                other.append(thing)
+            else:
+                messages.append(thing)
+
+        logger.debug("in... %d %s messages from %s", len(messages), meta.name, " ".join(str(candidate) for candidate in
+                                                        set(message.candidate for message in messages if isinstance(message, Message.Implementation))))
 
         # store to disk and update locally
-        if self._dispersy.store_update_forward(messages, True, True, False):
+        if self._dispersy.store_update_forward(possibly_messages, True, True, False):
 
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.success, meta.name, len(messages))
             self._dispersy._statistics.success_count += len(messages)
@@ -2026,7 +2045,6 @@ class Community(object):
                 logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
             else:
                 logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
-
 
             if isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
                 self.handle_missing_messages(messages, MissingMessageCache)
@@ -2096,33 +2114,12 @@ class Community(object):
             # submsg contains the double signed message (that currently contains -no- signatures)
             submsg = message.payload.message
 
-            has_private_member = False
-            try:
-                for is_signed, member in submsg.authentication.signed_members:
-                    # security: do NOT allow to accidentally sign with master member.
-                    if member == self.master_member:
-                        raise DropMessage(message, "You may never ask for a master member signature")
-
-                    # is this signature missing, and could we provide it
-                    if not is_signed and member.private_key:
-                        has_private_member = True
-                        break
-            except DropMessage as exception:
-                yield exception
-                continue
-
-            # we must be one of the members that needs to sign
-            if not has_private_member:
+            for is_signed, member in submsg.authentication.signed_members:
+                if member == self._my_member:
+                    yield message
+                    break
+            else:
                 yield DropMessage(message, "Nothing to sign")
-                continue
-
-            # we can not timeline.check the submessage because it uses the DoubleMemberAuthentication policy
-            # the message that we are signing must be valid according to our timeline
-            # if not message.community.timeline.check(submsg):
-            # raise DropMessage("Does not fit timeline")
-
-            # allow message
-            yield message
 
     def on_signature_request(self, messages):
         """
@@ -2141,9 +2138,7 @@ class Community(object):
         modified sub-message.  If so, a dispersy-signature-response message is send to the creator
         of the message, the first one in the authentication list.
 
-        If we can add multiple signatures, i.e. we have the private keys for both the message
-        creator and the second member, the allow_signature_func is called only once but multiple
-        signatures will be appended.
+        Only _my_member is used.
 
         @see: create_signature_request
 
@@ -2166,7 +2161,6 @@ class Community(object):
                                            payload=(message.payload.identifier, submsg)))
 
         if responses:
-            # TODO(emilon): Is this right? (quick hack while moving it away from dispersy.py)
             self.dispersy._forward(responses)
 
     def check_signature_response(self, messages):
@@ -2184,6 +2178,10 @@ class Community(object):
 
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
+
+            if any(signature == "" and member != self._my_member for signature, member in
+                   new_submsg.authentication.signed_members):
+                yield DropMessage(message, "message isn't signed by the other party")
 
             if not old_submsg.meta == new_submsg.meta:
                 yield DropMessage(message, "meta message may not change")
@@ -2227,7 +2225,7 @@ class Community(object):
             if result:
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
-                    if not signature and member.private_key:
+                    if not signature and member == self._my_member:
                         new_submsg.authentication.set_signature(member, member.sign(new_body))
 
                 assert new_submsg.authentication.is_signed
@@ -2428,38 +2426,39 @@ class Community(object):
                 undone = 0
 
             if undone and message.name == u"dispersy-undo-own":
-                # the dispersy-undo-own message is a curious beast.  Anyone is allowed to create one (regardless of the
-                # community settings) and everyone is responsible to propagate these messages.  A malicious member can
-                # create an infinite number of dispersy-undo-own messages and thereby take down a community.
-                #
-                # To mitigate this, we allow only one dispersy-undo-own message per message.  The malicious node is now
-                # limited to creating only one dispersy-undo-own message per message that she creates.  And that can be
-                # limited by revoking her right to create messages.
-
-                # search for the second offending dispersy-undo message
+                # look for other packets we received that undid this packet
                 member = message.authentication.member
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
                 for packet_id, packet in self._dispersy._database.execute(
                         u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
                         (self.database_id, member.database_id, undo_own_meta.database_id)):
+
                     db_msg = Packet(undo_own_meta, str(packet), packet_id).load_message()
                     if message.payload.global_time == db_msg.payload.global_time:
+                        # we've found another packet which undid this packet
                         if member == self.my_member:
                             logger.exception("We created a duplicate undo-own message")
                         else:
                             logger.warning("Someone else created a duplicate undo-own message")
 
-                        if message.packet < db_msg.packet:
-                            # The sender apparently does not have the higher dispersy-undo message, lets give it to him
+                        yield message
+                        # Reply to this peer with a higher (or equally) ranked message in case we have one
+                        if db_msg.packet <= message.packet:
+                            # the sender apparently does not have the higher dispersy-undo message, lets give it back
                             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
                             self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
-                            yield DropMessage(message, "the message proves that the member is malicious")
+
+                            yield DispersyDuplicatedUndo(db_msg, message)
                             break
                         else:
-                            self._dispersy._database.execute(u"DELETE FROM sync WHERE id = ?",
-                                                             ((db_msg.packet_id,)))
+                            # The new message is binary higher. As we cannot delete the old one, what we do
+                            # instead, is we store both and mark the message we already have as undone by the new one.
+                            # To accomplish this, we yield a DispersyDuplicatedUndo so on_undo() can mark the other
+                            # message as undone by the newly reveived message.
+                            yield DispersyDuplicatedUndo(message, db_msg)
+                            break
                 else:
-                    # did not break, hence, the message is not malicious.  more than one members undid this message.
+                    # did not break, hence, the message is not malicious.  More than one member undid this message.
                     yield message
 
                 # continue.  either the message was malicious or it has already been yielded
@@ -2471,19 +2470,31 @@ class Community(object):
         """
         Undo a single message.
         """
-        assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other") for message in messages)
+        assert all(message.name in (u"dispersy-undo-own", u"dispersy-undo-other", u"_DUPLICATED_UNDO_") for message in messages)
 
-        self._dispersy._database.executemany(u"UPDATE sync SET undone = ? WHERE community = ? AND member = ? AND global_time = ?",
-                                            ((message.packet_id, self.database_id, message.payload.member.database_id, message.payload.global_time) for message in messages))
-        for meta, iterator in groupby(messages, key=lambda x: x.payload.packet.meta):
-            sub_messages = list(iterator)
+        # We first need to extract the DispersyDuplicatedUndo objects from the messages list and deal with them
+        real_messages = []
+        parameters = []
+        for message in messages:
+            if isinstance(message, DispersyDuplicatedUndo):
+                # Flag the lower undo message as undone by the higher one
+                parameters.append((message.high_message.packet_id,
+                                   self.database_id,
+                                   message.low_message.authentication.member.database_id,
+                                   message.low_message.distribution.global_time))
+            elif isinstance(message, Message.Implementation):
+                # That's a normal undo message
+                parameters.append((message.packet_id, self.database_id, message.payload.member.database_id, message.payload.global_time))
+                real_messages.append(message)
+
+        self._dispersy._database.executemany(u"UPDATE sync SET undone = ? "
+                                             u"WHERE community = ? AND member = ? AND global_time = ?", parameters)
+
+        for meta, sub_messages in groupby(real_messages, key=lambda x: x.payload.packet.meta):
             meta.undo_callback([(message.payload.member, message.payload.global_time, message.payload.packet) for message in sub_messages])
 
-            # notify that global times have changed
-            # community.update_sync_range(meta, [message.payload.global_time for message in sub_messages])
-
-        # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
+        # This might be a response to a dispersy-missing-sequence
+        self.handle_missing_messages(real_messages, MissingSequenceCache)
 
     def check_introduction_response(self, messages):
         for message in messages:
@@ -2852,24 +2863,24 @@ class Community(object):
         return sendRequest
 
     def on_missing_message(self, messages):
-        responses = []  # (candidate, packet) tuples
         for message in messages:
+
+            responses = []
             candidate = message.candidate
             member_database_id = message.payload.member.database_id
             for global_time in message.payload.global_times:
                 try:
                     packet, = self._dispersy._database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
                                                               (self.database_id, member_database_id, global_time)).next()
+                    responses.append(str(packet))
                 except StopIteration:
                     pass
-                else:
-                    responses.append((candidate, str(packet)))
 
-        for candidate, responses in groupby(responses, key=lambda tup: tup[0]):
-            # responses is an iterator, for __debug__ we need a list
-            responses = list(responses)
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-message", len(responses))
-            self._dispersy._endpoint.send([candidate], [packet for _, packet in responses])
+            if responses:
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-message", len(responses))
+                self._dispersy._endpoint.send([candidate], responses)
+            else:
+                logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
 
     def create_missing_last_message(self, candidate, member, message, count_, response_func=None, response_args=(), timeout=10.0):
         if __debug__:
@@ -3390,20 +3401,23 @@ class Community(object):
 
         else:
             if undone:
-                logger.error("you are attempting to undo the same message twice. returning the previous undo message")
-
                 # already undone.  refuse to undo again but return the previous undo message
+                logger.error("you are attempting to undo the same message twice. trying to return the previous undo message")
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
                 undo_other_meta = self.get_meta_message(u"dispersy-undo-other")
-                for packet_id, message_id, packet in self._dispersy._database.execute(u"SELECT id, meta_message, packet FROM sync WHERE community = ? AND member = ? AND meta_message IN (?, ?)",
-                                                                                     (self.database_id, message.authentication.member.database_id, undo_own_meta.database_id, undo_other_meta.database_id)):
+                for packet_id, message_id, packet in self._dispersy._database.execute(
+                        u"SELECT id, meta_message, packet FROM sync WHERE community = ? AND member = ? AND meta_message IN (?, ?)",
+                        (self.database_id, message.authentication.member.database_id, undo_own_meta.database_id, undo_other_meta.database_id)):
+                    logger.debug("checking: %s", message_id)
                     msg = Packet(undo_own_meta if undo_own_meta.database_id == message_id else undo_other_meta, str(packet), packet_id).load_message()
                     if message.distribution.global_time == msg.payload.global_time:
                         return msg
 
-                # could not find the undo message that caused the sync.undone to be True.  the
-                # undone was probably caused by changing permissions
-                return None
+                # TODO(emilon): Review this statement
+                # Could not find the undo message that caused the sync.undone to be True.  The undone was probably
+                # caused by changing permissions
+                logger.error("No previous message found, returning None")
+                return
 
             else:
                 # create the undo message

@@ -55,7 +55,7 @@ from .bootstrap import Bootstrap
 from .cache import (MissingMemberCache, MissingProofCache, IntroductionRequestCache, MissingSequenceCache,
                     MissingSequenceOverviewCache, SignatureRequestCache, MissingMessageCache)
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
-from .community import Community
+from .community import Community, DispersyDuplicatedUndo
 from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
@@ -454,7 +454,7 @@ class Dispersy(object):
 
     def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
         """
-        Tell Dispersy how to load COMMUNITY is needed.
+        Tell Dispersy how to load COMMUNITY if need be.
 
         COMMUNITY_CLS is the community class that is defined.
 
@@ -551,7 +551,45 @@ class Dispersy(object):
             else:
                 key = self.crypto.key_from_private_bin(private_key)
 
-            member = Member(self, key)
+            mid = self.crypto.key_to_hash(key.pub())
+
+            row = self.database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)).fetchone()
+            if row:
+                database_id, public_key_from_db = row
+
+                public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+
+                if public_key_from_db != public_key:
+                    if public_key_from_db:
+                        logger.warning("Received public key doesn't match with the one in the database (hash collision?)\n  Received: [%s]\n  Public:   [%s]",
+                                       public_key.encode('HEX'), public_key_from_db.encode('HEX'))
+                        assert False, mid
+                    else:
+                        # We have the MID but the public key is missing, let's sort that out.
+                        self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
+                                                                                                 database_id))
+            else:
+                # This MID/public key is not yet in the database, store it.
+                self.database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid),
+                                                                                              buffer(public_key)))
+                database_id = self.database.last_insert_rowid
+
+            try:
+                private_key_from_db, = self.database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
+                private_key_from_db = str(private_key_from_db)
+                assert self.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+            except StopIteration:
+                private_key_from_db = ""
+
+            # Store the key only if we have the private key pair and it didn't come from the DB
+            if private_key and not private_key_from_db:
+                self.database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)",
+                                      (database_id, buffer(private_key)))
+            elif private_key_from_db:
+                private_key = private_key_from_db
+                key = self.crypto.key_from_private_bin(private_key)
+
+            member = Member(self, key, database_id)
 
             # store in caches
             self._member_cache_by_public_key[member.public_key] = member
@@ -991,7 +1029,7 @@ class Dispersy(object):
         Returns True when this message is a duplicate, otherwise the message must be processed.
 
         === Problem: duplicate message ===
-        The simplest reason to reject an incoming message is when we already have it, based on the
+        The simplest reason to drop an incoming message is when we already have it, based on the
         community, member, and global time.  No further action is performed.
 
         === Problem: duplicate message, but that message is undone ===
@@ -1006,7 +1044,7 @@ class Dispersy(object):
         message may be generated.  However, because EC signatures contain a random element the
         signature will be different.
 
-        This results in continues transfers because the bloom filters identify the two messages
+        This results in continued transfers because the bloom filters identify the two messages
         as different while the community/member/global_time triplet is the same.
 
         To solve this, we will silently replace one message with the other.  We choose to keep
@@ -1151,6 +1189,9 @@ class Dispersy(object):
                         # are signed/valid.  we need to discard one of them
                         if (global_time, packet) < (message.distribution.global_time, message.packet):
                             # we keep PACKET (i.e. the message that we currently have in our database)
+                            # reply with the packet to let the peer know
+                            self._statistics.dict_inc(self._statistics.outgoing, '-duplicate-sequence-')
+                            self._endpoint.send([message.candidate], [packet])
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
 
@@ -1345,7 +1386,8 @@ JOIN double_signed_sync ON double_signed_sync.sync = sync.id
 WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed_sync.member2 = ?
 """,
                                                                         (message.database_id,) + members))
-                        assert len(times[members]) <= message.distribution.history_size, [len(times[members]), message.distribution.history_size]
+                        assert len(times[members]) <= message.distribution.history_size, [len(times[members]),
+                                                                                         message.distribution.history_size]
                     tim = times[members]
 
                     if message.distribution.global_time in tim:
@@ -1353,7 +1395,11 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
                         if message.packet == have_packet:
                             # exact binary duplicate, do NOT process the message
-                            logger.debug("received identical message %s %s@%d from %s", message.name, members, message.distribution.global_time, message.candidate)
+                            logger.debug("received identical message %s %s@%d from %s",
+                                         message.name,
+                                         members,
+                                         message.distribution.global_time,
+                                         message.candidate)
                             return DropMessage(message, "duplicate message by binary packet (1)")
 
                         else:
@@ -1589,7 +1635,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         self._statistics.received_count += len(packets)
 
-        sort_key = lambda tup: (tup[1][2:22], tup[1][1], tup[1][22])  # community ID, community version, message meta type
+        # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
+        # for identities we have already received but not processed yet. (248 == identity message ID)
+        #                                           /-------------------------------\
+        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] ==  chr(248) else tup[1][22])  # community ID, community version, message meta type
         groupby_key = lambda tup: tup[1][2:22]  # community ID
         for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community
@@ -1760,7 +1809,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return lan_address, wan_address
 
-    def store_update_forward(self, messages, store, update, forward):
+    # TODO(emilon): Now that we have removed the malicious behaviour stuff, maybe we could be a bit more relaxed with the DB syncing?
+    def store_update_forward(self, possibly_messages, store, update, forward):
         """
         Usually we need to do three things when we have a valid messages: (1) store it in our local
         database, (2) process the message locally by calling the handle_callback method, and (3)
@@ -1797,14 +1847,20 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
          be True, its inclusion is mostly to allow certain debugging scenarios.
         @type store: bool
         """
-        assert isinstance(messages, list)
-        assert len(messages) > 0
-        assert all(isinstance(message, Message.Implementation) for message in messages)
-        assert all(message.community == messages[0].community for message in messages)
-        assert all(message.meta == messages[0].meta for message in messages)
+        assert isinstance(possibly_messages, list)
         assert isinstance(store, bool)
         assert isinstance(update, bool)
         assert isinstance(forward, bool)
+
+        # Let's filter out non-Message.Implementation objects
+        messages = []
+        for thing in possibly_messages:
+            if isinstance(thing, Message.Implementation):
+                messages.append(thing)
+
+        assert len(messages) > 0
+        assert all(message.community == messages[0].community for message in messages)
+        assert all(message.meta == messages[0].meta for message in messages)
 
         logger.debug("%d %s messages (%s %s %s)", len(messages), messages[0].name, store, update, forward)
 
@@ -1814,7 +1870,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if update:
             try:
-                messages[0].handle_callback(messages)
+                messages[0].handle_callback(possibly_messages)
             except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
                 raise
             except:
@@ -1824,7 +1880,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
         # Otherwise we can safely skip the commit overhead, since, if a crash occurs, we will be
-        # able to regain the data eventually
+        # able to obtain the data eventually
         if store:
             my_messages = sum(message.authentication.member == message.community.my_member for message in messages)
             if my_messages:
@@ -2193,6 +2249,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
     # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
     # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
+    @deprecated("Use dispersy.database.commit() instead")
     def _commit_now(self):
         """
         Flush changes to disk.

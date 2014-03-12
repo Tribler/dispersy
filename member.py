@@ -99,14 +99,14 @@ class DummyMember(object):
 
 class Member(DummyMember):
 
-    def __init__(self, dispersy, key):
+    def __init__(self, dispersy, key, database_id):
         """
         Create a new Member instance.
         """
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(key, (EC, EC_pub))
-        database = dispersy.database
+        assert isinstance(database_id, int), type(database_id)
 
         public_key = dispersy.crypto.key_to_bin(key.pub())
 
@@ -116,44 +116,8 @@ class Member(DummyMember):
             private_key = None
         mid = dispersy.crypto.key_to_hash(key.pub())
 
-        row = database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)).fetchone()
-        if row:
-            database_id, public_key_from_db = row
-
-            public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
-
-            if public_key_from_db != public_key:
-                if public_key_from_db:
-                    logger.warning("Received public key doesn't match with the one in the database (hash collision?) [%s] [%s]",
-                                   public_key, public_key_from_db)
-                    assert False
-                else:
-                    # We have the MID but the public key is missing, let's sort that out.
-                    database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key), database_id))
-
-        else:
-            # This MID/public key is not yet in the database, store it.
-            database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid), buffer(public_key)))
-            database_id = database.last_insert_rowid
-
-        try:
-            private_key_from_db, = database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
-            private_key_from_db = str(private_key_from_db)
-            assert dispersy.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
-
-        except StopIteration:
-            private_key_from_db = ""
-
-        # Store the key only if we have the private key pair and it didn't come from the DB
-        if private_key and not private_key_from_db:
-            database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (database_id, buffer(dispersy.crypto.key_to_bin(private_key))))
-
-        elif private_key_from_db:
-            private_key = private_key_from_db
-            key = dispersy.crypto.key_from_private_bin(private_key)
-
         self._crypto = dispersy.crypto
-        self._database = database
+        self._database = dispersy.database
         self._database_id = database_id
         self._mid = mid
         self._public_key = public_key
@@ -272,14 +236,14 @@ class Member(DummyMember):
             raise RuntimeError("unable to sign data without the private key")
 
     def __eq__(self, member):
-        assert isinstance(member, DummyMember)
-        assert (self._database_id == member.database_id) == (self._mid == member.mid)
-        return self._database_id == member.database_id
+        if member:
+            assert isinstance(member, DummyMember)
+            assert (self._database_id == member.database_id) == (self._mid == member.mid),  (self._database_id, member.database_id, self._mid, member.mid)
+            return self._database_id == member.database_id
+        return False
 
     def __ne__(self, member):
-        assert isinstance(member, DummyMember)
-        assert (self._database_id == member.database_id) == (self._mid == member.mid)
-        return self._database_id != member.database_id
+        return not self == member
 
     def __cmp__(self, member):
         assert isinstance(member, DummyMember)
