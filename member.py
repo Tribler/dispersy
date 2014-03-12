@@ -99,7 +99,7 @@ class DummyMember(object):
 
 class Member(DummyMember):
 
-    def __init__(self, dispersy, key, database_id):
+    def __init__(self, dispersy, key, database_id, mid=None):
         """
         Create a new Member instance.
         """
@@ -114,7 +114,9 @@ class Member(DummyMember):
             private_key = key
         else:
             private_key = None
-        mid = dispersy.crypto.key_to_hash(key.pub())
+
+        if not mid:
+            mid = dispersy.crypto.key_to_hash(key.pub())
 
         self._crypto = dispersy.crypto
         self._database = dispersy.database
@@ -161,7 +163,7 @@ class Member(DummyMember):
         assert self._private_key == ""
         self._private_key = private_key
         self._ec = self._crypto.key_from_private_bin(private_key)
-        self._database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)", (self._database_id, buffer(private_key)))
+        self._database.execute(u"UPDATE member SET private_key=? WHERE id=?", (buffer(private_key), self._database_id))
 
     def has_identity(self, community):
         """
