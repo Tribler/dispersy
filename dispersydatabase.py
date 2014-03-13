@@ -14,7 +14,7 @@ from .distribution import FullSyncDistribution
 from .logger import get_logger
 logger = get_logger(__name__)
 
-LATEST_VERSION = 18
+LATEST_VERSION = 19
 
 schema = u"""
 CREATE TABLE member(
