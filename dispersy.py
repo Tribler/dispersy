@@ -46,6 +46,7 @@ from socket import inet_aton, error as socket_error
 from struct import unpack_from
 from time import time
 from traceback import print_exc
+from hashlib import sha1
 
 import netifaces
 
@@ -122,9 +123,7 @@ class Dispersy(object):
         # the same Callback instance
         self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
 
-        self._member_cache_by_public_key = OrderedDict()
-        self._member_cache_by_hash = dict()
-        self._member_cache_by_database_id = dict()
+        self._member_cache_by_hash = OrderedDict()
 
         # our data storage
         if not database_filename == u":memory:":
@@ -537,70 +536,70 @@ class Dispersy(object):
         assert not public_key or self.crypto.is_valid_public_bin(public_key)
         assert not private_key or self.crypto.is_valid_private_bin(private_key)
 
-        if mid:
-            return self.get_member_from_id(mid)
-
-        member = self._member_cache_by_public_key.get(public_key)
-        if member:
-            if private_key and not member.private_key:
-                member.set_private_key(private_key)
-
-        else:
+        if not mid:
             if public_key:
-                key = self.crypto.key_from_public_bin(public_key)
-            else:
+                mid = sha1(public_key).digest()
+
+            elif private_key:
                 key = self.crypto.key_from_private_bin(private_key)
+                mid = self.crypto.key_to_hash(key.pub())
 
-            mid = self.crypto.key_to_hash(key.pub())
-
-            row = self.database.execute(u"SELECT id, public_key FROM member WHERE mid = ?", (buffer(mid),)).fetchone()
+        member = self._member_cache_by_hash.get(mid)
+        if not member:
+            # The member is not cached, let's try to get it from the database
+            private_key_from_db = ""
+            row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
             if row:
-                database_id, public_key_from_db = row
+                database_id, public_key_from_db, private_key_from_db = row
 
                 public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+                private_key_from_db = "" if private_key_from_db is None else str(private_key_from_db)
+                assert not private_key_from_db or self.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
 
-                if public_key_from_db != public_key:
-                    if public_key_from_db:
-                        logger.warning("Received public key doesn't match with the one in the database (hash collision?)\n  Received: [%s]\n  Public:   [%s]",
+                if private_key_from_db != private_key and private_key_from_db:
+                    if private_key:
+                        logger.warning("Received private key doesn't match with the one in the database (hash collision?)"
+                                       "\n  Received: [%s]"
+                                       "\n  Private:  [%s]",
+                                       private_key.encode('HEX'), private_key_from_db.encode('HEX'))
+                        assert False, mid
+                    else:
+                        private_key = private_key_from_db
+
+                if public_key_from_db != public_key and public_key_from_db:
+                    if public_key:
+                        logger.warning("Received public key doesn't match with the one in the database (hash collision?)"
+                                       "\n  Received: [%s]"
+                                       "\n  Public:   [%s]",
                                        public_key.encode('HEX'), public_key_from_db.encode('HEX'))
                         assert False, mid
                     else:
-                        # We have the MID but the public key is missing, let's sort that out.
-                        self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
-                                                                                                 database_id))
-            else:
-                # This MID/public key is not yet in the database, store it.
-                self.database.execute(u"INSERT INTO member (mid, public_key) VALUES (?, ?)", (buffer(mid),
-                                                                                              buffer(public_key)))
+                        public_key = public_key_from_db
+
+                elif public_key:
+                    # We have the MID but the public key is missing, let's sort that out.
+                    self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
+                                                                                             database_id))
+            elif public_key or private_key:
+                # The MID or public/private keys are not in the database, store them.
+                self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)", (buffer(mid),
+                                                                                            buffer(public_key),
+                                                                                            buffer(private_key)))
                 database_id = self.database.last_insert_rowid
 
-            try:
-                private_key_from_db, = self.database.execute(u"SELECT private_key FROM private_key WHERE member = ? LIMIT 1", (database_id,)).next()
-                private_key_from_db = str(private_key_from_db)
-                assert self.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
-            except StopIteration:
-                private_key_from_db = ""
+            if not (public_key or private_key):
+                # We could't find the key on the DB, nothing else to do
+                return
 
-            # Store the key only if we have the private key pair and it didn't come from the DB
-            if private_key and not private_key_from_db:
-                self.database.execute(u"INSERT INTO private_key (member, private_key) VALUES (?, ?)",
-                                      (database_id, buffer(private_key)))
-            elif private_key_from_db:
-                private_key = private_key_from_db
-                key = self.crypto.key_from_private_bin(private_key)
+            key = self.crypto.key_from_private_bin(private_key) if private_key else self.crypto.key_from_public_bin(public_key)
+            member = Member(self, key, database_id, mid)
 
-            member = Member(self, key, database_id)
-
-            # store in caches
-            self._member_cache_by_public_key[member.public_key] = member
+            # store in cache
             self._member_cache_by_hash[member.mid] = member
-            self._member_cache_by_database_id[member.database_id] = member
 
             # limit cache length
-            if len(self._member_cache_by_public_key) > 1024:
-                _, pop = self._member_cache_by_public_key.popitem(False)
-                del self._member_cache_by_hash[pop.mid]
-                del self._member_cache_by_database_id[pop.database_id]
+            if len(self._member_cache_by_hash) > 1024:
+                self._member_cache_by_hash.popitem(False)
 
         return member
 
@@ -2059,7 +2058,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     raise ValueError("my member's database id is invalid", member_id, community.my_member.database_id)
 
                 try:
-                    self._database.execute(u"SELECT 1 FROM private_key WHERE member = ?", (member_id,)).next()
+                    self._database.execute(u"SELECT 1 FROM member WHERE id = ? AND private_key IS NOT NULL", (member_id,)).next()
                 except StopIteration:
                     raise ValueError("unable to find the private key for my member")
 

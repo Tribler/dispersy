@@ -20,13 +20,9 @@ schema = u"""
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
- public_key BLOB);                              -- member public key
-
+ public_key BLOB,                               -- member public key
+ private_key BLOB);                             -- member private key
 CREATE INDEX member_mid_index ON member(mid);
-
-CREATE TABLE private_key(
- member INTEGER PRIMARY KEY REFERENCES member(id),
- private_key BLOB);
 
 CREATE TABLE community(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -395,12 +391,45 @@ UPDATE option SET value = '18' WHERE key = 'database_version';
                 self.commit()
                 logger.debug("upgrade database %d -> %d (done)", database_version, 18)
 
+            # upgrade from version 18 to version 19
             if database_version < 19:
-                # there is no version 19 yet...
-                # logger.debug("upgrade database %d -> %d", database_version, 19)
-                # self.executescript(u"""UPDATE option SET value = '19' WHERE key = 'database_version';""")
+                # In version 19, we move the private key to member, as it doesn't improve anything and it allows us to
+                # actually simplify the code.
+                logger.debug("upgrade database %d -> %d", database_version, 19)
+                self.executescript(u"""
+-- move / remove old member table
+DROP INDEX IF EXISTS member_mid_index;
+ALTER TABLE member RENAME TO old_member;
+-- create new member table
+CREATE TABLE member(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ mid BLOB,                                      -- member identifier (sha1 of public_key)
+ public_key BLOB                                -- member public key
+ private_key BLOB);                             -- member private key
+CREATE INDEX member_mid_index ON member(mid);
+
+-- fill new member table with old data
+INSERT INTO member (id, mid, public_key, private_key)
+                SELECT id, mid, public_key, private_key.private_key FROM old_member
+                JOIN private_key ON private_key.member = member.id;
+-- remove old member table
+DROP TABLE old_member;
+-- remove table private_key
+DROP TABLE IF EXISTS private_key;
+-- update database version
+UPDATE option SET value = '19' WHERE key = 'database_version';
+""")
+                self.commit()
+                logger.debug("upgrade database %d -> %d (done)", database_version, 19)
+
+
+            if database_version < 20:
+                new_db_version = 20
+                # there is no version new_db_version yet...
+                # logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                # self.executescript(u"""UPDATE option SET value = new_db_version WHERE key = 'database_version';""")
                 # self.commit()
-                # logger.debug("upgrade database %d -> %d (done)", database_version, 19)
+                # logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
                 pass
 
         return LATEST_VERSION
