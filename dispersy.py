@@ -1694,25 +1694,34 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             logger.debug("%s %d@%d", message.name, message.authentication.member.database_id, message.distribution.global_time)
 
             # add packet to database
-            self._database.execute(u"INSERT INTO sync (community, member, global_time, meta_message, packet) VALUES (?, ?, ?, ?, ?)",
+            self._database.execute(u"INSERT INTO sync (community, member, global_time, meta_message, packet, sequence) "
+                                   u"VALUES (?, ?, ?, ?, ?, ?)",
                                   (message.community.database_id,
                                    message.authentication.member.database_id,
                                    message.distribution.global_time,
                                    message.database_id,
-                                   buffer(message.packet)))
-            # update_sync_range.add(message.distribution.global_time)
+                                   buffer(message.packet),
+                                   (message.distribution.sequence_number if
+                                    isinstance(meta.distribution, FullSyncDistribution)
+                                    and message.distribution.enable_sequence_number else None)
+                               ))
+            # ensure that we can reference this packet
+            message.packet_id = self._database.last_insert_rowid
+            logger.debug("stored message %s in database at row %d", message.name, message.packet_id)
+
             if __debug__:
                 # must have stored one entry
                 assert self._database.changes == 1
                 # when sequence numbers are enabled, we must have exactly
                 # message.distribution.sequence_number messages in the database
-                if isinstance(message.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
-                    count_ = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
+                if isinstance(meta.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
+                    count_, = self._database.execute(u"SELECT COUNT(*) FROM sync "
+                                                    u"WHERE meta_message = ? AND member = ? AND sequence BETWEEN 1 AND ?",
+                                                    (message.database_id,
+                                                    message.authentication.member.database_id,
+                                                    message.distribution.sequence_number)).next()
                     assert count_ == message.distribution.sequence_number, [count_, message.distribution.sequence_number]
 
-            # ensure that we can reference this packet
-            message.packet_id = self._database.last_insert_rowid
-            logger.debug("stored message %s in database at row %d", message.name, message.packet_id)
 
             if is_double_member_authentication:
                 member1 = message.authentication.members[0].database_id

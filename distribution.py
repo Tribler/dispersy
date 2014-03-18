@@ -288,8 +288,11 @@ class FullSyncDistribution(SyncDistribution):
         super(FullSyncDistribution, self).setup(message)
         if self._enable_sequence_number:
             # obtain the most recent sequence number that we have used
-            self._current_sequence_number, = message.community.dispersy.database.execute(u"SELECT COUNT(1) FROM sync WHERE member = ? AND meta_message = ?",
-                                                                                         (message.community.my_member.database_id, message.database_id)).next()
+            current_sequence_number, = message.community.dispersy.database.execute(
+                u"SELECT MAX(sequence) FROM sync WHERE member = ? AND meta_message = ?",
+                (message.community.my_member.database_id, message.database_id)).next()
+
+            self._current_sequence_number = current_sequence_number or 0
 
     def claim_sequence_number(self):
         assert self._enable_sequence_number
