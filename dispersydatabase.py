@@ -14,7 +14,7 @@ from .distribution import FullSyncDistribution
 from .logger import get_logger
 logger = get_logger(__name__)
 
-LATEST_VERSION = 19
+LATEST_VERSION = 20
 
 schema = u"""
 CREATE TABLE member(
@@ -61,6 +61,7 @@ CREATE TABLE sync(
  meta_message INTEGER REFERENCES meta_message(id),
  undone INTEGER DEFAULT 0,
  packet BLOB,
+ sequence INTEGER,
  UNIQUE(community, member, global_time));
 CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
 CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
@@ -422,12 +423,44 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 self.commit()
                 logger.debug("upgrade database %d -> %d (done)", database_version, 19)
 
+            new_db_version = 20
+            if database_version < new_db_version:
+                # Let's store the sequence numbers in the database instead of quessing
+                logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                self.executescript(u"""
+                DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
+                DROP INDEX IF EXISTS sync_meta_message_member;
 
-            if database_version < 20:
-                new_db_version = 20
+                ALTER TABLE sync RENAME TO old_sync;
+
+                CREATE TABLE sync(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    community INTEGER REFERENCES community(id),
+                    member INTEGER REFERENCES member(id),                  -- the creator of the message
+                    global_time INTEGER,
+                    meta_message INTEGER REFERENCES meta_message(id),
+                    undone INTEGER DEFAULT 0,
+                    packet BLOB,
+                    sequence INTEGER,
+                    UNIQUE(community, member, global_time, sequence));
+
+                CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
+                CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
+
+                INSERT INTO sync  (id, community, member, global_time, meta_message, undone, packet, sequence)
+                    SELECT id, community, member, global_time, meta_message, undone, packet, NULL from old_sync
+
+                DROP TABLE IF EXISTS old_sync;
+
+                UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
+                self.commit()
+                logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
+
+            new_db_version = 21
+            if database_version < new_db_version:
                 # there is no version new_db_version yet...
                 # logger.debug("upgrade database %d -> %d", database_version, new_db_version)
-                # self.executescript(u"""UPDATE option SET value = new_db_version WHERE key = 'database_version';""")
+                # self.executescript(u"""UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
                 # self.commit()
                 # logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
                 pass
@@ -520,8 +553,8 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
             for handler in progress_handlers:
                 handler.Destroy()
 
-        if database_version < 16:
-            logger.debug("upgrade community %d -> %d", database_version, 16)
+        if database_version < 20:
+            logger.debug("upgrade community %d -> %d", database_version, 20)
 
             # patch 14 -> 15 notes:
             #
@@ -561,7 +594,8 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
             # - gt(M_i) < gt(M_j), where i = j - 1
 
             # all meta messages that use sequence numbers
-            metas = [meta for meta in community.get_meta_messages() if isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number]
+            metas = [meta for meta in community.get_meta_messages() if (
+                     isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number)]
             convert_packet_to_message = community.dispersy.convert_packet_to_message
 
             progress = 0
@@ -572,21 +606,26 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 count += i
             logger.debug("checking %d sequence number enabled messages [%s]", count, community.cid.encode("HEX"))
             if count > 50:
-                progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count) for handler in community.dispersy.get_progress_handlers()]
+                progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count)
+                                     for handler in community.dispersy.get_progress_handlers()]
             else:
                 progress_handlers = []
 
+            sequence_updates = []
             for meta in metas:
-                for member_id, iterator in groupby(list(self.execute(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,))), key=lambda tup: tup[1]):
+                groups = groupby(self.execute(u"SELECT id, member, packet FROM sync "
+                                 u"WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)),
+                                 key=lambda tup: tup[1])
+                for member_id, iterator in groups:
                     last_global_time = 0
                     last_sequence_number = 0
                     for packet_id, _, packet in iterator:
-
                         message = convert_packet_to_message(str(packet), community, verify=False)
                         assert message.authentication.member.database_id == member_id
                         if (last_sequence_number + 1 == message.distribution.sequence_number and
                                 last_global_time < message.distribution.global_time):
                             # message is OK
+                            sequence_updates.append((message.distribution.sequence_number, packet_id))
                             last_sequence_number += 1
                             last_global_time = message.distribution.global_time
 
@@ -595,8 +634,9 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                             logger.debug("delete id:%d", packet_id)
 
                         progress += 1
-                        for handler in progress_handlers:
-                            handler.Update(progress)
+                        if progress % 25 == 0:
+                            for handler in progress_handlers:
+                                handler.Update(progress)
 
             for handler in progress_handlers:
                 handler.Update(progress, "Saving the results...")
@@ -606,18 +646,21 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
                 assert len(deletes) == self.changes, [len(deletes), self.changes]
 
+            if sequence_updates:
+                self.executemany(u"UPDATE sync SET sequence = ? WHERE id = ?", sequence_updates)
+
             # we may have removed some undo-other or undo-own messages.  we must ensure that there
             # are no messages in the database that point to these removed messages
             updates = list(self.execute(u"""
-SELECT a.id
-FROM sync a
-LEFT JOIN sync b ON a.undone = b.id
-WHERE a.community = ? AND a.undone > 0 AND b.id is NULL""", (community.database_id,)))
+            SELECT a.id
+            FROM sync a
+            LEFT JOIN sync b ON a.undone = b.id
+            WHERE a.community = ? AND a.undone > 0 AND b.id is NULL""", (community.database_id,)))
             if updates:
                 self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
                 assert len(updates) == self.changes, [len(updates), self.changes]
 
-            self.execute(u"UPDATE community SET database_version = 16 WHERE id = ?", (community.database_id,))
+            self.execute(u"UPDATE community SET database_version = 20 WHERE id = ?", (community.database_id,))
             self.commit()
 
             for handler in progress_handlers:

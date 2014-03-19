@@ -128,7 +128,7 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         self.requests(1, [1, 2, 3, 4, 5], (1, 2), (2, 3), (3, 4), (4, 5))
 
     def test_requests_1_11(self):
-        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (4, 5), (7, 8))
+        self.requests(1, [1, 2, 4, 5, 7, 8], (1, 2), (4, 5), (7, 8))
 
     def test_requests_2_7(self):
         self.requests(2, [1], (1, 1), (1, 1), (1, 1))
@@ -137,7 +137,7 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         self.requests(2, [1, 2, 3, 4, 5], (1, 2), (2, 3), (3, 4), (4, 5))
 
     def test_requests_2_11(self):
-        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (4, 5), (7, 8))
+        self.requests(2, [1, 2, 4, 5, 7, 8], (1, 2), (4, 5), (7, 8))
 
     # multi-range requests, in different orders
     def test_requests_1_13(self):
@@ -147,10 +147,10 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         self.requests(1, [1, 2, 3, 4, 5], (4, 5), (3, 4), (1, 2), (2, 3))
 
     def test_requests_1_16(self):
-        self.requests(1, [1, 2, 3, 4, 5], (5, 5), (1, 1))
+        self.requests(1, [1, 5], (5, 5), (1, 1))
 
     def test_requests_1_17(self):
-        self.requests(1, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (7, 8), (4, 5))
+        self.requests(1, [1, 2, 4, 5, 7, 8], (1, 2), (7, 8), (4, 5))
 
     def test_requests_2_13(self):
         self.requests(2, [1], (1, 1), (1, 1), (1, 1))
@@ -159,10 +159,10 @@ class TestIncomingMissingSequence(DispersyTestFunc):
         self.requests(2, [1, 2, 3, 4, 5], (4, 5), (3, 4), (1, 2), (2, 3))
 
     def test_requests_2_16(self):
-        self.requests(2, [1, 2, 3, 4, 5], (5, 5), (1, 1))
+        self.requests(2, [1, 5], (5, 5), (1, 1))
 
     def test_requests_2_17(self):
-        self.requests(2, [1, 2, 3, 4, 5, 6, 7, 8], (1, 2), (7, 8), (4, 5))
+        self.requests(2, [1, 2, 4, 5, 7, 8], (1, 2), (7, 8), (4, 5))
 
     # single range requests, invalid requests
     def test_requests_1_19(self):

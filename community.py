@@ -3140,67 +3140,74 @@ class Community(object):
         @param messages: dispersy-missing-sequence messages.
         @type messages: [Message.Implementation]
         """
-        sources = defaultdict(lambda: defaultdict(set))
 
         logger.debug("received %d missing-sequence message for community %d", len(messages), self.database_id)
 
         # we know that there are buggy clients out there that give numerous overlapping requests.
         # we will filter these to perform as few queries on the database as possible
-        for message in messages:
-            member_id = message.payload.member.database_id
-            message_id = message.payload.message.database_id
-            logger.debug("%s requests member:%d message_id:%d range:[%d:%d]", message.candidate, member_id, message_id, message.payload.missing_low, message.payload.missing_high)
-            for sequence in xrange(message.payload.missing_low, message.payload.missing_high + 1):
-                if sequence in sources[message.candidate][(member_id, message_id)]:
-                    logger.debug("ignoring duplicate request for %d:%d:%d from %s", member_id, message_id, sequence, message.candidate)
-            sources[message.candidate][(member_id, message_id)].update(xrange(message.payload.missing_low, message.payload.missing_high + 1))
+        def merge_ranges(ranges):
+            """
+            Merges all ranges passed into overlapping equivalents.
+            """
+            # This will fail if ranges is empty, but that can't happen
+            ranges = sorted([sorted(range_) for range_ in ranges])
+            cur_low, cur_high = ranges[0]
+            for low, high in ranges:
+                if low <= cur_high:
+                    cur_high = max(cur_high, high)
+                else:
+                    yield (cur_low, cur_high)
+                    cur_low, cur_high = low, high
+            yield (cur_low, cur_high)
 
-        for candidate, requests in sources.iteritems():
-            assert isinstance(candidate, Candidate), type(candidate)
-
-            # we limit the response by byte_limit bytes per incoming candidate
+        def fetch_packets(member_id, message_id, candidate, requests):
+            # We limit the response by byte_limit bytes per incoming candidate
             byte_limit = self.dispersy_missing_sequence_response_limit
-
-            # it is much easier to count packets... hence, to optimize we translate the byte_limit
-            # into a packet limit.  we will assume a 256 byte packet size (security packets are
-            # generally small)
-            packet_limit = max(1, int(byte_limit / 128))
-            logger.debug("will allow at most... byte_limit:%d packet_limit:%d for %s", byte_limit, packet_limit, candidate)
 
             packets = []
             for (member_id, message_id), sequences in requests.iteritems():
                 if not sequences:
                     # empty set will fail min(...) and max(...)
                     continue
-                lowest, highest = min(sequences), max(sequences)
 
-                # limiter
-                highest = min(lowest + packet_limit, highest)
+                logger.debug("fetching member:%d message:%d packets from database for %s", member_id, message_id, candidate)
+                for range_min, range_max in merge_ranges(sequences):
+                    for packet, in self._dispersy._database.execute(
+                            u"SELECT packet FROM sync "
+                            u"WHERE member = ? AND meta_message = ? AND sequence BETWEEN ? AND ? "
+                            u"ORDER BY sequence",
+                            (member_id, message_id, range_min, range_max)):
+                        packet = str(packet)
+                        packets.append(packet)
 
-                logger.debug("fetching member:%d message:%d %d packets from database for %s", member_id, message_id, highest - lowest + 1, candidate)
-                for packet, in self._dispersy._database.execute(u"SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time LIMIT ? OFFSET ?",
-                                                               (member_id, message_id, highest - lowest + 1, lowest - 1)):
-                    packet = str(packet)
-                    packets.append(packet)
+                        byte_limit -= len(packet)
+                        if byte_limit <= 0:
+                            logger.debug("Bandwidth throttle.  byte_limit:%d", byte_limit)
+                            return packets
+            return packets
 
-                    packet_limit -= 1
-                    byte_limit -= len(packet)
-                    if byte_limit <= 0:
-                        logger.debug("Bandwidth throttle.  byte_limit:%d  packet_limit:%d", byte_limit, packet_limit)
-                        break
+        sources = defaultdict(lambda: defaultdict(list))
+        for message in messages:
+            member_id = message.payload.member.database_id
+            message_id = message.payload.message.database_id
+            logger.debug("%s requests member:%d message_id:%d range:[%d:%d]", message.candidate, member_id, message_id, message.payload.missing_low, message.payload.missing_high)
 
-                if byte_limit <= 0 or packet_limit <= 0:
-                    logger.debug("Bandwidth throttle.  byte_limit:%d  packet_limit:%d", byte_limit, packet_limit)
-                    break
+            sources[message.candidate][(member_id, message_id)].append((message.payload.missing_low, message.payload.missing_high))
 
+        for candidate, member_message_requests in sources.iteritems():
+            assert isinstance(candidate, Candidate), type(candidate)
+            packets = fetch_packets(member_id, message_id, candidate, member_message_requests)
             if __debug__:
                 # ensure we are sending the correct sequence numbers back
                 for packet in packets:
                     msg = self._dispersy.convert_packet_to_message(packet, self)
                     assert msg
-                    assert min(requests[(msg.authentication.member.database_id, msg.database_id)]) <= msg.distribution.sequence_number, ["giving back a seq-number that is smaller than the lowest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
-                    assert msg.distribution.sequence_number <= max(requests[(msg.authentication.member.database_id, msg.database_id)]), ["giving back a seq-number that is larger than the highest request", msg.distribution.sequence_number, min(requests[(msg.authentication.member.database_id, msg.database_id)]), max(requests[(msg.authentication.member.database_id, msg.database_id)])]
-                    logger.debug("syncing %d bytes, member:%d message:%d sequence:%d explicit:%s to %s", len(packet), msg.authentication.member.database_id, msg.database_id, msg.distribution.sequence_number, "T" if msg.distribution.sequence_number in requests[(msg.authentication.member.database_id, msg.database_id)] else "F", candidate)
+                    logger.debug("syncing %d bytes, member:%d message:%d sequence:%d to %s",
+                                 len(packet),
+                                 msg.authentication.member.database_id,
+                                 msg.database_id,
+                                 msg.distribution.sequence_number,
+                                 candidate)
 
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-sequence-", len(packets))
             self._dispersy._endpoint.send([candidate], packets)
