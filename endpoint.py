@@ -73,7 +73,7 @@ class Endpoint(object):
         assert isinstance(timeout, float), type(timeout)
         return True
 
-    def __log_packet(self, sock_addr, packet, outbound=True):
+    def log_packet(self, sock_addr, packet, outbound=True):
         try:
             name = self._dispersy.convert_packet_to_meta_message(packet, load=False, auto_load=False).name
         except:
@@ -160,7 +160,7 @@ class RawserverEndpoint(Endpoint):
 
             if logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
-                    self.__log_packet(sock_addr, data, outbound=False)
+                    self.log_packet(sock_addr, data, outbound=False)
 
             self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
 
@@ -204,7 +204,7 @@ class RawserverEndpoint(Endpoint):
             self._socket.sendto(data, candidate.sock_addr)
 
             if logger.isEnabledFor(logging.DEBUG):
-                self.__log_packet(candidate.sock_addr, data)
+                self.log_packet(candidate.sock_addr, data)
 
         except socket.error:
             with self._sendqueue_lock:
@@ -232,7 +232,7 @@ class RawserverEndpoint(Endpoint):
                         index += 1
 
                         if logger.isEnabledFor(logging.DEBUG):
-                            self.__log_packet(sock_addr, data)
+                            self.log_packet(sock_addr, data)
 
                     except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
@@ -412,14 +412,14 @@ class TunnelEndpoint(Endpoint):
             self._swift.send_tunnel(self._session, candidate.sock_addr, packet)
 
         if logger.isEnabledFor(logging.DEBUG):
-            self.__log_packet(candidate.sock_addr, packet)
+            self.log_packet(candidate.sock_addr, packet)
 
         return True
 
     def i2ithread_data_came_in(self, session, sock_addr, data):
         assert self._dispersy, "Should not be called before open(...)"
         if logger.isEnabledFor(logging.DEBUG):
-            self.__log_packet(sock_addr, data, outbound=False)
+            self.log_packet(sock_addr, data, outbound=False)
 
         self._total_down += len(data)
         self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
