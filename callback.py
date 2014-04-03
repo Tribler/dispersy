@@ -1,24 +1,31 @@
 """
 A callback thread running Dispersy.
 """
-
+from collections import defaultdict
 from heapq import heappush, heappop
+from sys import exc_info
 from thread import get_ident
-from threading import Thread, Lock, Event
+from threading import Thread, Lock, Event, RLock, current_thread
 from time import sleep, time
 from types import GeneratorType, TupleType
-from sys import exc_info
+from warnings import warn
+
+from twisted.python.failure import Failure
+from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks, returnValue, DeferredList, CancelledError, Deferred
+from twisted.internet.task import deferLater
+
+from .decorator import attach_profiler, attach_runtime_statistics
+from .logger import get_logger
+
+
+logger = get_logger(__name__)
 
 try:
     from prctl import set_name
 except ImportError:
     def set_name(_):
         pass
-
-from .decorator import attach_profiler, attach_runtime_statistics
-from .logger import get_logger
-logger = get_logger(__name__)
-
 
 if __debug__:
     from atexit import register as atexit_register
@@ -288,6 +295,10 @@ class Callback(object):
         assert callback_kargs is None or isinstance(callback_kargs, dict), "CALLBACK_KARGS has invalid type: %s" % type(callback_kargs)
         assert isinstance(include_id, bool), "INCLUDE_ID has invalid type: %d" % type(include_id)
         logger.debug("register %s after %.2f seconds", call, delay)
+
+        # TODO(emilon): Remove all the priority args, we don't support it anymore
+        if priority:
+            warn("'priority' arg is not used anymore.", DeprecationWarning)
 
         with self._lock:
             if not id_:
@@ -799,3 +810,244 @@ class Callback(object):
             pass
 
         self._shutdown()
+
+
+class TwistedCallback(Callback):
+
+    def __init__(self, name="Generic-Callback"):
+        assert reactor.running, "Reactor must be already running"
+        self._logger = get_logger(self.__class__.__name__)
+        self._name = name
+        self._exception = None
+        self._exception_traceback = None
+        self._exception_handlers = []
+
+        self._id = 0
+
+        self._state = "STATE_INIT"
+        logger.debug("STATE_INIT")
+
+        self._stopping = False
+
+        self._lock = RLock()
+        self._task_lock = RLock()
+
+        self._current_tasks = defaultdict(list)
+
+        self._thread_ident = None
+        self._thread = None
+        self.call(call=self._obtain_reactor_thread, ignore_thread_check=True)
+        assert self._thread
+
+    def _obtain_reactor_thread(self):
+        logger.warning("Obtaining current threads")
+        self._thread = current_thread()
+        self._thread_ident = get_ident()
+
+    def start(self):
+        return self.is_running
+
+    def stop(self, timeout=10.0, exception=None, final_func=None):
+        self.register(self._stop, kargs={"timeout": timeout, "exception": exception, "final_func": final_func})
+
+    def _stop(self, timeout, exception, final_func):
+        assert self.is_current_thread
+
+        self._stopping = True
+
+        def call_final_func(_):
+            assert self.is_current_thread
+            final_func()
+
+        def stop_generators(_):
+            assert self.is_current_thread
+            for g in gList:
+                g.close()
+
+        dList = []
+        gList = []
+        with self._task_lock:
+            now = time()
+            for tasklist in self._current_tasks.values():
+                for scheduled_at, d, g in tasklist:
+                    if g:
+                        gList.append(g)
+
+                    elif scheduled_at < now:
+                        dList.append(d)
+
+                    else:
+                        d.cancel()
+
+        @inlineCallbacks
+        def wait_for_tasks():
+            yield DeferredList(dList)
+
+        d = deferLater(reactor, 0, wait_for_tasks)
+        d.addCallback(stop_generators)
+        if final_func:
+            d.addCallback(call_final_func)
+
+        if timeout:
+            if self.is_current_thread:
+                self._logger.error(u"using callback.stop from the same thread will not allow us to wait until the callback has finished")
+            else:
+                event = Event()
+
+                def do_stop(_):
+                    event.set()
+
+                d.addCallback(do_stop)
+                event.wait(timeout)
+                return event.is_set()
+
+    def join(self, timeout=0.0):
+        self._thread.join(None if timeout == 0.0 else timeout)
+        return reactor.running
+
+    @property
+    def is_running(self):
+        return reactor.running and not self._stopping
+
+    @property
+    def is_finished(self):
+        return not self.is_running
+
+    def has_id_scheduled(self, id_):
+        return id_ in self._current_tasks
+
+    def handle_exception(self, failure):
+        if failure.check(CancelledError) is None:
+            if failure.check(SystemExit, KeyboardInterrupt, GeneratorExit):
+                self._logger.exception(u"fatal exception occurred [%s] %s", failure.value, failure)
+                self._call_exception_handlers(failure.value, True)
+            else:
+                self._logger.exception(u"Unexpected exception occurred [%s] %s", failure.value, failure)
+                self._call_exception_handlers(failure.value, False)
+
+    def register(self, call, args=(), kargs=None, delay=0.0, priority=0, id_=u"", callback=None,
+                 callback_args=(), callback_kargs=None, include_id=False,
+                 event=None, container=None):
+        if not self._stopping:
+            with self._task_lock:
+                id_ = self.generate_id(id_)
+
+            reactor.callFromThread(self._register, id_, kargs, callback_args, args, delay, callback, call, include_id, callback_kargs, event, container)
+            return id_
+
+    def _register(self, id_, kargs, callback_args, args, delay, callback, call, include_id, callback_kargs, event, container):
+        assert isinstance(id_, unicode), id_
+        if not self._stopping:
+            d = deferLater(reactor, delay, self._wrapped_call, id_, call, args + (id_,) if include_id else args, kargs or {})
+
+            self._current_tasks[id_].append([time() + delay, d, None])
+
+            if callback:
+                # the callback is NOT receiving the result as an argument, but this deferred callback should pass de
+                # result down the callback chaing so we can get it when using _register() from call()
+                def trigger_callback(result, *_):
+                    callback(*callback_args, **callback_kargs)
+                    return result
+                d.addCallback(trigger_callback)
+            d.addErrback(self.handle_exception)
+
+            def set_event(result):
+                assert not isinstance(result, (GeneratorType, Deferred))
+                if isinstance(result, Failure):
+                    container[1] = result.value
+                else:
+                    container[0] = result
+                event.set()
+                return result
+            if event and container:
+                d.addBoth(set_event)
+
+            def remove_deferred(id_, d):
+                assert isinstance(id_, unicode), id_
+                with self._task_lock:
+                    for i, call in enumerate(self._current_tasks[id_]):
+                        if call[1] == d:
+                            self._current_tasks[id_].pop(i)
+                            break
+            d.addBoth(lambda _: remove_deferred(id_, d))
+
+    def persistent_register(self, id_, call, args=(), kargs=None, delay=0.0, priority=0, callback=None, callback_args=(), callback_kargs=None, include_id=False):
+        if not self.has_id_scheduled(id_):
+            return self.register(call, args, kargs, delay, priority, id_, callback, callback_args, callback_kargs, include_id)
+
+    def replace_register(self, id_, call, args=(), kargs=None, delay=0.0, priority=0, callback=None, callback_args=(), callback_kargs=None, include_id=False):
+        with self._task_lock:
+            self.unregister(id_)
+            return self.register(call, args, kargs, delay, priority, id_, callback, callback_args, callback_kargs, include_id)
+
+    def unregister(self, id_, cancel=True):
+        with self._task_lock:
+            if self.has_id_scheduled(id_):
+                tasks = self._current_tasks[id_]
+                del self._current_tasks[id_]
+
+                if cancel:
+                    for call in tasks:
+                        if call[2]:
+                            call[2].close()
+                        elif call[1]:
+                            call[1].cancel()
+
+    def call(self, call, args=(), kargs={}, priority=0, id_=u"", include_id=False, timeout=0.0, default=None, ignore_thread_check=False):
+        assert ignore_thread_check or not self.is_current_thread, (ignore_thread_check, self.is_current_thread)
+        if not self._stopping:
+            id_ = self.generate_id(id_)
+
+            container = [default, None]
+            event = Event()
+            reactor.callFromThread(self._register, id_, kargs, tuple(), args, 0, None, call, include_id, {}, event, container)
+
+            pre_time = time()
+            event.wait(None if timeout == 0.0 else timeout)
+            if not event.is_set():
+                call_time = time() - pre_time
+                assert timeout <= call_time, (timeout, call_time)
+                logger.debug(u"timeout %.2fs occurred during call to %s, timeout was: %4fs, timed out after: %4fs", timeout, call, timeout, call_time)
+
+            if container[1]:
+                raise container[1]
+
+            return container[0]
+
+    def generate_id(self, id_):
+        assert isinstance(id_, unicode)
+        if not id_:
+            self._id += 1
+            id_ = u"dispersy-#%d" % self._id
+        return id_
+
+    @inlineCallbacks
+    def _wrapped_call(self, id_, call, args, kargs):
+        """
+        Calls method in the reactor thread and triggers the event in case one is passed.
+        """
+
+        @inlineCallbacks
+        def loop_with_delays(generator):
+            assert self.is_current_thread
+            for delay in generator:
+                delay = 0 if delay is None else delay
+                yield deferLater(reactor, delay, lambda: None)
+
+
+        result = yield call(*args, **kargs)
+        if isinstance(result, GeneratorType):
+            # we only received the generator, no actual call has been made to the
+            # function yet, therefore we call it again immediately
+
+            # register generator at id_
+            for call in self._current_tasks[id_]:
+                call[2] = result
+                break
+            else:
+                self._current_tasks[id_].append([0, None, result])
+
+            result = yield loop_with_delays(result)
+
+        assert not isinstance(result, (GeneratorType, Deferred)), type(result)
+        returnValue(result)
