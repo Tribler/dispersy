@@ -1,6 +1,7 @@
 from ..logger import get_logger
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 
 
@@ -18,11 +19,11 @@ class TestMissingIdentity(DispersyTestFunc):
 
         # MISSING should reply with a dispersy-identity message
         responses = node.receive_messages()
+
         self.assertEqual(len(responses), 1)
         for _, response in responses:
             self.assertEqual(response.name, u"dispersy-identity")
             self.assertEqual(response.authentication.member.public_key, other.my_member.public_key)
-
 
     def test_outgoing_missing_identity(self):
         """

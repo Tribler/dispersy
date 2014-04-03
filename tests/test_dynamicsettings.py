@@ -1,7 +1,8 @@
 from ..logger import get_logger
 from ..resolution import PublicResolution, LinearResolution
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 
 
@@ -22,6 +23,7 @@ class TestDynamicSettings(DispersyTestFunc):
 
         # NODE creates a message (should allow, because the default policy is PublicResolution)
         message = self._mm.create_dynamic_resolution_text("Message #%d" % 10, policy.implement(), 10)
+        #self._mm.give_message(message, self._mm)
         other.give_message(message, self._mm)
 
         other.assert_is_stored(message)
@@ -45,6 +47,8 @@ class TestDynamicSettings(DispersyTestFunc):
         self._mm.give_message(message, self._mm)
         node.give_message(message, self._mm)
         other.give_message(message, self._mm)
+
+        #other.process_packets()
 
         linear_policy, proof = node.get_resolution_policy(meta, 43)
         self.assertIsInstance(linear_policy, LinearResolution)

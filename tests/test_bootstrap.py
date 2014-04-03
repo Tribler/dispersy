@@ -4,6 +4,7 @@ from subprocess import Popen, PIPE, STDOUT
 from time import time, sleep
 from unittest import skip, skipUnless
 
+from ..bootstrap import Bootstrap
 from ..candidate import BootstrapCandidate
 from ..logger import get_logger
 from ..message import Message, DropMessage
@@ -14,13 +15,15 @@ from threading import Thread
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
 
-class TestBootstrapServers(DispersyTestFunc):
 
+class TestBootstrapServers(DispersyTestFunc):
 
     def test_tracker(self):
         """
         Runs tracker.py and connects to it.
         """
+
+        Bootstrap.enable = True
         tracker_file = "dispersy/tool/tracker.py"
         tracker_path = getcwd()
         while tracker_path:
@@ -91,7 +94,7 @@ class TestBootstrapServers(DispersyTestFunc):
             logger.debug("terminate tracker")
 
             tracker.terminate()  # sends SIGTERM
-            self.assertEqual(tracker.wait(), 0)
+            self.assertEqual(tracker.wait(), 0), tracker.returncode
 
     @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
     def test_servers_are_up(self):

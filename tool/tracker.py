@@ -359,23 +359,28 @@ def main():
     else:
         crypto = NoVerifyCrypto()
 
-    # setup
-    dispersy = TrackerDispersy(TwistedCallback("Dispersy", on_main=True), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
+    container = [None]
 
-    def signal_handler(sig, frame):
-        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
-        dispersy.stop()
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    def run():
+        # setup
+        dispersy = TrackerDispersy(TwistedCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+        dispersy.define_auto_load(TrackerCommunity)
+        dispersy.define_auto_load(TrackerHardKilledCommunity)
+        container[0] = dispersy
+        def signal_handler(sig, frame):
+            logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
+            dispersy.stop()
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
 
-    # start
-    if not dispersy.start():
-        raise RuntimeError("Unable to start Dispersy")
+        # start
+        if not dispersy.start():
+            raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
-    dispersy.callback.loop()
+    from twisted.internet import reactor
+    reactor.callWhenRunning(run)
+    reactor.run()
 
     # return 1 on exception, otherwise 0
     exit(1 if container[0].callback.exception else 0)
