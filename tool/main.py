@@ -18,7 +18,7 @@ logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger, get_context_filter
-from .mainthreadcallback import MainThreadCallback
+from ..callback import TwistedCallback
 logger = get_logger(__name__)
 
 
@@ -83,7 +83,7 @@ def main_real(setup=None):
         logger.exception("An exception occurred.  Quitting because we are running with --strict enabled.")
         # return fatal=True
         return True
-    callback = MainThreadCallback("Dispersy")
+    callback = TwistedCallback("Dispersy", on_main=True)
     if opt.strict:
         callback.attach_exception_handler(exception_handler)
 

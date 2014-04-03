@@ -56,7 +56,7 @@ from ..endpoint import StandaloneEndpoint
 from ..exception import ConversionNotFoundException, CommunityNotFoundException
 from ..logger import get_logger, get_context_filter
 from ..message import Message, DropMessage
-from .mainthreadcallback import MainThreadCallback
+from ..callback import TwistedCallback
 logger = get_logger(__name__)
 
 if sys.platform == 'win32':
@@ -360,7 +360,9 @@ def main():
         crypto = NoVerifyCrypto()
 
     # setup
-    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+    dispersy = TrackerDispersy(TwistedCallback("Dispersy", on_main=True), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+    dispersy.define_auto_load(TrackerCommunity)
+    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
@@ -376,4 +378,4 @@ def main():
     dispersy.callback.loop()
 
     # return 1 on exception, otherwise 0
-    exit(1 if dispersy.callback.exception else 0)
+    exit(1 if container[0].callback.exception else 0)
