@@ -8,7 +8,7 @@ Community instance.
 @contact: dispersy@frayja.com
 """
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from itertools import islice, groupby
 from math import ceil
 from random import random, Random, randint, shuffle
@@ -34,9 +34,6 @@ from .requestcache import RequestCache, SignatureRequestCache, IntroductionReque
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-
-
-from collections import OrderedDict
 
 
 logger = get_logger(__name__)
@@ -477,7 +474,7 @@ class Community(object):
         Enable the fast candidate walker.
 
         When True is returned, the take_step method will initially take step more often to boost
-        the number of candidates available at startup. 
+        the number of candidates available at startup.
         The candidate fast walker is disabled by default.
         """
         return False
