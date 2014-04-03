@@ -300,16 +300,17 @@ class Dispersy(object):
             if success:
                 logger.debug("resolved all bootstrap addresses")
 
+        # TODO(emilon): Make this a loopingCall and maybe move it to Bootstrap
         def retry_until_success():
             for counter in count(1):
+                if bootstrap.are_resolved:
+                    break
+
                 logger.warning("resolving bootstrap addresses (attempt #%d)", counter)
                 bootstrap.resolve(on_results)
 
                 # delay should be larger than the timeout used for bootstrap.resolve()
                 yield 300.0
-
-                if bootstrap.are_resolved:
-                    break
 
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
@@ -318,16 +319,14 @@ class Dispersy(object):
         if timeout == 0.0:
             # retry until successful
             self._callback.register(retry_until_success)
-
         else:
             # first attempt will block for at most TIMEOUT seconds
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
             # give low priority to ensure that on_results is called before the call returns
-            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority= -128)
 
-            if not bootstrap.are_resolved:
-                # unable to resolve all... retry until successful
-                self._callback.register(retry_until_success, delay=300.0)
+            # TODO(emilon): Since we moved to twisted, this call will not block, but all this code should be refactored soon anyway
+            self._callback.register(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout))
+            self._callback.register(retry_until_success, delay=300.0)
 
         return bootstrap.are_resolved
 
@@ -2324,7 +2323,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         4. opens endpoint
         """
 
-        assert not self._callback.is_running, "Must be called before callback.start()"
+        # Disabled this assert as is_running now checks if the reactor is running
+        # assert not self._callback.is_running, "Must be called before callback.start()"
         assert isinstance(timeout, float), type(timeout)
         assert timeout >= 0.0, timeout
 
@@ -2425,6 +2425,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             results[u"database"] = self._database.close()
 
         if self._callback.is_running:
+            logger.info('Stopping Dispersy Core..')
             # output statistics before we stop
             if logger.isEnabledFor(logging.DEBUG):
                 self._statistics.update()
