@@ -1,6 +1,11 @@
 import sys
 from time import time, sleep
 
+from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import deferLater
+from twisted.internet import reactor
+
+from ...bootstrap import Bootstrap
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
@@ -106,6 +111,7 @@ class DebugNode(object):
         """
         return Candidate(self.lan_address, self.tunnel)
 
+    @inlineCallbacks
     def init_my_member(self, tunnel=False, store_identity=True):
         """
         When STORE_IDENTITY is True this node will send the central node an introduction-request
@@ -118,14 +124,16 @@ class DebugNode(object):
             packets = self._central_node.fetch_packets([u"dispersy-identity", u"dispersy-authorize"], self._community.master_member.mid)
             self.give_packets(packets, self._central_node)
 
-            yield 0.0
-
             # add this node to candidate list of mm
             message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
             self._central_node.give_message(message, self)
 
+            yield deferLater(reactor, 0.05, lambda : None)
+
             # remove introduction responses from socket
-            self.receive_messages(names=[u'dispersy-introduction-response'])
+            messages = self.receive_messages(names=[u'dispersy-introduction-response'])
+            assert len(messages), "No messages received."
+
 
     def encode_message(self, message):
         """
@@ -189,6 +197,7 @@ class DebugNode(object):
 
         return self.send_packet(message.packet, candidate)
 
+    #@call_on_dispersy_thread
     def process_packets(self, timeout=1.0):
         """
         Process all packets on the nodes' socket.

@@ -1,11 +1,24 @@
 from unittest import TestCase
+
+# Do not remove the reactor import, even if we aren't using it (nose starts the reactor when importing this)
+from nose.twistedtools import reactor, deferred
+
+from twisted.internet.defer import inlineCallbacks, returnValue
+from threading import Thread
+
+# Kill bootstraping so it doesn't mess up with the tests
+from ..bootstrap import Bootstrap
+Bootstrap.enabled = False
+
 from .debugcommunity.node import DebugNode
 from .debugcommunity.community import DebugCommunity
 
-from ..callback import Callback
+from ..callback import TwistedCallback
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
+
+import sys
 
 logger = get_logger(__name__)
 
@@ -45,7 +58,7 @@ class DispersyTestFunc(TestCase):
         nodes = []
         for _ in range(amount):
             DispersyTestFunc._thread_counter += 1
-            callback = Callback("Test-%d" % (self._thread_counter,))
+            callback = TwistedCallback("Test-%d" % (self._thread_counter,))
             callback.attach_exception_handler(self.on_callback_exception)
 
             dispersy = Dispersy(callback, ManualEnpoint(0), u".", u":memory:")
@@ -53,10 +66,13 @@ class DispersyTestFunc(TestCase):
 
             self.dispersy_objects.append(dispersy)
 
+            @inlineCallbacks
             def create_node():
                 node = DebugNode(self, dispersy, communityclass, c_master_member=self._mm)
-                callback.call(node.init_my_member, kargs={'tunnel':tunnel, 'store_identity':store_identity})
-                return node
+                yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
+                assert node, "We didn't get a node!"
+                returnValue(node)
 
             nodes.append(callback.call(create_node))
+            logger.warning("create_nodes, nodes created: %s", nodes)
         return nodes
