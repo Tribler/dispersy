@@ -212,7 +212,7 @@ class RawserverEndpoint(Endpoint):
         except socket.error:
             with self._sendqueue_lock:
                 did_have_senqueue = bool(self._sendqueue)
-                self._sendqueue.extend((candidate.sock_addr, data))
+                self._sendqueue.append((candidate.sock_addr, data))
 
             # If we did not have a sendqueue, then we need to call process_sendqueue in order send these messages
             if not did_have_senqueue:
