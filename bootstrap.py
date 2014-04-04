@@ -169,6 +169,6 @@ class Bootstrap(object):
             else:
                 logger.warning("Resolving bootstrap addresses")
                 return self.resolve()
-        if not self._resolution_lc:
+        if not self._resolution_lc and Bootstrap.enabled:
             self._resolution_lc = LoopingCall(resolution_lc)
             self._resolution_lc.start(interval, now)
