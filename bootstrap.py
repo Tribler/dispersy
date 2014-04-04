@@ -9,7 +9,8 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 from twisted.internet import reactor
-from twisted.internet.defer import gatherResults, inlineCallbacks
+from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
+from twisted.internet.task import LoopingCall
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
@@ -87,6 +88,7 @@ class Bootstrap(object):
         self._callback = callback
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
+        self._resolution_lc = None
 
     @property
     def are_resolved(self):
@@ -129,7 +131,7 @@ class Bootstrap(object):
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
     @inlineCallbacks
-    def resolve(self, func, timeout=60.0):
+    def resolve(self, timeout=60.0):
         """
         Resolve all unresolved trackers on a separate thread.
 
@@ -142,19 +144,31 @@ class Bootstrap(object):
         assert isinstance(timeout, float), type(timeout)
         assert timeout > 0.0, timeout
 
+        success = False
         if Bootstrap.enabled:
             if self.are_resolved:
-                reactor.callLater(0, func, True)
+                success = True
             else:
                 addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
                 ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
-                success = False
                 for (host, port), ip in zip(addresses, ips):
                     if ip:
                         candidate = BootstrapCandidate((ip, port), False)
-                        logger.debug("resolved %s into %s", host, candidate)
+                        logger.debug("Resolved %s into %s", host, candidate)
                         self._candidates[(host, port)] = candidate
                         success = True
                     else:
                         logger.info("Could not resolve bootstrap candidate: %s:%s", host, port)
-                reactor.callLater(0, func, success)
+        returnValue(success)
+
+    def resolve_until_success(self, interval=300, now=False):
+        def resolution_lc():
+            if self.are_resolved:
+                self._resolution_lc.stop()
+                self._resolution_lc = None
+            else:
+                logger.warning("Resolving bootstrap addresses")
+                return self.resolve()
+        if not self._resolution_lc:
+            self._resolution_lc = LoopingCall(resolution_lc)
+            self._resolution_lc.start(interval, now)

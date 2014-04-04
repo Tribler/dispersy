@@ -39,19 +39,20 @@ of, the name it uses as an internal identifier, and the class that will contain 
 import logging
 import os
 import sys
-from collections import defaultdict, Iterable
+from collections import defaultdict, Iterable, OrderedDict
+from hashlib import sha1
 from itertools import groupby, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
 from struct import unpack_from
 from time import time
-from traceback import print_exc
-from hashlib import sha1
 
 import netifaces
+from twisted.internet.defer import inlineCallbacks, returnValue
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
 from .bootstrap import Bootstrap
+from .callback import Callback
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
@@ -60,6 +61,7 @@ from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
+from .endpoint import Endpoint
 from .exception import CommunityNotFoundException, ConversionNotFoundException, MetaNotFoundException
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
@@ -68,12 +70,8 @@ from .message import (Message, DropMessage, DelayMessageBySequence,
 from .statistics import DispersyStatistics
 
 
-from collections import OrderedDict
-
 logger = get_logger(__name__)
 
-from .callback import Callback
-from .endpoint import Endpoint
 
 
 class Dispersy(object):
@@ -257,6 +255,7 @@ class Dispersy(object):
         logger.error("Unable to find our public interface!")
         return default
 
+    @inlineCallbacks
     def _resolve_bootstrap_candidates(self, timeout):
         """
         Resolve all bootstrap candidates within TIMEOUT seconds or fail.
@@ -300,35 +299,23 @@ class Dispersy(object):
             if success:
                 logger.debug("resolved all bootstrap addresses")
 
-        # TODO(emilon): Make this a loopingCall and maybe move it to Bootstrap
-        def retry_until_success():
-            for counter in count(1):
-                if bootstrap.are_resolved:
-                    break
-
-                logger.warning("resolving bootstrap addresses (attempt #%d)", counter)
-                bootstrap.resolve(on_results)
-
-                # delay should be larger than the timeout used for bootstrap.resolve()
-                yield 300.0
-
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
         bootstrap = Bootstrap(self._callback, alternate_addresses or default_addresses)
 
+
         if timeout == 0.0:
+            now = True
             # retry until successful
-            self._callback.register(retry_until_success)
+
         else:
-            # first attempt will block for at most TIMEOUT seconds
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
-            # give low priority to ensure that on_results is called before the call returns
+            # first attempt will block for at most TIMEOUT seconds
+            result = yield bootstrap.resolve(timeout=timeout).addCallback(on_results)
+            now = False
 
-            # TODO(emilon): Since we moved to twisted, this call will not block, but all this code should be refactored soon anyway
-            self._callback.register(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout))
-            self._callback.register(retry_until_success, delay=300.0)
-
-        return bootstrap.are_resolved
+        bootstrap.resolve_until_success(now=now)
+        returnValue(bootstrap.are_resolved)
 
     @property
     def working_directory(self):
