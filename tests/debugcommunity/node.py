@@ -126,14 +126,16 @@ class DebugNode(object):
 
             # add this node to candidate list of mm
             message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
-            self._central_node.give_message(message, self)
+            yield self._central_node.give_message(message, self)
 
-            yield deferLater(reactor, 0.05, lambda : None)
-
+            # TODO(emilon): Make it so it is no longer necessary to do this
             # remove introduction responses from socket
-            messages = self.receive_messages(names=[u'dispersy-introduction-response'])
-            assert len(messages), "No messages received."
-
+            for _ in xrange(5):
+                messages = yield self.receive_messages(names=[u'dispersy-introduction-response'])
+                yield deferLater(reactor, 0.005, lambda : None)
+                if messages:
+                    break
+            assert len(messages), "No introduction messages received!"
 
     def encode_message(self, message):
         """

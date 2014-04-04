@@ -836,10 +836,7 @@ class TwistedCallback(Callback):
 
         self._thread_ident = None
         self._thread = None
-        self.call(call=self._obtain_reactor_thread, ignore_thread_check=True)
-        assert self._thread
 
-    def _obtain_reactor_thread(self):
         logger.warning("Obtaining current threads")
         self._thread = current_thread()
         self._thread_ident = get_ident()
@@ -994,25 +991,34 @@ class TwistedCallback(Callback):
                             call[1].cancel()
 
     def call(self, call, args=(), kargs={}, priority=0, id_=u"", include_id=False, timeout=0.0, default=None, ignore_thread_check=False):
-        assert ignore_thread_check or not self.is_current_thread, (ignore_thread_check, self.is_current_thread)
         if not self._stopping:
-            id_ = self.generate_id(id_)
+            if self.is_current_thread:
+                if timeout:
+                    logger.warning("Ignoring timeout as we are being called from the twisted thread")
+                if id_:
+                    logger.warning("Ignoring id_ as we are being called from the twisted thread")
+                return call(*args, **kargs)
+            else:
+                id_ = self.generate_id(id_)
 
-            container = [default, None]
-            event = Event()
-            reactor.callFromThread(self._register, id_, kargs, tuple(), args, 0, None, call, include_id, {}, event, container)
+                # TODO(emilon): once register() is gone, we could use this instead of all this mess:
+                # result = blockingCallFromThread(reactor, call, *args, **kargs)
 
-            pre_time = time()
-            event.wait(None if timeout == 0.0 else timeout)
-            if not event.is_set():
-                call_time = time() - pre_time
-                assert timeout <= call_time, (timeout, call_time)
-                logger.debug(u"timeout %.2fs occurred during call to %s, timeout was: %4fs, timed out after: %4fs", timeout, call, timeout, call_time)
+                container = [default, None]
+                event = Event()
+                reactor.callFromThread(self._register, id_, kargs, tuple(), args, 0, None, call, include_id, {}, event, container)
 
-            if container[1]:
-                raise container[1]
+                pre_time = time()
+                event.wait(None if timeout == 0.0 else timeout)
+                if not event.is_set():
+                    call_time = time() - pre_time
+                    assert timeout <= call_time, (timeout, call_time)
+                    logger.debug(u"timeout %.2fs occurred during call to %s, timeout was: %4fs, timed out after: %4fs", timeout, call, timeout, call_time)
 
-            return container[0]
+                if container[1]:
+                    raise container[1]
+
+                return container[0]
 
     def generate_id(self, id_):
         assert isinstance(id_, unicode)

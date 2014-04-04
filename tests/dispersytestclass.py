@@ -3,20 +3,21 @@ from unittest import TestCase
 # Do not remove the reactor import, even if we aren't using it (nose starts the reactor when importing this)
 from nose.twistedtools import reactor, deferred
 
+
 from twisted.internet.defer import inlineCallbacks, returnValue
-from threading import Thread
+from twisted.internet.threads import blockingCallFromThread
 
 # Kill bootstraping so it doesn't mess up with the tests
 from ..bootstrap import Bootstrap
 Bootstrap.enabled = False
 
-from .debugcommunity.node import DebugNode
-from .debugcommunity.community import DebugCommunity
 
 from ..callback import TwistedCallback
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
 
 import sys
 
@@ -55,24 +56,24 @@ class DispersyTestFunc(TestCase):
             dispersy.stop()
 
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity):
-        nodes = []
-        for _ in range(amount):
-            DispersyTestFunc._thread_counter += 1
-            callback = TwistedCallback("Test-%d" % (self._thread_counter,))
-            callback.attach_exception_handler(self.on_callback_exception)
+        @inlineCallbacks
+        def _create_nodes(amount, store_identity, tunnel, communityclass):
+            nodes = []
+            for _ in range(amount):
+                DispersyTestFunc._thread_counter += 1
+                callback = TwistedCallback("Test-%d" % (self._thread_counter,))
+                callback.attach_exception_handler(self.on_callback_exception)
 
-            dispersy = Dispersy(callback, ManualEnpoint(0), u".", u":memory:")
-            dispersy.start()
+                dispersy = Dispersy(callback, ManualEnpoint(0), u".", u":memory:")
+                dispersy.start()
 
-            self.dispersy_objects.append(dispersy)
+                self.dispersy_objects.append(dispersy)
 
-            @inlineCallbacks
-            def create_node():
                 node = DebugNode(self, dispersy, communityclass, c_master_member=self._mm)
                 yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
-                assert node, "We didn't get a node!"
-                returnValue(node)
 
-            nodes.append(callback.call(create_node))
-            logger.warning("create_nodes, nodes created: %s", nodes)
-        return nodes
+                nodes.append(node)
+            logger.debug("create_nodes, nodes created: %s", nodes)
+            returnValue(nodes)
+
+        return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, communityclass)
