@@ -153,7 +153,7 @@ class Bootstrap(object):
                 ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
                 for (host, port), ip in zip(addresses, ips):
                     if ip:
-                        candidate = BootstrapCandidate((ip, port), False)
+                        candidate = BootstrapCandidate((str(ip), port), False)
                         logger.debug("Resolved %s into %s", host, candidate)
                         self._candidates[(host, port)] = candidate
                         success = True
