@@ -341,20 +341,23 @@ class Community(object):
 
         # Initialize all the candidate iterators
         self._candidates = OrderedDict()
-        
+
         self._walked_candidates = self._iter_category(u'walk')
         self._stumbled_candidates = self._iter_category(u'stumble')
         self._introduced_candidates = self._iter_category(u'intro')
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
-        
+
         self._bootstrap_candidates = dict()
         self._bootstrap_candidates_iterator = self._iter_bootstrap()
         self.update_bootstrap_candidates(self._dispersy.bootstrap_candidates)
-        
+
         self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_candidates))
 
         # statistics...
         self._statistics = CommunityStatistics(self)
+
+        # turn on/off pruning
+        self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
 
     @property
     def candidates(self):
@@ -982,9 +985,8 @@ class Community(object):
         Increments the current global time by one and returns this value.
         @rtype: int or long
         """
-        self._global_time += 1
+        self.update_global_time(self._global_time + 1)
         logger.debug("claiming a new global time value @%d", self._global_time)
-        self._check_for_pruning()
         return self._global_time
 
     def update_global_time(self, global_time):
@@ -994,7 +996,9 @@ class Community(object):
         if global_time > self._global_time:
             logger.debug("updating global time %d -> %d", self._global_time, global_time)
             self._global_time = global_time
-            self._check_for_pruning()
+
+            if self._do_pruning:
+                self._check_for_pruning()
 
     def _check_for_pruning(self):
         """
@@ -1513,7 +1517,7 @@ class Community(object):
         """
         self._bootstrap_candidates.clear()
         for candidate in candidates:
-            self._bootstrap_candidates[candidate.sock_addr] = BootstrapCandidate(candidate.sock_addr, candidate.tunnel) 
+            self._bootstrap_candidates[candidate.sock_addr] = BootstrapCandidate(candidate.sock_addr, candidate.tunnel)
             self._candidates.pop(candidate.sock_addr, None)
 
     def get_candidate_mid(self, mid):
