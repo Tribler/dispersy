@@ -837,7 +837,7 @@ class TwistedCallback(Callback):
         self._thread_ident = None
         self._thread = None
 
-        logger.warning("Obtaining current threads")
+        logger.debug("Obtaining current threads")
         self._thread = current_thread()
         self._thread_ident = get_ident()
 
