@@ -60,6 +60,10 @@ class Endpoint(object):
     def send(self, candidates, packets):
         pass
 
+    @abstractmethod
+    def send_packet(self, candidate, packet):
+        pass
+
     def open(self, dispersy):
         self._dispersy = dispersy
         return True
@@ -68,6 +72,18 @@ class Endpoint(object):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(timeout, float), type(timeout)
         return True
+
+    def log_packet(self, sock_addr, packet, outbound=True):
+        try:
+            name = self._dispersy.convert_packet_to_meta_message(packet, load=False, auto_load=False).name
+        except:
+            name = "???"
+        logger.debug("%30s %s %15s:%-5d %4d bytes", name, '->'if outbound else '<-', sock_addr[0], sock_addr[1], len(packet))
+
+        if outbound:
+            self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
+        else:
+            self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
 
 
 class NullEndpoint(Endpoint):
@@ -86,9 +102,14 @@ class NullEndpoint(Endpoint):
         return self._address
 
     def send(self, candidates, packets):
-        if any(len(packet) > 2**16 - 60 for packet in packets):
+        if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
         self._total_up += sum(len(packet) for packet in packets) * len(candidates)
+
+    def send_packet(self, candidate, packet):
+        if len(packet) > 2 ** 16 - 60:
+            raise RuntimeError("UDP does not support %d byte packets" % len(packet))
+        self._total_up += len(packet)
 
 
 class RawserverEndpoint(Endpoint):
@@ -139,23 +160,12 @@ class RawserverEndpoint(Endpoint):
 
             if logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
-                    try:
-                        name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
-                    except:
-                        name = "???"
-                    logger.debug("%30s <- %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
-                    self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
+                    self.log_packet(sock_addr, data, outbound=False)
 
             self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time()))
 
     def dispersythread_data_came_in(self, packets, timestamp):
         assert self._dispersy, "Should not be called before open(...)"
-        # iterator = ((self._dispersy.get_candidate(sock_addr), data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
-        # self._dispersy.on_incoming_packets([(candidate if candidate else self._dispersy.create_candidate(WalkCandidate, sock_addr, tunnel), data[4:] if tunnel else data)
-        #                                     for candidate, tunnel, sock_addr, data
-        #                                     in iterator],
-        #                                    True,
-        #                                    timestamp)
         iterator = ((data.startswith(TUNNEL_PREFIX), sock_addr, data) for sock_addr, data in packets)
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data[4:] if tunnel else data)
                                             for tunnel, sock_addr, data
@@ -169,30 +179,43 @@ class RawserverEndpoint(Endpoint):
         assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
-        assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
-        if any(len(packet) > 2**16 - 60 for packet in packets):
-            raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
-        self._total_up += sum(len(data) for data in packets) * len(candidates)
-        self._total_send += (len(packets) * len(candidates))
+        send_packet = False
+        for candidate, packet in product(candidates, packets):
+            if self.send_packet(candidate, packet):
+                send_packet = True
 
-        with self._sendqueue_lock:
-            batch = [(candidate.sock_addr, TUNNEL_PREFIX + data if candidate.tunnel else data)
-                     for candidate, data
-                     in product(candidates, packets)]
+        return send_packet
 
-            if len(batch) > 0:
+    def send_packet(self, candidate, packet):
+        assert self._dispersy, "Should not be called before open(...)"
+        assert isinstance(candidate, Candidate), type(candidate)
+        assert isinstance(packet, str), type(packet)
+        assert len(packet) > 0
+        if len(packet) > 2 ** 16 - 60:
+            raise RuntimeError("UDP does not support %d byte packets" % len(packet))
+
+        self._total_up += len(packet)
+        self._total_send += 1
+
+        data = TUNNEL_PREFIX + packet if candidate.tunnel else packet
+
+        try:
+            self._socket.sendto(data, candidate.sock_addr)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                self.log_packet(candidate.sock_addr, data)
+
+        except socket.error:
+            with self._sendqueue_lock:
                 did_have_senqueue = bool(self._sendqueue)
-                self._sendqueue.extend(batch)
+                self._sendqueue.append((candidate.sock_addr, data))
 
-                # If we did not already a sendqueue, then we need to call process_sendqueue in order send these messages
-                if not did_have_senqueue:
-                    self._process_sendqueue()
+            # If we did not have a sendqueue, then we need to call process_sendqueue in order send these messages
+            if not did_have_senqueue:
+                self._process_sendqueue()
 
-                # return True when something has been send
-                return True
-
-        return False
+        return True
 
     def _process_sendqueue(self):
         assert self._dispersy, "Should not be called before start(...)"
@@ -206,15 +229,10 @@ class RawserverEndpoint(Endpoint):
                     sock_addr, data = self._sendqueue[i]
                     try:
                         self._socket.sendto(data, sock_addr)
-                        if logger.isEnabledFor(logging.DEBUG):
-                            try:
-                                name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
-                            except:
-                                name = "???"
-                            logger.debug("%30s -> %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
-                            self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
-
                         index += 1
+
+                        if logger.isEnabledFor(logging.DEBUG):
+                            self.log_packet(sock_addr, data)
 
                     except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
@@ -369,47 +387,43 @@ class TunnelEndpoint(Endpoint):
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets)
         assert all(len(packet) > 0 for packet in packets)
-        if any(len(packet) > 2**16 - 60 for packet in packets):
+        if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
-        self._total_up += sum(len(data) for data in packets) * len(candidates)
-        self._total_send += (len(packets) * len(candidates))
+        send_packet = False
+        for candidate, packet in product(candidates, packets):
+            if self.send_packet(candidate, packet):
+                send_packet = True
 
-        self._swift.splock.acquire()
-        try:
-            for candidate in candidates:
-                for data in packets:
-                    if logger.isEnabledFor(logging.DEBUG):
-                        try:
-                            name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
-                        except:
-                            name = "???"
-                        logger.debug("%30s -> %15s:%-5d %4d bytes", name, candidate.sock_addr[0], candidate.sock_addr[1], len(data))
-                        self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_send, name)
+        return send_packet
 
-                    self._swift.send_tunnel(self._session, candidate.sock_addr, data)
+    def send_packet(self, candidate, packet):
+        assert self._dispersy, "Should not be called before open(...)"
+        assert isinstance(candidate, Candidate), type(candidate)
+        assert isinstance(packet, str), type(packet)
+        assert len(packet) > 0
+        if len(packet) > 2 ** 16 - 60:
+            raise RuntimeError("UDP does not support %d byte packets" % len(packet))
 
-            # return True when something has been send
-            return candidates and packets
+        self._total_up += len(packet)
+        self._total_send += 1
 
-        finally:
-            self._swift.splock.release()
+        with self._swift.splock:
+            self._swift.send_tunnel(self._session, candidate.sock_addr, packet)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            self.log_packet(candidate.sock_addr, packet)
+
+        return True
 
     def i2ithread_data_came_in(self, session, sock_addr, data):
         assert self._dispersy, "Should not be called before open(...)"
-        # assert session == self._session, [session, self._session]
         if logger.isEnabledFor(logging.DEBUG):
-            try:
-                name = self._dispersy.convert_packet_to_meta_message(data, load=False, auto_load=False).name
-            except:
-                name = "???"
-            logger.debug("%30s <- %15s:%-5d %4d bytes", name, sock_addr[0], sock_addr[1], len(data))
-            self._dispersy.statistics.dict_inc(self._dispersy.statistics.endpoint_recv, name)
+            self.log_packet(sock_addr, data, outbound=False)
 
         self._total_down += len(data)
         self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
 
     def dispersythread_data_came_in(self, sock_addr, data, timestamp):
         assert self._dispersy, "Should not be called before open(...)"
-        # candidate = self._dispersy.get_candidate(sock_addr) or self._dispersy.create_candidate(WalkCandidate, sock_addr, True)
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, True), data)], True, timestamp)
