@@ -39,6 +39,21 @@ from .timeline import Timeline
 logger = get_logger(__name__)
 
 
+def register_or_call(callback, func, args=(), kargs={}):
+    if not callback.is_current_thread:
+        callback.register(func, args, kargs)
+    else:
+        func(*args, **kargs)
+
+
+def force_dispersy_thread(func):
+    def helper(*args, **kargs):
+        register_or_call(args[0]._dispersy.callback, func, args, kargs)
+
+    helper.__name__ = func.__name__
+    return helper
+
+
 class SyncCache(object):
 
     def __init__(self, time_low, time_high, modulo, offset, bloom_filter):
