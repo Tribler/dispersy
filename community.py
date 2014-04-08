@@ -1928,8 +1928,8 @@ class Community(object):
                         current_batch.extend(batch)
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
-                        # TODO(emilon): add it to the pending callbacks
                         task_identifier = self._dispersy._callback.register(self._on_batch_cache_timeout, (meta,), delay=meta.batch.max_window)
+                        self._pending_callbacks.append(task_identifier)
                         self._batch_cache[meta] = (task_identifier, timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
@@ -3478,8 +3478,7 @@ class Community(object):
         for message in messages:
             logger.debug("received %s policy changes", len(message.payload.policies))
             for meta, policy in message.payload.policies:
-                # TODO currently choosing the range that changed in a naive way, only using the
-                # lowest global time value
+                # TODO: currently choosing the range that changed in a naive way, only using the lowest global time value
                 if meta in changes:
                     range_ = changes[meta]
                 else:
