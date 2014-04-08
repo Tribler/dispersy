@@ -977,18 +977,19 @@ class TwistedCallback(Callback):
             self.unregister(id_)
             return self.register(call, args, kargs, delay, priority, id_, callback, callback_args, callback_kargs, include_id)
 
-    def unregister(self, id_, cancel=True):
+    def unregister(self, id_):
+        reactor.callFromThread(self._unregister, id_)
+
+    def _unregister(self, id_):
         with self._task_lock:
             if self.has_id_scheduled(id_):
                 tasks = self._current_tasks[id_]
                 del self._current_tasks[id_]
-
-                if cancel:
-                    for call in tasks:
-                        if call[2]:
-                            call[2].close()
-                        elif call[1]:
-                            call[1].cancel()
+                for call in tasks:
+                    if call[2]:
+                        call[2].close()
+                    elif call[1]:
+                        call[1].cancel()
 
     def call(self, call, args=(), kargs={}, priority=0, id_=u"", include_id=False, timeout=0.0, default=None, ignore_thread_check=False):
         if not self._stopping:
