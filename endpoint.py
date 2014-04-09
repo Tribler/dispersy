@@ -354,7 +354,11 @@ class StandaloneEndpoint(RawserverEndpoint):
 
                 finally:
                     if packets:
-                        logger.debug('%d came in, %d bytes in total', len(packets), sum(len(packet) for _, packet in packets))
+                        if logger and logger.debug:
+                            logger.debug('%d came in, %d bytes in total', len(packets), sum(len(packet) for _, packet in packets))
+                        else:
+                            # TODO(emilon): Properly address this.
+                            print >> sys.stderr, "logger object destroyed! (problably during shutdown)"
                         self.data_came_in(packets)
 
 class ManualEnpoint(StandaloneEndpoint):
