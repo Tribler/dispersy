@@ -233,6 +233,7 @@ class TestCandidates(DispersyTestFunc):
         for flags, candidate in zip(all_flags, candidates):
             member = None
             def get_member():
+                global member
                 if not member:
                     member = self._dispersy.get_new_member(u"very-low")
                 return member
@@ -421,6 +422,7 @@ class TestCandidates(DispersyTestFunc):
         now = time()
         got = []
         for candidate in candidates:
+            candidate.associate(self._dispersy.get_new_member(u"very-low"))
             candidate.stumble(now)
             introduce = community.dispersy_get_introduce_candidate(candidate)
             got.append(introduce.sock_addr if introduce else None)
@@ -447,22 +449,13 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_mm_thread
     def test_introduction_probabilities(self):
-        candidates = []
-        for i in range(2):
-            address = ("127.0.0.1", i + 1)
-            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
-            candidates.append(candidate)
-
-        # mark 1 candidate as walk, 1 as stumble
-        now = time()
-        candidates[0].walk(now)
-        candidates[0].walk_response(now)
-        candidates[1].stumble(now)
+        candidates = self.create_candidates(self._community, ["wr", "s"])
+        self.set_timestamps(candidates, ["wr", "s"])
 
         # fetch candidates
         returned_walked_candidate = 0
         expected_walked_range = range(4500, 5500)
-        for i in xrange(10000):
+        for _ in xrange(10000):
             candidate = self._community.dispersy_get_introduce_candidate()
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
 
@@ -470,19 +463,8 @@ class TestCandidates(DispersyTestFunc):
 
     @call_on_mm_thread
     def test_walk_probabilities(self):
-
-        candidates = []
-        for i in range(3):
-            address = ("127.0.0.1", i + 1)
-            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
-            candidates.append(candidate)
-
-        # mark 1 candidate as walk, 1 as stumble
-        now = time()
-        candidates[0].walk(now - CANDIDATE_ELIGIBLE_DELAY)
-        candidates[0].walk_response(now)
-        candidates[1].stumble(now)
-        candidates[2].intro(now)
+        candidates = self.create_candidates(self._community, ["e", "s", "i"])
+        self.set_timestamps(candidates, ["e", "s", "i"])
 
         # fetch candidates
         returned_walked_candidate = 0
