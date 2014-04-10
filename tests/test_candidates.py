@@ -213,8 +213,7 @@ class TestCandidates(DispersyTestFunc):
     def test_mixed_31_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi', 'tesi', 'wrsi'])
     def test_mixed_32_candidates(self): return self.check_candidates(['', 't', 'w', 'e', 's', 'i', 'tw', 'te', 'ts', 'ti', 'wr', 'ws', 'wi', 'es', 'ei', 'si', 'twr', 'tws', 'twi', 'tes', 'tei', 'tsi', 'wrs', 'wri', 'wsi', 'esi', 'twrs', 'twri', 'twsi', 'tesi', 'wrsi', 'twrsi'])
 
-    @staticmethod
-    def create_candidates(community, all_flags):
+    def create_candidates(self, community, all_flags):
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
         def generator():
@@ -222,21 +221,29 @@ class TestCandidates(DispersyTestFunc):
                 address = ("127.0.0.1", port)
                 tunnel = "t" in flags
                 yield community.create_candidate(address, tunnel, address, address, u"unknown")
+
         with community.dispersy.database:
             return list(generator())
 
-    @staticmethod
-    def set_timestamps(candidates, all_flags):
+    def set_timestamps(self, candidates, all_flags):
         assert isinstance(candidates, list)
         assert isinstance(all_flags, list)
         assert all(isinstance(flags, str) for flags in all_flags)
         now = time()
         for flags, candidate in zip(all_flags, candidates):
+            member = None
+            def get_member():
+                if not member:
+                    member = self._dispersy.get_new_member(u"very-low")
+                return member
+
+
             if "w" in flags:
                 # SELF has performed an outgoing walk to CANDIDATE
                 candidate.walk(now)
             if "r" in flags:
                 # SELF has received an incoming walk response from CANDIDATE
+                candidate.associate(get_member())
                 candidate.walk_response(now)
             if "e" in flags:
                 # CANDIDATE_ELIGIBLE_DELAY seconds ago SELF performed a successful walk to CANDIDATE
@@ -244,6 +251,7 @@ class TestCandidates(DispersyTestFunc):
                 candidate.walk_response(now)
             if "s" in flags:
                 # SELF has received an incoming walk request from CANDIDATE
+                candidate.associate(get_member())
                 candidate.stumble(now)
             if "i" in flags:
                 # SELF has received an incoming walk response which introduced CANDIDATE
@@ -251,8 +259,7 @@ class TestCandidates(DispersyTestFunc):
 
         return now
 
-    @staticmethod
-    def select_candidates(candidates, all_flags):
+    def select_candidates(self, candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -262,8 +269,7 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    @staticmethod
-    def select_verified_candidates(candidates, all_flags):
+    def select_verified_candidates(self, candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -273,8 +279,7 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    @staticmethod
-    def select_walk_candidates(candidates, all_flags):
+    def select_walk_candidates(self, candidates, all_flags):
         def filter_func(flags):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
@@ -298,8 +303,7 @@ class TestCandidates(DispersyTestFunc):
 
         return [candidate for flags, candidate in zip(all_flags, candidates) if filter_func(flags)]
 
-    @staticmethod
-    def select_introduce_candidates(candidates, all_flags, exclude_candidate=None):
+    def select_introduce_candidates(self, candidates, all_flags, exclude_candidate=None):
         def filter_func(flags, candidate):
             """
             Returns True when the flags correspond with a Candidate that should be returned by
