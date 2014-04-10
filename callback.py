@@ -978,7 +978,7 @@ class TwistedCallback(Callback):
             return self.register(call, args, kargs, delay, priority, id_, callback, callback_args, callback_kargs, include_id)
 
     def unregister(self, id_):
-        reactor.callFromThread(reactor.callLater, 0, self._unregister, id_)
+        reactor.callFromThread(self._unregister, id_)
 
     def _unregister(self, id_):
         with self._task_lock:
