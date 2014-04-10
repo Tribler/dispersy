@@ -15,6 +15,9 @@ from random import random, Random, randint, shuffle
 from time import time
 
 from twisted.internet import reactor
+from twisted.internet.defer import Deferred
+from twisted.internet.base import DelayedCall
+from twisted.internet.task import LoopingCall
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
@@ -967,9 +970,19 @@ class Community(object):
         """
         Unload a single community.
         """
-        # remove all pending callbacks
-        for id_ in self._pending_callbacks:
-            self._dispersy.callback.unregister(id_)
+        # cancel all pending tasks
+        for task in self._pending_callbacks:
+            if isinstance(task, Deferred) and not task.called:
+                # Have in mind that any deferred in the pending tasks list should have been constructed with a
+                # canceller function.
+                task.cancel()
+            elif isinstance(task, DelayedCall) and not task.active:
+                task.cancel()
+            elif isinstance(task, LoopingCall) and task.running:
+                task.stop()
+            elif isinstance(task, unicode):
+                self._dispersy.callback.unregister(task)
+
         self._pending_callbacks = []
 
         self._dispersy.detach_community(self)
