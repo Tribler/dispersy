@@ -236,13 +236,9 @@ class SyncDistribution(Distribution):
         self._community = message.community
 
         # use cache to avoid database queries
-        assert message.name in message.community.meta_message_cache
         cache = message.community.meta_message_cache[message.name]
-        if not (cache["priority"] == self._priority and cache["direction"] == self.synchronization_direction_value):
-            message.community.dispersy.database.execute(u"UPDATE meta_message SET priority = ?, direction = ? WHERE id = ?",
-                                                        (self._priority, self.synchronization_direction_value, message.database_id))
-            assert message.community.dispersy.database.changes == 1
-
+        cache["priority"] = self._priority
+        cache["direction"] = self.synchronization_direction_value
 
 class FullSyncDistribution(SyncDistribution):
 
@@ -283,16 +279,6 @@ class FullSyncDistribution(SyncDistribution):
     @property
     def enable_sequence_number(self):
         return self._enable_sequence_number
-
-    def setup(self, message):
-        super(FullSyncDistribution, self).setup(message)
-        if self._enable_sequence_number:
-            # obtain the most recent sequence number that we have used
-            current_sequence_number, = message.community.dispersy.database.execute(
-                u"SELECT MAX(sequence) FROM sync WHERE member = ? AND meta_message = ?",
-                (message.community.my_member.database_id, message.database_id)).next()
-
-            self._current_sequence_number = current_sequence_number or 0
 
     def claim_sequence_number(self):
         assert self._enable_sequence_number
