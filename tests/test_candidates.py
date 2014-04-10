@@ -231,13 +231,11 @@ class TestCandidates(DispersyTestFunc):
         assert all(isinstance(flags, str) for flags in all_flags)
         now = time()
         for flags, candidate in zip(all_flags, candidates):
-            member = None
+            member = [None]
             def get_member():
-                global member
-                if not member:
-                    member = self._dispersy.get_new_member(u"very-low")
-                return member
-
+                if not member[0]:
+                    member[0] = self._dispersy.get_new_member(u"very-low")
+                return member[0]
 
             if "w" in flags:
                 # SELF has performed an outgoing walk to CANDIDATE
