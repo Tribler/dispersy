@@ -305,10 +305,6 @@ class LastSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
 
         @property
-        def cluster(self):
-            return self._meta._cluster
-
-        @property
         def history_size(self):
             return self._meta._history_size
 

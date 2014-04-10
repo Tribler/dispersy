@@ -447,10 +447,10 @@ class Message(MetaObject):
             self._database_id = cache["id"]
         else:
             # ensure that there is a database id associated to this meta message name
-            community.dispersy.database.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, 0, 128, 1)",
+            community.dispersy.database.execute(u"INSERT INTO meta_message (community, name, priority, direction) VALUES (?, ?, 128, 1)",
                                                 (community.database_id, name))
             self._database_id = community.dispersy.database.last_insert_rowid
-            community.meta_message_cache[name] = {"id": self._database_id, "cluster": 0, "priority": 128, "direction": 1}
+            community.meta_message_cache[name] = {"id": self._database_id, "priority": 128, "direction": 1}
 
         # allow optional setup methods to initialize the specific parts of the meta message
         self._authentication.setup(self)

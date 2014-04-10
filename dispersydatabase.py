@@ -7,14 +7,13 @@ This module provides an interface to the Dispersy database.
 """
 
 from itertools import groupby
-import sys
 
 from .database import Database
 from .distribution import FullSyncDistribution
 from .logger import get_logger
 logger = get_logger(__name__)
 
-LATEST_VERSION = 20
+LATEST_VERSION = 21
 
 schema = u"""
 CREATE TABLE member(
@@ -37,7 +36,6 @@ CREATE TABLE meta_message(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
  name TEXT,
- cluster INTEGER DEFAULT 0,
  priority INTEGER DEFAULT 128,
  direction INTEGER DEFAULT 1,                           -- direction used when synching (1 for ASC, -1 for DESC)
  UNIQUE(community, name));
@@ -457,6 +455,29 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
 
             new_db_version = 21
+            if database_version < new_db_version:
+                # remove 'cluster' column from meta_message table
+                logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                self.executescript(u"""
+CREATE TABLE meta_message_new(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ community INTEGER REFERENCES community(id),
+ name TEXT,
+ priority INTEGER DEFAULT 128,
+ direction INTEGER DEFAULT 1,                           -- direction used when synching (1 for ASC, -1 for DESC)
+ UNIQUE(community, name));
+
+INSERT INTO meta_message_new(id, community, name, priority, direction)
+  SELECT id, community, name, priority, direction FROM meta_message ORDER BY id;
+
+DROP TABLE meta_message;
+ALTER TABLE meta_message_new RENAME TO meta_message;
+
+UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
+                self.commit()
+                logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
+
+            new_db_version = 22
             if database_version < new_db_version:
                 # there is no version new_db_version yet...
                 # logger.debug("upgrade database %d -> %d", database_version, new_db_version)

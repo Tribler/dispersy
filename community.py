@@ -20,7 +20,7 @@ from .cache import (SignatureRequestCache, IntroductionRequestCache, MissingMemb
                     MissingLastMessageCache, MissingProofCache, MissingSequenceOverviewCache, MissingSequenceCache)
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
-from .decorator import documentation, runtime_duration_warning, attach_runtime_statistics
+from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .logger import get_logger, deprecated
@@ -35,7 +35,6 @@ from .requestcache import RequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-from authentication import DoubleMemberAuthentication
 
 
 from collections import OrderedDict
@@ -323,8 +322,8 @@ class Community(object):
 
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
-        for database_id, name, cluster, priority, direction in self._dispersy.database.execute(u"SELECT id, name, cluster, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
-            self.meta_message_cache[name] = {"id": database_id, "cluster": cluster, "priority": priority, "direction": direction}
+        for database_id, name, priority, direction in self._dispersy.database.execute(u"SELECT id, name, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
+            self.meta_message_cache[name] = {"id": database_id, "priority": priority, "direction": direction}
         # define all available messages
         self._meta_messages = {}
         self._initialize_meta_messages()

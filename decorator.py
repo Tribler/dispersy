@@ -1,4 +1,3 @@
-from atexit import register as atexit_register
 from cProfile import Profile
 from collections import defaultdict
 from functools import wraps

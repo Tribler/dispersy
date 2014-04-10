@@ -3,7 +3,7 @@ from collections import defaultdict
 from time import time
 from threading import RLock
 
-from .decorator import attach_runtime_statistics, _runtime_statistics
+from .decorator import _runtime_statistics
 
 class Statistics(object):
 
