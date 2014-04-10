@@ -322,8 +322,8 @@ class Community(object):
 
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
-        for database_id, name, cluster, priority, direction in self._dispersy.database.execute(u"SELECT id, name, cluster, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
-            self.meta_message_cache[name] = {"id": database_id, "cluster": cluster, "priority": priority, "direction": direction}
+        for database_id, name, priority, direction in self._dispersy.database.execute(u"SELECT id, name, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
+            self.meta_message_cache[name] = {"id": database_id, "priority": priority, "direction": direction}
         # define all available messages
         self._meta_messages = {}
         self._initialize_meta_messages()
