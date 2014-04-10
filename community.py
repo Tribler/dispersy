@@ -20,7 +20,7 @@ from .cache import (SignatureRequestCache, IntroductionRequestCache, MissingMemb
                     MissingLastMessageCache, MissingProofCache, MissingSequenceOverviewCache, MissingSequenceCache)
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
-from .decorator import documentation, runtime_duration_warning, attach_runtime_statistics
+from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .logger import get_logger, deprecated
@@ -35,7 +35,6 @@ from .requestcache import RequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-from authentication import DoubleMemberAuthentication
 
 
 from collections import OrderedDict

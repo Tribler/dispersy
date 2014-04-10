@@ -7,7 +7,6 @@ This module provides an interface to the Dispersy database.
 """
 
 from itertools import groupby
-import sys
 
 from .database import Database
 from .distribution import FullSyncDistribution

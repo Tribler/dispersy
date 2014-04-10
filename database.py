@@ -7,7 +7,7 @@ This module provides basic database functionalty and simple version control.
 """
 
 from abc import ABCMeta, abstractmethod
-from sqlite3 import Connection, Error
+from sqlite3 import Connection
 import logging
 import sys
 import thread

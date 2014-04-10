@@ -1,5 +1,3 @@
-from time import time
-
 from .logger import get_logger
 from .requestcache import Cache, NumberCache
 
