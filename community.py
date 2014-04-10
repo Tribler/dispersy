@@ -322,12 +322,39 @@ class Community(object):
 
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
-        for database_id, name, priority, direction in self._dispersy.database.execute(u"SELECT id, name, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
-            self.meta_message_cache[name] = {"id": database_id, "priority": priority, "direction": direction}
         # define all available messages
         self._meta_messages = {}
         self._initialize_meta_messages()
-        # cleanup pre-fetched values
+
+        # we're only interrested in the meta_message, filter the meta_message_cache
+        for name in self.meta_message_cache.keys():
+            if name not in self._meta_messages:
+                del self.meta_message_cache[name]
+
+        # batched insert
+        update_list = []
+        for database_id, name, priority, direction in self._dispersy.database.execute(u"SELECT id, name, priority, direction FROM meta_message WHERE community = ?", (self._database_id,)):
+            meta_message_info = self.meta_message_cache.get(name)
+            if meta_message_info:
+                if priority != meta_message_info["priority"] or direction != meta_message_info["direction"]:
+                    update_list.append((priority, direction, database_id))
+
+                self._meta_messages[name]._database_id = database_id
+                del self.meta_message_cache[name]
+
+        if update_list:
+            self.dispersy.database.executemany(u"UPDATE meta_message SET priority = ?, direction = ? WHERE id = ?",
+                update_list)
+
+        if self.meta_message_cache:
+            insert_list = []
+            for name, data in self.meta_message_cache.iteritems():
+                insert_list.append((self.database_id, name, data["priority"], data["direction"]))
+            self.dispersy.database.executemany(u"INSERT INTO meta_message (community, name, priority, direction) VALUES (?, ?, ?, ?)",
+                insert_list)
+
+            for database_id, name in self._dispersy.database.execute(u"SELECT id, name FROM meta_message WHERE community = ?", (self._database_id,)):
+                self._meta_messages[name]._database_id = database_id        # cleanup pre-fetched values
         self.meta_message_cache = None
 
         # define all available conversions
@@ -346,6 +373,12 @@ class Community(object):
         self._acceptable_global_time_deadline = 0.0
         logger.debug("global time:   %d", self._global_time)
 
+        # the sequence numbers
+
+        for current_sequence_number, name in self._dispersy.database.execute(u"SELECT MAX(sync.sequence), meta_message.name FROM sync, meta_message WHERE sync.meta_message = meta_message.id AND sync.member = ? AND meta_message.community = ? GROUP BY meta_message.name", (self._my_member.database_id, self.database_id)):
+            if current_sequence_number:
+                self._meta_messages[name]._current_sequence_number = current_sequence_number
+
         # sync range bloom filters
         self._sync_cache = None
         self._sync_cache_skip_count = 0
@@ -361,7 +394,7 @@ class Community(object):
         self._initialize_timeline()
 
         # random seed, used for sync range
-        self._random = Random(self._cid)
+        self._random = Random()
         self._nrsyncpackets = 0
 
         # Initialize all the candidate iterators
