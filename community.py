@@ -14,6 +14,8 @@ from math import ceil
 from random import random, Random, randint, shuffle
 from time import time
 
+from twisted.internet import reactor
+
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
@@ -1924,13 +1926,13 @@ class Community(object):
                          for candidate, packet in cur_packets]
                 if meta.batch.enabled and cache:
                     if meta in self._batch_cache:
-                        task_identifier, current_timestamp, current_batch = self._batch_cache[meta]
+                        _, _, current_batch = self._batch_cache[meta]
                         current_batch.extend(batch)
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
-                        task_identifier = self._dispersy._callback.register(self._on_batch_cache_timeout, (meta,), delay=meta.batch.max_window)
-                        self._pending_callbacks.append(task_identifier)
-                        self._batch_cache[meta] = (task_identifier, timestamp, batch)
+                        delayed_call = reactor.callLater(meta.batch.max_window, self._process_message_batch, meta)
+                        self._pending_callbacks.append(delayed_call)
+                        self._batch_cache[meta] = (delayed_call, timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
@@ -1942,18 +1944,22 @@ class Community(object):
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
-    def _on_batch_cache_timeout(self, meta):
+    def _process_message_batch(self, meta):
         """
-        Start processing a batch of messages once the cache timeout occurs.
+        Start processing a batch of messages.
 
-        This method is called meta.batch.max_window seconds after the first message in this batch
-        arrived.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
+        This method is called meta.batch.max_window seconds after the first message in this batch arrived or when
+        flushing all the batches.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
         Hopefully the delay caused the batch to collect as many messages as possible.
+
         """
         assert isinstance(meta, Message)
         assert meta in self._batch_cache
 
-        _, _, batch = self._batch_cache.pop(meta)
+        delayed_call, _, batch = self._batch_cache.pop(meta)
+        self._pending_callbacks.remove(delayed_call)
+        if not delayed_call.called:
+            delayed_call.cancel()
         logger.debug("processing %sx %s batched messages", len(batch), meta.name)
 
         return self._on_batch_cache(meta, batch)
@@ -2006,8 +2012,9 @@ class Community(object):
         Remove all batches currently scheduled.
         """
         # remove any items that are left in the cache
-        for task_identifier, _, _ in self._batch_cache.itervalues():
-            self._dispersy._callback.unregister(task_identifier)
+        for delayed_call, _, _ in self._batch_cache.itervalues():
+            if not delayed_call.called:
+                delayed_call.cancel()
         self._batch_cache.clear()
 
     def flush_batch_cache(self):
@@ -2016,10 +2023,10 @@ class Community(object):
         """
         flush_list = [(meta, tup) for meta, tup in
                       self._batch_cache.iteritems() if isinstance(meta.distribution, SyncDistribution)]
-        for meta, (task_identifier, timestamp, batch) in flush_list:
-            logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, task_identifier)
-            self._dispersy._callback.unregister(task_identifier)
-            self._on_batch_cache_timeout(meta)
+
+        for meta, (delayed_call, timestamp, batch) in flush_list:
+            logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, delayed_call)
+            self._process_message_batch(meta)
 
     def on_messages(self, messages):
         """
