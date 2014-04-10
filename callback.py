@@ -929,13 +929,13 @@ class TwistedCallback(Callback):
             with self._task_lock:
                 id_ = self.generate_id(id_)
 
-            reactor.callFromThread(self._register, id_, kargs, callback_args, args, delay, callback, call, include_id, callback_kargs, event, container)
+            reactor.callFromThread(self._register, call, args, kargs, delay, callback_args,  id_, callback, callback_kargs, event, container)
             return id_
 
-    def _register(self, id_, kargs, callback_args, args, delay, callback, call, include_id, callback_kargs, event, container):
+    def _register(self, call, args, kargs, delay, callback_args,  id_=u"", callback=None, callback_kargs=None, event=None, container=None):
         assert isinstance(id_, unicode), id_
         if not self._stopping:
-            d = deferLater(reactor, delay, self._wrapped_call, id_, call, args + (id_,) if include_id else args, kargs or {})
+            d = deferLater(reactor, delay, self._wrapped_call, id_, call, args, kargs or {})
 
             self._current_tasks[id_].append([time() + delay, d, None])
 
@@ -1007,7 +1007,7 @@ class TwistedCallback(Callback):
 
                 container = [default, None]
                 event = Event()
-                reactor.callFromThread(self._register, id_, kargs, tuple(), args, 0, None, call, include_id, {}, event, container)
+                reactor.callFromThread(self._register, call, args, kargs, 0, None, id_, event=event, container=container)
 
                 pre_time = time()
                 event.wait(None if timeout == 0.0 else timeout)
