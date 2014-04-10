@@ -247,6 +247,7 @@ class TestCandidates(DispersyTestFunc):
                 candidate.walk_response(now)
             if "e" in flags:
                 # CANDIDATE_ELIGIBLE_DELAY seconds ago SELF performed a successful walk to CANDIDATE
+                candidate.associate(get_member())
                 candidate.walk(now - CANDIDATE_ELIGIBLE_DELAY)
                 candidate.walk_response(now)
             if "s" in flags:
