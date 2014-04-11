@@ -409,8 +409,6 @@ class Community(object):
         self._bootstrap_candidates_iterator = self._iter_bootstrap()
         self.update_bootstrap_candidates(self._dispersy.bootstrap_candidates)
 
-        self._pending_callbacks.append(self._dispersy.callback.register(self._periodically_cleanup_candidates))
-
         # statistics...
         self._statistics = CommunityStatistics(self)
 
