@@ -375,8 +375,7 @@ ALTER TABLE member RENAME TO old_member;
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
- public_key BLOB,                               -- member public key
- );
+ public_key BLOB);                               -- member public key
 CREATE INDEX member_mid_index ON member(mid);
 -- fill new member table with old data
 INSERT INTO member (id, mid, public_key) SELECT id, mid, public_key FROM old_member;
@@ -395,22 +394,22 @@ UPDATE option SET value = '18' WHERE key = 'database_version';
                 # In version 19, we move the private key to member, as it doesn't improve anything and it allows us to
                 # actually simplify the code.
                 logger.debug("upgrade database %d -> %d", database_version, 19)
+
                 self.executescript(u"""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
 ALTER TABLE member RENAME TO old_member;
 -- create new member table
-CREATE TABLE member(
+ CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
- public_key BLOB                                -- member public key
+ public_key BLOB,                               -- member public key
  private_key BLOB);                             -- member private key
 CREATE INDEX member_mid_index ON member(mid);
-
 -- fill new member table with old data
 INSERT INTO member (id, mid, public_key, private_key)
                 SELECT id, mid, public_key, private_key.private_key FROM old_member
-                JOIN private_key ON private_key.member = member.id;
+                JOIN private_key ON private_key.member = old_member.id;
 -- remove old member table
 DROP TABLE old_member;
 -- remove table private_key
@@ -426,31 +425,31 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 # Let's store the sequence numbers in the database instead of quessing
                 logger.debug("upgrade database %d -> %d", database_version, new_db_version)
                 self.executescript(u"""
-                DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
-                DROP INDEX IF EXISTS sync_meta_message_member;
+DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
+DROP INDEX IF EXISTS sync_meta_message_member;
 
-                ALTER TABLE sync RENAME TO old_sync;
+ALTER TABLE sync RENAME TO old_sync;
+CREATE TABLE sync(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    community INTEGER REFERENCES community(id),
+    member INTEGER REFERENCES member(id),                  -- the creator of the message
+    global_time INTEGER,
+    meta_message INTEGER REFERENCES meta_message(id),
+    undone INTEGER DEFAULT 0,
+    packet BLOB,
+    sequence INTEGER,
+    UNIQUE(community, member, global_time, sequence));
 
-                CREATE TABLE sync(
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    community INTEGER REFERENCES community(id),
-                    member INTEGER REFERENCES member(id),                  -- the creator of the message
-                    global_time INTEGER,
-                    meta_message INTEGER REFERENCES meta_message(id),
-                    undone INTEGER DEFAULT 0,
-                    packet BLOB,
-                    sequence INTEGER,
-                    UNIQUE(community, member, global_time, sequence));
+CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
+CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
 
-                CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, undone, global_time);
-                CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
+INSERT INTO sync  (id, community, member, global_time, meta_message, undone, packet, sequence)
+    SELECT id, community, member, global_time, meta_message, undone, packet, NULL from old_sync;
 
-                INSERT INTO sync  (id, community, member, global_time, meta_message, undone, packet, sequence)
-                    SELECT id, community, member, global_time, meta_message, undone, packet, NULL from old_sync
+DROP TABLE IF EXISTS old_sync;
 
-                DROP TABLE IF EXISTS old_sync;
-
-                UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
+UPDATE option SET value = '20' WHERE key = 'database_version';
+""")
                 self.commit()
                 logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
 
@@ -473,7 +472,7 @@ INSERT INTO meta_message_new(id, community, name, priority, direction)
 DROP TABLE meta_message;
 ALTER TABLE meta_message_new RENAME TO meta_message;
 
-UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
+UPDATE option SET value = '21' WHERE key = 'database_version';""")
                 self.commit()
                 logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
 
@@ -481,7 +480,7 @@ UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,
             if database_version < new_db_version:
                 # there is no version new_db_version yet...
                 # logger.debug("upgrade database %d -> %d", database_version, new_db_version)
-                # self.executescript(u"""UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,))
+                # self.executescript(u"""UPDATE option SET value = '22' WHERE key = 'database_version';""")
                 # self.commit()
                 # logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
                 pass
@@ -642,14 +641,18 @@ UPDATE option SET value = ? WHERE key = 'database_version';""", (new_db_version,
                     last_sequence_number = 0
                     for packet_id, _, packet in iterator:
                         message = convert_packet_to_message(str(packet), community, verify=False)
-                        assert message.authentication.member.database_id == member_id
-                        if (last_sequence_number + 1 == message.distribution.sequence_number and
-                                last_global_time < message.distribution.global_time):
-                            # message is OK
-                            sequence_updates.append((message.distribution.sequence_number, packet_id))
-                            last_sequence_number += 1
-                            last_global_time = message.distribution.global_time
+                        if message:
+                            assert message.authentication.member.database_id == member_id
+                            if (last_sequence_number + 1 == message.distribution.sequence_number and
+                                    last_global_time < message.distribution.global_time):
+                                # message is OK
+                                sequence_updates.append((message.distribution.sequence_number, packet_id))
+                                last_sequence_number += 1
+                                last_global_time = message.distribution.global_time
 
+                            else:
+                                deletes.append((packet_id,))
+                                logger.debug("delete id:%d", packet_id)
                         else:
                             deletes.append((packet_id,))
                             logger.debug("delete id:%d", packet_id)
