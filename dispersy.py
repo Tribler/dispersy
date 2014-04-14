@@ -55,6 +55,7 @@ from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
+from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
@@ -970,35 +971,18 @@ class Dispersy(object):
         # check self._lan_address and self._wan_address
         #
 
-        # change when new vote count is equal or higher than old address vote count
-        if len(self._wan_address_votes[address]) >= len(self._wan_address_votes.get(self._wan_address, ())) and\
-                set_wan_address(address):
-
-            # reassessing our LAN address, perhaps we are running on a roaming device
-            self._local_interfaces = list(self._get_interface_addresses())
-            interface = self._guess_lan_address(self._local_interfaces)
-            lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
-            if not self.is_valid_address(lan_address):
-                lan_address = (self._wan_address[0], self._lan_address[1])
-            set_lan_address(lan_address)
-
-            # TODO security threat!  we should never remove bootstrap candidates, for they are our
-            # safety net our address may not be a bootstrap address
-            if self._wan_address in self._bootstrap_candidates:
-                del self._bootstrap_candidates[self._wan_address]
-            if self._lan_address in self._bootstrap_candidates:
-                del self._bootstrap_candidates[self._lan_address]
-
-            # TODO security threat!  we should not remove candidates based on the votes we obtain,
-            # this can be easily misused.  leaving this code to prevent a node talking with itself
-            #
-            # our address may not be a candidate
-            for community in self._communities.itervalues():
-                community.candidates.pop(self._wan_address, None)
-                community.candidates.pop(self._lan_address, None)
-
-                for candidate in [candidate for candidate in community.candidates.itervalues() if candidate.wan_address == self._wan_address]:
-                    community.candidates.pop(candidate.sock_addr, None)
+        # change when new vote count is higher than old address vote count (don't use equal to avoid
+        # alternating between two equally voted addresses)
+        if len(self._wan_address_votes[address]) > len(self._wan_address_votes.get(self._wan_address, ())):
+            if set_wan_address(address):
+                # refresh our LAN address(es), perhaps we are running on a roaming device
+                self._local_interfaces = list(self._get_interface_addresses())
+                interface = self._guess_lan_address(self._local_interfaces)
+                lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
+                if not self.is_valid_address(lan_address):
+                    lan_address = (self._wan_address[0], self._lan_address[1])
+                set_lan_address(lan_address)
+                self._remove_own_address_from_candidates()
 
         #
         # check self._connection_type
@@ -1010,15 +994,25 @@ class Dispersy(object):
             set_connection_type(u"public")
 
         elif len(self._wan_address_votes) > 1:
-            # external peers are reporting multiple WAN addresses (most likely the same IP with
-            # different port numbers)
-            set_connection_type(u"symmetric-NAT")
-
+            for voters in self._wan_address_votes.itervalues():
+                if len(set([address[0] for address in voters])) > 1:
+                    # A single NAT mapping has more than one destination IP hence
+                    # it cannot be a symmetric NAT
+                    set_connection_type(u"unknown")
+                    break
+            else:
+                # Our nat created a new mapping for each destination IP
+                set_connection_type(u"symmetric-NAT")
         else:
-            # it is possible that, for some time after the WAN address changes, we will believe that
-            # the connection type is symmetric NAT.  once votes have been pruned we may find that we
-            # are no longer behind a symmetric-NAT
             set_connection_type(u"unknown")
+
+    def _remove_own_address_from_candidates(self):
+        """
+        Remove our lan/wan adresses from all communities candidate lists.
+        """
+        for community in self._communities.itervalues():
+            community.remove_candidate(self._wan_address)
+            community.remove_candidate(self._lan_address)
 
     def _is_duplicate_sync_message(self, message):
         """
@@ -1109,6 +1103,7 @@ class Dispersy(object):
             # this message is a duplicate
             return True
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution full_sync")
     def _check_full_sync_distribution_batch(self, messages):
         """
         Ensure that we do not yet have the messages and that, if sequence numbers are enabled, we
@@ -1251,6 +1246,7 @@ class Dispersy(object):
                 # we accept this message
                 yield message
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution last_sync")
     def _check_last_sync_distribution_batch(self, messages):
         """
         Check that the messages do not violate any database consistency rules.
@@ -1452,7 +1448,14 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # refuse messages that have been pruned (or soon will be)
         messages = [DropMessage(message, "message has been pruned") if isinstance(message, Message.Implementation) and not message.distribution.pruning.is_active() else message for message in messages]
 
-        if isinstance(meta.authentication, MemberAuthentication):
+        # for meta data messages
+        if meta.distribution.custom_callback:
+            unique = set()
+            times = {}
+            messages = [message if isinstance(message, DropMessage) else meta.distribution.custom_callback[0](unique, times, message) for message in messages]
+
+        # default behaviour
+        elif isinstance(meta.authentication, MemberAuthentication):
             # a message is considered unique when (creator, global-time), i.r. (authentication.member,
             # distribution.global_time), is unique.  UNIQUE is used in the check_member_and_global_time
             # function
@@ -1470,6 +1473,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
         return messages
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution direct")
     def _check_direct_distribution_batch(self, messages):
         """
         Returns the messages in the correct processing order.
@@ -1647,7 +1651,14 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
                 self._statistics.drop_count += 1
+            except DelayPacket as delay:
+                logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
+                if delay.create_request(candidate, packet):
+                    self._statistics.delay_send += 1
+                self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
+                self._statistics.delay_count += 1
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
         """
         Store a message in the database.
@@ -1733,28 +1744,34 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         if isinstance(meta.distribution, LastSyncDistribution):
             # delete packets that have become obsolete
             items = set()
-            if is_double_member_authentication:
-                order = lambda member1, member2: (member1, member2) if member1 < member2 else (member2, member1)
-                for member1, member2 in set(order(message.authentication.members[0].database_id, message.authentication.members[1].database_id) for message in messages):
-                    assert member1 < member2, [member1, member2]
-                    all_items = list(self._database.execute(u"""
+            # handle metadata message
+            if meta.distribution.custom_callback:
+                items = meta.distribution.custom_callback[1](messages)
+
+            # default behaviour
+            else:
+                if is_double_member_authentication:
+                    order = lambda member1, member2: (member1, member2) if member1 < member2 else (member2, member1)
+                    for member1, member2 in set(order(message.authentication.members[0].database_id, message.authentication.members[1].database_id) for message in messages):
+                        assert member1 < member2, [member1, member2]
+                        all_items = list(self._database.execute(u"""
 SELECT sync.id, sync.global_time
 FROM sync
 JOIN double_signed_sync ON double_signed_sync.sync = sync.id
 WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed_sync.member2 = ?
 ORDER BY sync.global_time, sync.packet""", (meta.database_id, member1, member2)))
-                    if len(all_items) > meta.distribution.history_size:
-                        items.update(all_items[:len(all_items) - meta.distribution.history_size])
+                        if len(all_items) > meta.distribution.history_size:
+                            items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
-            else:
-                for member_database_id in set(message.authentication.member.database_id for message in messages):
-                    all_items = list(self._database.execute(u"""
+                else:
+                    for member_database_id in set(message.authentication.member.database_id for message in messages):
+                        all_items = list(self._database.execute(u"""
 SELECT id, global_time
 FROM sync
 WHERE meta_message = ? AND member = ?
 ORDER BY global_time""", (meta.database_id, member_database_id)))
-                    if len(all_items) > meta.distribution.history_size:
-                        items.update(all_items[:len(all_items) - meta.distribution.history_size])
+                        if len(all_items) > meta.distribution.history_size:
+                            items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
             if items:
                 self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
@@ -1769,10 +1786,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
             # 12/10/11 Boudewijn: verify that we do not have to many packets in the database
             if __debug__:
-                if not is_double_member_authentication:
+                if not is_double_member_authentication and meta.distribution.custom_callback is None:
                     for message in messages:
                         history_size, = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
-                        assert history_size <= message.distribution.history_size, [count, message.distribution.history_size, message.authentication.member.database_id]
+                        assert history_size <= message.distribution.history_size, [history_size, message.distribution.history_size, message.authentication.member.database_id]
 
         # update the global time
         meta.community.update_global_time(highest_global_time)
@@ -1874,13 +1891,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._store(messages)
 
         if update:
-            try:
-                messages[0].handle_callback(possibly_messages)
-            except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
-                raise
-            except:
-                print_exc()
-                logger.exception("exception during handle_callback for %s", messages[0].name)
+            if self._update(possibly_messages) == False:
                 return False
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.
@@ -1900,6 +1911,21 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return True
 
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
+    def _update(self, messages):
+        """
+        Call the handle callback of a list of messages of the same type.
+        """
+        try:
+            messages[0].handle_callback(messages)
+            return True
+        except (SystemExit, KeyboardInterrupt, GeneratorExit, AssertionError):
+            raise
+        except:
+            logger.exception("exception during handle_callback for %s", messages[0].name)
+            return False
+
+    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _forward(self, messages):
         """
         Queue a sequence of messages to be sent to other members.
@@ -2195,6 +2221,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 # ensure that we have only history-size messages per member
                 #
                 if isinstance(meta.distribution, LastSyncDistribution):
+                    if meta.distribution.custom_callback:
+                        continue
+
                     if isinstance(meta.authentication, MemberAuthentication):
                         counter = 0
                         counter_member_id = 0

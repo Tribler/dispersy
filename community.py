@@ -416,6 +416,9 @@ class Community(object):
         if self.dispersy_enable_candidate_walker:
             self._dispersy.callback.register(self.take_step)
 
+        # turn on/off pruning
+        self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
+
     @property
     def candidates(self):
         """
@@ -1025,9 +1028,8 @@ class Community(object):
         Increments the current global time by one and returns this value.
         @rtype: int or long
         """
-        self._global_time += 1
+        self.update_global_time(self._global_time + 1)
         logger.debug("claiming a new global time value @%d", self._global_time)
-        self._check_for_pruning()
         return self._global_time
 
     def update_global_time(self, global_time):
@@ -1037,7 +1039,9 @@ class Community(object):
         if global_time > self._global_time:
             logger.debug("updating global time %d -> %d", self._global_time, global_time)
             self._global_time = global_time
-            self._check_for_pruning()
+
+            if self._do_pruning:
+                self._check_for_pruning()
 
     def _check_for_pruning(self):
         """
@@ -1428,12 +1432,8 @@ class Community(object):
                     logger.debug("using existing candidate %s at different port %s %s", candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
 
                     if replace:
-                        # remove vote under previous key
-                        self._dispersy.wan_address_unvote(candidate)
-
-                        # replace candidate
-                        del self._candidates[candidate.sock_addr]
-                        candidate = self.create_or_update_walkcandidate(sock_addr, candidate.lan_address, candidate.wan_address, candidate.tunnel, candidate.connection_type)
+                        self.remove_candidate(candidate.sock_addr)
+                        self._candidates[sock_addr] = candidate = self.create_or_update_walkcandidate(sock_addr, candidate.lan_address, candidate.wan_address, candidate.tunnel, candidate.connection_type)
                     break
 
             else:
@@ -1441,6 +1441,14 @@ class Community(object):
                 candidate = None
 
         return candidate
+
+    def remove_candidate(self, sock_addr):
+        # replace candidate
+        candidate = self._candidates.pop(sock_addr, None)
+
+        if candidate:
+            # remove vote under previous key
+            self._dispersy.wan_address_unvote(candidate)
 
     @deprecated("Use create_or_update_walkcandidate() instead")
     def get_walkcandidate(self, message):
@@ -2473,24 +2481,26 @@ class Community(object):
                         else:
                             logger.warning("Someone else created a duplicate undo-own message")
 
-                        yield message
                         # Reply to this peer with a higher (or equally) ranked message in case we have one
                         if db_msg.packet <= message.packet:
-                            # the sender apparently does not have the higher dispersy-undo message, lets give it back
+                            message.payload.process_undo = False
+                            yield message
+                            # the sender apparently does not have the lower dispersy-undo message, lets give it back
                             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
                             self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
 
                             yield DispersyDuplicatedUndo(db_msg, message)
                             break
                         else:
-                            # The new message is binary higher. As we cannot delete the old one, what we do
+                            # The new message is binary lower. As we cannot delete the old one, what we do
                             # instead, is we store both and mark the message we already have as undone by the new one.
                             # To accomplish this, we yield a DispersyDuplicatedUndo so on_undo() can mark the other
                             # message as undone by the newly reveived message.
+                            yield message
                             yield DispersyDuplicatedUndo(message, db_msg)
                             break
                 else:
-                    # did not break, hence, the message is not malicious.  More than one member undid this message.
+                    # did not break, hence, the message hasn't been undone more than once.
                     yield message
 
                 # continue.  either the message was malicious or it has already been yielded
@@ -2509,12 +2519,13 @@ class Community(object):
         parameters = []
         for message in messages:
             if isinstance(message, DispersyDuplicatedUndo):
-                # Flag the lower undo message as undone by the higher one
-                parameters.append((message.high_message.packet_id,
+                # Flag the higher undo message as undone by the lower one
+                parameters.append((message.low_message.packet_id,
                                    self.database_id,
-                                   message.low_message.authentication.member.database_id,
-                                   message.low_message.distribution.global_time))
-            elif isinstance(message, Message.Implementation):
+                                   message.high_message.authentication.member.database_id,
+                                   message.high_message.distribution.global_time))
+
+            elif isinstance(message, Message.Implementation) and message.payload.process_undo:
                 # That's a normal undo message
                 parameters.append((message.packet_id, self.database_id, message.payload.member.database_id, message.payload.global_time))
                 real_messages.append(message)

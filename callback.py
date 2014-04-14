@@ -15,7 +15,7 @@ except ImportError:
     def set_name(_):
         pass
 
-from .decorator import attach_profiler
+from .decorator import attach_profiler, attach_runtime_statistics
 from .logger import get_logger
 logger = get_logger(__name__)
 
@@ -127,7 +127,6 @@ class Callback(object):
             def must_close(callback):
                 assert callback.is_finished, self
             atexit_register(must_close, self)
-            self._debug_call_name = None
 
     def __str__(self):
         return "<%s %s %d>" % (self.__class__.__name__, self._name, self._thread_ident)
@@ -295,24 +294,23 @@ class Callback(object):
                 self._id += 1
                 id_ = u"dispersy-#%d" % self._id
 
+            new_task_deadline = time() + delay
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
-                          time(),
+                          new_task_deadline,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
             else:
                 heappush(self._requests,
-                         (delay + time(),
+                         (new_task_deadline,
                           - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
-            # wakeup if sleeping
-            if not self._event_is_set():
-                self._event_set()
+            self._wake_up_if(new_task_deadline)
             return id_
 
     def persistent_register(self, id_, call, args=(), kargs=None, delay=0.0, priority=0, callback=None, callback_args=(), callback_kargs=None, include_id=False):
@@ -357,25 +355,24 @@ class Callback(object):
 
                 else:
                     # not found in expired
+                    new_task_deadline = time() + delay
                     if delay <= 0.0:
                         heappush(self._expired,
                                  (-priority,
-                                  time(),
+                                  new_task_deadline,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
                     else:
                         heappush(self._requests,
-                                 (delay + time(),
+                                 (new_task_deadline,
                                   - priority,
                                   id_,
                                   (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                                   None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
-                    # wakeup if sleeping
-                    if not self._event_is_set():
-                        self._event_set()
+                    self._wake_up_if(new_task_deadline)
 
             return id_
 
@@ -412,26 +409,32 @@ class Callback(object):
                     logger.debug("unregistered %s from _expired", id_)
 
             # register
+            new_task_deadline = time() + delay
             if delay <= 0.0:
                 heappush(self._expired,
                          (-priority,
-                          time(),
+                          new_task_deadline,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
 
             else:
                 heappush(self._requests,
-                         (delay + time(),
+                         (new_task_deadline,
                           - priority,
                           id_,
                           (call, args + (id_,) if include_id else args, {} if kargs is None else kargs),
                           None if callback is None else (callback, callback_args, {} if callback_kargs is None else callback_kargs)))
-
-            # wakeup if sleeping
+                
+            self._wake_up_if(new_task_deadline)
+            return id_
+        
+    def _wake_up_if(self, new_task_deadline):
+        # wakeup if sleeping, if prev_deadline is larger -> if no requests then we scheduled an expired task 
+        first_request_deadline = self._requests[0][0] if self._requests else new_task_deadline + 1
+        if new_task_deadline <= first_request_deadline: 
             if not self._event_is_set():
                 self._event_set()
-            return id_
 
     def unregister(self, id_):
         """
@@ -599,10 +602,8 @@ class Callback(object):
         self._thread.join(None if timeout == 0.0 else timeout)
         return self.is_finished
 
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")    
     def _one_task(self):
-        if __debug__:
-            time_since_expired = 0
-
         actual_time = time()
 
         with self._lock:
@@ -619,16 +620,14 @@ class Callback(object):
                 heappush(self._expired, (priority, deadline, root_id, call, callback))
 
             if self._expired:
-                if __debug__ and len(self._expired) > 10:
-                    if not time_since_expired:
-                        time_since_expired = actual_time
-
                 # we need to handle the next call in line
                 priority, deadline, root_id, call, callback = heappop(self._expired)
                 wait = 0.0
 
                 if __debug__:
-                    self._debug_call_name = self._debug_call_to_string(call)
+                    debug_call_name = self._debug_call_to_string(call)
+                else:
+                    debug_call_name = None
 
                 # ignore removed tasks
                 if call is None:
@@ -636,15 +635,12 @@ class Callback(object):
                     return True
 
             else:
+                debug_call_name = 'Nothing to handle'
+                
                 # there is nothing to handle
                 wait = self._requests[0][0] - actual_time if self._requests else 300.0
                 if __debug__:
                     logger.debug("nothing to handle, wait %.2f seconds", wait)
-                    if time_since_expired:
-                        diff = actual_time - time_since_expired
-                        if diff > 1.0:
-                            logger.warning("took %.2f to process expired queue", diff)
-                        time_since_expired = 0
 
             if self._event.is_set():
                 self._event.clear()
@@ -655,7 +651,7 @@ class Callback(object):
 
         else:
             if __debug__:
-                logger.debug("---- call %s (priority:%d, id:%s)", self._debug_call_name, priority, root_id)
+                logger.debug("---- call %s (priority:%d, id:%s)", debug_call_name, priority, root_id)
                 debug_call_start = time()
 
             # call can be either:
@@ -704,11 +700,11 @@ class Callback(object):
             if __debug__:
                 debug_call_duration = time() - debug_call_start
                 if debug_call_duration > 1.0:
-                    logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                    logger.warning("%.2f call %s (priority:%d, id:%s)", debug_call_duration, debug_call_name, priority, root_id)
                 else:
-                    logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, self._debug_call_name, priority, root_id)
+                    logger.debug("%.2f call %s (priority:%d, id:%s)", debug_call_duration, debug_call_name, priority, root_id)
 
-        return True
+        return debug_call_name or True
 
     def _shutdown(self):
         with self._lock:

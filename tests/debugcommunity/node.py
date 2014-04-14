@@ -338,7 +338,7 @@ class DebugNode(object):
     assert_is_done = assert_is_stored
 
     @call_on_dispersy_thread
-    def assert_is_undone(self, message=None, messages=None):
+    def assert_is_undone(self, message=None, messages=None, undone_by=None):
         if messages == None:
             messages = [message]
 
@@ -347,6 +347,12 @@ class DebugNode(object):
                 undone, = self._dispersy.database.execute(u"SELECT undone FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
                                                          (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)).next()
                 self._testclass.assertGreater(undone, 0, "Message is not undone")
+                if undone_by:
+                    undone, = self._dispersy.database.execute(
+                        u"SELECT packet FROM sync WHERE id = ? ",
+                        (undone,)).next()
+                    self._testclass.assertEqual(str(undone), undone_by.packet)
+
             except StopIteration:
                 self._testclass.fail("Message is not stored")
 
