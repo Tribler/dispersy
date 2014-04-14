@@ -47,6 +47,9 @@ if os.path.exists("logger.conf"):
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
+from twisted.internet import reactor
+from twisted.internet.task import LoopingCall
+
 from ..candidate import BootstrapCandidate, LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
@@ -236,13 +239,14 @@ class TrackerDispersy(Dispersy):
         if super(TrackerDispersy, self).start(timeout):
             self._create_my_member()
             self._load_persistent_storage()
-            self._callback.register(self._unload_communities)
+            reactor.callLater(0, self._unload_communities)
 
             self.define_auto_load(TrackerCommunity, self._my_member)
             self.define_auto_load(TrackerHardKilledCommunity, self._my_member)
 
             if not self._silent:
-                self._callback.register(self._report_statistics)
+                self._statistics_looping_call = LoopingCall(self._report_statistics)
+                self._statistics_looping_call.start(300)
 
             return True
         return False
@@ -300,19 +304,17 @@ class TrackerDispersy(Dispersy):
                 community.unload_community()
 
     def _report_statistics(self):
-        while True:
-            yield 300.0
-            mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
-            for community in self._communities.itervalues():
-                mapping[type(community)] += 1
+        mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
+        for community in self._communities.itervalues():
+            mapping[type(community)] += 1
 
-            print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
-            print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
-            print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
+        print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
+        print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
+        print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
-            if self._statistics.outgoing:
-                for key, value in self._statistics.outgoing.iteritems():
-                    print "OUTGOING", key, value
+        if self._statistics.outgoing:
+            for key, value in self._statistics.outgoing.iteritems():
+                print "OUTGOING", key, value
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         return
@@ -364,8 +366,6 @@ def main():
     def run():
         # setup
         dispersy = TrackerDispersy(TwistedCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
-        dispersy.define_auto_load(TrackerCommunity)
-        dispersy.define_auto_load(TrackerHardKilledCommunity)
         container[0] = dispersy
         def signal_handler(sig, frame):
             logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
