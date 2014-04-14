@@ -1001,10 +1001,6 @@ class TwistedCallback(Callback):
                 return call(*args, **kargs)
             else:
                 id_ = self.generate_id(id_)
-
-                # TODO(emilon): once register() is gone, we could use this instead of all this mess:
-                # result = blockingCallFromThread(reactor, call, *args, **kargs)
-
                 container = [default, None]
                 event = Event()
                 reactor.callFromThread(self._register, call, args, kargs, 0, None, id_, event=event, container=container)

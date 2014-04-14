@@ -23,7 +23,6 @@ class TestDynamicSettings(DispersyTestFunc):
 
         # NODE creates a message (should allow, because the default policy is PublicResolution)
         message = self._mm.create_dynamic_resolution_text("Message #%d" % 10, policy.implement(), 10)
-        #self._mm.give_message(message, self._mm)
         other.give_message(message, self._mm)
 
         other.assert_is_stored(message)
