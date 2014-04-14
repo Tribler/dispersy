@@ -1,6 +1,7 @@
 from unittest import TestCase
 
-# Do not remove the reactor import, even if we aren't using it (nose starts the reactor when importing this)
+# Do not (re)move the reactor import, even if we aren't using it
+# (nose starts the reactor in a separate thread when importing this)
 from nose.twistedtools import reactor, deferred
 
 
