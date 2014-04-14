@@ -1,15 +1,19 @@
-from abc import ABCMeta, abstractmethod
-from itertools import product
-from select import select
-from time import time
 import errno
 import logging
 import socket
 import sys
 import threading
+from abc import ABCMeta, abstractmethod
+from itertools import product
+from select import select
+from time import time
+
+from twisted.internet import reactor
 
 from .candidate import Candidate
 from .logger import get_logger
+
+
 logger = get_logger(__name__)
 
 if sys.platform == 'win32':
@@ -162,7 +166,8 @@ class RawserverEndpoint(Endpoint):
                 for sock_addr, data in packets:
                     self.log_packet(sock_addr, data, outbound=False)
 
-            self._dispersy.callback.register(self.dispersythread_data_came_in, (packets, time(), cache))
+            # The endpoint runs on it's own thread, so we can't do a callLater here
+            reactor.callFromThread(self.dispersythread_data_came_in, packets, time(), cache)
 
     def dispersythread_data_came_in(self, packets, timestamp, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
@@ -463,7 +468,8 @@ class TunnelEndpoint(Endpoint):
             self.log_packet(sock_addr, data, outbound=False)
 
         self._total_down += len(data)
-        self._dispersy.callback.register(self.dispersythread_data_came_in, (sock_addr, data, time()))
+        # The endpoint runs on it's own thread, so we can't do a callLater here
+        reactor.callFromThread(self.dispersythread_data_came_in, sock_addr, data, time())
 
     def dispersythread_data_came_in(self, sock_addr, data, timestamp):
         assert self._dispersy, "Should not be called before open(...)"
