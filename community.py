@@ -354,7 +354,7 @@ class Community(object):
                 insert_list)
 
             for database_id, name in self._dispersy.database.execute(u"SELECT id, name FROM meta_message WHERE community = ?", (self._database_id,)):
-                self._meta_messages[name]._database_id = database_id        # cleanup pre-fetched values
+                self._meta_messages[name]._database_id = database_id  # cleanup pre-fetched values
         self.meta_message_cache = None
 
         # define all available conversions
@@ -2542,7 +2542,7 @@ class Community(object):
     def check_introduction_response(self, messages):
         for message in messages:
             if not self.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
-                self._statistics.walk_invalid_response_identifier += 1
+                self._dispersy._statistics.walk_invalid_response_identifier += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
