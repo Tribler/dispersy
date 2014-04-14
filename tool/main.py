@@ -113,13 +113,12 @@ def main_real(setup=None):
 
     # This has to be scheduled _after_ starting dispersy so the DB is opened by when this is actually executed.
     # register tasks
-    callback.register(start_script, (dispersy, opt))
-
-    # wait forever
-    callback.loop()
-    return callback
+    reactor.callLater(0, start_script, dispersy, opt)
 
 
 def main(setup=None):
-    callback = main_real(setup)
-    exit(1 if callback.exception else 0)
+    reactor.exitCode = 0
+    reactor.callWhenRunning(0, setup)
+    # start the reactor
+    reactor.run()
+    exit(reactor.exitCode)
