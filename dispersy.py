@@ -1891,7 +1891,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._store(messages)
 
         if update:
-            if self._update(messages) == False:
+            if self._update(possibly_messages) == False:
                 return False
 
         # 07/10/11 Boudewijn: we will only commit if it the message was create by our self.

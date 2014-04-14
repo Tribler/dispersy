@@ -98,7 +98,7 @@ class TestRequestCache(DispersyTestFunc):
         self.assertIsNone(request_cache.get(cache.identifier))
         self.assertIsNone(request_cache.pop(cache.identifier))
 
-    @call_on_dispersy_thread
+    @call_on_mm_thread
     def test_force_number(self):
         """
         Tests numbercache with force_number

@@ -133,8 +133,10 @@ class TestUndo(DispersyTestFunc):
         # NODE should have both messages on the database and the lowest one should be undone by the highest.
         messages = other.fetch_messages((u"dispersy-undo-own",))
         self.assertEquals(len(messages), 2)
-        other.assert_is_undone(low_message)
-        other.assert_is_done(high_message)
+        other.assert_is_done(low_message)
+        other.assert_is_undone(high_message)
+        other.assert_is_undone(high_message, undone_by=low_message)
+        other.assert_is_undone(message, undone_by=low_message)
 
     def test_missing_message(self):
         """

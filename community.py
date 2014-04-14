@@ -2481,24 +2481,26 @@ class Community(object):
                         else:
                             logger.warning("Someone else created a duplicate undo-own message")
 
-                        yield message
                         # Reply to this peer with a higher (or equally) ranked message in case we have one
                         if db_msg.packet <= message.packet:
-                            # the sender apparently does not have the higher dispersy-undo message, lets give it back
+                            message.payload.process_undo = False
+                            yield message
+                            # the sender apparently does not have the lower dispersy-undo message, lets give it back
                             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
                             self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
 
                             yield DispersyDuplicatedUndo(db_msg, message)
                             break
                         else:
-                            # The new message is binary higher. As we cannot delete the old one, what we do
+                            # The new message is binary lower. As we cannot delete the old one, what we do
                             # instead, is we store both and mark the message we already have as undone by the new one.
                             # To accomplish this, we yield a DispersyDuplicatedUndo so on_undo() can mark the other
                             # message as undone by the newly reveived message.
+                            yield message
                             yield DispersyDuplicatedUndo(message, db_msg)
                             break
                 else:
-                    # did not break, hence, the message is not malicious.  More than one member undid this message.
+                    # did not break, hence, the message hasn't been undone more than once.
                     yield message
 
                 # continue.  either the message was malicious or it has already been yielded
@@ -2517,12 +2519,13 @@ class Community(object):
         parameters = []
         for message in messages:
             if isinstance(message, DispersyDuplicatedUndo):
-                # Flag the lower undo message as undone by the higher one
-                parameters.append((message.high_message.packet_id,
+                # Flag the higher undo message as undone by the lower one
+                parameters.append((message.low_message.packet_id,
                                    self.database_id,
-                                   message.low_message.authentication.member.database_id,
-                                   message.low_message.distribution.global_time))
-            elif isinstance(message, Message.Implementation):
+                                   message.high_message.authentication.member.database_id,
+                                   message.high_message.distribution.global_time))
+
+            elif isinstance(message, Message.Implementation) and message.payload.process_undo:
                 # That's a normal undo message
                 parameters.append((message.packet_id, self.database_id, message.payload.member.database_id, message.payload.global_time))
                 real_messages.append(message)

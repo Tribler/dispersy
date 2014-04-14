@@ -410,6 +410,15 @@ class UndoPayload(Payload):
             self._member = member
             self._global_time = global_time
             self._packet = packet
+            self._process_undo = True
+
+        @property
+        def process_undo(self):
+            return self._process_undo
+
+        @process_undo.setter
+        def process_undo(self, enabled=True):
+            self._process_undo = enabled
 
         @property
         def member(self):
