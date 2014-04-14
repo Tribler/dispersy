@@ -226,9 +226,11 @@ class WalkCandidate(Candidate):
         assert isinstance(now, float), type(now)
 
         if now < self._last_walk_reply + CANDIDATE_WALK_LIFETIME:
+            assert self._associations, "a candidate in the walk category must have at least one associated member"
             return u"walk"
 
         if now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
+            assert self._associations, "a candidate in the stumble category must have at least one associated member"
             return u"stumble"
 
         if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
