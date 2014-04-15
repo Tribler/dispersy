@@ -450,14 +450,16 @@ class Dispersy(object):
         """
         return self._statistics
 
-    def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
+    def define_auto_load(self, community_cls, my_member, args=(), kargs=None, load=False):
         """
         Tell Dispersy how to load COMMUNITY if need be.
 
         COMMUNITY_CLS is the community class that is defined.
+        
+        MY_MEMBER is the member to be used within the community.
 
-        ARGS an KARGS are optional arguments and keyword arguments used when a community is loaded
-        using COMMUNITY_CLS.load_community(self, master, *ARGS, **KARGS).
+        ARGS an KARGS are optional arguments and keyword arguments passed to the 
+        community constructor.
 
         When LOAD is True all available communities of this type will be immediately loaded.
 
@@ -472,14 +474,14 @@ class Dispersy(object):
 
         if kargs is None:
             kargs = {}
-        self._auto_load_communities[community_cls.get_classification()] = (community_cls, args, kargs)
+        self._auto_load_communities[community_cls.get_classification()] = (community_cls, my_member, args, kargs)
 
         communities = []
         if load:
             for master in community_cls.get_master_members(self):
                 if not master.mid in self._communities:
                     logger.debug("Loading %s at start", community_cls.get_classification())
-                    community = community_cls.load_community(self, master, *args, **kargs)
+                    community = community_cls(self, master, my_member, *args, **kargs)
                     communities.append(community)
                     assert community.master_member.mid == master.mid
                     assert community.master_member.mid in self._communities
@@ -719,9 +721,9 @@ class Dispersy(object):
         """
         Remove an attached community from the Dispersy instance.
 
-        Once a community is detached it will no longer receive incoming messages.  When the
-        community is marked as auto_load it will be loaded, using community.load_community(...),
-        when a message for this community is received.
+        Once a community is detached it will no longer receive incoming messages.  
+        However, when the community is marked as auto_load a new instance of this community
+        will be created when a message for this community is received.
 
         @param community: The community that will be added.
         @type community: Community
@@ -778,13 +780,18 @@ class Dispersy(object):
         assert self._database.changes == 1
 
         if destination_classification in self._auto_load_communities:
-            cls, args, kargs = self._auto_load_communities[destination_classification]
+            cls, my_member, args, kargs = self._auto_load_communities[destination_classification]
             assert cls == destination, [cls, destination]
+
         else:
+            my_member_did, = self._database.execute(u"SELECT member FROM community WHERE master = ?",
+                               (master.database_id,)).next()
+
+            my_member = self.get_member_from_database_id(my_member_did)
             args = ()
             kargs = {}
 
-        return destination.load_community(self, master, *args, **kargs)
+        return destination(self, master, my_member, *args, **kargs)
 
     def has_community(self, cid):
         """
@@ -838,8 +845,8 @@ class Dispersy(object):
 
                         if classification in self._auto_load_communities:
                             master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
-                            cls, args, kargs = self._auto_load_communities[classification]
-                            community = cls.load_community(self, master, *args, **kargs)
+                            cls, my_member, args, kargs = self._auto_load_communities[classification]
+                            community = cls(self, master, my_member, *args, **kargs)
                             assert master.mid in self._communities
                             return community
 

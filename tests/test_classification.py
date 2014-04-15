@@ -79,7 +79,7 @@ class TestClassification(DispersyTestFunc):
                                         (master.database_id, self._mm._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
 
         # load one community
-        communities = [ClassificationLoadOneCommunities.load_community(self._dispersy, master) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
+        communities = [ClassificationLoadOneCommunities(self._dispersy, master, self._mm._my_member) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
         self.assertEqual(len(communities), 1)
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
 
@@ -104,7 +104,7 @@ class TestClassification(DispersyTestFunc):
 
         # load two communities
         self.assertEqual(sorted(masters), sorted(master.public_key for master in LoadTwoCommunities.get_master_members(self._dispersy)))
-        communities = [LoadTwoCommunities.load_community(self._dispersy, master) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
+        communities = [LoadTwoCommunities(self._dispersy, master, self._mm._my_member) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
 
         self.assertEqual(sorted(masters), sorted(community.master_member.public_key for community in communities))
         self.assertEqual(len(communities), 2)
