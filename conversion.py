@@ -9,6 +9,7 @@ from .candidate import Candidate
 from .decorator import attach_runtime_statistics
 from .destination import Destination, CommunityDestination, CandidateDestination
 from .distribution import Distribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
+from .exception import MetaNotFoundException
 from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .payload import Payload
@@ -1347,7 +1348,7 @@ class BinaryConversion(NoDefBinaryConversion):
         def define(value, name, encode, decode):
             try:
                 meta = community.get_meta_message(name)
-            except KeyError:
+            except MetaNotFoundException:
                 if __debug__:
                     debug_non_available.append(name)
             else:

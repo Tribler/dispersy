@@ -60,6 +60,7 @@ from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
+from .exception import CommunityNotFoundException, ConversionNotFoundException, MetaNotFoundException
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
@@ -848,7 +849,7 @@ class Dispersy(object):
                     else:
                         logger.debug("not allowed to load [%s]", classification)
 
-        raise KeyError(cid)
+        raise CommunityNotFoundException(cid)
 
     def get_communities(self):
         """
@@ -1519,7 +1520,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # find associated conversion
         try:
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
+        except ConversionNotFoundException:
             logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
             return None
 
@@ -1544,26 +1545,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(auto_load, bool)
 
         # find associated community
-        if not community:
-            try:
+        try:
+            if not community:
                 community = self.get_community(packet[2:22], load, auto_load)
-            except KeyError:
-                logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-                return None
 
-        # find associated conversion
-        try:
+            # find associated conversion
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-            return None
-
-        try:
             return conversion.decode_meta_message(packet)
 
+        except CommunityNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
+        except ConversionNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
         except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-            return None
+        return None
 
     def convert_packet_to_message(self, packet, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
@@ -1577,26 +1573,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert candidate is None or isinstance(candidate, Candidate), type(candidate)
 
         # find associated community
-        if not community:
-            try:
+        try:
+            if not community:
                 community = self.get_community(packet[2:22], load, auto_load)
-            except KeyError:
-                logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-                return None
 
-        # find associated conversion
-        try:
+            # find associated conversion
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-            return None
-
-        try:
             return conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet, verify)
 
+        except CommunityNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
+        except ConversionNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
         except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-            return None
+        return None
 
     def convert_packets_to_messages(self, packets, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
@@ -1638,19 +1629,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
         # for identities we have already received but not processed yet. (248 == identity message ID)
         #                                           /-------------------------------\
-        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] ==  chr(248) else tup[1][22])  # community ID, community version, message meta type
+        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] == chr(248) else tup[1][22])  # community ID, community version, message meta type
         groupby_key = lambda tup: tup[1][2:22]  # community ID
         for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community
             try:
                 community = self.get_community(community_id)
                 community.on_incoming_packets(list(iterator), cache, timestamp)
-            except KeyError:
+
+            except CommunityNotFoundException:
                 packets = list(iterator)
                 candidates = set([candidate for candidate, _ in packets])
                 logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
                 self._statistics.drop_count += 1
+
             except DelayPacket as delay:
                 logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
                 if delay.create_request(candidate, packet):
@@ -2073,14 +2066,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if test_identity:
             try:
-                meta_identity = community.get_meta_message(u"dispersy-identity")
-            except KeyError:
-                # identity is not enabled
-                pass
-            else:
-                #
                 # ensure that the dispersy-identity for my member must be in the database
-                #
+                meta_identity = community.get_meta_message(u"dispersy-identity")
+
                 try:
                     member_id, = self._database.execute(u"SELECT id FROM member WHERE mid = ?", (buffer(community.my_member.mid),)).next()
                 except StopIteration:
@@ -2110,17 +2098,15 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 if not len(A) == len(B):
                     raise ValueError("inconsistent dispersy-identity messages.", A.difference(B))
 
+            except MetaNotFoundException:
+                # identity is not enabled
+                pass
+
         if test_undo_other:
             try:
-                meta_undo_other = community.get_meta_message(u"dispersy-undo-other")
-            except KeyError:
-                # undo-other is not enabled
-                pass
-            else:
-
-                #
                 # ensure that we have proof for every dispersy-undo-other message
-                #
+                meta_undo_other = community.get_meta_message(u"dispersy-undo-other")
+
                 # TODO we are not taking into account that undo messages can be undone
                 for undo_packet_id, undo_packet_global_time, undo_packet in select(u"SELECT id, global_time, packet FROM sync WHERE community = ? AND meta_message = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id, meta_undo_other.database_id)):
                     undo_packet = str(undo_packet)
@@ -2155,6 +2141,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         raise ValueError("found dispersy-undo-other that, according to the timeline, has no proof")
 
                     logger.debug("dispersy-undo-other packet %d@%d referring %s %d@%d is OK", undo_packet_id, undo_packet_global_time, undo_message.payload.packet.name, undo_message.payload.member.database_id, undo_message.payload.global_time)
+
+
+            except MetaNotFoundException:
+                # undo-other is not enabled
+                pass
 
         if test_binary:
             #

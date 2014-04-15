@@ -23,6 +23,7 @@ from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
+from .exception import ConversionNotFoundException, MetaNotFoundException
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
@@ -493,10 +494,9 @@ class Community(object):
         for name in [u"dispersy-authorize", u"dispersy-revoke", u"dispersy-dynamic-settings"]:
             try:
                 meta = self.get_meta_message(name)
-            except KeyError:
-                logger.warning("unable to load permissions from database [could not obtain %s]", name)
-            else:
                 mapping[meta.database_id] = meta.handle_callback
+            except MetaNotFoundException:
+                logger.warning("unable to load permissions from database [could not obtain %s]", name)
 
         if mapping:
             for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" for _ in mapping) + ") ORDER BY global_time, packet",
@@ -1072,15 +1072,13 @@ class Community(object):
         """
         Returns the default conversion (defined as the last conversion).
 
-        Raises KeyError() when no conversions are available.
+        Raises ConversionNotFoundException() when no conversions are available.
         """
         if self._conversions:
             return self._conversions[-1]
 
-        # for backwards compatibility we will raise a KeyError when conversion isn't found
-        # (previously self._conversions was a dictionary)
         logger.warning("unable to find default conversion (there are no conversions available)")
-        raise KeyError()
+        raise ConversionNotFoundException()
 
     def get_conversion_for_packet(self, packet):
         """
@@ -1096,17 +1094,15 @@ class Community(object):
         given, therefore PACKET is not necessarily an entire packet but can also be a the first N
         bytes of a packet.
 
-        Raises KeyError(packet) when no conversion is available.
+        Raises ConversionNotFoundException(packet) when no conversion is available.
         """
         assert isinstance(packet, str), type(packet)
         for conversion in reversed(self._conversions):
             if conversion.can_decode_message(packet):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is
-        # found (previously self._conversions was a dictionary)
         logger.warning("unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
-        raise KeyError(packet)
+        raise ConversionNotFoundException(packet=packet)
 
     def get_conversion_for_message(self, message):
         """
@@ -1116,7 +1112,7 @@ class Community(object):
         in reversed order using conversion.can_encode_message(MESSAGE).  Typically a conversion can
         encode a message when: the conversion knows how to encode messages with MESSAGE.name.
 
-        Raises KeyError(message) when no conversion is available.
+        Raises ConversionNotFoundException(message) when no conversion is available.
         """
         assert isinstance(message, (Message, Message.Implementation)), type(message)
 
@@ -1124,10 +1120,8 @@ class Community(object):
             if conversion.can_encode_message(message):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is
-        # found (previously self._conversions was a dictionary)
         logger.warning("unable to find conversion to encode %s in %s", message, self._conversions)
-        raise KeyError(message)
+        raise ConversionNotFoundException(message=message)
 
     def add_conversion(self, conversion):
         """
@@ -1614,10 +1608,13 @@ class Community(object):
         @return: The meta message.
         @rtype: Message
 
-        @raise KeyError: When there is no meta message by that name.
+        @raise MetaNotFoundException: When there is no meta message by that name.
         """
         assert isinstance(name, unicode)
-        return self._meta_messages[name]
+        if name in self._meta_messages:
+            return self._meta_messages[name]
+
+        raise MetaNotFoundException(name)
 
     def get_meta_messages(self):
         """
@@ -1889,7 +1886,7 @@ class Community(object):
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
-            except KeyError:
+            except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
@@ -3707,7 +3704,7 @@ class HardKilledCommunity(Community):
         try:
             return super(HardKilledCommunity, self).get_conversion_for_packet(packet)
 
-        except KeyError:
+        except ConversionNotFoundException:
             # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
             if packet[0] == "\x00":
                 self.add_conversion(BinaryConversion(self, packet[1]))

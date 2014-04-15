@@ -1,6 +1,7 @@
 
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from ..exception import CommunityNotFoundException
 from ..logger import get_logger
 logger = get_logger(__name__)
 
@@ -142,7 +143,7 @@ class TestClassification(DispersyTestFunc):
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
-        except KeyError:
+        except CommunityNotFoundException:
             pass
 
         # send wakeup message
@@ -156,7 +157,7 @@ class TestClassification(DispersyTestFunc):
 
             if not auto_load:
                 self.fail('Should not have been loaded by wakeup message')
-        except KeyError:
+        except CommunityNotFoundException:
             if auto_load:
                 self.fail('Should have been loaded by wakeup message')
 
