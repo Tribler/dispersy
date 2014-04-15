@@ -542,13 +542,13 @@ class Dispersy(object):
                 mid = sha1(public_key).digest()
 
             elif private_key:
-                key = self.crypto.key_from_private_bin(private_key)
-                mid = self.crypto.key_to_hash(key.pub())
+                _key = self.crypto.key_from_private_bin(private_key)
+                public_key = self.crypto.key_to_bin(_key.pub())
+                mid = self.crypto.key_to_hash(_key.pub())
 
         member = self._member_cache_by_hash.get(mid)
         if not member:
             # The member is not cached, let's try to get it from the database
-            private_key_from_db = ""
             row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
             if row:
                 database_id, public_key_from_db, private_key_from_db = row
