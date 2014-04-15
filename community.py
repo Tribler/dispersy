@@ -23,6 +23,7 @@ from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
+from .exception import ConversionNotFoundException, MetaNotFoundException
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
@@ -119,7 +120,7 @@ class Community(object):
 
         try:
             # new community instance
-            community = cls.load_community(dispersy, master, *args, **kargs)
+            community = cls(dispersy, master, my_member, *args, **kargs)
             assert community.database_id == community_database_id
 
             # create the dispersy-identity for the master member
@@ -173,69 +174,6 @@ class Community(object):
             return community
 
     @classmethod
-    def join_community(cls, dispersy, master, my_member, *args, **kargs):
-        """
-        Join an existing community.
-
-        Once you have discovered an existing community, i.e. you have obtained the public master key
-        from a community, you can join this community.
-
-        Joining a community does not mean that you obtain permissions in that community, those will
-        need to be granted by another member who is allowed to do so.  However, it will let you
-        receive, send, and disseminate messages that do not require any permission to use.
-
-        @param dispersy: The Dispersy instance where this community will attach itself to.
-        @type dispersy: Dispersy
-
-        @param master: The master member that identified the community that we want to join.
-        @type master: DummyMember or Member
-
-        @param my_member: The member that will be granted Permit, Authorize, and Revoke for all
-         messages.
-        @type my_member: Member
-
-        @param args: optional argumets that are passed to the community constructor.
-        @type args: tuple
-
-        @param kargs: optional keyword arguments that are passed to the community constructor.
-        @type args: dictionary
-
-        @return: The created community instance.
-        @rtype: Community
-        """
-        from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(master, DummyMember), type(master)
-        assert isinstance(my_member, Member), type(my_member)
-        assert my_member.public_key, my_member.database_id
-        assert my_member.private_key, my_member.database_id
-        assert dispersy.callback.is_current_thread
-        logger.debug("joining %s %s", cls.get_classification(), master.mid.encode("HEX"))
-
-        dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
-                                  (master.database_id, my_member.database_id, cls.get_classification()))
-        community_database_id = dispersy.database.last_insert_rowid
-
-        try:
-            # new community instance
-            community = cls.load_community(dispersy, master, *args, **kargs)
-            assert community.database_id == community_database_id
-
-            # create my dispersy-identity
-            community.create_identity()
-
-        except:
-            # undo the insert info the database
-            # TODO it might still leave unused database entries referring to the community id
-            dispersy.database.execute(u"DELETE FROM community WHERE id = ?", (community_database_id,))
-
-            # raise the exception because this shouldn't happen
-            raise
-
-        else:
-            return community
-
-    @classmethod
     def get_master_members(cls, dispersy):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
@@ -247,47 +185,27 @@ class Community(object):
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
 
-    @classmethod
-    def load_community(cls, dispersy, master, *args, **kargs):
+    def __init__(self, dispersy, master, my_member, attach=True):
         """
-        Load a single community.
-
-        Will raise a ValueError exception when cid is unavailable.
-
-        @param master: The master member that identifies the community.
-        @type master: DummyMember or Member
-
-        @return: The community identified by master.
-        @rtype: Community
-        """
-        from .dispersy import Dispersy
-        assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(master, DummyMember), type(master)
-        assert dispersy.callback.is_current_thread
-        logger.debug("loading %s %s", cls.get_classification(), master.mid.encode("HEX"))
-        community = cls(dispersy, master, *args, **kargs)
-
-        # tell dispersy that there is a new community
-        dispersy.attach_community(community)
-
-        return community
-
-    def __init__(self, dispersy, master):
-        """
-        Initialize a community.
-
-        Generally a new community is created using create_community.  Or an existing community is
-        loaded using load_community.  These two methods prepare and call this __init__ method.
+        Loading, or joining an existing community can be done by calling the constructor.
+        Creating a new instance of a community needs to use the create_community() call.
 
         @param dispersy: The Dispersy instance where this community will attach itself to.
         @type dispersy: Dispersy
 
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
+        
+        @param my_member: The my member that identifies you in this community.
+        @type my_member: Member
         """
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
+        assert isinstance(my_member, Member), type(my_member)
+        assert my_member.public_key, my_member.database_id
+        assert my_member.private_key, my_member.database_id
+
         assert dispersy.callback.is_current_thread
         logger.debug("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
@@ -304,16 +222,30 @@ class Community(object):
         self._batch_cache = {}
 
         try:
-            self._database_id, member_private_key, self._database_version = self._dispersy.database.execute(
-                u"SELECT community.id, member.private_key, database_version FROM community "
-                u"JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
+            self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
+                u"SELECT id, member, database_version FROM community WHERE master = ?", (master.database_id,)).next()
+
+            # if we're called with a different my_member, update the table to reflect this
+            if my_member_did != my_member.database_id:
+                dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
+                                  (my_member.database_id, master.database_id))
+
+            create_identity = False
+
         except StopIteration:
-            raise ValueError(u"Community not found in database [" + master.mid.encode("HEX") + "]")
+            dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
+                                  (master.database_id, my_member.database_id, self.get_classification()))
+
+            self._database_id, self._database_version = self._dispersy.database.execute(
+                u"SELECT id, database_version FROM community WHERE master = ?", (master.database_id,)).next()
+
+            create_identity = True
+
         logger.debug("database id:   %d", self._database_id)
 
         self._cid = master.mid
         self._master_member = master
-        self._my_member = self._dispersy.get_member(private_key=str(member_private_key))
+        self._my_member = my_member
         logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
@@ -419,6 +351,14 @@ class Community(object):
         # turn on/off pruning
         self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
 
+        if create_identity:
+            # create my dispersy-identity
+            self.create_identity()
+
+        if attach:
+            # tell dispersy that there is a new community
+            dispersy.attach_community(self)
+
     @property
     def candidates(self):
         """
@@ -493,10 +433,9 @@ class Community(object):
         for name in [u"dispersy-authorize", u"dispersy-revoke", u"dispersy-dynamic-settings"]:
             try:
                 meta = self.get_meta_message(name)
-            except KeyError:
-                logger.warning("unable to load permissions from database [could not obtain %s]", name)
-            else:
                 mapping[meta.database_id] = meta.handle_callback
+            except MetaNotFoundException:
+                logger.warning("unable to load permissions from database [could not obtain %s]", name)
 
         if mapping:
             for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" for _ in mapping) + ") ORDER BY global_time, packet",
@@ -1072,15 +1011,13 @@ class Community(object):
         """
         Returns the default conversion (defined as the last conversion).
 
-        Raises KeyError() when no conversions are available.
+        Raises ConversionNotFoundException() when no conversions are available.
         """
         if self._conversions:
             return self._conversions[-1]
 
-        # for backwards compatibility we will raise a KeyError when conversion isn't found
-        # (previously self._conversions was a dictionary)
         logger.warning("unable to find default conversion (there are no conversions available)")
-        raise KeyError()
+        raise ConversionNotFoundException()
 
     def get_conversion_for_packet(self, packet):
         """
@@ -1096,17 +1033,15 @@ class Community(object):
         given, therefore PACKET is not necessarily an entire packet but can also be a the first N
         bytes of a packet.
 
-        Raises KeyError(packet) when no conversion is available.
+        Raises ConversionNotFoundException(packet) when no conversion is available.
         """
         assert isinstance(packet, str), type(packet)
         for conversion in reversed(self._conversions):
             if conversion.can_decode_message(packet):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for PACKET is
-        # found (previously self._conversions was a dictionary)
         logger.warning("unable to find conversion to decode %s in %s", packet.encode("HEX"), self._conversions)
-        raise KeyError(packet)
+        raise ConversionNotFoundException(packet=packet)
 
     def get_conversion_for_message(self, message):
         """
@@ -1116,7 +1051,7 @@ class Community(object):
         in reversed order using conversion.can_encode_message(MESSAGE).  Typically a conversion can
         encode a message when: the conversion knows how to encode messages with MESSAGE.name.
 
-        Raises KeyError(message) when no conversion is available.
+        Raises ConversionNotFoundException(message) when no conversion is available.
         """
         assert isinstance(message, (Message, Message.Implementation)), type(message)
 
@@ -1124,10 +1059,8 @@ class Community(object):
             if conversion.can_encode_message(message):
                 return conversion
 
-        # for backwards compatibility we will raise a KeyError when no conversion for MESSAGE is
-        # found (previously self._conversions was a dictionary)
         logger.warning("unable to find conversion to encode %s in %s", message, self._conversions)
-        raise KeyError(message)
+        raise ConversionNotFoundException(message=message)
 
     def add_conversion(self, conversion):
         """
@@ -1614,10 +1547,13 @@ class Community(object):
         @return: The meta message.
         @rtype: Message
 
-        @raise KeyError: When there is no meta message by that name.
+        @raise MetaNotFoundException: When there is no meta message by that name.
         """
         assert isinstance(name, unicode)
-        return self._meta_messages[name]
+        if name in self._meta_messages:
+            return self._meta_messages[name]
+
+        raise MetaNotFoundException(name)
 
     def get_meta_messages(self):
         """
@@ -1889,7 +1825,7 @@ class Community(object):
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
-            except KeyError:
+            except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
@@ -3707,7 +3643,7 @@ class HardKilledCommunity(Community):
         try:
             return super(HardKilledCommunity, self).get_conversion_for_packet(packet)
 
-        except KeyError:
+        except ConversionNotFoundException:
             # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
             if packet[0] == "\x00":
                 self.add_conversion(BinaryConversion(self, packet[1]))

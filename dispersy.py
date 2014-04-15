@@ -60,6 +60,7 @@ from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
+from .exception import CommunityNotFoundException, ConversionNotFoundException, MetaNotFoundException
 from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
@@ -449,14 +450,16 @@ class Dispersy(object):
         """
         return self._statistics
 
-    def define_auto_load(self, community_cls, args=(), kargs=None, load=False):
+    def define_auto_load(self, community_cls, my_member, args=(), kargs=None, load=False):
         """
         Tell Dispersy how to load COMMUNITY if need be.
 
         COMMUNITY_CLS is the community class that is defined.
+        
+        MY_MEMBER is the member to be used within the community.
 
-        ARGS an KARGS are optional arguments and keyword arguments used when a community is loaded
-        using COMMUNITY_CLS.load_community(self, master, *ARGS, **KARGS).
+        ARGS an KARGS are optional arguments and keyword arguments passed to the 
+        community constructor.
 
         When LOAD is True all available communities of this type will be immediately loaded.
 
@@ -471,14 +474,14 @@ class Dispersy(object):
 
         if kargs is None:
             kargs = {}
-        self._auto_load_communities[community_cls.get_classification()] = (community_cls, args, kargs)
+        self._auto_load_communities[community_cls.get_classification()] = (community_cls, my_member, args, kargs)
 
         communities = []
         if load:
             for master in community_cls.get_master_members(self):
                 if not master.mid in self._communities:
                     logger.debug("Loading %s at start", community_cls.get_classification())
-                    community = community_cls.load_community(self, master, *args, **kargs)
+                    community = community_cls(self, master, my_member, *args, **kargs)
                     communities.append(community)
                     assert community.master_member.mid == master.mid
                     assert community.master_member.mid in self._communities
@@ -539,13 +542,13 @@ class Dispersy(object):
                 mid = sha1(public_key).digest()
 
             elif private_key:
-                key = self.crypto.key_from_private_bin(private_key)
-                mid = self.crypto.key_to_hash(key.pub())
+                _key = self.crypto.key_from_private_bin(private_key)
+                public_key = self.crypto.key_to_bin(_key.pub())
+                mid = self.crypto.key_to_hash(_key.pub())
 
         member = self._member_cache_by_hash.get(mid)
         if not member:
             # The member is not cached, let's try to get it from the database
-            private_key_from_db = ""
             row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
             if row:
                 database_id, public_key_from_db, private_key_from_db = row
@@ -579,6 +582,8 @@ class Dispersy(object):
                     self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
                                                                                              database_id))
             elif public_key or private_key:
+                if private_key:
+                    assert public_key
                 # The MID or public/private keys are not in the database, store them.
                 self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)", (buffer(mid),
                                                                                             buffer(public_key),
@@ -673,15 +678,11 @@ class Dispersy(object):
         not available.
         """
         assert isinstance(database_id, (int, long)), type(database_id)
-        member = self._member_cache_by_database_id.get(database_id)
-        if not member:
-            try:
-                public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
-            except StopIteration:
-                pass
-            else:
-                member = self.get_member(public_key=str(public_key))
-        return member
+        try:
+            public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
+            return self.get_member(public_key=str(public_key))
+        except StopIteration:
+            pass
 
     def attach_community(self, community):
         """
@@ -718,9 +719,9 @@ class Dispersy(object):
         """
         Remove an attached community from the Dispersy instance.
 
-        Once a community is detached it will no longer receive incoming messages.  When the
-        community is marked as auto_load it will be loaded, using community.load_community(...),
-        when a message for this community is received.
+        Once a community is detached it will no longer receive incoming messages.  
+        However, when the community is marked as auto_load a new instance of this community
+        will be created when a message for this community is received.
 
         @param community: The community that will be added.
         @type community: Community
@@ -777,13 +778,18 @@ class Dispersy(object):
         assert self._database.changes == 1
 
         if destination_classification in self._auto_load_communities:
-            cls, args, kargs = self._auto_load_communities[destination_classification]
+            cls, my_member, args, kargs = self._auto_load_communities[destination_classification]
             assert cls == destination, [cls, destination]
+
         else:
+            my_member_did, = self._database.execute(u"SELECT member FROM community WHERE master = ?",
+                               (master.database_id,)).next()
+
+            my_member = self.get_member_from_database_id(my_member_did)
             args = ()
             kargs = {}
 
-        return destination.load_community(self, master, *args, **kargs)
+        return destination(self, master, my_member, *args, **kargs)
 
     def has_community(self, cid):
         """
@@ -837,8 +843,8 @@ class Dispersy(object):
 
                         if classification in self._auto_load_communities:
                             master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
-                            cls, args, kargs = self._auto_load_communities[classification]
-                            community = cls.load_community(self, master, *args, **kargs)
+                            cls, my_member, args, kargs = self._auto_load_communities[classification]
+                            community = cls(self, master, my_member, *args, **kargs)
                             assert master.mid in self._communities
                             return community
 
@@ -848,7 +854,7 @@ class Dispersy(object):
                     else:
                         logger.debug("not allowed to load [%s]", classification)
 
-        raise KeyError(cid)
+        raise CommunityNotFoundException(cid)
 
     def get_communities(self):
         """
@@ -1519,7 +1525,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # find associated conversion
         try:
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
+        except ConversionNotFoundException:
             logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
             return None
 
@@ -1544,26 +1550,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(auto_load, bool)
 
         # find associated community
-        if not community:
-            try:
+        try:
+            if not community:
                 community = self.get_community(packet[2:22], load, auto_load)
-            except KeyError:
-                logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-                return None
 
-        # find associated conversion
-        try:
+            # find associated conversion
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-            return None
-
-        try:
             return conversion.decode_meta_message(packet)
 
+        except CommunityNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
+        except ConversionNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
         except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-            return None
+        return None
 
     def convert_packet_to_message(self, packet, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
@@ -1577,26 +1578,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert candidate is None or isinstance(candidate, Candidate), type(candidate)
 
         # find associated community
-        if not community:
-            try:
+        try:
+            if not community:
                 community = self.get_community(packet[2:22], load, auto_load)
-            except KeyError:
-                logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-                return None
 
-        # find associated conversion
-        try:
+            # find associated conversion
             conversion = community.get_conversion_for_packet(packet)
-        except KeyError:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-            return None
-
-        try:
             return conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet, verify)
 
+        except CommunityNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
+        except ConversionNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
         except (DropPacket, DelayPacket) as exception:
             logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-            return None
+        return None
 
     def convert_packets_to_messages(self, packets, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
@@ -1638,19 +1634,21 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
         # for identities we have already received but not processed yet. (248 == identity message ID)
         #                                           /-------------------------------\
-        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] ==  chr(248) else tup[1][22])  # community ID, community version, message meta type
+        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] == chr(248) else tup[1][22])  # community ID, community version, message meta type
         groupby_key = lambda tup: tup[1][2:22]  # community ID
         for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
             # find associated community
             try:
                 community = self.get_community(community_id)
                 community.on_incoming_packets(list(iterator), cache, timestamp)
-            except KeyError:
+
+            except CommunityNotFoundException:
                 packets = list(iterator)
                 candidates = set([candidate for candidate, _ in packets])
                 logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
                 self._statistics.drop_count += 1
+
             except DelayPacket as delay:
                 logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
                 if delay.create_request(candidate, packet):
@@ -2073,14 +2071,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if test_identity:
             try:
-                meta_identity = community.get_meta_message(u"dispersy-identity")
-            except KeyError:
-                # identity is not enabled
-                pass
-            else:
-                #
                 # ensure that the dispersy-identity for my member must be in the database
-                #
+                meta_identity = community.get_meta_message(u"dispersy-identity")
+
                 try:
                     member_id, = self._database.execute(u"SELECT id FROM member WHERE mid = ?", (buffer(community.my_member.mid),)).next()
                 except StopIteration:
@@ -2110,17 +2103,15 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 if not len(A) == len(B):
                     raise ValueError("inconsistent dispersy-identity messages.", A.difference(B))
 
+            except MetaNotFoundException:
+                # identity is not enabled
+                pass
+
         if test_undo_other:
             try:
-                meta_undo_other = community.get_meta_message(u"dispersy-undo-other")
-            except KeyError:
-                # undo-other is not enabled
-                pass
-            else:
-
-                #
                 # ensure that we have proof for every dispersy-undo-other message
-                #
+                meta_undo_other = community.get_meta_message(u"dispersy-undo-other")
+
                 # TODO we are not taking into account that undo messages can be undone
                 for undo_packet_id, undo_packet_global_time, undo_packet in select(u"SELECT id, global_time, packet FROM sync WHERE community = ? AND meta_message = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id, meta_undo_other.database_id)):
                     undo_packet = str(undo_packet)
@@ -2155,6 +2146,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         raise ValueError("found dispersy-undo-other that, according to the timeline, has no proof")
 
                     logger.debug("dispersy-undo-other packet %d@%d referring %s %d@%d is OK", undo_packet_id, undo_packet_global_time, undo_message.payload.packet.name, undo_message.payload.member.database_id, undo_message.payload.global_time)
+
+
+            except MetaNotFoundException:
+                # undo-other is not enabled
+                pass
 
         if test_binary:
             #

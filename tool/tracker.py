@@ -53,6 +53,7 @@ from ..conversion import BinaryConversion
 from ..crypto import NoVerifyCrypto, NoCrypto
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
+from ..exception import ConversionNotFoundException, CommunityNotFoundException
 from ..logger import get_logger, get_context_filter
 from ..message import Message, DropMessage
 from .mainthreadcallback import MainThreadCallback
@@ -148,7 +149,7 @@ class TrackerCommunity(Community):
         try:
             return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
-        except KeyError:
+        except ConversionNotFoundException:
             # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
             if packet[0] == "\x00":
                 self.add_conversion(BinaryConversion(self, packet[1]))
@@ -237,6 +238,9 @@ class TrackerDispersy(Dispersy):
             self._load_persistent_storage()
             self._callback.register(self._unload_communities)
 
+            self.define_auto_load(TrackerCommunity, self._my_member)
+            self.define_auto_load(TrackerHardKilledCommunity, self._my_member)
+
             if not self._silent:
                 self._callback.register(self._report_statistics)
 
@@ -255,8 +259,8 @@ class TrackerDispersy(Dispersy):
     def get_community(self, cid, load=False, auto_load=True):
         try:
             return super(TrackerDispersy, self).get_community(cid, True, True)
-        except KeyError:
-            self._communities[cid] = TrackerCommunity.join_community(self, self.get_temporary_member_from_id(cid), self._my_member)
+        except CommunityNotFoundException:
+            self._communities[cid] = TrackerCommunity(self, self.get_temporary_member_from_id(cid), self._my_member)
             return self._communities[cid]
 
     def _load_persistent_storage(self):
@@ -357,8 +361,6 @@ def main():
 
     # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)

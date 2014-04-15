@@ -4,6 +4,7 @@ from time import time, sleep
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
+from ...exception import ConversionNotFoundException
 from ...logger import get_logger
 from ...member import Member
 from ...message import Message
@@ -42,8 +43,8 @@ class DebugNode(object):
         if c_master_member == None:
             self._community = communityclass.create_community(self._dispersy, self._my_member)
         else:
-            cid = self._dispersy.get_temporary_member_from_id(c_master_member._community._master_member.mid)
-            self._community = communityclass.join_community(self._dispersy, cid, self._my_member)
+            mm = self._dispersy.get_temporary_member_from_id(c_master_member._community._master_member.mid)
+            self._community = communityclass(self._dispersy, mm, self._my_member)
 
         self._central_node = c_master_member
         self._tunnel = False
@@ -260,7 +261,7 @@ class DebugNode(object):
         for candidate, packet in self.receive_packet(addresses, timeout):
             try:
                 message = self.decode_message(candidate, packet)
-            except KeyError as exception:
+            except ConversionNotFoundException as exception:
                 logger.exception("Ignored %s", exception)
                 continue
 
@@ -378,7 +379,7 @@ class DebugNode(object):
     def call(self, func, *args, **kargs):
         if self._dispersy._callback.is_current_thread:
             return func(*args, **kargs)
-        timeout_value="_THE_CALL_TIMED_OUT_"
+        timeout_value = "_THE_CALL_TIMED_OUT_"
         result = self._dispersy._callback.call(func, args, kargs, timeout=15.0, default=timeout_value)
         assert result != timeout_value
         return result

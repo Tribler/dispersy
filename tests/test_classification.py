@@ -1,6 +1,7 @@
 
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from ..exception import CommunityNotFoundException
 from ..logger import get_logger
 logger = get_logger(__name__)
 
@@ -78,7 +79,7 @@ class TestClassification(DispersyTestFunc):
                                         (master.database_id, self._mm._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
 
         # load one community
-        communities = [ClassificationLoadOneCommunities.load_community(self._dispersy, master) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
+        communities = [ClassificationLoadOneCommunities(self._dispersy, master, self._mm._my_member) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
         self.assertEqual(len(communities), 1)
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
 
@@ -103,7 +104,7 @@ class TestClassification(DispersyTestFunc):
 
         # load two communities
         self.assertEqual(sorted(masters), sorted(master.public_key for master in LoadTwoCommunities.get_master_members(self._dispersy)))
-        communities = [LoadTwoCommunities.load_community(self._dispersy, master) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
+        communities = [LoadTwoCommunities(self._dispersy, master, self._mm._my_member) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
 
         self.assertEqual(sorted(masters), sorted(community.master_member.public_key for community in communities))
         self.assertEqual(len(communities), 2)
@@ -124,6 +125,7 @@ class TestClassification(DispersyTestFunc):
         """
         # create community
         cid = self._community.cid
+        my_member = self._community.my_member
 
         # verify auto-load is enabled (default)
         self._community.dispersy_auto_load = auto_load
@@ -131,7 +133,7 @@ class TestClassification(DispersyTestFunc):
 
         if auto_load:
             # define auto load
-            self._dispersy.define_auto_load(DebugCommunity)
+            self._dispersy.define_auto_load(DebugCommunity, my_member)
 
         # create wake-up message
         wakeup = self._mm.create_full_sync_text("Should auto-load", 42)
@@ -142,7 +144,7 @@ class TestClassification(DispersyTestFunc):
         try:
             self._dispersy.get_community(cid, auto_load=False)
             self.fail()
-        except KeyError:
+        except CommunityNotFoundException:
             pass
 
         # send wakeup message
@@ -156,7 +158,7 @@ class TestClassification(DispersyTestFunc):
 
             if not auto_load:
                 self.fail('Should not have been loaded by wakeup message')
-        except KeyError:
+        except CommunityNotFoundException:
             if auto_load:
                 self.fail('Should have been loaded by wakeup message')
 
