@@ -1729,7 +1729,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
 
             # update global time
             highest_global_time = max(highest_global_time, message.distribution.global_time)
-            if message.distribution.enable_sequence_number:
+            if isinstance(meta.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
                 highest_sequence_number = max(highest_sequence_number, message.distribution.sequence_number)
 
 
