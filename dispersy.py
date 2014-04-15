@@ -1687,7 +1687,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         logger.debug("attempting to store %d %s messages", len(messages), meta.name)
         is_double_member_authentication = isinstance(meta.authentication, DoubleMemberAuthentication)
         highest_global_time = 0
-        highest_sequence_number = defaultdict(0)
+        highest_sequence_number = defaultdict(int)
 
         # update_sync_range = set()
         for message in messages:
