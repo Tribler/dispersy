@@ -1687,6 +1687,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         logger.debug("attempting to store %d %s messages", len(messages), meta.name)
         is_double_member_authentication = isinstance(meta.authentication, DoubleMemberAuthentication)
         highest_global_time = 0
+        highest_sequence_number = 0
 
         # update_sync_range = set()
         for message in messages:
@@ -1711,33 +1712,36 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                                     isinstance(meta.distribution, FullSyncDistribution)
                                     and message.distribution.enable_sequence_number else None)
                                ))
+            # must have stored one entry
+            assert self._database.changes == 1
+
             # ensure that we can reference this packet
             message.packet_id = self._database.last_insert_rowid
             logger.debug("stored message %s in database at row %d", message.name, message.packet_id)
-
-            if __debug__:
-                # must have stored one entry
-                assert self._database.changes == 1
-                # when sequence numbers are enabled, we must have exactly
-                # message.distribution.sequence_number messages in the database
-                if isinstance(meta.distribution, FullSyncDistribution) and message.distribution.enable_sequence_number:
-                    count_, = self._database.execute(u"SELECT COUNT(*) FROM sync "
-                                                    u"WHERE meta_message = ? AND member = ? AND sequence BETWEEN 1 AND ?",
-                                                    (message.database_id,
-                                                    message.authentication.member.database_id,
-                                                    message.distribution.sequence_number)).next()
-                    assert count_ == message.distribution.sequence_number, [count_, message.distribution.sequence_number]
-
 
             if is_double_member_authentication:
                 member1 = message.authentication.members[0].database_id
                 member2 = message.authentication.members[1].database_id
                 self._database.execute(u"INSERT INTO double_signed_sync (sync, member1, member2) VALUES (?, ?, ?)",
                                        (message.packet_id, member1, member2) if member1 < member2 else (message.packet_id, member2, member1))
+
                 assert self._database.changes == 1
 
             # update global time
             highest_global_time = max(highest_global_time, message.distribution.global_time)
+            if message.distribution.enable_sequence_number:
+                highest_sequence_number = max(highest_sequence_number, message.distribution.sequence_number)
+
+
+        if __debug__ and highest_sequence_number:
+            # when sequence numbers are enabled, we must have exactly
+            # message.distribution.sequence_number messages in the database
+            count_, = self._database.execute(u"SELECT COUNT(*) FROM sync "
+                                            u"WHERE meta_message = ? AND member = ? AND sequence BETWEEN 1 AND ?",
+                                            (message.database_id,
+                                            highest_sequence_number,
+                                            )).next()
+            assert count_ == highest_sequence_number, [count_, highest_sequence_number]
 
         if isinstance(meta.distribution, LastSyncDistribution):
             # delete packets that have become obsolete
