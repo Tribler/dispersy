@@ -315,9 +315,10 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
         key = data[offset:offset + key_length]
-        if not self._community.dispersy.crypto.is_valid_public_bin(key):
+        try:
+            member = self._community.dispersy.get_member(public_key=key)
+        except:
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
-        member = self._community.dispersy.get_member(public_key=key)
         offset += key_length
 
         # there must be at least one global time in the packet
@@ -364,9 +365,10 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size (_decode_missing_message.2)")
 
         key = data[offset:offset + key_length]
-        if not self._community.dispersy.crypto.is_valid_public_bin(key):
+        try:
+            member = self._community.dispersy.get_member(public_key=key)
+        except:
             raise DropPacket("Invalid cryptographic key (_decode_missing_message)")
-        member = self._community.dispersy.get_member(public_key=key)
         offset += key_length
 
         if len(data) < offset + 1:
@@ -507,9 +509,10 @@ class NoDefBinaryConversion(Conversion):
                 raise DropPacket("Insufficient packet size")
 
             key = data[offset:offset + key_length]
-            if not self._community.dispersy.crypto.is_valid_public_bin(key):
+            try:
+                member = self._community.dispersy.get_member(public_key=key)
+            except:
                 raise DropPacket("Invalid cryptographic key (_decode_authorize)")
-            member = self._community.dispersy.get_member(public_key=key)
             offset += key_length
 
             messages_length, = self._struct_B.unpack_from(data, offset)
@@ -602,9 +605,10 @@ class NoDefBinaryConversion(Conversion):
                 raise DropPacket("Insufficient packet size")
 
             key = data[offset:offset + key_length]
-            if not self._community.dispersy.crypto.is_valid_public_bin(key):
+            try:
+                member = self._community.dispersy.get_member(public_key=key)
+            except:
                 raise DropPacket("Invalid cryptographic key (_decode_revoke)")
-            member = self._community.dispersy.get_member(public_key=key)
             offset += key_length
 
             messages_length, = self._struct_B.unpack_from(data, offset)
@@ -677,9 +681,10 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size")
 
         public_key = data[offset:offset + key_length]
-        if not self._community.dispersy.crypto.is_valid_public_bin(public_key):
+        try:
+            member = self._community.dispersy.get_member(public_key=public_key)
+        except:
             raise DropPacket("Invalid cryptographic key (_decode_revoke)")
-        member = self._community.dispersy.get_member(public_key=public_key)
         offset += key_length
 
         if len(data) < offset + 8:
@@ -705,9 +710,10 @@ class NoDefBinaryConversion(Conversion):
         offset += 10
 
         key = data[offset:offset + key_length]
-        if not self._community.dispersy.crypto.is_valid_public_bin(key):
+        try:
+            member = self._community.dispersy.get_member(public_key=key)
+        except:
             raise DropPacket("Invalid cryptographic key (_decode_missing_proof)")
-        member = self._community.dispersy.get_member(public_key=key)
         offset += key_length
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, member, global_time)
@@ -1168,10 +1174,11 @@ class NoDefBinaryConversion(Conversion):
             key = data[offset:offset + key_length]
             offset += key_length
 
-            if not self._community.dispersy.crypto.is_valid_public_bin(key):
+            try:
+                member = self._community.get_member(public_key=key)
+            except:
                 raise DropPacket("Invalid cryptographic key (_decode_member_authentication)")
 
-            member = self._community.get_member(public_key=key)
             if member:
                 first_signature_offset = len(data) - member.signature_length
 
@@ -1211,10 +1218,11 @@ class NoDefBinaryConversion(Conversion):
                     raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
                 key = data[offset:offset + key_length]
                 offset += key_length
-                if not self._community.dispersy.crypto.is_valid_public_bin(key):
+                try:
+                    member = self._community.dispersy.get_member(public_key=key)
+                    members.append(member)
+                except:
                     raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
-
-                members.append(self._community.dispersy.get_member(public_key=key))
 
         else:
             raise NotImplementedError(authentication.encoding)

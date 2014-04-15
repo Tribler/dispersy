@@ -455,10 +455,10 @@ class Dispersy(object):
         Tell Dispersy how to load COMMUNITY if need be.
 
         COMMUNITY_CLS is the community class that is defined.
-        
+
         MY_MEMBER is the member to be used within the community.
 
-        ARGS an KARGS are optional arguments and keyword arguments passed to the 
+        ARGS an KARGS are optional arguments and keyword arguments passed to the
         community constructor.
 
         When LOAD is True all available communities of this type will be immediately loaded.
@@ -510,7 +510,7 @@ class Dispersy(object):
     def get_progress_handlers(self):
         return self._progress_handlers
 
-    def get_member(self, *argv, **kwargs):
+    def get_member(self, mid="", public_key="", private_key=""):
         """Returns a Member instance associated with public_key.
 
         Since we have the public_key, we can create this user if it doesn't yet.  Hence, this method always succeeds.
@@ -523,13 +523,8 @@ class Dispersy(object):
         @return: The Member instance associated with public_key.
         @rtype: Member
         """
-        assert not argv, "Only named arguments are allowed"
-        mid = kwargs.pop("mid", "")
-        public_key = kwargs.pop("public_key", "")
-        private_key = kwargs.pop("private_key", "")
         assert sum(map(bool, (mid, public_key, private_key))) == 1, \
             "Only one of the three optional arguments may be passed: %s" % str((mid, public_key, private_key))
-        assert not kwargs, "Unexpected keyword arg received: %s" % kwargs
         assert isinstance(mid, str)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
@@ -543,66 +538,74 @@ class Dispersy(object):
 
             elif private_key:
                 _key = self.crypto.key_from_private_bin(private_key)
-                public_key = self.crypto.key_to_bin(_key.pub())
                 mid = self.crypto.key_to_hash(_key.pub())
 
         member = self._member_cache_by_hash.get(mid)
-        if not member:
-            # The member is not cached, let's try to get it from the database
-            row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
-            if row:
-                database_id, public_key_from_db, private_key_from_db = row
+        if member:
+            return member
 
-                public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
-                private_key_from_db = "" if private_key_from_db is None else str(private_key_from_db)
-                assert not private_key_from_db or self.crypto.is_valid_private_bin(private_key_from_db), private_key_from_db.encode("HEX")
+        if private_key:
+            key = self.crypto.key_from_private_bin(private_key)
+            public_key = self.crypto.key_to_bin(key.pub())
 
-                if private_key_from_db != private_key and private_key_from_db:
-                    if private_key:
-                        logger.warning("Received private key doesn't match with the one in the database (hash collision?)"
-                                       "\n  Received: [%s]"
-                                       "\n  Private:  [%s]",
-                                       private_key.encode('HEX'), private_key_from_db.encode('HEX'))
-                        assert False, mid
-                    else:
-                        private_key = private_key_from_db
+        elif public_key:
+            key = self.crypto.key_from_public_bin(public_key)
 
-                if public_key_from_db != public_key and public_key_from_db:
-                    if public_key:
-                        logger.warning("Received public key doesn't match with the one in the database (hash collision?)"
-                                       "\n  Received: [%s]"
-                                       "\n  Public:   [%s]",
-                                       public_key.encode('HEX'), public_key_from_db.encode('HEX'))
-                        assert False, mid
-                    else:
-                        public_key = public_key_from_db
+        # both public and private keys are valid at this point
 
+        # The member is not cached, let's try to get it from the database
+        row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
+
+        if row:
+            database_id, public_key_from_db, private_key_from_db = row
+
+            public_key_from_db = "" if public_key_from_db is None else str(public_key_from_db)
+            private_key_from_db = "" if private_key_from_db is None else str(private_key_from_db)
+
+            # the private key that was passed as an argument overrules everything, update db if neccesary
+            if private_key:
+                assert public_key
+                if private_key_from_db != private_key:
+                    self.database.execute(u"UPDATE member SET public_key = ?, private_key = ? WHERE id = ?",
+                    (buffer(public_key), buffer(private_key), database_id))
+            else:
+                # the private key from the database overrules the public key argument
+                if private_key_from_db:
+                    key = self.crypto.key_from_private_bin(private_key_from_db)
+
+                # the public key argument overrules anything in the database
                 elif public_key:
-                    # We have the MID but the public key is missing, let's sort that out.
-                    self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
-                                                                                             database_id))
-            elif public_key or private_key:
-                if private_key:
-                    assert public_key
-                # The MID or public/private keys are not in the database, store them.
-                self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)", (buffer(mid),
-                                                                                            buffer(public_key),
-                                                                                            buffer(private_key)))
-                database_id = self.database.last_insert_rowid
+                    if public_key_from_db != public_key:
+                        self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?",
+                    (buffer(public_key), database_id))
 
-            if not (public_key or private_key):
-                # We could't find the key on the DB, nothing else to do
-                return
+                # no priv/pubkey arguments passed, maybe use the public key from the database
+                elif public_key_from_db:
+                    key = self.crypto.key_from_public_bin(public_key_from_db)
 
-            key = self.crypto.key_from_private_bin(private_key) if private_key else self.crypto.key_from_public_bin(public_key)
-            member = Member(self, key, database_id, mid)
+                else:
+                    return
 
-            # store in cache
-            self._member_cache_by_hash[member.mid] = member
+        # the member is not in the database, insert it
+        elif public_key or private_key:
+            if private_key:
+                assert public_key
+            # The MID or public/private keys are not in the database, store them.
+            self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)",
+                (buffer(mid), buffer(public_key), buffer(private_key)))
+            database_id = self.database.last_insert_rowid
+        else:
+            # We could't find the key on the DB, nothing else to do
+            return
 
-            # limit cache length
-            if len(self._member_cache_by_hash) > 1024:
-                self._member_cache_by_hash.popitem(False)
+        member = Member(self, key, database_id, mid)
+
+        # store in cache
+        self._member_cache_by_hash[member.mid] = member
+
+        # limit cache length
+        if len(self._member_cache_by_hash) > 1024:
+            self._member_cache_by_hash.popitem(False)
 
         return member
 
@@ -719,7 +722,7 @@ class Dispersy(object):
         """
         Remove an attached community from the Dispersy instance.
 
-        Once a community is detached it will no longer receive incoming messages.  
+        Once a community is detached it will no longer receive incoming messages.
         However, when the community is marked as auto_load a new instance of this community
         will be created when a message for this community is received.
 
