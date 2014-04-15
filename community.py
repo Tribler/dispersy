@@ -235,7 +235,9 @@ class Community(object):
         except StopIteration:
             dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
                                   (master.database_id, my_member.database_id, self.get_classification()))
-            self._database_id = dispersy.database.last_insert_rowid
+
+            self._database_id, self._database_version = self._dispersy.database.execute(
+                u"SELECT id, database_version FROM community WHERE master = ?", (master.database_id,)).next()
 
             create_identity = True
 
