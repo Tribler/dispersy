@@ -222,9 +222,13 @@ class Community(object):
         self._batch_cache = {}
 
         try:
-            self._database_id, member_private_key, self._database_version = self._dispersy.database.execute(
-                u"SELECT community.id, member.private_key, database_version FROM community "
-                u"JOIN member ON member.id = community.member WHERE master = ?", (master.database_id,)).next()
+            self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
+                u"SELECT id, member, database_version FROM community WHERE master = ?", (master.database_id,)).next()
+
+            # if we're called with a different my_member, update the table to reflect this
+            if my_member_did != my_member.database_id:
+                dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
+                                  (my_member.database_id, master.database_id))
 
         except StopIteration:
             dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
@@ -234,14 +238,11 @@ class Community(object):
             # create my dispersy-identity
             self.create_identity()
 
-
-            raise ValueError(u"Community not found in database [" + master.mid.encode("HEX") + "]")
-
         logger.debug("database id:   %d", self._database_id)
 
         self._cid = master.mid
         self._master_member = master
-        self._my_member = self._dispersy.get_member(private_key=str(member_private_key))
+        self._my_member = my_member
         logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
