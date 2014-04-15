@@ -582,6 +582,8 @@ class Dispersy(object):
                     self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?", (buffer(public_key),
                                                                                              database_id))
             elif public_key or private_key:
+                if private_key:
+                    assert public_key
                 # The MID or public/private keys are not in the database, store them.
                 self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)", (buffer(mid),
                                                                                             buffer(public_key),
