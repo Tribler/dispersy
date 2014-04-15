@@ -238,6 +238,9 @@ class TrackerDispersy(Dispersy):
             self._load_persistent_storage()
             self._callback.register(self._unload_communities)
 
+            self.define_auto_load(TrackerCommunity, self._my_member)
+            self.define_auto_load(TrackerHardKilledCommunity, self._my_member)
+
             if not self._silent:
                 self._callback.register(self._report_statistics)
 
@@ -358,8 +361,6 @@ def main():
 
     # setup
     dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
-    dispersy.define_auto_load(TrackerCommunity)
-    dispersy.define_auto_load(TrackerHardKilledCommunity)
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)

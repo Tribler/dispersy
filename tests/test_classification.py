@@ -125,6 +125,7 @@ class TestClassification(DispersyTestFunc):
         """
         # create community
         cid = self._community.cid
+        my_member = self._community.my_member
 
         # verify auto-load is enabled (default)
         self._community.dispersy_auto_load = auto_load
@@ -132,7 +133,7 @@ class TestClassification(DispersyTestFunc):
 
         if auto_load:
             # define auto load
-            self._dispersy.define_auto_load(DebugCommunity)
+            self._dispersy.define_auto_load(DebugCommunity, my_member)
 
         # create wake-up message
         wakeup = self._mm.create_full_sync_text("Should auto-load", 42)

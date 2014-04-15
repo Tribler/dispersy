@@ -676,15 +676,11 @@ class Dispersy(object):
         not available.
         """
         assert isinstance(database_id, (int, long)), type(database_id)
-        member = self._member_cache_by_database_id.get(database_id)
-        if not member:
-            try:
-                public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
-            except StopIteration:
-                pass
-            else:
-                member = self.get_member(public_key=str(public_key))
-        return member
+        try:
+            public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
+            return self.get_member(public_key=str(public_key))
+        except StopIteration:
+            pass
 
     def attach_community(self, community):
         """
