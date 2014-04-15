@@ -230,13 +230,14 @@ class Community(object):
                 dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
                                   (my_member.database_id, master.database_id))
 
+            create_identity = False
+
         except StopIteration:
             dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
                                   (master.database_id, my_member.database_id, self.get_classification()))
             self._database_id = dispersy.database.last_insert_rowid
 
-            # create my dispersy-identity
-            self.create_identity()
+            create_identity = True
 
         logger.debug("database id:   %d", self._database_id)
 
@@ -347,6 +348,10 @@ class Community(object):
 
         # turn on/off pruning
         self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
+
+        if create_identity:
+            # create my dispersy-identity
+            self.create_identity()
 
         if attach:
             # tell dispersy that there is a new community
