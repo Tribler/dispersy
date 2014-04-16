@@ -1206,7 +1206,7 @@ class Dispersy(object):
                             assert seq or 0 == count, [seq, count]
                             # we can allow MESSAGE to be processed
 
-                if seq + 1 != message.distribution.sequence_number:
+                elif seq + 1 != message.distribution.sequence_number:
                     # we do not have the previous message (delay and request)
                     yield DelayMessageBySequence(message, seq + 1, message.distribution.sequence_number - 1)
                     continue

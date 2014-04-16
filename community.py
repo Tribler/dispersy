@@ -1903,7 +1903,7 @@ class Community(object):
         """
         # remove any items that are left in the cache
         for task_identifier, _, _ in self._batch_cache.itervalues():
-            self._callback.unregister(task_identifier)
+            self._dispersy._callback.unregister(task_identifier)
         self._batch_cache.clear()
 
     def flush_batch_cache(self):
