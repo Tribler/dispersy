@@ -1519,28 +1519,37 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         this message or it can not be decoded.
         """
         try:
-            packet_id, packet = self._database.execute(u"SELECT id, packet FROM sync WHERE community = ? AND member = ? AND global_time = ? LIMIT 1",
+            packet_id, packet, undone = self._database.execute(u"SELECT id, packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ? LIMIT 1",
                                                        (community.database_id, member.database_id, global_time)).next()
         except StopIteration:
             return None
 
-        # find associated conversion
+        message = self.convert_packet_to_message(packet, community, verify=verify)
+        if message:
+            message.packet_id = packet_id
+            message.undone = undone
+            return message
+
+    def load_message_by_packetid(self, community, packet_id, verify=False):
+        """
+        Returns the message identified by community, member, and global_time.
+
+        Each message is uniquely identified by the community that it is created in, the member it is
+        created by and the global time when it is created.  Using these three parameters we return
+        the associated the Message.Implementation instance.  None is returned when we do not have
+        this message or it can not be decoded.
+        """
         try:
-            conversion = community.get_conversion_for_packet(packet)
-        except ConversionNotFoundException:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
+            packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE sync_id = ?",
+                                                       (packet_id,)).next()
+        except StopIteration:
             return None
 
-        # attempt conversion
-        try:
-            message = conversion.decode_message(LoopbackCandidate(), packet, verify)
-
-        except (DropPacket, DelayPacket) as exception:
-            logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-            return None
-
-        message.packet_id = packet_id
-        return message
+        message = self.convert_packet_to_message(packet, community, verify=verify)
+        if message:
+            message.packet_id = packet_id
+            message.undone = undone
+            return message
 
     def convert_packet_to_meta_message(self, packet, community=None, load=True, auto_load=True):
         """
