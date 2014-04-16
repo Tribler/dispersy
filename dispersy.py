@@ -1148,10 +1148,10 @@ class Dispersy(object):
             highest = {}
             for message in messages:
                 if not message.authentication.member.database_id in highest:
-                    last_global_time, seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                    last_global_time, last_seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
                                                     (message.authentication.member.database_id, message.database_id)).next()
-                    highest[message.authentication.member.database_id] = (last_global_time or 0, seq or 0)
-                    assert seq or 0 == count, [seq, count]
+                    highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
+                    assert last_seq or 0 == count, [last_seq, count]
 
             # all messages must follow the sequence_number order
             for message in messages:
@@ -1200,13 +1200,13 @@ class Dispersy(object):
                             logger.debug("removed %d entries from sync because the member created multiple sequences", self._database.changes)
 
                             # by deleting messages we changed SEQ and the HIGHEST cache
-                            last_global_time, seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                            last_global_time, last_seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
                                                            (message.authentication.member.database_id, message.database_id)).next()
-                            highest[message.authentication.member.database_id] = (last_global_time or 0, seq or 0)
-                            assert seq or 0 == count, [seq, count]
+                            highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
+                            assert last_seq or 0 == count, [last_seq, count]
                             # we can allow MESSAGE to be processed
 
-                elif seq + 1 != message.distribution.sequence_number:
+                if seq + 1 != message.distribution.sequence_number:
                     # we do not have the previous message (delay and request)
                     yield DelayMessageBySequence(message, seq + 1, message.distribution.sequence_number - 1)
                     continue
