@@ -1,4 +1,4 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 
 from .authentication import Authentication
 from .candidate import Candidate
@@ -26,37 +26,51 @@ class DelayPacket(Exception):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, msg, community):
+    def __init__(self, msg):
         super(DelayPacket, self).__init__(msg)
-        self._community = community
+        self._delayed = None
+        self._candidate = None
 
-    @abstractmethod
-    def create_request(self, candidate, delayed):
-        # create and send a request.  once the response is received the _process_delayed_packet can
-        # pass the (candidate, delayed) tuple to dispersy for reprocessing
-        # @return True if actual request is made
+    @property
+    def delayed(self):
+        return self._delayed
+    @delayed.setter
+    def delayed(self, delayed):
+        self._delayed = delayed
+
+    @property
+    def candidate(self):
+        return self._candidate
+    @candidate.setter
+    def candidate(self, candidate):
+        self._candidate = candidate
+
+
+    @abstractproperty
+    def match_info(self):
+        # return the matchinfo to be used to trigger the resume
         pass
 
-    def _process_delayed_packet(self, response, candidate, delayed):
-        if response:
-            # process the response and the delayed message
-            self._community.dispersy.on_incoming_packets([(candidate, delayed)])
-            self._community.dispersy.statistics.delay_success += 1
-        else:
-            # timeout, do nothing
-            self._community.dispersy.statistics.delay_timeout += 1
+    @abstractmethod
+    def send_request(self, community, candidate):
+        # create and send the request
+        pass
 
 
 class DelayPacketByMissingMember(DelayPacket):
 
-    def __init__(self, community, missing_member_id):
+    def __init__(self, missing_member_id):
+        super(DelayPacketByMissingMember, self).__init__("Missing member")
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
-        super(DelayPacketByMissingMember, self).__init__("Missing member", community)
         self._missing_member_id = missing_member_id
 
-    def create_request(self, candidate, delayed):
-        return self._community.create_missing_identity(candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
+    @property
+    def match_info(self):
+        return u"dispersy-identity", self._missing_member_id, None, []
+
+    def send_request(self, community, candidate):
+        return community.create_missing_identity(candidate, community.dispersy.get_temporary_member_from_id(self._missing_member_id))
 
 
 class DropPacket(Exception):
@@ -73,9 +87,6 @@ class DelayMessage(Exception):
 
     """
     Uses an identifier to match request to response.
-
-    Ensure to call Dispersy.handle_missing_messages for each incoming message that may have been
-    requested.
     """
 
     __metaclass__ = ABCMeta
@@ -95,34 +106,24 @@ class DelayMessage(Exception):
         """
         return self.__class__(delayed)
 
-    @abstractmethod
-    def create_request(self):
-        # create and send a request.  once the response is received the _process_delayed_message can
-        # pass the (candidate, delayed) tuple to dispersy for reprocessing
-        # @return True if actual request is made
+    @abstractproperty
+    def match_info(self):
+        # return the matchinfo to be used to trigger the resume,
         pass
 
-    def _process_delayed_message(self, response):
-        if response:
-            logger.debug("resume %s (received %s)", self._delayed, response)
-
-            # inform the delayed message of the reason why it is resumed
-            self._delayed.resume = response
-
-            # process the response and the delayed message
-            self._delayed.community.on_messages([self._delayed])
-            self._delayed.community.dispersy.statistics.delay_success += 1
-        else:
-            # timeout, do nothing
-            logger.debug("ignore %s (no response was received)", self._delayed)
-            self._delayed.community.dispersy.statistics.delay_timeout += 1
-
+    @abstractmethod
+    def send_request(self, community, candidate):
+        # create and send the request
+        pass
 
 class DelayMessageByProof(DelayMessage):
 
-    def create_request(self):
-        community = self._delayed.community
-        return community.create_missing_proof(self._delayed.candidate, self._delayed, self._process_delayed_message)
+    @property
+    def match_info(self):
+        return (u"dispersy-authorize", None, None, []), (u"dispersy-dynamic-settings", None, None, [])
+
+    def send_request(self, community, candidate):
+        community.create_missing_proof(candidate, self._delayed)
 
 
 class DelayMessageBySequence(DelayMessage):
@@ -138,9 +139,12 @@ class DelayMessageBySequence(DelayMessage):
     def duplicate(self, delayed):
         return self.__class__(delayed, self._missing_low, self._missing_high)
 
-    def create_request(self):
-        community = self._delayed.community
-        return community.create_missing_sequence(self._delayed.candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high, self._process_delayed_message)
+    @property
+    def match_info(self):
+        return None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high)
+
+    def send_request(self, community, candidate):
+        community.create_missing_sequence(candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high)
 
 
 class DelayMessageByMissingMessage(DelayMessage):
@@ -155,9 +159,12 @@ class DelayMessageByMissingMessage(DelayMessage):
     def duplicate(self, delayed):
         return self.__class__(delayed, self._member, self._global_time)
 
-    def create_request(self):
-        community = self._delayed.community
-        return community.create_missing_message(self._delayed.candidate, self._member, self._global_time, self._process_delayed_message)
+    @property
+    def match_info(self):
+        return None, self._member.mid, self._global_time, []
+
+    def send_request(self, community, candidate):
+        community.create_missing_message(candidate, self._member, self._global_time)
 
 
 class DropMessage(Exception):
@@ -186,11 +193,11 @@ class DropMessage(Exception):
 
     def __str__(self):
         return "".join((super(DropMessage, self).__str__(), " [", self._dropped.name, "]"))
+
+
 #
 # batch
 #
-
-
 class BatchConfiguration(object):
 
     def __init__(self, max_window=0.0):

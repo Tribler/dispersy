@@ -16,8 +16,7 @@ from time import time
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .cache import (SignatureRequestCache, IntroductionRequestCache, MissingMemberCache, MissingMessageCache, MissingSomethingCache,
-                    MissingLastMessageCache, MissingProofCache, MissingSequenceOverviewCache, MissingSequenceCache)
+from .cache import SignatureRequestCache, IntroductionRequestCache
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import runtime_duration_warning, attach_runtime_statistics
@@ -203,6 +202,9 @@ class Community(object):
 
         # batch caching incoming packets
         self._batch_cache = {}
+
+        # delayed list for incoming packet/messages which are delayed
+        self._delayed = defaultdict(list)
 
         create_identity = True
         try:
@@ -1498,18 +1500,6 @@ class Community(object):
             # add this candidate to make sure it didn't get removed in the del call
             self.add_candidate(candidate)
 
-    def handle_missing_messages(self, messages, *classes):
-        assert all(isinstance(message, Message.Implementation) for message in messages), [type(message) for message in messages]
-        assert all(issubclass(cls, MissingSomethingCache) for cls in classes), [type(cls) for cls in classes]
-
-        for message in messages:
-            for cls in classes:
-                cache = self._request_cache.pop(cls.create_identifier_from_message(message))
-                if cache:
-                    logger.debug("found request cache for %s", message)
-                    for response_func, response_args in cache.callbacks:
-                        response_func(message, *response_args)
-
     def cleanup_candidates(self):
         """
         Removes all candidates that are obsolete.
@@ -1815,6 +1805,66 @@ class Community(object):
                 else:
                     yield DelayMessageByProof(message)
 
+    def _drop(self, drop, packet, candidate):
+        if isinstance(drop, DropPacket):
+            logger.warning("_on_batch_cache: drop a %d byte packet (%s) from %s", len(packet), drop, candidate)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % drop)
+            self._dispersy._statistics.drop_count += 1
+
+        elif isinstance(drop, DropMessage):
+            logger.debug("%s drop: %s (%s)", candidate, drop.dropped.name, drop)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "on_message_batch:%s" % drop)
+            self._dispersy._statistics.drop_count += 1
+
+    def _delay(self, delay, packet=None, candidate=None):
+        for key in delay.match_info:
+            assert len(key) == 4, key
+
+            # unwrap sequence number list
+            for seq in key[3] or [None]:
+                self._delayed[(key[0], key[1], key[2], seq)].append(delay)
+
+        delay.send_request(self, candidate)
+        self._dispersy._statistics.delay_send += 1
+        self._dispersy._statistics.delay_count += 1
+
+        if isinstance(delay, DelayPacket):
+            logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "delay_packet:%s" % delay)
+            delay.delayed = packet
+            delay.candidate = candidate
+
+        elif isinstance(delay, DelayMessage):
+            logger.debug("%s delay %s (%s)", candidate, delay.delayed.name, delay)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "delay_message:%s" % delay)
+
+    def _resume_delayed(self, meta, messages):
+        has_mid = isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication))
+        has_seq = isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number
+
+        def matcher(key, this_key):
+            return all(k is None or k == tk for k, tk in zip(key, this_key))
+
+        received_info = [(meta.name, message.authentication.member.mid if has_mid else None,
+                       message.distribution.global_time, message.distribution.sequence_number if has_seq else None) for message in messages]
+
+        to_be_resumed = set()
+        for key in self._delayed.keys():
+            for this_key in received_info:
+                if matcher(key, this_key):
+                    to_be_resumed.add(self._delayed.pop(this_key))
+
+        still_delayed = self._delayed.values()
+        for resume in to_be_resumed:
+            if resume not in still_delayed:
+                self.dispersy.statistics.delay_success += 1
+
+                if isinstance(resume, DelayPacket):
+                    self.on_incoming_packets([(resume.candidate, resume.delayed)])
+
+                elif isinstance(resume, DelayMessage):
+                    self.on_messages([resume.delayed])
+
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
         Process incoming packets for this community.
@@ -1900,22 +1950,15 @@ class Community(object):
             assert isinstance(candidate, Candidate)
             assert isinstance(packet, str)
             assert isinstance(conversion, Conversion)
-
             try:
                 # convert binary data to internal Message
-                messages.append(conversion.decode_message(LoopbackCandidate() if candidate is None else candidate, packet))
+                messages.append(conversion.decode_message(candidate, packet))
 
-            except DropPacket as exception:
-                logger.warning("_on_batch_cache: drop a %d byte packet (%s) from %s", len(packet), exception, candidate)
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % exception)
-                self._dispersy._statistics.drop_count += 1
+            except DropPacket as drop:
+                self._drop(drop, packet, candidate)
 
             except DelayPacket as delay:
-                logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
-                if delay.create_request(candidate, packet):
-                    self._dispersy._statistics.delay_send += 1
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "_convert_batch_into_messages:%s" % delay)
-                self._dispersy._statistics.delay_count += 1
+                self._delay(delay, packet, candidate)
 
         assert all(isinstance(message, Message.Implementation) for message in messages), "_convert_batch_into_messages must return only Message.Implementation instances"
         assert all(message.meta == meta for message in messages), "All Message.Implementation instances must be in the same batch"
@@ -1975,21 +2018,12 @@ class Community(object):
 
         def _filter_fail(message):
             if isinstance(message, DelayMessage):
-                logger.debug("%s delay %s (%s)", message.delayed.candidate, message.delayed, message)
-
-                if message.create_request():
-                    self._dispersy._statistics.delay_send += 1
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "om_message_batch:%s" % message.delayed)
-                self._dispersy._statistics.delay_count += 1
+                self._delay(message)
                 return False
-
             elif isinstance(message, DropMessage):
-                logger.debug("%s drop: %s (%s)", message.dropped.candidate, message.dropped.name, message)
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "on_message_batch:%s" % message)
-                self._dispersy._statistics.drop_count += 1
+                self._drop(message)
                 return False
-            else:
-                return True
+            return True
 
         meta = messages[0].meta
         debug_count = len(messages)
@@ -2050,8 +2084,8 @@ class Community(object):
             else:
                 logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
 
-            if isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
-                self.handle_missing_messages(messages, MissingMessageCache)
+
+            self._resume_delayed(meta, messages)
 
             # return the number of messages that were correctly handled (non delay, duplicates, etc)
             return len(messages)
@@ -2087,9 +2121,6 @@ class Community(object):
             logger.debug("%s", message)
             self.timeline.authorize(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
 
-        # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
-
     def on_revoke(self, messages, initializing=False):
         """
         Process a dispersy-revoke message.
@@ -2106,9 +2137,6 @@ class Community(object):
         """
         for message in messages:
             self.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
-
-        # this might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingSequenceCache)
 
     def check_signature_request(self, messages):
         assert isinstance(messages[0].meta.authentication, NoAuthentication)
@@ -2375,28 +2403,18 @@ class Community(object):
 
         for message in messages:
             if message.payload.packet is None:
-                # message.resume can be many things.  for example: another undo message (when delayed by
-                # missing sequence) or a message (when delayed by missing message).
-                if (message.resume and
-                    message.resume.community.database_id == self.database_id and
-                    message.resume.authentication.member.database_id == message.payload.member.database_id and
-                        message.resume.distribution.global_time == message.payload.global_time):
-                    logger.debug("using resume cache")
-                    message.payload.packet = message.resume
+                # obtain the packet that we are attempting to undo
+                try:
+                    packet_id, message_name, packet_data = self._dispersy._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
+                                                                                           (self.database_id, message.payload.member.database_id, message.payload.global_time)).next()
+                except StopIteration:
+                    delay = DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
+                    dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
+                    yield delay
+                    continue
 
-                else:
-                    # obtain the packet that we are attempting to undo
-                    try:
-                        packet_id, message_name, packet_data = self._dispersy._database.execute(u"SELECT sync.id, meta_message.name, sync.packet FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? AND sync.member = ? AND sync.global_time = ?",
-                                                                                               (self.database_id, message.payload.member.database_id, message.payload.global_time)).next()
-                    except StopIteration:
-                        delay = DelayMessageByMissingMessage(message, message.payload.member, message.payload.global_time)
-                        dependencies[message.authentication.member.public_key] = (message.distribution.sequence_number, delay)
-                        yield delay
-                        continue
-
-                    logger.debug("using packet from database")
-                    message.payload.packet = Packet(self.get_meta_message(message_name), str(packet_data), packet_id)
+                logger.debug("using packet from database")
+                message.payload.packet = Packet(self.get_meta_message(message_name), str(packet_data), packet_id)
 
             # ensure that the message in the payload allows undo
             if not message.payload.packet.meta.undo_callback:
@@ -2499,9 +2517,6 @@ class Community(object):
 
         for meta, sub_messages in groupby(real_messages, key=lambda x: x.payload.packet.meta):
             meta.undo_callback([(message.payload.member, message.payload.global_time, message.payload.packet) for message in sub_messages])
-
-        # This might be a response to a dispersy-missing-sequence
-        self.handle_missing_messages(real_messages, MissingSequenceCache)
 
     def check_introduction_response(self, messages):
         for message in messages:
@@ -2847,27 +2862,10 @@ class Community(object):
                 logger.debug("received punture from %s", candidate)
                 cache.puncture_candidate = candidate
 
-    def create_missing_message(self, candidate, member, global_time, response_func=None, response_args=(), timeout=10.0):
-        # ensure that the identifier is 'triggered' somewhere, i.e. using
-        # handle_missing_messages(messages, MissingMessageCache)
-
-        sendRequest = False
-
-        cache = self.request_cache.get(MissingMessageCache.create_identifier(member, global_time))
-        if not cache:
-            cache = self.request_cache.add(MissingMessageCache(timeout, member, global_time))
-            logger.debug("new cache: %s", cache)
-
-            meta = self.get_meta_message(u"dispersy-missing-message")
-            request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(member, [global_time]))
-            self._dispersy._forward([request])
-
-            sendRequest = True
-
-        if response_func:
-            cache.callbacks.append((response_func, response_args))
-
-        return sendRequest
+    def create_missing_message(self, candidate, member, global_time):
+        meta = self.get_meta_message(u"dispersy-missing-message")
+        request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(member, [global_time]))
+        self._dispersy._forward([request])
 
     def on_missing_message(self, messages):
         for message in messages:
@@ -2888,41 +2886,6 @@ class Community(object):
                 self._dispersy._endpoint.send([candidate], responses)
             else:
                 logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
-
-    def create_missing_last_message(self, candidate, member, message, count_, response_func=None, response_args=(), timeout=10.0):
-        if __debug__:
-            assert isinstance(candidate, Candidate)
-            assert isinstance(member, Member)
-            assert isinstance(message, Message)
-            assert isinstance(count_, int)
-            assert response_func is None or callable(response_func)
-            assert isinstance(response_args, tuple)
-            assert isinstance(timeout, float)
-            assert timeout > 0.0
-
-        sendRequest = False
-
-        cache = self.request_cache.get(MissingLastMessageCache.create_identifier(member, message))
-        if not cache:
-            cache = self.request_cache.add(MissingLastMessageCache(timeout, member, message))
-            logger.debug("new cache: %s", cache)
-
-            meta = self.get_meta_message(u"dispersy-missing-last-message")
-            request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(member, message, count_))
-            self._dispersy._forward([request])
-            sendRequest = True
-
-        cache.callbacks.append((response_func, response_args))
-        return sendRequest
-
-    def on_missing_last_message(self, messages):
-        for message in messages:
-            payload = message.payload
-            packets = [str(packet) for packet, in list(self._dispersy._database.execute(
-                    u"SELECT packet FROM sync WHERE community = ? AND member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT ?",
-                    (self.database_id, payload.member.database_id, payload.message.database_id, payload.count)))]
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-last-message", len(packets))
-            self._dispersy._endpoint.send([message.candidate], packets)
 
     def create_identity(self, sign_with_master=False, store=True, update=True):
         """
@@ -2957,7 +2920,7 @@ class Community(object):
         self._dispersy.store_update_forward([message], store, update, False)
         return message
 
-    def create_missing_identity(self, candidate, dummy_member, response_func=None, response_args=(), timeout=4.5, forward=True):
+    def create_missing_identity(self, candidate, dummy_member):
         """
         Create a dispersy-missing-identity message.
 
@@ -2965,31 +2928,13 @@ class Community(object):
         the signature.  When we are missing a public key, we can request a dispersy-identity message
         which contains this public key.
 
-        # @return True if actual request is made
         """
-        if __debug__:
-            assert isinstance(candidate, Candidate)
-            assert isinstance(dummy_member, DummyMember)
-            assert response_func is None or callable(response_func)
-            assert isinstance(response_args, tuple)
-            assert isinstance(timeout, float)
-            assert isinstance(forward, bool)
+        assert isinstance(candidate, Candidate)
+        assert isinstance(dummy_member, DummyMember)
 
-        sendRequest = False
-
-        cache = self.request_cache.get(MissingMemberCache.create_identifier(dummy_member))
-        if not cache:
-            cache = self.request_cache.add(MissingMemberCache(timeout, dummy_member))
-            logger.debug("new cache: %s", cache)
-
-            meta = self.get_meta_message(u"dispersy-missing-identity")
-            request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
-            self._dispersy._forward([request])
-
-            sendRequest = True
-
-        cache.callbacks.append((response_func, response_args))
-        return sendRequest
+        meta = self.get_meta_message(u"dispersy-missing-identity")
+        request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(dummy_member.mid,))
+        self._dispersy._forward([request])
 
     def on_missing_identity(self, messages):
         """
@@ -3095,39 +3040,10 @@ class Community(object):
         self._dispersy._forward([cache.request])
         return cache
 
-    def create_missing_sequence(self, candidate, member, message, missing_low, missing_high, response_func=None, response_args=(), timeout=10.0):
-        # ensure that the identifier is 'triggered' somewhere, i.e. using
-        # handle_missing_messages(messages, MissingSequenceCache)
-
-        sendRequest = False
-
-        # the MissingSequenceCache allows us to match the missing_high to the response_func
-        cache = self.request_cache.get(MissingSequenceCache.create_identifier(member, message, missing_high))
-        if not cache:
-            cache = self.request_cache.add(MissingSequenceCache(timeout, member, message, missing_high))
-            logger.debug("new cache: %s", cache)
-
-        if response_func:
-            cache.callbacks.append((response_func, response_args))
-
-        # the MissingSequenceOverviewCache ensures that we do not request duplicate ranges
-        overview = self.request_cache.get(MissingSequenceOverviewCache.create_identifier(member, message))
-        if not overview:
-            overview = self.request_cache.add(MissingSequenceOverviewCache(timeout, member, message))
-            logger.debug("new cache: %s", cache)
-
-        if overview.missing_high == 0 or missing_high > overview.missing_high:
-            missing_low = max(overview.missing_high, missing_low)
-            overview.missing_high = missing_high
-
-            logger.debug("%s sending missing-sequence %s %s [%d:%d]", candidate, member.mid.encode("HEX"), message.name, missing_low, missing_high)
-            meta = self.get_meta_message(u"dispersy-missing-sequence")
-            request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(member, message, missing_low, missing_high))
-            self._dispersy._forward([request])
-
-            sendRequest = True
-
-        return sendRequest
+    def create_missing_sequence(self, candidate, member, message, missing_low, missing_high):
+        meta = self.get_meta_message(u"dispersy-missing-sequence")
+        request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(member, message, missing_low, missing_high))
+        self._dispersy._forward([request])
 
     def on_missing_sequence(self, messages):
         """
@@ -3219,28 +3135,10 @@ class Community(object):
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-sequence-", len(packets))
             self._dispersy._endpoint.send([candidate], packets)
 
-    def create_missing_proof(self, candidate, message, response_func=None, response_args=(), timeout=10.0):
-        # ensure that the identifier is 'triggered' somewhere, i.e. using
-        # handle_missing_messages(messages, MissingProofCache)
-
-        sendRequest = False
-        cache = self.request_cache.get(MissingProofCache.create_identifier())
-        if not cache:
-            cache = self.request_cache.add(MissingProofCache(timeout))
-            logger.debug("new cache: %s", cache)
-
-        key = (message.meta, message.authentication.member)
-        if not key in cache.duplicates:
-            cache.duplicates.append(key)
-
-            meta = self.get_meta_message(u"dispersy-missing-proof")
-            request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(message.authentication.member, message.distribution.global_time))
-            self._dispersy._forward([request])
-            sendRequest = True
-
-        if response_func:
-            cache.callbacks.append((response_func, response_args))
-        return sendRequest
+    def create_missing_proof(self, candidate, message):
+        meta = self.get_meta_message(u"dispersy-missing-proof")
+        request = meta.impl(distribution=(self.global_time,), destination=(candidate,), payload=(message.authentication.member, message.distribution.global_time))
+        self._dispersy._forward([request])
 
     def on_missing_proof(self, messages):
         for message in messages:
@@ -3612,12 +3510,6 @@ class Community(object):
                     executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", ((message.packet_id,) for message in redo))
                     assert self._dispersy._database.changes == len(redo), (self._dispersy._database.changes, len(redo))
                     meta.handle_callback(redo)
-
-                    # notify that global times have changed
-                    # meta.self.update_sync_range(meta, [message.distribution.global_time for message in redo])
-
-        # this might be a response to a dispersy-missing-proof or dispersy-missing-sequence
-        self.handle_missing_messages(messages, MissingProofCache, MissingSequenceCache)
 
     def _claim_master_member_sequence_number(self, meta):
         """
