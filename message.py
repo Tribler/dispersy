@@ -45,6 +45,9 @@ class DelayPacket(Exception):
     def candidate(self, candidate):
         self._candidate = candidate
 
+    @property
+    def resume_immediately(self):
+        return False
 
     @abstractproperty
     def match_info(self):
@@ -67,7 +70,7 @@ class DelayPacketByMissingMember(DelayPacket):
 
     @property
     def match_info(self):
-        return u"dispersy-identity", self._missing_member_id, None, []
+        return (u"dispersy-identity", self._missing_member_id, None, []),
 
     def send_request(self, community, candidate):
         return community.create_missing_identity(candidate, community.dispersy.get_temporary_member_from_id(self._missing_member_id))
@@ -86,7 +89,7 @@ class DelayPacketByMissingMessage(DelayPacket):
 
     @property
     def match_info(self):
-        return None, self._member.mid, self._global_time, []
+        return (None, self._member.mid, self._global_time, []),
 
     def send_request(self, community, candidate):
         return community.create_missing_message(candidate, self._member, self._global_time)
@@ -119,6 +122,10 @@ class DelayMessage(Exception):
     def delayed(self):
         return self._delayed
 
+    @property
+    def resume_immediately(self):
+        return False
+
     def duplicate(self, delayed):
         """
         Create another instance of the same class with another DELAYED.
@@ -141,6 +148,10 @@ class DelayMessageByProof(DelayMessage):
     def match_info(self):
         return (u"dispersy-authorize", None, None, []), (u"dispersy-dynamic-settings", None, None, [])
 
+    @property
+    def resume_immediately(self):
+        return True
+
     def send_request(self, community, candidate):
         community.create_missing_proof(candidate, self._delayed)
 
@@ -160,7 +171,7 @@ class DelayMessageBySequence(DelayMessage):
 
     @property
     def match_info(self):
-        return None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high)
+        return (None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high)),
 
     def send_request(self, community, candidate):
         community.create_missing_sequence(candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high)
@@ -180,7 +191,7 @@ class DelayMessageByMissingMessage(DelayMessage):
 
     @property
     def match_info(self):
-        return None, self._member.mid, self._global_time, []
+        return (None, self._member.mid, self._global_time, []),
 
     def send_request(self, community, candidate):
         community.create_missing_message(candidate, self._member, self._global_time)
@@ -239,11 +250,11 @@ class BatchConfiguration(object):
     @property
     def max_window(self):
         return self._max_window
+
+
 #
 # packet
 #
-
-
 class Packet(MetaObject.Implementation):
 
     def __init__(self, meta, packet, packet_id):
@@ -310,11 +321,10 @@ class Packet(MetaObject.Implementation):
     def __str__(self):
         return "<%s.%s %s %dbytes>" % (self._meta.__class__.__name__, self.__class__.__name__, self._meta._name, len(self._packet))
 
+
 #
 # message
 #
-
-
 class Message(MetaObject):
 
     class Implementation(Packet):
