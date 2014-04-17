@@ -1719,18 +1719,7 @@ class Community(object):
                     CandidateDestination(),
                     MissingProofPayload(),
                     self._generic_timeline_check,
-                    self.on_missing_proof),
-
-            # when we have a reference to a LastSyncDistribution that we do not have.  a
-            # reference consists of the self identifier and the member identifier
-            Message(self, u"dispersy-missing-last-message",
-                    NoAuthentication(),
-                    PublicResolution(),
-                    DirectDistribution(),
-                    CandidateDestination(),
-                    MissingLastMessagePayload(),
-                    self._generic_timeline_check,
-                    self.on_missing_last_message),
+                    self.on_missing_proof)
         ]
 
         if self.dispersy_enable_candidate_walker_responses:
