@@ -30,6 +30,7 @@ class DelayPacket(Exception):
         super(DelayPacket, self).__init__(msg)
         self._delayed = None
         self._candidate = None
+        self._timestamp = time()
 
     @property
     def delayed(self):
@@ -44,6 +45,10 @@ class DelayPacket(Exception):
     @candidate.setter
     def candidate(self, candidate):
         self._candidate = candidate
+    
+    @property
+    def timestamp(self):
+        return self._timestamp
 
     @property
     def resume_immediately(self):
@@ -117,10 +122,15 @@ class DelayMessage(Exception):
         assert isinstance(delayed, Message.Implementation), delayed
         super(DelayMessage, self).__init__(self.__class__.__name__)
         self._delayed = delayed
+        self._timestamp = time()
 
     @property
     def delayed(self):
         return self._delayed
+    
+    @property
+    def timestamp(self):
+        return self._timestamp
 
     @property
     def resume_immediately(self):

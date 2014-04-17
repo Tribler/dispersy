@@ -206,6 +206,8 @@ class Community(object):
         # delayed list for incoming packet/messages which are delayed
         self._delayed_key = defaultdict(list)
         self._delayed_value = defaultdict(list)
+        
+        self._dispersy.callback.register(self._periodically_clean_delayed)
 
         create_identity = True
         try:
@@ -1860,27 +1862,38 @@ class Community(object):
                         delayed_keys = self._delayed_value[delayed]
                         delayed_keys.remove(key)
 
-                        if delayed.resume_immediately:
-                            for key in delayed_keys:
-                                self._delayed_key[key].remove(delayed)
-                                if len(self._delayed_key[key]) == 0:
-                                    del self._delayed_key[key]
-                                    
-                            del self._delayed_value[delayed]
-                            delayed_keys = []
-
-                        if len(delayed_keys) == 0:
+                        if len(delayed_keys) == 0 or delayed.resume_immediately:
                             self.dispersy.statistics.delay_success += 1
 
                             if isinstance(delayed, DelayPacket):
                                 on_packets.append((delayed.candidate, delayed.delayed))
                             elif isinstance(delayed, DelayMessage):
                                 on_messages.append(delayed.delayed)
+                                
+                            self._remove_delayed(delayed)
 
         if on_packets:
             self.on_incoming_packets(on_packets, timestamp=time())
         if on_messages:
             self.on_messages(on_messages)
+    
+    def _remove_delayed(self, delayed):
+        for key in self._delayed_value[delayed]:
+            self._delayed_key[key].remove(delayed)
+            if len(self._delayed_key[key]) == 0:
+                del self._delayed_key[key]
+                                    
+        del self._delayed_value[delayed]
+    
+    def _periodically_clean_delayed(self):
+        while True:
+            now = time()
+            for delayed in self._delayed_value.keys():
+                if now > delay.timestamp + 10:
+                    self._remove_delayed(delayed)
+                    self.dispersy.statistics.delay_timeout += 1
+                     
+            yield 10.0
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
