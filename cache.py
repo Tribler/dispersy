@@ -1,5 +1,5 @@
 from .logger import get_logger
-from .requestcache import Cache, NumberCache
+from .requestcache import NumberCache
 
 logger = get_logger(__name__)
 

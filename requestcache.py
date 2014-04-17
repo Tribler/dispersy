@@ -4,20 +4,36 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 
-class Cache(object):
+class NumberCache(object):
 
     @staticmethod
-    def create_identifier():
-        """
-        Create an identifier, preferably unique for each outstanding request cache.
-        """
+    def create_identifier(number):
         raise NotImplementedError()
 
-    def __init__(self, identifier):
-        assert isinstance(identifier, unicode), type(identifier)
-        self._identifier = identifier
-        self._callback_identifier = u""
+    @staticmethod
+    def create_number():
+        return int(random() * 2 ** 16)
 
+    def __init__(self, request_cache, *create_identifier_args):
+        self._callback_identifier = u""
+        
+        # find an unclaimed identifier
+        for _ in xrange(1000):
+            number = self.create_number(*create_identifier_args)
+            assert isinstance(number, (int, long)), type(number)
+
+            identifier = self.create_identifier(number, *create_identifier_args)
+            if not request_cache.has(identifier):
+                self._identifier = identifier
+                self._number = number
+                break
+        else:
+            raise RuntimeError("Could not find an identifier that isn't in use")
+
+    @property
+    def number(self):
+        return self._number
+    
     @property
     def identifier(self):
         """
@@ -28,7 +44,7 @@ class Cache(object):
         """
         assert isinstance(self._identifier, unicode), type(self._identifier)
         return self._identifier
-
+    
     @property
     def callback_identifier(self):
         """
@@ -42,7 +58,7 @@ class Cache(object):
         """
         assert isinstance(self._callback_identifier, unicode), type(self._callback_identifier)
         return self._callback_identifier
-
+    
     @callback_identifier.setter
     def callback_identifier(self, callback_identifier):
         """
@@ -50,7 +66,7 @@ class Cache(object):
         """
         assert isinstance(callback_identifier, unicode), type(callback_identifier)
         self._callback_identifier = callback_identifier
-
+        
     @property
     def timeout_delay(self):
         return 10.0
@@ -60,35 +76,6 @@ class Cache(object):
 
     def __str__(self):
         return "<%s identifier:%s>" % (self.__class__.__name__, self.identifier)
-
-
-class NumberCache(Cache):
-
-    @staticmethod
-    def create_identifier(number):
-        raise NotImplementedError()
-
-    @staticmethod
-    def create_number():
-        return int(random() * 2 ** 16)
-
-    def __init__(self, request_cache, *create_identifier_args):
-        # find an unclaimed identifier
-        for _ in xrange(1000):
-            number = self.create_number(*create_identifier_args)
-            assert isinstance(number, (int, long)), type(number)
-
-            identifier = self.create_identifier(number, *create_identifier_args)
-            if not request_cache.has(identifier):
-                super(NumberCache, self).__init__(identifier)
-                self._number = number
-                break
-        else:
-            raise RuntimeError("Could not find an identifier that isn't in use")
-
-    @property
-    def number(self):
-        return self._number
 
 
 class FixedNumberCache(NumberCache):
@@ -124,7 +111,7 @@ class RequestCache(object):
         Returns CACHE when CACHE.identifier was not yet added, otherwise returns None.
         """
         assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        assert isinstance(cache, Cache), type(cache)
+        assert isinstance(cache, NumberCache), type(cache)
         assert isinstance(cache.identifier, unicode), type(cache.identifier)
         assert isinstance(cache.timeout_delay, float), type(cache.timeout_delay)
         assert cache.timeout_delay > 0.0, cache.timeout_delay
@@ -146,7 +133,7 @@ class RequestCache(object):
         Returns CACHE.
         """
         assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        assert isinstance(cache, Cache), type(cache)
+        assert isinstance(cache, NumberCache), type(cache)
         assert isinstance(cache.identifier, unicode), type(cache.identifier)
         assert isinstance(cache.timeout_delay, float), type(cache.timeout_delay)
         assert cache.timeout_delay > 0.0, cache.timeout_delay
@@ -206,7 +193,7 @@ class RequestCache(object):
         #     return
 
         assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        assert isinstance(cache, Cache), type(cache)
+        assert isinstance(cache, NumberCache), type(cache)
         assert cache.identifier in self._identifiers, cache
 
         logger.debug("timeout on %s", cache)
