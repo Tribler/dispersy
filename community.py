@@ -1825,6 +1825,7 @@ class Community(object):
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
+
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)

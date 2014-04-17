@@ -272,7 +272,7 @@ class NoDefBinaryConversion(Conversion):
         offset += 20
         member = self._community.get_member(mid=member_id)
         if member is None:
-            raise DelayPacketByMissingMember(self._community, member_id)
+            raise DropPacket("Unknown member")
 
         decode_functions = self._decode_message_map.get(data[offset])
         if decode_functions is None:
