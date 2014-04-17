@@ -1122,7 +1122,7 @@ class NoDefBinaryConversion(Conversion):
                 else:
                     raise DropPacket("Verification failed (_decode_member_authentication sha1)")
             else:
-                raise DelayPacketByMissingMember(self._community, member_id)
+                raise DelayPacketByMissingMember(member_id)
 
         elif encoding == "bin":
             if len(data) < offset + 2:
@@ -1166,7 +1166,7 @@ class NoDefBinaryConversion(Conversion):
                 member_id = data[offset:offset + 20]
                 member = self._community.get_member(mid=member_id)
                 if not member:
-                    raise DelayPacketByMissingMember(self._community, member_id)
+                    raise DelayPacketByMissingMember(member_id)
                 offset += 20
                 members.append(member)
 
@@ -1346,7 +1346,7 @@ class BinaryConversion(NoDefBinaryConversion):
         define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
         define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
         define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
-        define(235, u"dispersy-missing-last-message", self._encode_missing_last_message, self._decode_missing_last_message)
+        # 235 for obsolete dispersy-missing-last-message
 
         if __debug__:
             if debug_non_available:
