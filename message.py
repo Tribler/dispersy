@@ -171,7 +171,7 @@ class DelayMessageBySequence(DelayMessage):
 
     @property
     def match_info(self):
-        return (None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high)),
+        return (None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high+1)),
 
     def send_request(self, community, candidate):
         community.create_missing_sequence(candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high)
