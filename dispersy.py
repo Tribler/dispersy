@@ -1660,13 +1660,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
                 self._statistics.drop_count += 1
 
-            except DelayPacket as delay:
-                logger.debug("delay a %d byte packet (%s) from %s", len(packet), delay, candidate)
-                if delay.create_request(candidate, packet):
-                    self._statistics.delay_send += 1
-                self._statistics.dict_inc(self._statistics.delay, "_convert_batch_into_messages:%s" % delay)
-                self._statistics.delay_count += 1
-
     @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
         """

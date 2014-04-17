@@ -59,36 +59,6 @@ class DelayPacketByMissingMember(DelayPacket):
         return self._community.create_missing_identity(candidate, self._community.dispersy.get_temporary_member_from_id(self._missing_member_id), self._process_delayed_packet, (candidate, delayed))
 
 
-class DelayPacketByMissingLastMessage(DelayPacket):
-
-    def __init__(self, community, member, message, count):
-        assert isinstance(member, Member)
-        assert isinstance(message, Message)
-        assert isinstance(count, int)
-        super(DelayPacketByMissingLastMessage, self).__init__("Missing last message", community)
-        self._member = member
-        self._message = message
-        self._count = count
-
-    def create_request(self, candidate, delayed):
-        return self._community.create_missing_last_message(candidate, self._member, self._message, self._count, self._process_delayed_packet, (candidate, delayed))
-
-
-class DelayPacketByMissingMessage(DelayPacket):
-
-    def __init__(self, community, member, global_time):
-        from .community import Community
-        assert isinstance(community, Community)
-        assert isinstance(member, Member)
-        assert isinstance(global_time, (int, long))
-        super(DelayPacketByMissingMessage, self).__init__("Missing message (new style)", community)
-        self._member = member
-        self._global_time = global_time
-
-    def create_request(self, candidate, delayed):
-        return self._community.create_missing_message(candidate, self._member, self._global_time, self._process_delayed_packet, (candidate, delayed))
-
-
 class DropPacket(Exception):
 
     """
