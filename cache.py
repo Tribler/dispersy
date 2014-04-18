@@ -5,13 +5,8 @@ logger = get_logger(__name__)
 
 class SignatureRequestCache(NumberCache):
 
-    @staticmethod
-    def create_identifier(number):
-        assert isinstance(number, (int, long)), type(number)
-        return u"request-cache:signature-request:%d" % (number,)
-
     def __init__(self, request_cache, members, response_func, response_args, timeout):
-        super(SignatureRequestCache, self).__init__(request_cache)
+        super(SignatureRequestCache, self).__init__(request_cache, u"signature-request")
         self.request = None
         # MEMBERS is a list containing all the members that should add their signature.  currently
         # we only support double signed messages, hence MEMBERS contains only a single Member
@@ -31,10 +26,6 @@ class SignatureRequestCache(NumberCache):
 
 
 class IntroductionRequestCache(NumberCache):
-    @staticmethod
-    def create_identifier(number):
-        assert isinstance(number, (int, long)), type(number)
-        return u"request-cache:introduction-request:%d" % (number,)
 
     @property
     def timeout_delay(self):
@@ -42,7 +33,7 @@ class IntroductionRequestCache(NumberCache):
         return 10.5
 
     def __init__(self, community, helper_candidate):
-        super(IntroductionRequestCache, self).__init__(community.request_cache)
+        super(IntroductionRequestCache, self).__init__(community.request_cache, u"introduction-request")
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None

@@ -86,6 +86,8 @@ class TestDoubleSign(DispersyTestFunc):
         other.send_identity(node)
 
         def on_response(request, response, modified):
+            self.assertNotEqual(response, None)
+            
             self.assertEqual(container["response"], 0)
             mid_signatures = dict([(member.mid, signature) for signature, member in response.authentication.signed_members])
             # It should be signed by OTHER

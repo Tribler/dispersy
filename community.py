@@ -2220,16 +2220,10 @@ class Community(object):
             self.dispersy._forward(responses)
 
     def check_signature_response(self, messages):
-        unique = set()
-
         for message in messages:
-            cache = self.request_cache.get(SignatureRequestCache.create_identifier(message.payload.identifier))
+            cache = self.request_cache.get(message.payload.identifier, u"signature-request")
             if not cache:
                 yield DropMessage(message, "invalid response identifier")
-                continue
-
-            if cache.identifier in unique:
-                yield DropMessage(message, "duplicate identifier in batch")
                 continue
 
             old_submsg = cache.request.payload.message
@@ -2251,7 +2245,6 @@ class Community(object):
                 yield DropMessage(message, "global time may not change")
                 continue
 
-            unique.add(cache.identifier)
             yield message
 
     def on_signature_response(self, messages):
@@ -2268,7 +2261,7 @@ class Community(object):
         """
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            cache = self.request_cache.pop(SignatureRequestCache.create_identifier(message.payload.identifier))
+            cache = self.request_cache.pop(message.payload.identifier, u"signature-request")
 
             old_submsg = cache.request.payload.message
             new_submsg = message.payload.message
@@ -2300,7 +2293,7 @@ class Community(object):
             # to each other is relatively small.
             # 30/10/12 Niels: additionally check if both our lan_addresses are the same. They should
             # be if we're sending it to ourself. Not checking wan_address as that is subject to change.
-            if self.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)) and \
+            if self.request_cache.has(message.payload.identifier, u"introduction-request") and \
                     self._dispersy._lan_address == message.payload.source_lan_address:
                 logger.debug("dropping dispersy-introduction-request, this identifier is already in use.")
                 yield DropMessage(message, "Duplicate identifier from %s (most likely received from our self)" % str(message.candidate))
@@ -2543,7 +2536,7 @@ class Community(object):
 
     def check_introduction_response(self, messages):
         for message in messages:
-            if not self.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
+            if not self.request_cache.has(message.payload.identifier, u"introduction-request"):
                 self._dispersy._statistics.walk_invalid_response_identifier += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
@@ -2611,7 +2604,7 @@ class Community(object):
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
-            cache = self.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
+            cache = self.request_cache.get(message.payload.identifier, u"introduction-request")
             cache.on_introduction_response()
 
             # handle the introduction
@@ -2864,7 +2857,7 @@ class Community(object):
 
     def check_puncture(self, messages):
         for message in messages:
-            if not self.request_cache.has(IntroductionRequestCache.create_identifier(message.payload.identifier)):
+            if not self.request_cache.has(message.payload.identifier, u"introduction-request"):
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2875,7 +2868,7 @@ class Community(object):
 
         for message in messages:
             # get cache object linked to this request but does NOT stop timeout from occurring
-            cache = self.request_cache.get(IntroductionRequestCache.create_identifier(message.payload.identifier))
+            cache = self.request_cache.get(message.payload.identifier, u"introduction-request")
             cache.on_puncture()
 
             if not (message.payload.source_lan_address == ("0.0.0.0", 0) or message.payload.source_wan_address == ("0.0.0.0", 0)):
