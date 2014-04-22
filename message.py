@@ -27,9 +27,13 @@ class DelayPacket(Exception):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, msg):
+    def __init__(self, community, msg):
+        from .community import Community
+        assert isinstance(community, Community)
+
         super(DelayPacket, self).__init__(msg)
         self._delayed = None
+        self._cid = community.cid
         self._candidate = None
         self._timestamp = time()
 
@@ -46,7 +50,7 @@ class DelayPacket(Exception):
     @candidate.setter
     def candidate(self, candidate):
         self._candidate = candidate
-    
+
     @property
     def timestamp(self):
         return self._timestamp
@@ -68,15 +72,16 @@ class DelayPacket(Exception):
 
 class DelayPacketByMissingMember(DelayPacket):
 
-    def __init__(self, missing_member_id):
-        super(DelayPacketByMissingMember, self).__init__("Missing member")
+    def __init__(self, community, missing_member_id):
         assert isinstance(missing_member_id, str)
         assert len(missing_member_id) == 20
+
+        super(DelayPacketByMissingMember, self).__init__(community, "Missing member")
         self._missing_member_id = missing_member_id
 
     @property
     def match_info(self):
-        return (u"dispersy-identity", self._missing_member_id, None, []),
+        return (self._cid, u"dispersy-identity", self._missing_member_id, None, []),
 
     def send_request(self, community, candidate):
         return community.create_missing_identity(candidate, community.dispersy.get_temporary_member_from_id(self._missing_member_id))
@@ -85,17 +90,15 @@ class DelayPacketByMissingMessage(DelayPacket):
 
 
     def __init__(self, community, member, global_time):
-        from .community import Community
-        assert isinstance(community, Community)
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
-        super(DelayPacketByMissingMessage, self).__init__("Missing message (new style)", community)
+        super(DelayPacketByMissingMessage, self).__init__("Missing message", community)
         self._member = member
         self._global_time = global_time
 
     @property
     def match_info(self):
-        return (None, self._member.mid, self._global_time, []),
+        return (self._cid, None, self._member.mid, self._global_time, []),
 
     def send_request(self, community, candidate):
         return community.create_missing_message(candidate, self._member, self._global_time)
@@ -123,12 +126,13 @@ class DelayMessage(Exception):
         assert isinstance(delayed, Message.Implementation), delayed
         super(DelayMessage, self).__init__(self.__class__.__name__)
         self._delayed = delayed
+        self._cid = delayed.community.cid
         self._timestamp = time()
 
     @property
     def delayed(self):
         return self._delayed
-    
+
     @property
     def timestamp(self):
         return self._timestamp
@@ -157,7 +161,7 @@ class DelayMessageByProof(DelayMessage):
 
     @property
     def match_info(self):
-        return (u"dispersy-authorize", None, None, []), (u"dispersy-dynamic-settings", None, None, [])
+        return (self._cid, u"dispersy-authorize", None, None, []), (self._cid, u"dispersy-dynamic-settings", None, None, [])
 
     @property
     def resume_immediately(self):
@@ -182,7 +186,7 @@ class DelayMessageBySequence(DelayMessage):
 
     @property
     def match_info(self):
-        return (None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high+1)),
+        return (self._cid, None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high + 1)),
 
     def send_request(self, community, candidate):
         community.create_missing_sequence(candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high)
@@ -202,7 +206,7 @@ class DelayMessageByMissingMessage(DelayMessage):
 
     @property
     def match_info(self):
-        return (None, self._member.mid, self._global_time, []),
+        return (self._cid, None, self._member.mid, self._global_time, []),
 
     def send_request(self, community, candidate):
         community.create_missing_message(candidate, self._member, self._global_time)

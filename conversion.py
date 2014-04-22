@@ -1122,7 +1122,7 @@ class NoDefBinaryConversion(Conversion):
                 else:
                     raise DropPacket("Verification failed (_decode_member_authentication sha1)")
             else:
-                raise DelayPacketByMissingMember(member_id)
+                raise DelayPacketByMissingMember(self._community, member_id)
 
         elif encoding == "bin":
             if len(data) < offset + 2:
@@ -1166,7 +1166,7 @@ class NoDefBinaryConversion(Conversion):
                 member_id = data[offset:offset + 20]
                 member = self._community.get_member(mid=member_id)
                 if not member:
-                    raise DelayPacketByMissingMember(member_id)
+                    raise DelayPacketByMissingMember(self._community, member_id)
                 offset += 20
                 members.append(member)
 

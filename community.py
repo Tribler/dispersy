@@ -1797,31 +1797,32 @@ class Community(object):
                     yield DelayMessageByProof(message)
 
     def _drop(self, drop, packet, candidate):
+        logger.warning("drop a %d byte packet %s from %s", len(packet), drop, candidate)
         if isinstance(drop, DropPacket):
-            logger.warning("_on_batch_cache: drop a %d byte packet (%s) from %s", len(packet), drop, candidate)
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_batch_into_messages:%s" % drop)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "drop_packet:%s" % drop)
             self._dispersy._statistics.drop_count += 1
 
         elif isinstance(drop, DropMessage):
-            logger.debug("%s drop: %s (%s)", candidate, drop.dropped.name, drop)
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "on_message_batch:%s" % drop)
+            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "drop_message:%s" % drop)
             self._dispersy._statistics.drop_count += 1
 
     def _delay(self, delay, packet, candidate):
         send_request = False
 
         for key in delay.match_info:
-            assert len(key) == 4, key
-            assert not key[0] or isinstance(key[0], unicode), type(key[0])
-            assert not key[1] or isinstance(key[1], str), type(key[1])
-            assert not key[1] or len(key[1]), len(key[1])
-            assert not key[2] or isinstance(key[2], (int, long)), type(key[2])
-            assert not key[3] or isinstance(key[3], list), type(key[3])
+            assert len(key) == 5, key
+            assert isinstance(key[0], str), type(key[0])
+            assert len(key[0]) == 20, len(key[0])
+            assert not key[1] or isinstance(key[1], unicode), type(key[1])
+            assert not key[2] or isinstance(key[2], str), type(key[2])
+            assert not key[2] or len(key[2]) == 20, len(key[2])
+            assert not key[3] or isinstance(key[3], (int, long)), type(key[3])
+            assert not key[4] or isinstance(key[4], list), type(key[4])
 
             # unwrap sequence number list
-            seq_number_list = key[3] or [None]
+            seq_number_list = key[4] or [None]
             for seq in seq_number_list:
-                unwrapped_key = (key[0], key[1], key[2], seq)
+                unwrapped_key = (key[0], key[1], key[2], key[3], seq)
 
                 # if we find a new key, then we need to send a request
                 if unwrapped_key not in self._delayed_key:
@@ -1849,14 +1850,14 @@ class Community(object):
         has_mid = isinstance(meta.authentication, (MemberAuthentication, DoubleMemberAuthentication))
         has_seq = isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number
 
-        received_keys = [(meta.name, message.authentication.member.mid if has_mid else None,
+        received_keys = [(self.cid, meta.name, message.authentication.member.mid if has_mid else None,
                        message.distribution.global_time, message.distribution.sequence_number if has_seq else None) for message in messages]
 
         on_packets = []
         on_messages = defaultdict(list)
         for key in self._delayed_key.keys():
             for received_key in received_keys:
-                if all(k is None or k == tk for k, tk in zip(key, received_key)):
+                if all(k is None or k == rk for k, rk in zip(key, received_key)):
                     for delayed in self._delayed_key.pop(key):
                         delayed_keys = self._delayed_value[delayed]
                         delayed_keys.remove(key)
@@ -1892,12 +1893,9 @@ class Community(object):
                     self._remove_delayed(delayed)
 
                     self.dispersy.statistics.delay_timeout += 1
-                    self._dispersy._statistics.drop_count += 1
 
-                    if isinstance(delayed, DelayPacket):
-                        self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay-timeout:-packet-")
-                    elif isinstance(delayed, DelayMessage):
-                        self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay-timeout:%s" % delayed.delayed)
+                    self._dispersy._statistics.drop_count += 1
+                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay_timeout:%s" % delayed)
 
             yield 5.0
 
@@ -1942,7 +1940,7 @@ class Community(object):
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "_convert_packets_into_batch:unknown conversion", len(cur_packets))
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
     def _on_batch_cache_timeout(self, meta):
@@ -1996,7 +1994,7 @@ class Community(object):
             except DelayPacket as delay:
                 self._delay(delay, packet, candidate)
 
-        assert all(isinstance(message, Message.Implementation) for message in messages), "_convert_batch_into_messages must return only Message.Implementation instances"
+        assert all(isinstance(message, Message.Implementation) for message in messages), "convert_batch_into_messages must return only Message.Implementation instances"
         assert all(message.meta == meta for message in messages), "All Message.Implementation instances must be in the same batch"
         logger.debug("%d %s messages after conversion", len(messages), meta.name)
 
