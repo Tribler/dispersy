@@ -1521,6 +1521,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         the associated the Message.Implementation instance.  None is returned when we do not have
         this message or it can not be decoded.
         """
+        assert isinstance(community, Community), type(community)
+        assert isinstance(member, DummyMember), type(member)
+        assert isinstance(global_time, (int, long)), type(global_time)
+
         try:
             packet_id, packet, undone = self._database.execute(u"SELECT id, packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ? LIMIT 1",
                                                        (community.database_id, member.database_id, global_time)).next()
@@ -1542,6 +1546,9 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         the associated the Message.Implementation instance.  None is returned when we do not have
         this message or it can not be decoded.
         """
+        assert isinstance(community, Community), type(community)
+        assert isinstance(packet_id, (int, long)), type(packet_id)
+
         try:
             packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE id = ?",
                                                        (packet_id,)).next()

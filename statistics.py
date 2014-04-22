@@ -71,11 +71,12 @@ class DispersyStatistics(Statistics):
 
         # nr messages which were received, but delayed
         self.delay_count = 0
-        # nr delay success and timeout (success + timeout) != count, as some messages are in between
-        self.delay_success = 0
-        self.delay_timeout = 0
         # nr delay messages being send
         self.delay_send = 0
+        # nr delay messages which timed-out
+        self.delay_timeout = 0
+        # nr delay success
+        self.delay_success = 0
 
         # nr sync messages created by this peer send using _send method
         self.created_count = 0

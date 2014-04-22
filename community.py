@@ -1853,7 +1853,7 @@ class Community(object):
                        message.distribution.global_time, message.distribution.sequence_number if has_seq else None) for message in messages]
 
         on_packets = []
-        on_messages = []
+        on_messages = defaultdict(list)
         for key in self._delayed_key.keys():
             for received_key in received_keys:
                 if all(k is None or k == tk for k, tk in zip(key, received_key)):
@@ -1867,14 +1867,14 @@ class Community(object):
                             if isinstance(delayed, DelayPacket):
                                 on_packets.append((delayed.candidate, delayed.delayed))
                             elif isinstance(delayed, DelayMessage):
-                                on_messages.append(delayed.delayed)
+                                on_messages[delayed.delayed.meta].append(delayed.delayed)
 
                             self._remove_delayed(delayed)
 
         if on_packets:
             self.on_incoming_packets(on_packets, timestamp=time())
-        if on_messages:
-            self.on_messages(on_messages)
+        for messages in on_messages.values():
+            self.on_messages(messages)
 
     def _remove_delayed(self, delayed):
         for key in self._delayed_value[delayed]:
@@ -1890,9 +1890,16 @@ class Community(object):
             for delayed in self._delayed_value.keys():
                 if now > delayed.timestamp + 10:
                     self._remove_delayed(delayed)
-                    self.dispersy.statistics.delay_timeout += 1
 
-            yield 10.0
+                    self.dispersy.statistics.delay_timeout += 1
+                    self._dispersy._statistics.drop_count += 1
+
+                    if isinstance(delayed, DelayPacket):
+                        self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay-timeout:-packet-")
+                    elif isinstance(delayed, DelayMessage):
+                        self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay-timeout:%s" % delayed.delayed)
+
+            yield 5.0
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
