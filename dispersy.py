@@ -1531,7 +1531,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         except StopIteration:
             return None
 
-        message = self.convert_packet_to_message(packet, community, verify=verify)
+        message = self.convert_packet_to_message(str(packet), community, verify=verify)
         if message:
             message.packet_id = packet_id
             message.undone = undone
@@ -1555,7 +1555,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         except StopIteration:
             return None
 
-        message = self.convert_packet_to_message(packet, community, verify=verify)
+        message = self.convert_packet_to_message(str(packet), community, verify=verify)
         if message:
             message.packet_id = packet_id
             message.undone = undone
@@ -1985,7 +1985,25 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return result
 
-    def _send(self, candidates, messages, debug=False):
+    def _delay(self, delay, packet, candidate):
+        for key in delay.match_info:
+            assert len(key) == 5, key
+            assert isinstance(key[0], str), type(key[0])
+            assert len(key[0]) == 20, len(key[0])
+            assert not key[1] or isinstance(key[1], unicode), type(key[1])
+            assert not key[2] or isinstance(key[2], str), type(key[2])
+            assert not key[2] or len(key[2]) == 20, len(key[2])
+            assert not key[3] or isinstance(key[3], (int, long)), type(key[3])
+            assert not key[4] or isinstance(key[4], list), type(key[4])
+
+
+            try:
+                community = self.get_community(key[0], load=False, auto_load=False)
+                community._delay(key[1:], delay, packet, candidate)
+            except CommunityNotFoundException:
+                logger.error('Messages can only be delayed for loaded communities.')
+
+    def _send(self, candidates, messages):
         """
         Send a list of messages to a list of candidates. If no candidates are specified or endpoint reported
         a failure this method will return False.

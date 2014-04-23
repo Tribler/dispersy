@@ -14,11 +14,6 @@ from .resolution import Resolution, DynamicResolution
 logger = get_logger(__name__)
 
 
-#
-# Exceptions
-#
-
-
 class DelayPacket(Exception):
 
     """
@@ -33,6 +28,7 @@ class DelayPacket(Exception):
 
         super(DelayPacket, self).__init__(msg)
         self._delayed = None
+        self._community = community
         self._cid = community.cid
         self._candidate = None
         self._timestamp = time()
@@ -66,7 +62,12 @@ class DelayPacket(Exception):
 
     @abstractmethod
     def send_request(self, community, candidate):
-        # create and send the request
+        pass
+
+    def on_success(self):
+        self._community.on_incoming_packets([(self.candidate, self.delayed)], timestamp=time())
+
+    def on_timeout(self):
         pass
 
 
@@ -86,13 +87,13 @@ class DelayPacketByMissingMember(DelayPacket):
     def send_request(self, community, candidate):
         return community.create_missing_identity(candidate, community.dispersy.get_temporary_member_from_id(self._missing_member_id))
 
-class DelayPacketByMissingMessage(DelayPacket):
 
+class DelayPacketByMissingMessage(DelayPacket):
 
     def __init__(self, community, member, global_time):
         assert isinstance(member, Member)
         assert isinstance(global_time, (int, long))
-        super(DelayPacketByMissingMessage, self).__init__("Missing message", community)
+        super(DelayPacketByMissingMessage, self).__init__(community, "Missing message")
         self._member = member
         self._global_time = global_time
 
@@ -114,32 +115,12 @@ class DropPacket(Exception):
     pass
 
 
-class DelayMessage(Exception):
-
-    """
-    Uses an identifier to match request to response.
-    """
-
-    __metaclass__ = ABCMeta
+class DelayMessage(DelayPacket):
 
     def __init__(self, delayed):
         assert isinstance(delayed, Message.Implementation), delayed
-        super(DelayMessage, self).__init__(self.__class__.__name__)
+        super(DelayMessage, self).__init__(delayed.community, self.__class__.__name__)
         self._delayed = delayed
-        self._cid = delayed.community.cid
-        self._timestamp = time()
-
-    @property
-    def delayed(self):
-        return self._delayed
-
-    @property
-    def timestamp(self):
-        return self._timestamp
-
-    @property
-    def resume_immediately(self):
-        return False
 
     def duplicate(self, delayed):
         """
@@ -147,15 +128,9 @@ class DelayMessage(Exception):
         """
         return self.__class__(delayed)
 
-    @abstractproperty
-    def match_info(self):
-        # return the matchinfo to be used to trigger the resume,
-        pass
+    def on_success(self):
+        self._community.on_messages([self.delayed])
 
-    @abstractmethod
-    def send_request(self, community, candidate):
-        # create and send the request
-        pass
 
 class DelayMessageByProof(DelayMessage):
 
