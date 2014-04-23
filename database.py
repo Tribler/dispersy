@@ -151,6 +151,7 @@ class Database(object):
         #
         if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
             logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
+            self._cursor.execute(u"PRAGMA locking_mode = EXCLUSIVE")
             self._cursor.execute(u"PRAGMA journal_mode = WAL")
 
         else:
