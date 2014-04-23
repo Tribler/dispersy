@@ -9,7 +9,7 @@ class DebugCommunityConversion(BinaryConversion):
     """
     DebugCommunityConversion is used to convert messages to and from binary while performing unittests.
     """
-    def __init__(self, community, version="\x02"):
+    def __init__(self, community, version="\x01"):
         assert isinstance(version, str), type(version)
         assert len(version) == 1, len(version)
         super(DebugCommunityConversion, self).__init__(community, version)

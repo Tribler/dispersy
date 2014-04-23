@@ -144,7 +144,7 @@ class MemberAuthentication(Authentication):
         def set_signature(self, signature):
             self._is_signed = True
 
-    def __init__(self, encoding="sha1"):
+    def __init__(self, encoding="default"):
         """
         Initialize a new MemberAuthentication instance.
 
@@ -165,7 +165,7 @@ class MemberAuthentication(Authentication):
         @type encoding: string
         """
         assert isinstance(encoding, str)
-        assert encoding in ("bin", "sha1")
+        assert encoding in ("default", "bin", "sha1")
         self._encoding = encoding
 
     @property
@@ -314,7 +314,7 @@ class DoubleMemberAuthentication(Authentication):
             assert isinstance(message_impl, Message.Implementation)
             self._regenerate_packet_func = message_impl.regenerate_packet
 
-    def __init__(self, allow_signature_func, encoding="sha1"):
+    def __init__(self, allow_signature_func, encoding="default"):
         """
         Initialize a new DoubleMemberAuthentication instance.
 
@@ -333,7 +333,7 @@ class DoubleMemberAuthentication(Authentication):
         """
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
         assert isinstance(encoding, str)
-        assert encoding in ("bin", "sha1")
+        assert encoding in ("default", "bin", "sha1")
         self._allow_signature_func = allow_signature_func
         self._encoding = encoding
 
