@@ -778,7 +778,6 @@ class Dispersy(object):
 
         self._database.execute(u"UPDATE community SET classification = ? WHERE master = ?",
                                (destination_classification, master.database_id))
-        assert self._database.changes == 1
 
         if destination_classification in self._auto_load_communities:
             cls, my_member, args, kargs = self._auto_load_communities[destination_classification]
@@ -1200,7 +1199,6 @@ class Dispersy(object):
                             # TODO we should undo the messages that we are about to remove (when applicable)
                             execute(u"DELETE FROM sync WHERE member = ? AND meta_message = ? AND global_time >= ?",
                                     (message.authentication.member.database_id, message.database_id, global_time))
-                            logger.debug("removed %d entries from sync because the member created multiple sequences", self._database.changes)
 
                             # by deleting messages we changed SEQ and the HIGHEST cache
                             last_global_time, last_seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
@@ -1726,8 +1724,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                                     isinstance(meta.distribution, FullSyncDistribution)
                                     and message.distribution.enable_sequence_number else None)
                                ))
-            # must have stored one entry
-            assert self._database.changes == 1
 
             # ensure that we can reference this packet
             message.packet_id = self._database.last_insert_rowid
@@ -1738,8 +1734,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 member2 = message.authentication.members[1].database_id
                 self._database.execute(u"INSERT INTO double_signed_sync (sync, member1, member2) VALUES (?, ?, ?)",
                                        (message.packet_id, member1, member2) if member1 < member2 else (message.packet_id, member2, member1))
-
-                assert self._database.changes == 1
 
             # update global time
             highest_global_time = max(highest_global_time, message.distribution.global_time)
@@ -1790,12 +1784,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
             if items:
                 self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
-                assert len(items) == self._database.changes
-                logger.debug("deleted %d messages", self._database.changes)
 
                 if is_double_member_authentication:
                     self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid,) for syncid, _ in items])
-                    assert len(items) == self._database.changes
 
                 # update_sync_range.update(global_time for _, _, global_time in items)
 

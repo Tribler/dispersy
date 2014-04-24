@@ -668,7 +668,6 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             logger.debug("will delete %d packets from the database", len(deletes))
             if deletes:
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
-                assert len(deletes) == self.changes, [len(deletes), self.changes]
 
             if sequence_updates:
                 self.executemany(u"UPDATE sync SET sequence = ? WHERE id = ?", sequence_updates)
@@ -682,7 +681,6 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             WHERE a.community = ? AND a.undone > 0 AND b.id is NULL""", (community.database_id,)))
             if updates:
                 self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
-                assert len(updates) == self.changes, [len(updates), self.changes]
 
             self.execute(u"UPDATE community SET database_version = 20 WHERE id = ?", (community.database_id,))
             self.commit()

@@ -259,18 +259,6 @@ class Database(object):
         assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
         return self._cursor.lastrowid
 
-    @property
-    def changes(self):
-        """
-        The number of changes that resulted from the most recent query.
-        @rtype: int or long
-        """
-        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        return self._cursor.rowcount
-
     @attach_explain_query_plan
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def execute(self, statement, bindings=()):
