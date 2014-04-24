@@ -1850,8 +1850,8 @@ class Community(object):
         received_keys = [(meta.name, message.authentication.member.mid if has_mid else None,
                        message.distribution.global_time, message.distribution.sequence_number if has_seq else None) for message in messages]
 
-        for key in self._delayed_key.keys():
-            for received_key in received_keys:
+        for received_key in received_keys:
+            for key in self._delayed_key.keys():
                 if all(k is None or k == rk for k, rk in zip(key, received_key)):
                     for delayed in self._delayed_key.pop(key):
                         delayed_keys = self._delayed_value[delayed]
