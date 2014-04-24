@@ -246,34 +246,9 @@ class Database(object):
             # returning False to let Python reraise the exception.
             return False
 
-    @property
-    def last_insert_rowid(self):
-        """
-        The row id of the most recent insert query.
-        @rtype: int or long
-        """
-        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        assert not self._cursor.lastrowid is None, "The last statement was NOT an insert query"
-        return self._cursor.lastrowid
-
-    @property
-    def changes(self):
-        """
-        The number of changes that resulted from the most recent query.
-        @rtype: int or long
-        """
-        assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
-        assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        return self._cursor.rowcount
-
     @attach_explain_query_plan
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
-    def execute(self, statement, bindings=()):
+    def execute(self, statement, bindings=(), get_lastrowid=False):
         """
         Execute one SQL statement.
 
@@ -314,7 +289,10 @@ class Database(object):
             assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
 
         logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
-        return self._cursor.execute(statement, bindings)
+        result = self._cursor.execute(statement, bindings)
+        if get_lastrowid:
+            result = self._cursor.lastrowid
+        return result
 
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):

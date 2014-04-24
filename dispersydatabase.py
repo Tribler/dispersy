@@ -190,9 +190,10 @@ INSERT INTO new_malicious_proof (id, community, member, packet) SELECT id, commu
                     # get or create meta_message id
                     key = (community, name)
                     if not key in meta_messages:
-                        self.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, ?, ?, ?)",
-                                     (community, name, destination_cluster, priority, -1 if synchronization_direction == 2 else 1))
-                        meta_messages[key] = self.last_insert_rowid
+                        direction = -1 if synchronization_direction == 2 else 1
+                        meta_messages[key] = self.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, ?, ?, ?)",
+                            (community, name, destination_cluster, priority, direction),
+                            get_lastrowid=True)
                     meta_message = meta_messages[key]
 
                     self.execute(u"INSERT INTO new_sync (community, member, global_time, meta_message, undone, packet) VALUES (?, ?, ?, ?, ?, ?)",
@@ -668,7 +669,6 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             logger.debug("will delete %d packets from the database", len(deletes))
             if deletes:
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
-                assert len(deletes) == self.changes, [len(deletes), self.changes]
 
             if sequence_updates:
                 self.executemany(u"UPDATE sync SET sequence = ? WHERE id = ?", sequence_updates)
@@ -682,7 +682,6 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             WHERE a.community = ? AND a.undone > 0 AND b.id is NULL""", (community.database_id,)))
             if updates:
                 self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
-                assert len(updates) == self.changes, [len(updates), self.changes]
 
             self.execute(u"UPDATE community SET database_version = 20 WHERE id = ?", (community.database_id,))
             self.commit()

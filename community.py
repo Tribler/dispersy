@@ -176,7 +176,7 @@ class Community(object):
 
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
-        
+
         @param my_member: The my member that identifies you in this community.
         @type my_member: Member
         """
@@ -997,7 +997,6 @@ class Community(object):
 
                 self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
                                                 (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
-                logger.debug("%d %s messages have been pruned", self._dispersy.database.changes, meta.name)
 
     def dispersy_check_database(self):
         """
@@ -3507,7 +3506,6 @@ class Community(object):
 
                 if undo:
                     executemany(u"UPDATE sync SET undone = 1 WHERE id = ?", ((message.packet_id,) for message in undo))
-                    assert self._dispersy._database.changes == len(undo), (self._dispersy._database.changes, len(undo))
                     meta.undo_callback([(message.authentication.member, message.distribution.global_time, message) for message in undo])
 
                     # notify that global times have changed
@@ -3515,7 +3513,6 @@ class Community(object):
 
                 if redo:
                     executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", ((message.packet_id,) for message in redo))
-                    assert self._dispersy._database.changes == len(redo), (self._dispersy._database.changes, len(redo))
                     meta.handle_callback(redo)
 
     def _claim_master_member_sequence_number(self, meta):
