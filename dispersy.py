@@ -1543,7 +1543,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         this message or it can not be decoded.
         """
         try:
-            packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE sync_id = ?",
+            packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE id = ?",
                                                        (packet_id,)).next()
         except StopIteration:
             return None
