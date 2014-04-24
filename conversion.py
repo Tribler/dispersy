@@ -254,6 +254,17 @@ class NoDefBinaryConversion(Conversion):
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 
+    def __get_authentication_encoding(self, authentication):
+        encoding = authentication.encoding
+        if encoding == "default":
+            # old version
+            if ord(self.community_version) <= 1:
+                encoding = "sha1"
+            # new version
+            else:
+                encoding = "bin"
+        return encoding
+
     #
     # Dispersy payload
     #
@@ -949,19 +960,21 @@ class NoDefBinaryConversion(Conversion):
         pass
 
     def _encode_member_authentication(self, container, message):
-        if message.authentication.encoding == "sha1":
+        encoding = self.__get_authentication_encoding(message.authentication)
+        if encoding == "sha1":
             container.append(message.authentication.member.mid)
-        elif message.authentication.encoding == "bin":
+        elif encoding == "bin":
             assert message.authentication.member.public_key
             assert self._community.dispersy.crypto.is_valid_public_bin(message.authentication.member.public_key), message.authentication.member.public_key.encode("HEX")
             container.extend((self._struct_H.pack(len(message.authentication.member.public_key)), message.authentication.member.public_key))
         else:
-            raise NotImplementedError(message.authentication.encoding)
+            raise NotImplementedError(encoding)
 
     def _encode_double_member_authentication(self, container, message):
-        if message.authentication.encoding == "sha1":
+        encoding = self.__get_authentication_encoding(message.authentication)
+        if encoding == "sha1":
             container.extend([member.mid for member in message.authentication.members])
-        elif message.authentication.encoding == "bin":
+        elif encoding == "bin":
             assert message.authentication.members[0].public_key
             assert message.authentication.members[1].public_key
             assert self._community.dispersy.crypto.is_valid_public_bin(message.authentication.members[0].public_key), message.authentication.members[0].public_key.encode("HEX")
@@ -970,7 +983,7 @@ class NoDefBinaryConversion(Conversion):
                               message.authentication.members[0].public_key,
                               message.authentication.members[1].public_key))
         else:
-            raise NotImplementedError(message.authentication.encoding)
+            raise NotImplementedError(encoding)
 
     def _encode_full_sync_distribution(self, container, message):
         assert message.distribution.global_time
@@ -1144,7 +1157,8 @@ class NoDefBinaryConversion(Conversion):
         offset = placeholder.offset
         data = placeholder.data
 
-        if authentication.encoding == "sha1":
+        encoding = self.__get_authentication_encoding(authentication)
+        if encoding == "sha1":
             if len(data) < offset + 20:
                 raise DropPacket("Insufficient packet size (_decode_member_authentication sha1)")
             member_id = data[offset:offset + 20]
@@ -1164,7 +1178,7 @@ class NoDefBinaryConversion(Conversion):
             else:
                 raise DelayPacketByMissingMember(self._community, member_id)
 
-        elif authentication.encoding == "bin":
+        elif encoding == "bin":
             if len(data) < offset + 2:
                 raise DropPacket("Insufficient packet size (_decode_member_authentication bin)")
             key_length, = self._struct_H.unpack_from(data, offset)
@@ -1192,7 +1206,7 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Invalid signature")
 
         else:
-            raise NotImplementedError(authentication.encoding)
+            raise NotImplementedError(encoding)
 
     def _decode_double_member_authentication(self, placeholder):
         authentication = placeholder.meta.authentication
@@ -1200,7 +1214,8 @@ class NoDefBinaryConversion(Conversion):
         data = placeholder.data
         members = []
 
-        if authentication.encoding == "sha1":
+        encoding = self.__get_authentication_encoding(authentication)
+        if encoding == "sha1":
             for _ in range(2):
                 member_id = data[offset:offset + 20]
                 member = self._community.get_member(mid=member_id)
@@ -1209,7 +1224,7 @@ class NoDefBinaryConversion(Conversion):
                 offset += 20
                 members.append(member)
 
-        elif authentication.encoding == "bin":
+        elif encoding == "bin":
             if len(data) < offset + 4:
                 raise DropPacket("Insufficient packet size (_decode_double_member_authentication bin)")
             offset += 4
@@ -1225,7 +1240,7 @@ class NoDefBinaryConversion(Conversion):
                     raise DropPacket("Invalid cryptographic key1 (_decode_double_member_authentication)")
 
         else:
-            raise NotImplementedError(authentication.encoding)
+            raise NotImplementedError(encoding)
 
         # TODO(emilon): add a get_signatures method to the message so we can avoid computing offsets all over the place
         second_signature_offset = len(data) - members[1].signature_length
@@ -1239,8 +1254,8 @@ class NoDefBinaryConversion(Conversion):
                   member.verify(data, signature, length=first_signature_offset)):
                 signatures.append(signature)
             else:
-                raise DropPacket("Invalid double signature in position %d (_decode_double_member_authentication %s)" %
-                                 (len(signatures), authentication.encoding))
+                raise DropPacket("Invalid double signature in position %d (_decode_double_member_authentication %s[%s])" %
+                                 (len(signatures), authentication.encoding, encoding))
 
         placeholder.offset = offset
         placeholder.first_signature_offset = first_signature_offset
