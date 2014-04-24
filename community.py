@@ -1096,7 +1096,8 @@ class Community(object):
                 # count -everyone- that is active (i.e. walk or stumble)
                 active_canidates = list(self.dispersy_yield_verified_candidates())
                 if len(active_canidates) > 20:
-                    logger.debug("there are %d active non-bootstrap candidates available, prematurely quitting fast walker", len(active_canidates))
+                    logger.debug("there are %d active non-bootstrap candidates available, "
+                                 "prematurely quitting fast walker", len(active_canidates))
                     break
 
                 # request bootstrap peers that are eligible
