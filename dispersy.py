@@ -591,9 +591,9 @@ class Dispersy(object):
             if private_key:
                 assert public_key
             # The MID or public/private keys are not in the database, store them.
-            self.database.execute(u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)",
-                (buffer(mid), buffer(public_key), buffer(private_key)))
-            database_id = self.database.last_insert_rowid
+            database_id = self.database.execute(
+                u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)",
+                (buffer(mid), buffer(public_key), buffer(private_key)), get_lastrowid=True)
         else:
             # We could't find the key on the DB, nothing else to do
             return
@@ -1713,20 +1713,20 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             logger.debug("%s %d@%d", message.name, message.authentication.member.database_id, message.distribution.global_time)
 
             # add packet to database
-            self._database.execute(u"INSERT INTO sync (community, member, global_time, meta_message, packet, sequence) "
-                                   u"VALUES (?, ?, ?, ?, ?, ?)",
-                                  (message.community.database_id,
-                                   message.authentication.member.database_id,
-                                   message.distribution.global_time,
-                                   message.database_id,
-                                   buffer(message.packet),
-                                   (message.distribution.sequence_number if
-                                    isinstance(meta.distribution, FullSyncDistribution)
-                                    and message.distribution.enable_sequence_number else None)
-                               ))
+            message.packet_id = self._database.execute(
+                u"INSERT INTO sync (community, member, global_time, meta_message, packet, sequence) "
+                u"VALUES (?, ?, ?, ?, ?, ?)",
+               (message.community.database_id,
+                message.authentication.member.database_id,
+                message.distribution.global_time,
+                message.database_id,
+                buffer(message.packet),
+                (message.distribution.sequence_number if
+                 isinstance(meta.distribution, FullSyncDistribution)
+                 and message.distribution.enable_sequence_number else None)
+                ), get_lastrowid=True)
 
             # ensure that we can reference this packet
-            message.packet_id = self._database.last_insert_rowid
             logger.debug("stored message %s in database at row %d", message.name, message.packet_id)
 
             if is_double_member_authentication:

@@ -176,7 +176,7 @@ class Community(object):
 
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
-        
+
         @param my_member: The my member that identifies you in this community.
         @type my_member: Member
         """

@@ -190,9 +190,10 @@ INSERT INTO new_malicious_proof (id, community, member, packet) SELECT id, commu
                     # get or create meta_message id
                     key = (community, name)
                     if not key in meta_messages:
-                        self.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, ?, ?, ?)",
-                                     (community, name, destination_cluster, priority, -1 if synchronization_direction == 2 else 1))
-                        meta_messages[key] = self.last_insert_rowid
+                        direction = -1 if synchronization_direction == 2 else 1
+                        meta_messages[key] = self.execute(u"INSERT INTO meta_message (community, name, cluster, priority, direction) VALUES (?, ?, ?, ?, ?)",
+                            (community, name, destination_cluster, priority, direction),
+                            get_lastrowid=True)
                     meta_message = meta_messages[key]
 
                     self.execute(u"INSERT INTO new_sync (community, member, global_time, meta_message, undone, packet) VALUES (?, ?, ?, ?, ?, ?)",

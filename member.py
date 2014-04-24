@@ -15,8 +15,8 @@ class DummyMember(object):
         try:
             database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
         except StopIteration:
-            database.execute(u"INSERT INTO member (mid) VALUES (?)", (buffer(mid),))
-            database_id = database.last_insert_rowid
+            database_id = database.execute(u"INSERT INTO member (mid) VALUES (?)",
+                (buffer(mid),), get_lastrowid=True)
 
         self._database_id = database_id
         self._mid = mid
