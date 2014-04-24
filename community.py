@@ -1848,7 +1848,8 @@ class Community(object):
         has_seq = isinstance(meta.distribution, FullSyncDistribution) and meta.distribution.enable_sequence_number
 
         received_keys = [(meta.name, message.authentication.member.mid if has_mid else None,
-                       message.distribution.global_time, message.distribution.sequence_number if has_seq else None) for message in messages]
+                       message.distribution.global_time,
+                       message.distribution.sequence_number if has_seq else None) for message in messages]
 
         for received_key in received_keys:
             for key in self._delayed_key.keys():
@@ -1881,7 +1882,8 @@ class Community(object):
                     self.dispersy.statistics.delay_timeout += 1
 
                     self._dispersy._statistics.drop_count += 1
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "delay_timeout:%s" % delayed)
+                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
+                                                        "delay_timeout:%s" % delayed)
 
             yield 5.0
 

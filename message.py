@@ -85,7 +85,8 @@ class DelayPacketByMissingMember(DelayPacket):
         return (self._cid, u"dispersy-identity", self._missing_member_id, None, []),
 
     def send_request(self, community, candidate):
-        return community.create_missing_identity(candidate, community.dispersy.get_temporary_member_from_id(self._missing_member_id))
+        return community.create_missing_identity(candidate,
+                                                 community.dispersy.get_temporary_member_from_id(self._missing_member_id))
 
 
 class DelayPacketByMissingMessage(DelayPacket):
@@ -164,7 +165,8 @@ class DelayMessageBySequence(DelayMessage):
         return (self._cid, None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high + 1)),
 
     def send_request(self, community, candidate):
-        community.create_missing_sequence(candidate, self._delayed.authentication.member, self._delayed.meta, self._missing_low, self._missing_high)
+        community.create_missing_sequence(candidate, self._delayed.authentication.member,
+                                          self._delayed.meta, self._missing_low, self._missing_high)
 
 
 class DelayMessageByMissingMessage(DelayMessage):
