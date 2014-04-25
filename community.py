@@ -47,21 +47,6 @@ DOWNLOAD_MM_PK_INTERVAL = 300.0
 PERIODIC_CLEANUP_INTERVAL = 5.0
 TAKE_STEP_INTERVAL = 5
 
-def register_or_call(callback, func, args=(), kargs={}):
-    if not callback.is_current_thread:
-        callback.register(func, args, kargs)
-    else:
-        func(*args, **kargs)
-
-
-def force_dispersy_thread(func):
-    def helper(*args, **kargs):
-        register_or_call(args[0]._dispersy.callback, func, args, kargs)
-
-    helper.__name__ = func.__name__
-    return helper
-
-
 class SyncCache(object):
 
     def __init__(self, time_low, time_high, modulo, offset, bloom_filter):
