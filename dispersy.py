@@ -76,6 +76,7 @@ logger = get_logger(__name__)
 
 FLUSH_DATABASE_INTERVAL = 60.0
 STATS_DETAILED_CANDIDATES_INTERVAL = 5.0
+MEMORY_DUMP_INTERVAL = float(60 * 60)
 
 
 class Dispersy(object):
@@ -168,17 +169,11 @@ class Dispersy(object):
 
         # memory profiler
         if "--memory-dump" in sys.argv:
-            def memory_dump():
-                from meliae import scanner
-                start = time()
-                try:
-                    while True:
-                        yield float(60 * 60)
-                        scanner.dump_all_objects("memory-%d.out" % (time() - start))
-                except GeneratorExit:
-                    scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start))
-
-            self._callback.register(memory_dump)
+            start = time()
+            from meliae import scanner
+            self._pending_callbacks['memory-dump'] = lc = LopingCall(lambda: scanner.dump_all_objects("memory-%d.out" % (time() - start)))
+            lc.start(MEMORY_DUMP_INTERVAL, now=True)
+            reactor.addSystemEventTrigger("before", "shutdown", lambda: scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start)))
 
     @staticmethod
     def _get_interface_addresses():
