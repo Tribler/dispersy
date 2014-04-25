@@ -48,7 +48,9 @@ from struct import unpack_from
 from time import time
 
 import netifaces
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.task import LoopingCall
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
 from .bootstrap import Bootstrap
@@ -72,6 +74,7 @@ from .statistics import DispersyStatistics
 
 logger = get_logger(__name__)
 
+FLUSH_DATABASE_INTERVAL = 60.0
 
 
 class Dispersy(object):
@@ -301,7 +304,7 @@ class Dispersy(object):
 
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
-        bootstrap = Bootstrap(self._callback, alternate_addresses or default_addresses)
+        bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
 
         if timeout == 0.0:

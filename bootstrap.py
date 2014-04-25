@@ -1,16 +1,15 @@
-from random import shuffle
-from socket import gethostbyname, error
 from threading import Lock
-from time import time
-
-from .callback import Callback
-from .candidate import BootstrapCandidate
-from .logger import get_logger
-logger = get_logger(__name__)
 
 from twisted.internet import reactor
 from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
+
+from .candidate import BootstrapCandidate
+from .logger import get_logger
+
+
+logger = get_logger(__name__)
+
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
@@ -78,14 +77,12 @@ class Bootstrap(object):
         """
         return _DEFAULT_ADDRESSES
 
-    def __init__(self, callback, addresses):
-        assert isinstance(callback, Callback), type(callback)
+    def __init__(self, addresses):
         assert isinstance(addresses, (tuple, list)), type(addresses)
         assert all(isinstance(address, tuple) for address in addresses), [type(address) for address in addresses]
         assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
         assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
         assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
-        self._callback = callback
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
         self._resolution_lc = None
