@@ -44,6 +44,7 @@ from .timeline import Timeline
 logger = get_logger(__name__)
 
 DOWNLOAD_MM_PK_INTERVAL = 300.0
+PERIODIC_CLEANUP_INTERVAL = 5.0
 TAKE_STEP_PERIOD = 5
 
 def register_or_call(callback, func, args=(), kargs={}):
@@ -224,7 +225,9 @@ class Community(object):
         self._delayed_key = defaultdict(list)
         self._delayed_value = defaultdict(list)
 
-        self._dispersy.callback.register(self._periodically_clean_delayed)
+        lc = LoopingCall(self._periodically_clean_delayed)
+        lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
+        self._pending_callbacks.append(lc)
 
         create_identity = True
         try:
@@ -1904,20 +1907,15 @@ class Community(object):
         del self._delayed_value[delayed]
 
     def _periodically_clean_delayed(self):
-        while True:
-            now = time()
-            for delayed in self._delayed_value.keys():
-                if now > delayed.timestamp + 10:
-                    self._remove_delayed(delayed)
-                    delayed.on_timeout()
-
-                    self.dispersy.statistics.delay_timeout += 1
-
-                    self._dispersy._statistics.drop_count += 1
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
-                                                        "delay_timeout:%s" % delayed)
-
-            yield 5.0
+        now = time()
+        for delayed in self._delayed_value.keys():
+            if now > delayed.timestamp + 10:
+                self._remove_delayed(delayed)
+                delayed.on_timeout()
+                self.dispersy.statistics.delay_timeout += 1
+                self._dispersy._statistics.drop_count += 1
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
+                                                    "delay_timeout:%s" % delayed)
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
