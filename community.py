@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 
 DOWNLOAD_MM_PK_INTERVAL = 300.0
 PERIODIC_CLEANUP_INTERVAL = 5.0
-TAKE_STEP_PERIOD = 5
+TAKE_STEP_INTERVAL = 5
 
 def register_or_call(callback, func, args=(), kargs={}):
     if not callback.is_current_thread:
@@ -355,7 +355,7 @@ class Community(object):
 
         # start walker, if needed
         if self.dispersy_enable_candidate_walker:
-            self._pending_callbacks.append(reactor.callLater(0, self.take_step))
+            self.start_walking()
 
         # turn on/off pruning
         self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
@@ -1108,7 +1108,8 @@ class Community(object):
         assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
-    def take_step(self):
+    @inlineCallbacks
+    def start_walking(self):
         most_recent_sync = None
 
         if self.dispersy_enable_fast_candidate_walker:
@@ -1141,23 +1142,29 @@ class Community(object):
                     self.create_introduction_request(candidate, allow_sync=False)
 
                 # wait for NAT hole punching
-                yield 1.0
+                yield deferLater(reactor, 1, lambda: None)
 
-        while True:
-            # if cid not in self._dispersy._communities it is detached, but not unloaded
-            if self.cid in self._dispersy._communities:
-                now = time()
-                logger.debug("previous sync was %.1f seconds ago", now - most_recent_sync if most_recent_sync else -1)
+        lc = LoopingCall(self.take_step)
+        self._pending_callbacks.append(lc)
+        lc.start(TAKE_STEP_INTERVAL, now=True)
 
-                candidate = self.dispersy_get_walk_candidate()
-                if candidate:
-                    logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
-                    self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
-                else:
-                    logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
-                most_recent_sync = time()
+    # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
+    # calls in any loop converted to a LoopingCall
+    def take_step(self):
+        # if cid not in self._dispersy._communities it is detached, but not unloaded
+        if self.cid in self._dispersy._communities:
+            now = time()
+            logger.debug("previous sync was %.1f seconds ago", now - self._last_sync_time if self._last_sync_time else -1)
 
-            yield 5.0
+            candidate = self.dispersy_get_walk_candidate()
+            if candidate:
+                logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+                self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
+            else:
+                logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
+            self._last_sync_time = time()
+
+
 
     def _iter_category(self, category, strict=True):
         # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
