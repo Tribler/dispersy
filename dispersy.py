@@ -120,9 +120,6 @@ class Dispersy(object):
         # _pending_callbacks contains all id's for registered calls that should be removed when the
         # Dispersy is stopped.  most of the time this contains all the generators that are used
         self._pending_callbacks = {}
-        # add id(self) into the callback identifier to ensure multiple Dispersy instances can use
-        # the same Callback instance
-        self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
 
         self._member_cache_by_hash = OrderedDict()
 
@@ -2392,11 +2389,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                     for community
                                     in self._communities.itervalues()
                                     if community.get_classification() == classification])
-
-            # stop walking (this should not be necessary, but bugs may cause the walker to keep
-            # running and/or be re-started when a community is loaded)
-            self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
-
             return True
 
         def stop():
