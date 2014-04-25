@@ -978,6 +978,7 @@ class Community(object):
         """
         Unload a single community.
         """
+        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_callbacks]), self._pending_callbacks
         # cancel all pending tasks
         for task in self._pending_callbacks:
             if isinstance(task, Deferred) and not task.called:
@@ -988,8 +989,6 @@ class Community(object):
                 task.cancel()
             elif isinstance(task, LoopingCall) and task.running:
                 task.stop()
-            elif isinstance(task, unicode):
-                self._dispersy.callback.unregister(task)
 
         self._pending_callbacks = []
 
