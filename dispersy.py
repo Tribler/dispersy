@@ -2278,19 +2278,13 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         Periodically called to commit database changes to disk.
         """
-        while True:
-            # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
-            # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
-            # exception is raised when the _flush_database generator is closed)
-            yield 60.0
+        try:
+            # flush changes to disk every 1 minutes
+            self._database.commit()
 
-            try:
-                # flush changes to disk every 1 minutes
-                self._database.commit()
-
-            except Exception as exception:
-                # OperationalError: database is locked
-                logger.exception("%s", exception)
+        except Exception as exception:
+            # OperationalError: database is locked
+            logger.exception("%s", exception)
 
     # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
     # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
@@ -2332,8 +2326,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._endpoint_ready()
 
             # commit changes to the database periodically
-            id_ = u"flush-database-%d" % (id(self),)
-            self._pending_callbacks["flush_database"] = self._callback.register(self._flush_database, id_=id_)
+            self._pending_callbacks["flush_database"] = lc = LoopingCall(self._flush_database)
+            lc.start(FLUSH_DATABASE_INTERVAL)
             # output candidate statistics
             id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
             self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
