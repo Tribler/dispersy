@@ -1,6 +1,10 @@
 from random import random
 
+from twisted.internet import reactor
+
 from .logger import get_logger
+
+
 logger = get_logger(__name__)
 
 
@@ -15,7 +19,6 @@ class NumberCache(object):
 
         self._prefix = prefix
         self._number = number
-        self._callback_identifier = u""
 
     @property
     def prefix(self):
@@ -24,28 +27,6 @@ class NumberCache(object):
     @property
     def number(self):
         return self._number
-
-    @property
-    def callback_identifier(self):
-        """
-        Returns the callback identifier.
-
-        The callback identifier is typically set when this Cache is added to a RequestCache using
-        RequestCache.add().  It is a unicode string that is unique to the Callback instance that is
-        assigned to the RequestCache.
-
-        The callback identifier is used to register _on_timeout and _on_cleanup tasks.
-        """
-        assert isinstance(self._callback_identifier, unicode), type(self._callback_identifier)
-        return self._callback_identifier
-
-    @callback_identifier.setter
-    def callback_identifier(self, callback_identifier):
-        """
-        Sets the callback identifier, see the callback_identifier getter.
-        """
-        assert isinstance(callback_identifier, unicode), type(callback_identifier)
-        self._callback_identifier = callback_identifier
 
     @property
     def timeout_delay(self):
@@ -175,7 +156,7 @@ class RequestCache(object):
         else:
             logger.debug("add %s", cache)
             self._identifiers[identifier] = cache
-            cache.callback_identifier = self._callback.register(self._on_timeout, (cache,), delay=cache.timeout_delay)
+            cache.timeout_delayed_call = reactor.callLater(cache.timeout_delay, self._on_timeout, cache)
             return cache
 
     def has(self, prefix, number):
@@ -210,7 +191,9 @@ class RequestCache(object):
         if cache:
             logger.debug("cancel timeout for %s", cache)
 
-            self._callback.unregister(cache.callback_identifier)
+            if not cache.timeout_delayed_call.active:
+                cache.timeout_delayed_call.cancel()
+                cache.timeout_delayed_call = None
             del self._identifiers[identifier]
 
             return cache
