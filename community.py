@@ -213,9 +213,8 @@ class Community(object):
         # Dispersy
         self._dispersy = dispersy
 
-        # _pending_callbacks contains all id's for registered calls that should be removed when the
-        # community is unloaded.  most of the time this contains all the generators that are being
-        # used by the community
+        # _pending_callbacks contains all pending calls that should be removed when the
+        # community is unloaded.
         self._pending_callbacks = []
 
         # batch caching incoming packets
