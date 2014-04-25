@@ -75,6 +75,7 @@ from .statistics import DispersyStatistics
 logger = get_logger(__name__)
 
 FLUSH_DATABASE_INTERVAL = 60.0
+STATS_DETAILED_CANDIDATES_INTERVAL = 5.0
 
 
 class Dispersy(object):
@@ -2329,8 +2330,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._pending_callbacks["flush_database"] = lc = LoopingCall(self._flush_database)
             lc.start(FLUSH_DATABASE_INTERVAL)
             # output candidate statistics
-            id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
-            self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
+            self._pending_callbacks["candidates"] = lc = LoopingCall(self._stats_detailed_candidates)
+            lc.start(STATS_DETAILED_CANDIDATES_INTERVAL)
 
         # start
         logger.info("starting the Dispersy core...")
@@ -2443,8 +2444,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
         summary = get_logger("dispersy-stats-detailed-candidates")
-        while summary.isEnabledFor(logging.DEBUG):
-            yield 5.0
+        if summary.isEnabledFor(logging.DEBUG):
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
             summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d",
@@ -2483,3 +2483,5 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                       category,
                                       candidate.connection_type,
                                       candidate)
+        else:
+            self._pending_callbacks.pop("candidates").stop()
