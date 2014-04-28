@@ -8,7 +8,7 @@ class TestRequestCache(DispersyTestFunc):
         """
         Tests standard add, has, get, and pop behavior.
         """
-        request_cache = RequestCache(self._dispersy.callback)
+        request_cache = RequestCache()
         cache = RandomNumberCache(request_cache, u"test")
         self.assertFalse(request_cache.has(u"test", cache.number))
         self.assertIsNone(request_cache.get(u"test", cache.number))
@@ -29,7 +29,7 @@ class TestRequestCache(DispersyTestFunc):
         """
         Tests standard add, has, get, and pop behavior.
         """
-        request_cache = RequestCache(self._dispersy.callback)
+        request_cache = RequestCache()
 
         caches = []
         for _ in xrange(100):
@@ -58,7 +58,7 @@ class TestRequestCache(DispersyTestFunc):
 
     @call_on_mm_thread
     def test_request_cache_double_pop_bug(self):
-        request_cache = RequestCache(self._dispersy.callback)
+        request_cache = RequestCache()
         cache = RandomNumberCache(request_cache, u"test")
 
         self.assertFalse(request_cache.has(u"test", cache.number))
@@ -81,7 +81,7 @@ class TestRequestCache(DispersyTestFunc):
         """
         Tests NumberCache
         """
-        request_cache = RequestCache(self._dispersy.callback)
+        request_cache = RequestCache()
         cache = NumberCache(request_cache, u"test", 1)
 
         self.assertFalse(request_cache.has(u"test", cache.number))

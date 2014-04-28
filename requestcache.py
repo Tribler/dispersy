@@ -1,6 +1,7 @@
 from random import random
 
 from twisted.internet import reactor
+from twisted.python.threadable import isInIOThread
 
 from .logger import get_logger
 
@@ -125,14 +126,11 @@ class IntroductionRequestCache(RandomNumberCache):
 
 class RequestCache(object):
 
-    def __init__(self, callback):
+    def __init__(self):
         """
         Creates a new RequestCache instance.
         """
-        from .callback import Callback
-        assert isinstance(callback, Callback), type(callback)
-        assert callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        self._callback = callback
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         self._identifiers = dict()
 
     def add(self, cache):
@@ -141,7 +139,7 @@ class RequestCache(object):
 
         Returns CACHE when CACHE.identifier was not yet added, otherwise returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
         assert isinstance(cache.number, (int, long)), type(cache.number)
         assert isinstance(cache.prefix, unicode), type(cache.prefix)
@@ -163,7 +161,7 @@ class RequestCache(object):
         """
         Returns True when IDENTIFIER is part of this RequestCache.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
         return self._create_identifier(number, prefix) in self._identifiers
@@ -172,7 +170,7 @@ class RequestCache(object):
         """
         Returns the Cache associated with IDENTIFIER when it exists, otherwise returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
         return self._identifiers.get(self._create_identifier(number, prefix))
@@ -182,7 +180,7 @@ class RequestCache(object):
         Returns the Cache associated with IDENTIFIER, and removes it from this RequestCache, when it exists, otherwise
         returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
 
@@ -191,9 +189,9 @@ class RequestCache(object):
         if cache:
             logger.debug("cancel timeout for %s", cache)
 
-            if not cache.timeout_delayed_call.active:
+            if cache.timeout_delayed_call.active():
                 cache.timeout_delayed_call.cancel()
-                cache.timeout_delayed_call = None
+            cache.timeout_delayed_call = None
             del self._identifiers[identifier]
 
             return cache
@@ -206,7 +204,7 @@ class RequestCache(object):
         _on_timeout will CACHE.on_timeout().
         """
 
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
 
         logger.debug("timeout on %s", cache)
