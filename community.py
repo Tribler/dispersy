@@ -15,13 +15,14 @@ from random import random, Random, randint, shuffle
 from time import time
 
 from twisted.internet import reactor
-from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.internet.base import DelayedCall
+from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.internet.task import LoopingCall, deferLater
+from twisted.python.threadable import isInIOThread
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
+from .candidate import Candidate, WalkCandidate, BootstrapCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
@@ -33,8 +34,8 @@ from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMes
                       DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
 from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommunityPayload, DynamicSettingsPayload,
                       IdentityPayload, MissingIdentityPayload, IntroductionRequestPayload, IntroductionResponsePayload,
-                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingLastMessagePayload,
-                      MissingSequencePayload, MissingProofPayload, SignatureRequestPayload, SignatureResponsePayload)
+                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingSequencePayload, MissingProofPayload,
+                      SignatureRequestPayload, SignatureResponsePayload)
 from .requestcache import RequestCache, SignatureRequestCache, IntroductionRequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
@@ -115,7 +116,7 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        assert dispersy.callback.is_current_thread
+        assert isInIOThread()
         master = dispersy.get_new_member(u"high")
 
         # new community instance
@@ -163,7 +164,7 @@ class Community(object):
     def get_master_members(cls, dispersy):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert dispersy.callback.is_current_thread
+        assert isInIOThread()
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
         return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
@@ -192,9 +193,11 @@ class Community(object):
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
 
-        assert dispersy.callback.is_current_thread
+        assert isInIOThread()
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
+
+        self._last_sync_time = 0
 
         # Dispersy
         self._dispersy = dispersy
@@ -313,7 +316,7 @@ class Community(object):
             logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
 
         # assigns temporary cache objects to unique identifiers
-        self._request_cache = RequestCache(self._dispersy.callback)
+        self._request_cache = RequestCache()
 
         # initial timeline.  the timeline will keep track of member permissions
         self._timeline = Timeline(self)
@@ -972,7 +975,7 @@ class Community(object):
                 # Have in mind that any deferred in the pending tasks list should have been constructed with a
                 # canceller function.
                 task.cancel()
-            elif isinstance(task, DelayedCall) and not task.active:
+            elif isinstance(task, DelayedCall) and task.active():
                 task.cancel()
             elif isinstance(task, LoopingCall) and task.running:
                 task.stop()
