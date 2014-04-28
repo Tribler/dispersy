@@ -132,11 +132,10 @@ class Bootstrap(object):
         """
         Resolve all unresolved trackers on a separate thread.
 
-        FUNC is called on the self._callback thread when either:
+        FUNC is called when either:
         1. all trackers are resolved (with True as the first parameter), or
         2. after TIMEOUT seconds (with False as the first parameter).
 
-        Note: this method is thread safe.
         """
         assert isinstance(timeout, float), type(timeout)
         assert timeout > 0.0, timeout
