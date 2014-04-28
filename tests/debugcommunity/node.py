@@ -1,11 +1,12 @@
 import sys
 from time import time, sleep
 
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import deferLater
-from twisted.internet import reactor
+from twisted.internet.threads import blockingCallFromThread
+from twisted.python.threadable import isInIOThread
 
-from ...bootstrap import Bootstrap
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
@@ -15,6 +16,7 @@ from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 from .community import DebugCommunity
+
 
 logger = get_logger(__name__)
 
@@ -388,12 +390,11 @@ class DebugNode(object):
         return self._community.timeline.get_resolution_policy(meta, global_time)
 
     def call(self, func, *args, **kargs):
-        if self._dispersy._callback.is_current_thread:
+        # TODO(emilon): timeout is not supported anymore, clean the tests so they don't pass the named argument.
+        if isInIOThread():
             return func(*args, **kargs)
-        timeout_value = "_THE_CALL_TIMED_OUT_"
-        result = self._dispersy._callback.call(func, args, kargs, timeout=15.0, default=timeout_value)
-        assert result != timeout_value
-        return result
+        else:
+            return blockingCallFromThread(reactor, func, *args, **kargs)
 
     @call_on_dispersy_thread
     def store(self, messages):
