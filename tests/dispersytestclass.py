@@ -12,8 +12,6 @@ from twisted.internet.threads import blockingCallFromThread
 from ..bootstrap import Bootstrap
 Bootstrap.enabled = False
 
-
-from ..callback import TwistedCallback
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
@@ -31,10 +29,6 @@ def call_on_mm_thread(func):
     return helper
 
 class DispersyTestFunc(TestCase):
-
-    # every Dispersy instance gets its own Callback thread with its own number.  this is useful in
-    # some debugging scenarios.
-    _thread_counter = 0
 
     def on_callback_exception(self, exception, is_fatal):
         return True
@@ -61,11 +55,10 @@ class DispersyTestFunc(TestCase):
         def _create_nodes(amount, store_identity, tunnel, communityclass):
             nodes = []
             for _ in range(amount):
-                DispersyTestFunc._thread_counter += 1
-                callback = TwistedCallback("Test-%d" % (self._thread_counter,))
-                callback.attach_exception_handler(self.on_callback_exception)
+                # TODO(emilon): do the log observer stuff instead
+                #callback.attach_exception_handler(self.on_callback_exception)
 
-                dispersy = Dispersy(callback, ManualEnpoint(0), u".", u":memory:")
+                dispersy = Dispersy(ManualEnpoint(0), u".", u":memory:")
                 dispersy.start()
 
                 self.dispersy_objects.append(dispersy)
