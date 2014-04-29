@@ -186,6 +186,7 @@ class Community(object):
         @param my_member: The my member that identifies you in this community.
         @type my_member: Member
         """
+        assert isInIOThread()
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
@@ -198,6 +199,7 @@ class Community(object):
         logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
 
         self._last_sync_time = 0
+        self._master_member_dc = None
 
         # Dispersy
         self._dispersy = dispersy
@@ -246,9 +248,7 @@ class Community(object):
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
-            self._mm_id_looping_call = LoopingCall(self._download_master_member_identity)
-            self._pending_callbacks.append(self._mm_id_looping_call)
-            reactor.callLater(0, self._mm_id_looping_call.start, 2.0, now=True)
+            reactor.callLater(0, self._download_master_member_identity)
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
         # define all available messages
@@ -382,38 +382,40 @@ class Community(object):
         assert not self._master_member.public_key
         logger.debug("using dummy master member")
 
-        def lc_cleanup():
-                self._mm_id_looping_call.stop()
-                self._pending_callbacks.remove(self._mm_id_looping_call)
-                self._mm_id_looping_call = None
-
         def on_dispersy_identity(message):
             if message and not self._master_member:
                 logger.debug("%s received master member", self._cid.encode("HEX"))
                 assert message.authentication.member.mid == self._master_member.mid
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
-                lc_cleanup()
+                if self._master_member_dc.active():
+                    self._master_member_dc.cancel()
+                self._pending_callbacks.remove(self._master_member_dc)
 
-        try:
-            public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
-        except StopIteration:
-            pass
-        else:
-            if public_key:
-                logger.debug("%s found master member", self._cid.encode("HEX"))
-                self._master_member = self._dispersy.get_member(public_key=str(public_key))
-                assert self._master_member.public_key
-                lc_cleanup()
+        def fetch_master_member_identity(delay):
+            assert not self._master_member.public_key
+            try:
+                public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
+            except StopIteration:
+                pass
             else:
-                for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
-                    if candidate:
-                        logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
-                        self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
+                if public_key:
+                    logger.debug("%s found master member", self._cid.encode("HEX"))
+                    self._master_member = self._dispersy.get_member(public_key=str(public_key))
+                    assert self._master_member.public_key
+                else:
+                    for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
+                        if candidate:
+                            logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
+                            self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
 
-        if self._mm_id_looping_call and self._mm_id_looping_call.interval != DOWNLOAD_MM_PK_INTERVAL:
-            self._mm_id_looping_call.stop()
-            self._mm_id_looping_call.start(min(DOWNLOAD_MM_PK_INTERVAL, self._mm_id_looping_call.interval * 1.1))
+                    if self._master_member_dc:
+                        self._pending_callbacks.remove(self._master_member_dc)
+                    delay = min(DOWNLOAD_MM_PK_INTERVAL, delay * 1.1)
+                    self._master_member_dc = reactor.callLater(delay, fetch_master_member_identity, delay)
+                    self._pending_callbacks.append(self._master_member_dc)
+
+        fetch_master_member_identity(2.0)
 
     def _initialize_meta_messages(self):
         assert isinstance(self._meta_messages, dict)
