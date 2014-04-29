@@ -1802,8 +1802,22 @@ class Community(object):
         member = self._dispersy.get_member(mid=mid, public_key=public_key, private_key=private_key)
         # We only need to check if this member has an identity message in this community if we still don't have the full
         # public key
-        if not mid or (member and member.has_identity(self)):
+        if not mid:
             return member
+        if member:
+            has_identity = member.has_identity(self)
+            if not has_identity:
+                # check database and update identity set if found
+                try:
+                    self._dispersy.database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",
+                        (member.database_id, self.get_meta_message(u"dispersy-identity").database_id)).next()
+                except StopIteration:
+                    pass
+                else:
+                    member.add_identity(self)
+                    has_identity = True
+            if has_identity:
+                return member
 
     def _generic_timeline_check(self, messages):
         meta = messages[0].meta
