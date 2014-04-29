@@ -206,7 +206,7 @@ class Community(object):
 
         # _pending_callbacks contains all pending calls that should be removed when the
         # community is unloaded.
-        self._pending_callbacks = []
+        self._pending_tasks = []
 
         # batch caching incoming packets
         self._batch_cache = {}
@@ -217,7 +217,7 @@ class Community(object):
 
         lc = LoopingCall(self._periodically_clean_delayed)
         lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
-        self._pending_callbacks.append(lc)
+        self._pending_tasks.append(lc)
 
         create_identity = True
         try:
@@ -390,7 +390,7 @@ class Community(object):
                 assert self._master_member.public_key
                 if self._master_member_dc.active():
                     self._master_member_dc.cancel()
-                self._pending_callbacks.remove(self._master_member_dc)
+                self._pending_tasks.remove(self._master_member_dc)
 
         def fetch_master_member_identity(delay):
             assert not self._master_member.public_key
@@ -410,10 +410,10 @@ class Community(object):
                             self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
 
                     if self._master_member_dc:
-                        self._pending_callbacks.remove(self._master_member_dc)
+                        self._pending_tasks.remove(self._master_member_dc)
                     delay = min(DOWNLOAD_MM_PK_INTERVAL, delay * 1.1)
                     self._master_member_dc = reactor.callLater(delay, fetch_master_member_identity, delay)
-                    self._pending_callbacks.append(self._master_member_dc)
+                    self._pending_tasks.append(self._master_member_dc)
 
         fetch_master_member_identity(2.0)
 
@@ -970,9 +970,9 @@ class Community(object):
         """
         Unload a single community.
         """
-        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_callbacks]), self._pending_callbacks
+        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks]), self._pending_tasks
         # cancel all pending tasks
-        for task in self._pending_callbacks:
+        for task in self._pending_tasks:
             if isinstance(task, Deferred) and not task.called:
                 # Have in mind that any deferred in the pending tasks list should have been constructed with a
                 # canceller function.
@@ -982,7 +982,7 @@ class Community(object):
             elif isinstance(task, LoopingCall) and task.running:
                 task.stop()
 
-        self._pending_callbacks = []
+        self._pending_tasks = []
 
         self._request_cache.clear()
         self._dispersy.detach_community(self)
@@ -1136,7 +1136,7 @@ class Community(object):
                 yield deferLater(reactor, 1, lambda: None)
 
         lc = LoopingCall(self.take_step)
-        self._pending_callbacks.append(lc)
+        self._pending_tasks.append(lc)
         lc.start(TAKE_STEP_INTERVAL, now=True)
 
     # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
@@ -1946,7 +1946,7 @@ class Community(object):
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
                         delayed_call = reactor.callLater(meta.batch.max_window, self._process_message_batch, meta)
-                        self._pending_callbacks.append(delayed_call)
+                        self._pending_tasks.append(delayed_call)
                         self._batch_cache[meta] = (delayed_call, timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
@@ -1972,7 +1972,7 @@ class Community(object):
         assert meta in self._batch_cache
 
         delayed_call, _, batch = self._batch_cache.pop(meta)
-        self._pending_callbacks.remove(delayed_call)
+        self._pending_tasks.remove(delayed_call)
         if not delayed_call.called:
             delayed_call.cancel()
         logger.debug("processing %sx %s batched messages", len(batch), meta.name)

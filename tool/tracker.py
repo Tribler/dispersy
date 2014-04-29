@@ -18,6 +18,26 @@ Outputs destroyed communities whenever encountered:
 Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
 whenever a introduction request is received for a destroyed overlay.
 """
+import errno
+import logging.config
+import optparse  # deprecated since python 2.7
+import os
+import signal
+import sys
+from time import time
+
+from twisted.internet import reactor
+from twisted.internet.task import LoopingCall
+
+from ..candidate import LoopbackCandidate
+from ..community import Community, HardKilledCommunity
+from ..conversion import BinaryConversion
+from ..crypto import NoVerifyCrypto, NoCrypto
+from ..dispersy import Dispersy
+from ..endpoint import StandaloneEndpoint
+from ..exception import ConversionNotFoundException, CommunityNotFoundException
+from ..logger import get_logger, get_context_filter
+
 
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
@@ -30,16 +50,6 @@ if __name__ == "__main__":
     print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
     exit(1)
 
-
-from time import time
-import errno
-import logging.config
-# optparse is deprecated since python 2.7
-import optparse
-import os
-import signal
-import sys
-
 # use logger.conf if it exists
 if os.path.exists("logger.conf"):
     # will raise an exception when logger.conf is malformed
@@ -47,19 +57,8 @@ if os.path.exists("logger.conf"):
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
-from twisted.internet import reactor
-from twisted.internet.task import LoopingCall
 
-from ..candidate import BootstrapCandidate, LoopbackCandidate
-from ..community import Community, HardKilledCommunity
-from ..conversion import BinaryConversion
-from ..crypto import NoVerifyCrypto, NoCrypto
-from ..dispersy import Dispersy
-from ..endpoint import StandaloneEndpoint
-from ..exception import ConversionNotFoundException, CommunityNotFoundException
-from ..logger import get_logger, get_context_filter
-from ..message import Message, DropMessage
-from ..callback import TwistedCallback
+
 logger = get_logger(__name__)
 
 if sys.platform == 'win32':
@@ -227,13 +226,14 @@ class TrackerCommunity(Community):
 
 class TrackerDispersy(Dispersy):
 
-    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
-        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:", crypto)
+    def __init__(self, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
+        super(TrackerDispersy, self).__init__(endpoint, working_directory, u":memory:", crypto)
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
         self._silent = silent
         self._my_member = None
+        self._batch_cache = {}
 
     def start(self, timeout=10.0):
         if super(TrackerDispersy, self).start(timeout):
@@ -365,22 +365,23 @@ def main():
 
     def run():
         # setup
-        dispersy = TrackerDispersy(TwistedCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+        dispersy = TrackerDispersy(StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
         container[0] = dispersy
         def signal_handler(sig, frame):
             logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
             dispersy.stop()
-            signal.signal(signal.SIGINT, signal_handler)
-            signal.signal(signal.SIGTERM, signal_handler)
+            reactor.stop()
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
         # start
         if not dispersy.start():
             raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
-    from twisted.internet import reactor
+    reactor.exitCode = 0
     reactor.callWhenRunning(run)
     reactor.run()
 
     # return 1 on exception, otherwise 0
-    exit(1 if container[0].callback.exception else 0)
+    exit(reactor.exitCode)
