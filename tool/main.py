@@ -1,12 +1,18 @@
 """
 Run Dispersy in standalone mode.
 """
-
 import logging.config
-# optparse is deprecated since python 2.7
-import optparse
+import optparse  # deprecated since python 2.7
 import os
 import signal
+
+from twisted.internet import reactor
+from twisted.python.log import addObserver
+
+from ..dispersy import Dispersy
+from ..endpoint import StandaloneEndpoint
+from ..logger import get_logger, get_context_filter
+
 
 # use logger.conf if it exists
 if os.path.exists("logger.conf"):
@@ -15,10 +21,6 @@ if os.path.exists("logger.conf"):
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
-from ..dispersy import Dispersy
-from ..endpoint import StandaloneEndpoint
-from ..logger import get_logger, get_context_filter
-from ..callback import TwistedCallback
 logger = get_logger(__name__)
 
 
@@ -78,32 +80,26 @@ def main_real(setup=None):
     # set the log identifier
     context_filter.identifier = opt.log_identifier
 
-    # setup callback
-    def exception_handler(exception, fatal):
-        logger.exception("An exception occurred.  Quitting because we are running with --strict enabled.")
-        # return fatal=True
-        return True
-    callback = TwistedCallback("Dispersy", on_main=True)
     if opt.strict:
-        callback.attach_exception_handler(exception_handler)
+        def unhandled_error_observer(event):
+            """
+            Stop the reactor if we get an unhandled error.
+            """
+            if event['isError']:
+                logger.warning("Strict, mode enabled, stopping the reactor")
+                # TODO(emilon): Should we try to stop dispersy too?
+                reactor.exitCode = 1
+                reactor.stop()
+        addObserver(unhandled_error_observer)
 
     # setup
-    dispersy = Dispersy(callback, StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
-
-    # if opt.swiftproc:
-    #     from Tribler.Core.Swift.SwiftProcessMgr import SwiftProcessMgr
-    #     sesslock = threading.Lock()
-    #     spm = SwiftProcessMgr(opt.swiftpath, opt.swiftcmdlistenport, opt.swiftdlsperproc, sesslock)
-    #     swift_process = spm.get_or_create_sp(opt.statedir)
-    #     dispersy.endpoint = TunnelEndpoint(swift_process, dispersy)
-    #     swift_process.add_download(dispersy.endpoint)
-    # else:
-
 
     def signal_handler(sig, frame):
         logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
         dispersy.stop()
+        reactor.stop()
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
