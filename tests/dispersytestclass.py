@@ -38,6 +38,7 @@ class DispersyTestFunc(TestCase):
 
         self.dispersy_objects = []
 
+        self.assertFalse(reactor.getDelayedCalls())
         self._mm = None
         self._mm, = self.create_nodes()
 
@@ -48,7 +49,16 @@ class DispersyTestFunc(TestCase):
         super(DispersyTestFunc, self).tearDown()
 
         for dispersy in self.dispersy_objects:
-            dispersy.stop()
+            blockingCallFromThread(reactor, dispersy.stop)
+
+        pending = reactor.getDelayedCalls()
+        if pending:
+            logger.warning("Found delayed calls in reactor:")
+            for dc in pending:
+                fun = dc.func
+                logger.warning("    %s", fun)
+            logger.warning("Failing")
+        assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity):
         @inlineCallbacks
