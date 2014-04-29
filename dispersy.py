@@ -588,7 +588,17 @@ class Dispersy(object):
         """
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        return self._member_cache_by_hash.get(mid) or DummyMember(self, mid)
+        member = self._member_cache_by_hash.get(mid)
+        if not member:
+            try:
+                result = self.database.execute(
+                    u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),))
+                database_id, = result.next()
+            except StopIteration:
+                database_id = self.database.execute(u"INSERT INTO member (mid) VALUES (?)",
+                    (buffer(mid),), get_lastrowid=True)
+            member = DummyMember(self, database_id, mid)
+        return member
 
     def get_member_from_id(self, mid):
         """

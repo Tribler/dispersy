@@ -5,18 +5,12 @@ from M2Crypto.EC import EC_pub, EC
 
 class DummyMember(object):
 
-    def __init__(self, dispersy, mid):
+    def __init__(self, dispersy, database_id, mid):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(database_id, int), type(database_id)
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        database = dispersy.database
-
-        try:
-            database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
-        except StopIteration:
-            database_id = database.execute(u"INSERT INTO member (mid) VALUES (?)",
-                (buffer(mid),), get_lastrowid=True)
 
         self._database_id = database_id
         self._mid = mid
