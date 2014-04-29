@@ -45,6 +45,7 @@ class DebugNode(object):
         else:
             mm = self._dispersy.get_temporary_member_from_id(c_master_member._community._master_member.mid)
             self._community = communityclass(self._dispersy, mm, self._my_member)
+            self._community.init_community()
 
         self._central_node = c_master_member
         self._tunnel = False
