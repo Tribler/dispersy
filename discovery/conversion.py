@@ -21,7 +21,6 @@ def bytes_to_long(val, nrbytes=0):
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
         super(DiscoveryConversion, self).__init__(community, "\x01")
-        # we need to use 4 , 5, and 6 as we are combining this overlay with the searchcommunity which has 1,2,and 3 defined.
         self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), lambda message: self._encode_decode(self._encode_similarity_request, self._decode_similarity_request, message), self._decode_similarity_request)
         self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), lambda message: self._encode_decode(self._encode_similarity_response, self._decode_similarity_response, message), self._decode_similarity_response)
         self.define_meta_message(chr(3), community.get_meta_message(u"ping"), lambda message: self._encode_decode(self._encode_ping, self._decode_ping, message), self._decode_ping)
@@ -55,32 +54,34 @@ class DiscoveryConversion(BinaryConversion):
     def _encode_similarity_response(self, message):
         preference_list = message.payload.preference_list
         tb_overlap = message.payload.tb_overlap
-        fmt = "!H" + "20s"*len(preference_list) + "20sI"*len(tb_overlap)
+        fmt = "!HH" + "20s"*len(preference_list) + "20sI"*len(tb_overlap)
         args = preference_list + sum([list(t) for t in tb_overlap], [])
-        packet = pack(fmt, message.payload.identifier, *(args))
+        packet = pack(fmt, message.payload.identifier, len(preference_list), *(args))
         return packet,
 
     def _decode_similarity_response(self, placeholder, offset, data):
         if len(data) < offset + 1:
             raise DropPacket("Insufficient packet size")
 
-        identifier, = unpack_from('!H', data, offset)
-        offset += 2
+        identifier, num_preferences = unpack_from('!HH', data, offset)
+        offset += 4
 
         length = len(data) - offset
-        if length % 4 != 0:
+        if (length - (num_preferences * 20)) % 24 != 0:
             raise DropPacket("Invalid number of bytes available")
 
         preference_list = []
         if length:
-            hashpack = '20s' * (length / 20)
+            hashpack = '20s' * num_preferences
             preference_list = unpack_from('!' + hashpack, data, offset)
-        offset += length
+        offset += num_preferences * 20
 
+        length = len(data) - offset
         tb_overlap = []
         if length:
             hashpack = '20sI' * (length / 24)
             tb_overlap = unpack_from('!' + hashpack, data, offset)
+            tb_overlap = zip(tb_overlap[0::2], tb_overlap[1::2])
         offset += length
 
         return offset, placeholder.meta.payload.implement(identifier, preference_list, tb_overlap)

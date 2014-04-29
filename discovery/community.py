@@ -135,16 +135,16 @@ class DiscoveryCommunity(Community):
 
     @classmethod
     def get_master_members(cls, dispersy):
-#generated: Fri Apr 25 13:37:28 2014
-#curve: NID_sect571r1
-#len: 571 bits ~ 144 bytes signature
-#pub: 170 3081a7301006072a8648ce3d020106052b81040027038192000403b3ab059ced9b20646ab5e01762b3595c5e8855227ae1e424cff38a1e4edee73734ff2e2e829eb4f39bab20d7578284fcba7251acd74e7daf96f21d01ea17077faf4d27a655837d072baeb671287a88554e1191d8904b0dc572d09ff95f10ff092c8a5e2a01cd500624376aec875a6e3028aab784cfaf0bac6527245db8d93900d904ac2a922a02716ccef5a22f7968
-#pub-sha1 7e313685c1912a141279f8248fc8db5899c5df5a
+# generated: Fri Apr 25 13:37:28 2014
+# curve: NID_sect571r1
+# len: 571 bits ~ 144 bytes signature
+# pub: 170 3081a7301006072a8648ce3d020106052b81040027038192000403b3ab059ced9b20646ab5e01762b3595c5e8855227ae1e424cff38a1e4edee73734ff2e2e829eb4f39bab20d7578284fcba7251acd74e7daf96f21d01ea17077faf4d27a655837d072baeb671287a88554e1191d8904b0dc572d09ff95f10ff092c8a5e2a01cd500624376aec875a6e3028aab784cfaf0bac6527245db8d93900d904ac2a922a02716ccef5a22f7968
+# pub-sha1 7e313685c1912a141279f8248fc8db5899c5df5a
 #-----BEGIN PUBLIC KEY-----
-#MIGnMBAGByqGSM49AgEGBSuBBAAnA4GSAAQDs6sFnO2bIGRqteAXYrNZXF6IVSJ6
-#4eQkz/OKHk7e5zc0/y4ugp6085urINdXgoT8unJRrNdOfa+W8h0B6hcHf69NJ6ZV
-#g30HK662cSh6iFVOEZHYkEsNxXLQn/lfEP8JLIpeKgHNUAYkN2rsh1puMCiqt4TP
-#rwusZSckXbjZOQDZBKwqkioCcWzO9aIveWg=
+# MIGnMBAGByqGSM49AgEGBSuBBAAnA4GSAAQDs6sFnO2bIGRqteAXYrNZXF6IVSJ6
+# 4eQkz/OKHk7e5zc0/y4ugp6085urINdXgoT8unJRrNdOfa+W8h0B6hcHf69NJ6ZV
+# g30HK662cSh6iFVOEZHYkEsNxXLQn/lfEP8JLIpeKgHNUAYkN2rsh1puMCiqt4TP
+# rwusZSckXbjZOQDZBKwqkioCcWzO9aIveWg=
 #-----END PUBLIC KEY-----
         master_key = "3081a7301006072a8648ce3d020106052b81040027038192000403b3ab059ced9b20646ab5e01762b3595c5e8855227ae1e424cff38a1e4edee73734ff2e2e829eb4f39bab20d7578284fcba7251acd74e7daf96f21d01ea17077faf4d27a655837d072baeb671287a88554e1191d8904b0dc572d09ff95f10ff092c8a5e2a01cd500624376aec875a6e3028aab784cfaf0bac6527245db8d93900d904ac2a922a02716ccef5a22f7968".decode("HEX")
         master = dispersy.get_member(public_key=master_key)
@@ -399,10 +399,6 @@ class DiscoveryCommunity(Community):
             request = self._request_cache.get(u"similarity", message.payload.identifier)
             if not request:
                 yield DropMessage(message, "unknown identifier")
-                continue
-
-            if not request.did_request(message.candidate):
-                yield DropMessage(message, "did not send request to this candidate")
                 continue
 
             yield message
