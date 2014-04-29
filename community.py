@@ -982,6 +982,7 @@ class Community(object):
 
         self._pending_callbacks = []
 
+        self._request_cache.clear()
         self._dispersy.detach_community(self)
 
     def claim_global_time(self):

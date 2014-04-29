@@ -217,3 +217,15 @@ class RequestCache(object):
 
     def _create_identifier(self, number, prefix):
         return u"%s:%d" % (prefix, number)
+
+    def clear(self):
+        """
+        Clear the cache, canceling all pending tasks.
+
+        """
+        logger.debug("Clearing %s [%s]", self, len(self._identifiers))
+        for cache in self._identifiers.itervalues():
+            logger.debug("  Canceling %s", cache)
+            if cache.timeout_delayed_call.active():
+                cache.timeout_delayed_call.cancel()
+        self._identifiers = dict()

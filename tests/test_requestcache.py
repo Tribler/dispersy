@@ -89,3 +89,6 @@ class TestRequestCache(DispersyTestFunc):
         self.assertTrue(request_cache.has(u"test", cache.number))
 
         self.assertRaises(RuntimeError, NumberCache, request_cache, u"test", 1)
+
+        # request_cache is not bound to any Community so we need to clean up ourselves
+        request_cache.clear()
