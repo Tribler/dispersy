@@ -167,7 +167,7 @@ class Community(object):
         assert isInIOThread()
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
-        return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
+        return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_member(mid=str(mid))
                 for mid, public_key,
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]

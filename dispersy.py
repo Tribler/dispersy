@@ -539,7 +539,7 @@ class Dispersy(object):
                     key = self.crypto.key_from_public_bin(public_key_from_db)
 
                 else:
-                    return
+                    return DummyMember(self, database_id, mid)
 
         # the member is not in the database, insert it
         elif public_key or private_key:
@@ -551,7 +551,9 @@ class Dispersy(object):
                 (buffer(mid), buffer(public_key), buffer(private_key)), get_lastrowid=True)
         else:
             # We could't find the key on the DB, nothing else to do
-            return
+            database_id = self.database.execute(u"INSERT INTO member (mid) VALUES (?)",
+                (buffer(mid),), get_lastrowid=True)
+            return DummyMember(self, database_id, mid)
 
         member = Member(self, key, database_id, mid)
 
@@ -571,35 +573,6 @@ class Dispersy(object):
         assert isinstance(securitylevel, unicode), type(securitylevel)
         key = self.crypto.generate_key(securitylevel)
         return self.get_member(private_key=self.crypto.key_to_bin(key))
-
-    def get_temporary_member_from_id(self, mid):
-        """
-        Returns a temporary Member instance reserving the MID until (hopefully) the public key
-        becomes available.
-
-        This method should be used with caution as this will create a real Member without having the
-        public key available.  This method is (sometimes) used when joining a community when we only
-        have its CID (=MID).
-
-        @param mid: The 20 byte sha1 digest indicating a member.
-        @type mid: string
-
-        @return: A (Dummy)Member instance
-        @rtype: DummyMember or Member
-        """
-        assert isinstance(mid, str), type(mid)
-        assert len(mid) == 20, len(mid)
-        member = self._member_cache_by_hash.get(mid)
-        if not member:
-            try:
-                result = self.database.execute(
-                    u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),))
-                database_id, = result.next()
-            except StopIteration:
-                database_id = self.database.execute(u"INSERT INTO member (mid) VALUES (?)",
-                    (buffer(mid),), get_lastrowid=True)
-            member = DummyMember(self, database_id, mid)
-        return member
 
     def get_member_from_id(self, mid):
         """
@@ -809,7 +782,7 @@ class Dispersy(object):
                     if load or (auto_load and auto_load_flag):
 
                         if classification in self._auto_load_communities:
-                            master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
+                            master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_member(mid=cid)
                             cls, my_member, args, kargs = self._auto_load_communities[classification]
                             community = cls(self, master, my_member, *args, **kargs)
                             assert master.mid in self._communities

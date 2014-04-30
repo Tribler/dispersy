@@ -86,7 +86,7 @@ class DelayPacketByMissingMember(DelayPacket):
 
     def send_request(self, community, candidate):
         return community.create_missing_identity(candidate,
-                                                 community.dispersy.get_temporary_member_from_id(self._missing_member_id))
+                    community.dispersy.get_member(mid=self._missing_member_id))
 
 
 class DelayPacketByMissingMessage(DelayPacket):

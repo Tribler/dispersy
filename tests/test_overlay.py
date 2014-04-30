@@ -77,7 +77,7 @@ class TestOverlay(DispersyTestFunc):
         cid = cid_hex.decode("HEX")
 
         self._dispersy.statistics.enable_debug_statistics(True)
-        community = WCommunity(self._dispersy, self._dispersy.get_temporary_member_from_id(cid), self._mm.my_member)
+        community = WCommunity(self._dispersy, self._dispersy.get_member(mid=cid), self._mm.my_member)
         summary.info(community.cid.encode("HEX"))
 
         history = []
