@@ -122,10 +122,11 @@ class PossibleTasteBuddy(TasteBuddy):
 
 class DiscoveryCommunity(Community):
 
-    def __init__(self, dispersy, master, my_member, max_prefs=None):
+    def __init__(self, dispersy, master, my_member, max_prefs=10, max_tbs=25):
         super(DiscoveryCommunity, self).__init__(dispersy, master, my_member)
 
         self.max_prefs = max_prefs
+        self.max_tbs = max_tbs
         self.taste_buddies = []
         self.possible_taste_buddies = []
         self.requested_introductions = {}
@@ -382,7 +383,7 @@ class DiscoveryCommunity(Community):
 
         # Determine overlap for top taste buddies.
         bitfields = []
-        for tb in list(self.yield_taste_buddies())[:10]:
+        for tb in list(self.yield_taste_buddies())[:self.max_tbs]:
             # Size of the bitfield is fixed and set to 4 bytes.
             bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
             bitfields.append((tb.candidate_mid.mid, bitfield))
@@ -546,6 +547,9 @@ class DiscoveryCommunity(Community):
         for message in messages:
             self._create_pingpong(u"pong", [message.candidate], message.payload.identifier)
 
+            if DEBUG:
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: got ping from", message.candidate
+
             self.reset_taste_buddy(message.candidate)
 
     def check_pong(self, messages):
@@ -567,6 +571,9 @@ class DiscoveryCommunity(Community):
             request = self._request_cache.get(u"ping", message.payload.identifier)
             if request.on_success(message.candidate):
                 self._request_cache.pop(u"ping", message.payload.identifier)
+
+            if DEBUG:
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: got pong from", message.candidate
 
             self.reset_taste_buddy(message.candidate)
 
