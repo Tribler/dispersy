@@ -522,7 +522,7 @@ class Dispersy(object):
                 assert public_key
                 if private_key_from_db != private_key:
                     self.database.execute(u"UPDATE member SET public_key = ?, private_key = ? WHERE id = ?",
-                    (buffer(public_key), buffer(private_key), database_id))
+                        (buffer(public_key), buffer(private_key), database_id))
             else:
                 # the private key from the database overrules the public key argument
                 if private_key_from_db:
@@ -532,7 +532,7 @@ class Dispersy(object):
                 elif public_key:
                     if public_key_from_db != public_key:
                         self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?",
-                    (buffer(public_key), database_id))
+                            (buffer(public_key), database_id))
 
                 # no priv/pubkey arguments passed, maybe use the public key from the database
                 elif public_key_from_db:
