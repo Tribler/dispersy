@@ -1673,16 +1673,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             assert message.authentication.is_signed
             assert not message.packet[-10:] == "\x00" * 10, message.packet[-10:].encode("HEX")
             # we must have the identity message as well
-            if not message.authentication.member.has_identity(message.community):
-                member = message.authentication.member
-                community = message.community
-                try:
-                    self.database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",
-                        (member.database_id, community.get_meta_message(u"dispersy-identity").database_id)).next()
-                except StopIteration:
-                    pass
-                else:
-                    member.add_identity(community)
+            message.authentication.member.add_identity(message.community)
             assert message.authentication.encoding == "bin" or message.authentication.member.has_identity(message.community), [message.authentication.encoding, message.community, message.authentication.member.database_id, message.name]
 
             logger.debug("%s %d@%d", message.name, message.authentication.member.database_id, message.distribution.global_time)
