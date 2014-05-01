@@ -271,9 +271,7 @@ class TrackerDispersy(Dispersy):
         try:
             return super(TrackerDispersy, self).get_community(cid, True, True)
         except CommunityNotFoundException:
-            self._communities[cid] = TrackerCommunity(self, self.get_member(mid=cid), self._my_member)
-            self._communities[cid].init_community(attach=False)
-            return self._communities[cid]
+            return TrackerCommunity.init_community(self, self.get_member(mid=cid), self._my_member)
 
     def _load_persistent_storage(self):
         # load all destroyed communities

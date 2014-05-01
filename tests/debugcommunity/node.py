@@ -34,6 +34,7 @@ class DebugNode(object):
 
     def __init__(self, testclass, dispersy, communityclass=DebugCommunity, c_master_member=None):
         super(DebugNode, self).__init__()
+        import sys
 
         self._testclass = testclass
         self._dispersy = dispersy
@@ -44,8 +45,7 @@ class DebugNode(object):
             self._community = communityclass.create_community(self._dispersy, self._my_member)
         else:
             mm = self._dispersy.get_member(mid=c_master_member._community._master_member.mid)
-            self._community = communityclass(self._dispersy, mm, self._my_member)
-            self._community.init_community()
+            self._community = communityclass.init_community(self._dispersy, mm, self._my_member)
 
         self._central_node = c_master_member
         self._tunnel = False

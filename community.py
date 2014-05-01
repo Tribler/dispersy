@@ -119,8 +119,8 @@ class Community(object):
         master = dispersy.get_new_member(u"high")
 
         # new community instance
-        community = cls(dispersy, master, my_member, *args, **kargs)
-        community.init_community(*args, **kargs)
+        community = cls(dispersy, master, my_member)
+        community.initialize(*args, **kargs)
 
         # create the dispersy-identity for the master member
         message = community.create_identity(sign_with_master=True)
@@ -172,7 +172,47 @@ class Community(object):
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
 
-    def __init__(self, dispersy, master, my_member, *args, **kargs):
+    @classmethod
+    def init_community(cls, dispersy, master, my_member, *args, **kargs):
+        """
+        Create a new community owned by my_member.
+
+        Each unique community, that exists out in the world, is identified by a public/private key
+        pair.  When the create_community method is called such a key pair is generated.
+
+        Furthermore, my_member will be granted permission to use all the messages that the community
+        provides.
+
+        @param dispersy: The Dispersy instance where this community will attach itself to.
+        @type dispersy: Dispersy
+
+        @param my_member: The Member that will be granted Permit, Authorize, and Revoke for all
+         messages.
+        @type my_member: Member
+
+        @param args: optional arguments that are passed to the community constructor.
+        @type args: tuple
+
+        @param kargs: optional keyword arguments that are passed to the community constructor.
+        @type args: dictionary
+
+        @return: The created community instance.
+        @rtype: Community
+        """
+        from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(my_member, Member), type(my_member)
+        assert my_member.public_key, my_member.database_id
+        assert my_member.private_key, my_member.database_id
+        assert isInIOThread()
+
+        # new community instance
+        community = cls(dispersy, master, my_member)
+        community.initialize(*args, **kargs)
+
+        return community
+
+    def __init__(self, dispersy, master, my_member):
         assert isInIOThread()
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
@@ -194,7 +234,7 @@ class Community(object):
         self._master_member = master
         self._my_member = my_member
 
-    def init_community(self, attach=True):
+    def initialize(self, attach=True):
         """
         Loading, or joining an existing community can be done by calling the constructor.
         Creating a new instance of a community needs to use the create_community() call.
@@ -3585,8 +3625,8 @@ class HardKilledCommunity(Community):
     def __init__(self, *args, **kargs):
         super(HardKilledCommunity, self).__init__(*args, **kargs)
 
-    def init_community(self, *args, **kargs):
-        super(HardKilledCommunity, self).init_community(*args, **kargs)
+    def initialize(self, *args, **kargs):
+        super(HardKilledCommunity, self).initialize(*args, **kargs)
         destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
         try:
             packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? LIMIT 1", (destroy_message_id,)).next()

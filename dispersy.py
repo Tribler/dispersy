@@ -435,8 +435,7 @@ class Dispersy(object):
             for master in community_cls.get_master_members(self):
                 if not master.mid in self._communities:
                     logger.debug("Loading %s at start", community_cls.get_classification())
-                    community = community_cls(self, master, my_member, *args, **kargs)
-                    community.init_community(*args, **kargs)
+                    community = community_cls.init_community(self, master, my_member, *args, **kargs)
                     communities.append(community)
                     assert community.master_member.mid == master.mid
                     assert community.master_member.mid in self._communities
