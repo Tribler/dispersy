@@ -119,8 +119,7 @@ class Community(object):
         master = dispersy.get_new_member(u"high")
 
         # new community instance
-        community = cls(dispersy, master, my_member)
-        community.initialize(*args, **kargs)
+        community = cls.init_community(dispersy, master, my_member, *args, **kargs)
 
         # create the dispersy-identity for the master member
         message = community.create_identity(sign_with_master=True)
