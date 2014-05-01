@@ -34,7 +34,6 @@ class DebugNode(object):
 
     def __init__(self, testclass, dispersy, communityclass=DebugCommunity, c_master_member=None):
         super(DebugNode, self).__init__()
-        import sys
 
         self._testclass = testclass
         self._dispersy = dispersy

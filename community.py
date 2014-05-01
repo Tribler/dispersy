@@ -185,6 +185,9 @@ class Community(object):
         @param dispersy: The Dispersy instance where this community will attach itself to.
         @type dispersy: Dispersy
 
+        @param master: The master member that identifies the community.
+        @type master: DummyMember or Member
+
         @param my_member: The Member that will be granted Permit, Authorize, and Revoke for all
          messages.
         @type my_member: Member
