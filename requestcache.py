@@ -132,6 +132,7 @@ class RequestCache(object):
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         self._identifiers = dict()
+        self._cache_timeout_tasks = dict()
 
     def add(self, cache):
         """
@@ -154,7 +155,7 @@ class RequestCache(object):
         else:
             logger.debug("add %s", cache)
             self._identifiers[identifier] = cache
-            cache.timeout_delayed_call = reactor.callLater(cache.timeout_delay, self._on_timeout, cache)
+            self._cache_timeout_tasks[cache] = reactor.callLater(cache.timeout_delay, self._on_timeout, cache)
             return cache
 
     def has(self, prefix, number):
@@ -187,13 +188,8 @@ class RequestCache(object):
         identifier = self._create_identifier(number, prefix)
         cache = self._identifiers.get(identifier)
         if cache:
-            logger.debug("cancel timeout for %s", cache)
-
-            if cache.timeout_delayed_call.active():
-                cache.timeout_delayed_call.cancel()
-            cache.timeout_delayed_call = None
+            self._cancel_timeout(cache)
             del self._identifiers[identifier]
-
             return cache
 
     def _on_timeout(self, cache):
@@ -225,7 +221,11 @@ class RequestCache(object):
         """
         logger.debug("Clearing %s [%s]", self, len(self._identifiers))
         for cache in self._identifiers.itervalues():
-            logger.debug("  Canceling %s", cache)
-            if cache.timeout_delayed_call.active():
-                cache.timeout_delayed_call.cancel()
-        self._identifiers = dict()
+            self._cancel_timeout(cache)
+        self._identifiers.clear()
+
+    def _cancel_timeout(self, cache):
+        logger.debug("canceling timeout for %s", cache)
+        dc = self._cache_timeout_tasks.pop(cache)
+        if dc.active():
+            dc.cancel()
