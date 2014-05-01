@@ -574,45 +574,6 @@ class Dispersy(object):
         key = self.crypto.generate_key(securitylevel)
         return self.get_member(private_key=self.crypto.key_to_bin(key))
 
-    def get_member_from_id(self, mid):
-        """
-        Returns None or the Member instance associated with mid, where mid is the sha1 digest of a member public key.
-
-        Since we may not have the public key associated to MID, this method may return None.  In such a case it is
-        sometimes possible to raise DelayPacketByMissingMember to obtain the public key.
-
-        @param mid: The 20 byte sha1 digest indicating a member.  @type mid: string
-
-        @return: The Member instance associated with the key or None.  @rtype: Member
-
-        """
-        assert isinstance(mid, str), type(mid)
-        assert len(mid) == 20, len(mid)
-        member = self._member_cache_by_hash.get(mid)
-        if not member:
-            members = [self.get_member(public_key=str(public_key))
-                       for public_key,
-                       in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
-                       if public_key]
-            if members:
-                # Register the unlikely event of a hash collision
-                if len(members) > 1:
-                    logger.warning("Found several public keys matching mid %s: %s\nReturning the first one.",
-                        mid, str((str(member) for member in members)))
-                    members.sort()
-                member = members[0]
-            else:
-                member = None
-        return member
-
-    @deprecated("Use get_member() instead")
-    def get_members_from_id(self, mid):
-        """
-        Deprecated, use get_member_from_id()
-        """
-        member = self.get_member_from_id(mid)
-        return [member] if member else []
-
     def get_member_from_database_id(self, database_id):
         """
         Returns a Member instance associated with DATABASE_ID or None when this row identifier is
