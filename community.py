@@ -205,7 +205,7 @@ class Community(object):
 
         # _pending_callbacks contains all pending calls that should be removed when the
         # community is unloaded.
-        self._pending_tasks = []
+        self._pending_tasks = {}
 
         # batch caching incoming packets
         self._batch_cache = {}
@@ -216,7 +216,7 @@ class Community(object):
 
         lc = LoopingCall(self._periodically_clean_delayed)
         lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
-        self._pending_tasks.append(lc)
+        self._pending_tasks["periodic cleanup"] = lc
 
         create_identity = True
         try:
@@ -247,8 +247,8 @@ class Community(object):
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
-            self._mm_id_looping_call = lc = LoopingCall(self._download_master_member_identity)
-            self._pending_tasks.append(lc)
+            lc = LoopingCall(self._download_master_member_identity)
+            self._pending_tasks["download master member identity"] = lc
             reactor.callLater(0, lc.start, DOWNLOAD_MM_PK_INTERVAL, now=True)
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
@@ -383,18 +383,13 @@ class Community(object):
         assert not self._master_member.public_key
         logger.debug("using dummy master member")
 
-        def lc_cleanup():
-            self._mm_id_looping_call.stop()
-            self._pending_tasks.remove(self._mm_id_looping_call)
-            self._mm_id_looping_call = None
-
         def on_dispersy_identity(message):
             if message and not self._master_member:
                 logger.debug("%s received master member", self._cid.encode("HEX"))
                 assert message.authentication.member.mid == self._master_member.mid
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
-                lc_cleanup()
+                self._pending_tasks.pop("download master member identity").stop()
 
         try:
             public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
@@ -405,7 +400,7 @@ class Community(object):
                 logger.debug("%s found master member", self._cid.encode("HEX"))
                 self._master_member = self._dispersy.get_member(public_key=str(public_key))
                 assert self._master_member.public_key
-                lc_cleanup()
+                self._pending_tasks.pop("download master member identity").stop()
             else:
                 for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
                     if candidate:
@@ -961,24 +956,27 @@ class Community(object):
         else:
             return 2 ** 63 - 1
 
+    def cancel_pending_task(self, key):
+        task = self._pending_tasks.pop(key)
+        if isinstance(task, Deferred) and not task.called:
+            # Have in mind that any deferred in the pending tasks list should have been constructed with a
+            # canceller function.
+            task.cancel()
+        elif isinstance(task, DelayedCall) and task.active():
+            task.cancel()
+        elif isinstance(task, LoopingCall) and task.running:
+            task.stop()
+
     def unload_community(self):
         """
         Unload a single community.
         """
-        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks]), self._pending_tasks
+        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks.itervalues()]), self._pending_tasks
         # cancel all pending tasks
-        for task in self._pending_tasks:
-            if isinstance(task, Deferred) and not task.called:
-                # Have in mind that any deferred in the pending tasks list should have been constructed with a
-                # canceller function.
-                task.cancel()
-            elif isinstance(task, DelayedCall) and task.active():
-                task.cancel()
-            elif isinstance(task, LoopingCall) and task.running:
-                task.stop()
+        for key in self._pending_tasks.keys():
+            self.cancel_pending_task(key)
 
-        self._pending_tasks = []
-
+        self._pending_tasks.clear()
         self._request_cache.clear()
         self._dispersy.detach_community(self)
 
@@ -1131,7 +1129,7 @@ class Community(object):
                 yield deferLater(reactor, 1, lambda: None)
 
         lc = LoopingCall(self.take_step)
-        self._pending_tasks.append(lc)
+        self._pending_tasks["take step"] = lc
         lc.start(TAKE_STEP_INTERVAL, now=True)
 
     # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
@@ -1936,13 +1934,13 @@ class Community(object):
                          for candidate, packet in cur_packets]
                 if meta.batch.enabled and cache:
                     if meta in self._batch_cache:
-                        _, _, current_batch = self._batch_cache[meta]
+                        _, current_batch = self._batch_cache[meta]
                         current_batch.extend(batch)
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
-                        delayed_call = reactor.callLater(meta.batch.max_window, self._process_message_batch, meta)
-                        self._pending_tasks.append(delayed_call)
-                        self._batch_cache[meta] = (delayed_call, timestamp, batch)
+                        self._pending_tasks[meta] = reactor.callLater(meta.batch.max_window,
+                                                                                          self._process_message_batch, meta)
+                        self._batch_cache[meta] = (timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
@@ -1966,10 +1964,8 @@ class Community(object):
         assert isinstance(meta, Message)
         assert meta in self._batch_cache
 
-        delayed_call, _, batch = self._batch_cache.pop(meta)
-        self._pending_tasks.remove(delayed_call)
-        if not delayed_call.called:
-            delayed_call.cancel()
+        _, batch = self._batch_cache.pop(meta)
+        self.cancel_pending_task(meta)
         logger.debug("processing %sx %s batched messages", len(batch), meta.name)
 
         return self._on_batch_cache(meta, batch)
@@ -2022,9 +2018,8 @@ class Community(object):
         Remove all batches currently scheduled.
         """
         # remove any items that are left in the cache
-        for delayed_call, _, _ in self._batch_cache.itervalues():
-            if not delayed_call.called:
-                delayed_call.cancel()
+        for meta in self._batch_cache.iterkeys():
+            self.cancel_pending_task(meta)
         self._batch_cache.clear()
 
     def flush_batch_cache(self):
@@ -2034,8 +2029,8 @@ class Community(object):
         flush_list = [(meta, tup) for meta, tup in
                       self._batch_cache.iteritems() if isinstance(meta.distribution, SyncDistribution)]
 
-        for meta, (delayed_call, timestamp, batch) in flush_list:
-            logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, delayed_call)
+        for meta, (_, batch) in flush_list:
+            logger.debug("flush cached %dx %s messages (dc: %s)", len(batch), meta.name, self._pending_tasks[meta])
             self._process_message_batch(meta)
 
     def on_messages(self, messages):
