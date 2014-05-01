@@ -2289,8 +2289,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         3. opens endpoint
         """
 
-        # Disabled this assert as is_running now checks if the reactor is running
-        # assert not self._callback.is_running, "Must be called before callback.start()"
         assert isInIOThread()
         assert isinstance(timeout, float), type(timeout)
         assert timeout >= 0.0, timeout
@@ -2303,7 +2301,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         results = []
 
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-        assert isInIOThread(), "Must be called from the callback thread"
 
         # resolve bootstrap candidates
         self._resolve_bootstrap_candidates(timeout)

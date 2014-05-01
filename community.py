@@ -194,7 +194,6 @@ class Community(object):
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
 
-        assert isInIOThread()
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
 

@@ -47,8 +47,6 @@ class TestDynamicSettings(DispersyTestFunc):
         node.give_message(message, self._mm)
         other.give_message(message, self._mm)
 
-        #other.process_packets()
-
         linear_policy, proof = node.get_resolution_policy(meta, 43)
         self.assertIsInstance(linear_policy, LinearResolution)
         self.assertEqual(proof[0].distribution.global_time, message.distribution.global_time)

@@ -69,7 +69,7 @@ class TestBatch(DispersyTestFunc):
 
     def test_many_small_batches(self, length=1000):
         """
-        Test many small batches of messages is processed correctly.
+        Test that many small batches of messages are processed correctly.
         Each community is handled in its own batch, hence we can measure performance differences when
         we make one large batch (using one community) and many small batches (using many different
         communities).
