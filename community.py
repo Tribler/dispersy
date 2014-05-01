@@ -3011,6 +3011,11 @@ class Community(object):
         message = meta.impl(authentication=(self.master_member if sign_with_master else self.my_member,),
                             distribution=(global_time,))
         self._dispersy.store_update_forward([message], store, update, False)
+        # indicate that we have the identity message
+        if sign_with_master:
+            self.master_member.add_identity(self)
+        else:
+            self.my_member.add_identity(self)
         return message
 
     def create_missing_identity(self, candidate, dummy_member):
