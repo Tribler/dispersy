@@ -215,8 +215,6 @@ class TestIncomingMissingSequence(DispersyTestFunc):
             for message in rmessages[node]:
                 other.give_message(message, node, cache=True)
 
-        sleep(0.5)
-
         # receive response
         for node in nodes:
             responses = [response.distribution.sequence_number for _, response in node.receive_messages(names=[u"sequence-text"], timeout=0.1)]

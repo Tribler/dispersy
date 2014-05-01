@@ -133,13 +133,9 @@ class DebugNode(object):
             message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
             yield self._central_node.give_message(message, self)
 
-            # TODO(emilon): Make it so it is no longer necessary to do this
             # remove introduction responses from socket
-            for _ in xrange(5):
-                messages = yield self.receive_messages(names=[u'dispersy-introduction-response'])
-                yield deferLater(reactor, 0.005, lambda : None)
-                if messages:
-                    break
+            messages = yield self.receive_messages(names=[u'dispersy-introduction-response'])
+
             assert len(messages), "No introduction messages received!"
 
     def encode_message(self, message):
@@ -288,14 +284,22 @@ class DebugNode(object):
             logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             yield candidate, message
 
+    @call_on_reactor_thread
+    @inlineCallbacks
     def receive_messages(self, addresses=None, names=None, return_after=sys.maxint, timeout=0.5):
         messages = []
-        for message_tuple in self.receive_message(addresses, names, timeout):
-            messages.append(message_tuple)
-            if len(messages) == return_after:
+        for _ in xrange(5):
+            for message_tuple in self.receive_message(addresses, names, timeout):
+                messages.append(message_tuple)
+                if len(messages) == return_after:
+                    break
+            if messages:
                 break
+            else:
+                # Wait for a bit and try again
+                yield deferLater(reactor, 0.005, lambda : None)
 
-        return messages
+        returnValue(messages)
 
     @call_on_reactor_thread
     def decode_message(self, candidate, packet):
