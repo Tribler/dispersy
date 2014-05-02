@@ -28,6 +28,7 @@ from time import time
 
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
+from twisted.python.threadable import isInIOThread
 
 from ..candidate import LoopbackCandidate
 from ..community import Community, HardKilledCommunity
@@ -38,6 +39,8 @@ from ..endpoint import StandaloneEndpoint
 from ..exception import ConversionNotFoundException, CommunityNotFoundException
 from ..logger import get_logger, get_context_filter
 
+
+COMMUNITY_CLEANUP_INTERVAL = 180.0
 
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
@@ -236,10 +239,14 @@ class TrackerDispersy(Dispersy):
         self._batch_cache = {}
 
     def start(self):
+        assert isInIOThread()
         if super(TrackerDispersy, self).start():
             self._create_my_member()
             self._load_persistent_storage()
-            reactor.callLater(0, self._unload_communities)
+
+            lc = LoopingCall(self.unload_inactive_communities)
+            self._pending_tasks["unload inactive communities"] = lc
+            lc.start(COMMUNITY_CLEANUP_INTERVAL)
 
             self.define_auto_load(TrackerCommunity, self._my_member)
             self.define_auto_load(TrackerHardKilledCommunity, self._my_member)
@@ -281,7 +288,7 @@ class TrackerDispersy(Dispersy):
                 except:
                     logger.exception("Error while loading from persistent-destroy-community.data")
 
-    def _unload_communities(self):
+    def unload_inactive_communities(self):
         def is_active(community, now):
             # check 1: does the community have any active candidates
             if community.update_strikes(now) < 3:
@@ -295,13 +302,11 @@ class TrackerDispersy(Dispersy):
             # the community is inactive
             return False
 
-        while True:
-            yield 180.0
-            now = time()
-            inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-            logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
-            for community in inactive:
-                community.unload_community()
+        now = time()
+        inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
+        logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
+        for community in inactive:
+            community.unload_community()
 
     def _report_statistics(self):
         mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
