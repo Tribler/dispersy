@@ -180,9 +180,6 @@ class Community(object):
         Each community is identified by the hash of the public key of the master member.
         This member is created in the create_community method.
 
-        Furthermore, my_member will be granted permission to use all the messages that the community
-        provides.
-
         @param dispersy: The Dispersy instance where this community will attach itself to.
         @type dispersy: Dispersy
 
