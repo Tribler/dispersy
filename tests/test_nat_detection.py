@@ -2,7 +2,8 @@ from time import time
 
 from ..logger import get_logger
 from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from .dispersytestclass import DispersyTestFunc
+from ..util import call_on_reactor_thread
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ class TestNATDetection(DispersyTestFunc):
         self.assertGreater(community.cleanup_candidates(), 0)
         self.assertEqual(len(community._dispersy._wan_address_votes), 0)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_connection_type(self, *types):
         """
         Tests the transition between connection types based on external votes.
@@ -81,7 +82,7 @@ class TestNATDetection(DispersyTestFunc):
         self._clear_votes(self._community)
         self._emulate_connection_type__public(self._community)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_symmetric_vote(self):
         """
         Tests symmetric-NAT detection.

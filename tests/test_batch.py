@@ -1,10 +1,9 @@
 from time import time, sleep
 
 from ..logger import get_logger
-from ..message import Message, BatchConfiguration
-from .debugcommunity.community import DebugCommunity
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 
 
@@ -48,6 +47,7 @@ class TestBatch(DispersyTestFunc):
 
     def test_one_big_batch(self, length=1000):
         """
+        Test that one big batch of messages is processed correctly.
         Each community is handled in its own batch, hence we can measure performance differences when
         we make one large batch (using one community) and many small batches (using many different
         communities).
@@ -69,6 +69,7 @@ class TestBatch(DispersyTestFunc):
 
     def test_many_small_batches(self, length=1000):
         """
+        Test that many small batches of messages are processed correctly.
         Each community is handled in its own batch, hence we can measure performance differences when
         we make one large batch (using one community) and many small batches (using many different
         communities).

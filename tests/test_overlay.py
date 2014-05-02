@@ -1,15 +1,20 @@
+from collections import defaultdict
 from os import environ
 from pprint import pformat
 from time import time
 from unittest import skipUnless
-from collections import defaultdict
 
-from ..conversion import DefaultConversion
+from nose.twistedtools import reactor
+
 from ..community import Community
+from ..conversion import DefaultConversion
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from .dispersytestclass import DispersyTestFunc
+from ..util import call_on_reactor_thread
+
+
 logger = get_logger(__name__)
 summary = get_logger("test-overlay-summary")
 
@@ -34,7 +39,7 @@ class TestOverlay(DispersyTestFunc):
                                        version="\x01",
                                        enable_fast_walker=True)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def check_live_overlay(self, cid_hex, version, enable_fast_walker):
         class Conversion(DebugCommunityConversion):
             # there are overlays that modify the introduction request, ensure that the returned offset 'consumed' all
@@ -44,6 +49,8 @@ class TestOverlay(DispersyTestFunc):
                 return len(data), payload
 
         class WCommunity(DebugCommunity):
+            def __init__(self, dispersy, master):
+                super(WCommunity, self).__init__(dispersy, master)
 
             def initiate_conversions(self):
                 return [DefaultConversion(self), Conversion(self, version)]
@@ -59,6 +66,7 @@ class TestOverlay(DispersyTestFunc):
             @property
             def dispersy_enable_fast_candidate_walker(self):
                 return enable_fast_walker
+
 
         class Info(object):
             pass

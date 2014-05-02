@@ -1,13 +1,38 @@
+import functools
+import sys
+import warnings
 from cProfile import Profile
 from collections import defaultdict
-from functools import wraps
 from thread import get_ident
 from threading import current_thread
 from time import time
-import sys
+
+from twisted.internet import reactor
+from twisted.internet.task import LoopingCall
+from twisted.internet.threads import blockingCallFromThread
+from twisted.python.threadable import isInIOThread
 
 from .logger import get_logger
+
+
 logger = get_logger(__name__)
+
+
+MEMORY_DUMP_INTERVAL = float(60 * 60)
+
+
+#
+# Various decorators
+#
+
+def call_on_reactor_thread(func):
+    def helper(*args, **kargs):
+        if isInIOThread():
+            return func(*args, **kargs)
+        else:
+            return blockingCallFromThread(reactor, func, *args, **kargs)
+    helper.__name__ = func.__name__
+    return helper
 
 
 def documentation(documented_func):
@@ -71,7 +96,9 @@ else:
     def attach_profiler(func):
         return func
 
+
 class RuntimeStatistic(object):
+
     def __init__(self):
         self._count = 0
         self._duration = 0.0
@@ -103,6 +130,7 @@ class RuntimeStatistic(object):
 
 _runtime_statistics = defaultdict(RuntimeStatistic)
 
+
 def attach_runtime_statistics(format_):
     """
     Keep track of how often and how long a function was called.
@@ -133,8 +161,9 @@ def attach_runtime_statistics(format_):
     dictionaries with the keys: count, duration, average, and entry.
     """
     assert isinstance(format_, basestring), type(format_)
+
     def helper(func):
-        @wraps(func)
+        @functools.wraps(func)
         def wrapper(*args, **kargs):
             return_value = None
             start = time()
@@ -147,3 +176,47 @@ def attach_runtime_statistics(format_):
                 _runtime_statistics[entry].increment(end - start)
         return wrapper
     return helper
+
+
+class deprecated(object):
+
+    def __init__(self, msg=None):
+        """
+        A decorator which can be used to mark functions
+        as deprecated.  It will result in a deprecation warning being shown
+        when the function is used.
+        """
+        self.msg = msg
+
+    def __call__(self, func):
+        message = self.msg or "Use of deprecated function '{}`.".format(func.__name__)
+
+        @functools.wraps(func)
+        def wrapper_func(*args, **kwargs):
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+        return wrapper_func
+
+
+#
+# General Instrumentation stuff
+#
+
+def init_instrumentation():
+    """
+    Instrumentation initializer, starts the components enabled trough the command line arguments.
+    """
+    if "--memory-dump" in sys.argv:
+        start_memory_dumper()
+
+
+def start_memory_dumper():
+    """
+    Initiates the memory profiler.
+    """
+    start = time()
+    from meliae import scanner
+    LoopingCall(lambda: scanner.dump_all_objects("memory-%d.out" % (time() - start))).start(MEMORY_DUMP_INTERVAL, now=True)
+    reactor.addSystemEventTrigger("before", "shutdown", lambda: scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start)))
+#
+# util.py ends here

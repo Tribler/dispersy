@@ -1,12 +1,15 @@
-from random import shuffle
-from socket import gethostbyname, error
 from threading import Lock
-from time import time
 
-from .callback import Callback
+from twisted.internet import reactor
+from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
+from twisted.internet.task import LoopingCall
+
 from .candidate import BootstrapCandidate
 from .logger import get_logger
+
+
 logger = get_logger(__name__)
+
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
@@ -48,6 +51,7 @@ _DEFAULT_ADDRESSES = (
 
 
 class Bootstrap(object):
+    enabled = True
 
     @staticmethod
     def load_addresses_from_file(filename):
@@ -73,17 +77,15 @@ class Bootstrap(object):
         """
         return _DEFAULT_ADDRESSES
 
-    def __init__(self, callback, addresses):
-        assert isinstance(callback, Callback), type(callback)
+    def __init__(self, addresses):
         assert isinstance(addresses, (tuple, list)), type(addresses)
         assert all(isinstance(address, tuple) for address in addresses), [type(address) for address in addresses]
         assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
         assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
         assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
-        self._callback = callback
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
-        self._thread_counter = 0
+        self._resolution_lc = None
 
     @property
     def are_resolved(self):
@@ -125,60 +127,37 @@ class Bootstrap(object):
         with self._lock:
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
-    def resolve(self, func, timeout=60.0, blocking=False):
+    @inlineCallbacks
+    def resolve(self):
         """
-        Resolve all unresolved trackers on a separate thread.
+        Resolve all unresolved trackers asynchronously.
 
-        FUNC is called on the self._callback thread when either:
-        1. all trackers are resolved (with True as the first parameter), or
-        2. after TIMEOUT seconds (with False as the first parameter).
-
-        Note: this method is thread safe.
         """
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout > 0.0, timeout
-        assert isinstance(blocking, bool), type(blocking)
-
-        if self.are_resolved:
-            self._callback.register(func, (True,))
-
-        else:
-            self._thread_counter += 1
-
-            # start a new thread (using Callback to ensure the thread is named properly)
-            thread = Callback("Resolve-%d" % self._thread_counter)
-            thread.start()
-            if blocking:
-                thread.call(self._gethostbyname_in_parallel, (func, timeout), timeout=timeout)
-                thread.stop()
+        success = False
+        if Bootstrap.enabled:
+            if self.are_resolved:
+                success = True
             else:
-                thread.register(self._gethostbyname_in_parallel, (func, timeout))
-                thread.register(thread.stop)
+                addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
+                ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
+                for (host, port), ip in zip(addresses, ips):
+                    if ip:
+                        candidate = BootstrapCandidate((str(ip), port), False)
+                        logger.debug("Resolved %s into %s", host, candidate)
+                        self._candidates[(host, port)] = candidate
+                        success = True
+                    else:
+                        logger.info("Could not resolve bootstrap candidate: %s:%s", host, port)
+        returnValue(success)
 
-    def _gethostbyname_in_parallel(self, func, timeout):
-        begin = time()
-        success = True
-
-        with self._lock:
-            addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
-            shuffle(addresses)
-
-        for host, port in addresses:
-            if time() - begin > timeout:
-                # timeout
-                success = False
-                break
-
-            try:
-                candidate = BootstrapCandidate((gethostbyname(host), port), False)
-                logger.debug("resolved %s into %s", host, candidate)
-
-                with self._lock:
-                    self._candidates[(host, port)] = candidate
-
-            except error:
-                logger.exception("unable to obtain BootstrapCandidate(%s, %d)", host, port)
-                success = False
-
-        # indicate results are ready
-        self._callback.register(func, (success,))
+    def resolve_until_success(self, interval=300, now=False):
+        def resolution_lc():
+            if self.are_resolved:
+                self._resolution_lc.stop()
+                self._resolution_lc = None
+            else:
+                logger.warning("Resolving bootstrap addresses")
+                return self.resolve()
+        if not self._resolution_lc and Bootstrap.enabled:
+            self._resolution_lc = LoopingCall(resolution_lc)
+            self._resolution_lc.start(interval, now)

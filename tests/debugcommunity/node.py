@@ -1,6 +1,12 @@
 import sys
 from time import time, sleep
 
+from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.task import deferLater
+from twisted.internet.threads import blockingCallFromThread
+from twisted.python.threadable import isInIOThread
+
 from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
@@ -10,15 +16,9 @@ from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 from .community import DebugCommunity
+from ...util import call_on_reactor_thread
 
 logger = get_logger(__name__)
-
-
-def call_on_dispersy_thread(func):
-    def helper(*args, **kargs):
-        return args[0].call(func, *args, **kargs)
-    helper.__name__ = func.__name__
-    return helper
 
 class DebugNode(object):
 
@@ -106,6 +106,7 @@ class DebugNode(object):
         """
         return Candidate(self.lan_address, self.tunnel)
 
+    @inlineCallbacks
     def init_my_member(self, tunnel=False, store_identity=True):
         """
         When STORE_IDENTITY is True this node will send the central node an introduction-request
@@ -118,14 +119,14 @@ class DebugNode(object):
             packets = self._central_node.fetch_packets([u"dispersy-identity", u"dispersy-authorize"], self._community.master_member.mid)
             self.give_packets(packets, self._central_node)
 
-            yield 0.0
-
             # add this node to candidate list of mm
             message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
-            self._central_node.give_message(message, self)
+            yield self._central_node.give_message(message, self)
 
             # remove introduction responses from socket
-            self.receive_messages(names=[u'dispersy-introduction-response'])
+            messages = yield self.receive_messages(names=[u'dispersy-introduction-response'])
+
+            assert len(messages), "No introduction messages received!"
 
     def encode_message(self, message):
         """
@@ -272,20 +273,28 @@ class DebugNode(object):
             logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             yield candidate, message
 
+    @call_on_reactor_thread
+    @inlineCallbacks
     def receive_messages(self, addresses=None, names=None, return_after=sys.maxint, timeout=0.5):
         messages = []
-        for message_tuple in self.receive_message(addresses, names, timeout):
-            messages.append(message_tuple)
-            if len(messages) == return_after:
+        for _ in xrange(5):
+            for message_tuple in self.receive_message(addresses, names, timeout):
+                messages.append(message_tuple)
+                if len(messages) == return_after:
+                    break
+            if messages:
                 break
+            else:
+                # Wait for a bit and try again
+                yield deferLater(reactor, 0.005, lambda : None)
 
-        return messages
+        returnValue(messages)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def decode_message(self, candidate, packet):
         return self._community.get_conversion_for_packet(packet).decode_message(candidate, packet)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def fetch_packets(self, message_names, mid=None):
         if mid:
             return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync, member WHERE sync.member = member.id "
@@ -294,7 +303,7 @@ class DebugNode(object):
         return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [self._community.get_meta_message(name).database_id for name in message_names]))]
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def fetch_messages(self, message_names, mid=None):
         """
         Fetch all packets for MESSAGE_NAMES from the database and converts them into
@@ -302,12 +311,12 @@ class DebugNode(object):
         """
         return self._dispersy.convert_packets_to_messages(self.fetch_packets(message_names, mid), community=self._community, verify=False)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def count_messages(self, message):
         packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync, member, meta_message WHERE sync.member = member.id AND sync.meta_message = meta_message.id AND sync.community = ? AND mid = ? AND name = ?", (self._community.database_id, buffer(message.authentication.member.mid), message.name)).next()
         return packets_stored
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def assert_is_stored(self, message=None, messages=None):
         if messages == None:
             messages = [message]
@@ -322,7 +331,7 @@ class DebugNode(object):
             except StopIteration:
                 self._testclass.fail("Message is not stored")
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def assert_not_stored(self, message=None, messages=None):
         if messages == None:
             messages = [message]
@@ -338,7 +347,7 @@ class DebugNode(object):
 
     assert_is_done = assert_is_stored
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def assert_is_undone(self, message=None, messages=None, undone_by=None):
         if messages == None:
             messages = [message]
@@ -357,7 +366,7 @@ class DebugNode(object):
             except StopIteration:
                 self._testclass.fail("Message is not stored")
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def assert_count(self, message, count):
         self._testclass.assertEqual(self.count_messages(message), count)
 
@@ -368,27 +377,26 @@ class DebugNode(object):
         packets = other.fetch_packets([u"dispersy-identity", ], other.my_member.mid)
         self.give_packets(packets, other)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def claim_global_time(self):
         return self._community.claim_global_time()
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def get_resolution_policy(self, meta, global_time):
         return self._community.timeline.get_resolution_policy(meta, global_time)
 
     def call(self, func, *args, **kargs):
-        if self._dispersy._callback.is_current_thread:
+        # TODO(emilon): timeout is not supported anymore, clean the tests so they don't pass the named argument.
+        if isInIOThread():
             return func(*args, **kargs)
-        timeout_value = "_THE_CALL_TIMED_OUT_"
-        result = self._dispersy._callback.call(func, args, kargs, timeout=15.0, default=timeout_value)
-        assert result != timeout_value
-        return result
+        else:
+            return blockingCallFromThread(reactor, func, *args, **kargs)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def store(self, messages):
         self._dispersy._store(messages)
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_authorize(self, permission_triplets, global_time=None, sequence_number=None):
         """
         Returns a new dispersy-authorize message.
@@ -404,7 +412,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(permission_triplets,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_revoke(self, permission_triplets, global_time=None, sequence_number=None):
         meta = self._community.get_meta_message(u"dispersy-revoke")
 
@@ -417,7 +425,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(permission_triplets,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_dynamic_settings(self, policies, global_time=None, sequence_number=None):
         meta = self._community.get_meta_message(u"dispersy-dynamic-settings")
 
@@ -431,7 +439,7 @@ class DebugNode(object):
                             payload=(policies,))
         return message
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_destroy_community(self, degree, global_time=None):
         meta = self._community.get_meta_message(u"dispersy-destroy-community")
 
@@ -442,7 +450,7 @@ class DebugNode(object):
                             distribution=(global_time,),
                             payload=(degree,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_identity(self, global_time=None):
         """
         Returns a new dispersy-identity message.
@@ -454,7 +462,7 @@ class DebugNode(object):
 
         return meta.impl(authentication=(self._my_member,), distribution=(global_time,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_undo_own(self, message, global_time=None, sequence_number=None):
         """
         Returns a new dispersy-undo-own message.
@@ -471,7 +479,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(message.authentication.member, message.distribution.global_time, message))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_undo_other(self, message, global_time=None, sequence_number=None):
         """
         Returns a new dispersy-undo-other message.
@@ -487,7 +495,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(message.authentication.member, message.distribution.global_time, message))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_missing_identity(self, dummy_member=None, global_time=None):
         """
         Returns a new dispersy-missing-identity message.
@@ -501,7 +509,7 @@ class DebugNode(object):
         return meta.impl(distribution=(global_time,),
                          payload=(dummy_member.mid,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_missing_sequence(self, missing_member, missing_message, missing_sequence_low, missing_sequence_high, global_time=None):
         """
         Returns a new dispersy-missing-sequence message.
@@ -518,7 +526,7 @@ class DebugNode(object):
         return meta.impl(distribution=(global_time,),
                          payload=(missing_member, missing_message, missing_sequence_low, missing_sequence_high))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_signature_request(self, identifier, message, global_time=None):
         """
         Returns a new dispersy-signature-request message.
@@ -531,7 +539,7 @@ class DebugNode(object):
 
         return meta.impl(distribution=(global_time,), payload=(identifier, message,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_signature_response(self, identifier, message, global_time=None):
         """
         Returns a new dispersy-missing-response message.
@@ -547,7 +555,7 @@ class DebugNode(object):
         return meta.impl(distribution=(global_time,),
                          payload=(identifier, message))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_missing_message(self, missing_member, missing_global_times, global_time=None):
         """
         Returns a new dispersy-missing-message message.
@@ -562,7 +570,7 @@ class DebugNode(object):
         return meta.impl(distribution=(global_time,),
                          payload=(missing_member, missing_global_times))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_missing_proof(self, member, global_time=None):
         """
         Returns a new dispersy-missing-proof message.
@@ -575,7 +583,7 @@ class DebugNode(object):
 
         return meta.impl(distribution=(global_time,), payload=(member, global_time))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_introduction_request(self, destination, source_lan, source_wan, advice, connection_type, sync, identifier, global_time=None):
         """
         Returns a new dispersy-introduction-request message.
@@ -610,7 +618,7 @@ class DebugNode(object):
                          distribution=(global_time,),
                          payload=(destination.sock_addr, source_lan, source_wan, advice, connection_type, sync, identifier))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def create_introduction_response(self, destination, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier, global_time=None):
         """
         Returns a new dispersy-introduction-request message.
@@ -634,7 +642,7 @@ class DebugNode(object):
                          distribution=(global_time,),
                          payload=(destination.sock_addr, source_lan, source_wan, introduction_lan, introduction_wan, connection_type, tunnel, identifier))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def _create_text(self, message_name, text, global_time=None, resolution=(), destination=()):
         assert isinstance(message_name, unicode), type(message_name)
         assert isinstance(text, str), type(text)
@@ -652,7 +660,7 @@ class DebugNode(object):
                          destination=destination,
                          payload=(text,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def _create_sequence_text(self, message_name, text, global_time=None, sequence_number=None):
         assert isinstance(message_name, unicode)
         assert isinstance(text, str)
@@ -668,7 +676,7 @@ class DebugNode(object):
                          distribution=(global_time, sequence_number),
                          payload=(text,))
 
-    @call_on_dispersy_thread
+    @call_on_reactor_thread
     def _create_doublemember_text(self, message_name, other, text, sign, global_time=None):
         assert isinstance(message_name, unicode)
         assert isinstance(other, Member)

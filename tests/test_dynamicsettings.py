@@ -1,7 +1,8 @@
 from ..logger import get_logger
 from ..resolution import PublicResolution, LinearResolution
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 
 

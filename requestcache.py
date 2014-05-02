@@ -1,6 +1,11 @@
 from random import random
 
+from twisted.internet import reactor
+from twisted.python.threadable import isInIOThread
+
 from .logger import get_logger
+
+
 logger = get_logger(__name__)
 
 
@@ -15,7 +20,6 @@ class NumberCache(object):
 
         self._prefix = prefix
         self._number = number
-        self._callback_identifier = u""
 
     @property
     def prefix(self):
@@ -24,28 +28,6 @@ class NumberCache(object):
     @property
     def number(self):
         return self._number
-
-    @property
-    def callback_identifier(self):
-        """
-        Returns the callback identifier.
-
-        The callback identifier is typically set when this Cache is added to a RequestCache using
-        RequestCache.add().  It is a unicode string that is unique to the Callback instance that is
-        assigned to the RequestCache.
-
-        The callback identifier is used to register _on_timeout and _on_cleanup tasks.
-        """
-        assert isinstance(self._callback_identifier, unicode), type(self._callback_identifier)
-        return self._callback_identifier
-
-    @callback_identifier.setter
-    def callback_identifier(self, callback_identifier):
-        """
-        Sets the callback identifier, see the callback_identifier getter.
-        """
-        assert isinstance(callback_identifier, unicode), type(callback_identifier)
-        self._callback_identifier = callback_identifier
 
     @property
     def timeout_delay(self):
@@ -144,15 +126,13 @@ class IntroductionRequestCache(RandomNumberCache):
 
 class RequestCache(object):
 
-    def __init__(self, callback):
+    def __init__(self):
         """
         Creates a new RequestCache instance.
         """
-        from .callback import Callback
-        assert isinstance(callback, Callback), type(callback)
-        assert callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
-        self._callback = callback
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         self._identifiers = dict()
+        self._cache_timeout_tasks = dict()
 
     def add(self, cache):
         """
@@ -160,7 +140,7 @@ class RequestCache(object):
 
         Returns CACHE when CACHE.identifier was not yet added, otherwise returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
         assert isinstance(cache.number, (int, long)), type(cache.number)
         assert isinstance(cache.prefix, unicode), type(cache.prefix)
@@ -175,14 +155,14 @@ class RequestCache(object):
         else:
             logger.debug("add %s", cache)
             self._identifiers[identifier] = cache
-            cache.callback_identifier = self._callback.register(self._on_timeout, (cache,), delay=cache.timeout_delay)
+            self._cache_timeout_tasks[cache] = reactor.callLater(cache.timeout_delay, self._on_timeout, cache)
             return cache
 
     def has(self, prefix, number):
         """
         Returns True when IDENTIFIER is part of this RequestCache.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
         return self._create_identifier(number, prefix) in self._identifiers
@@ -191,7 +171,7 @@ class RequestCache(object):
         """
         Returns the Cache associated with IDENTIFIER when it exists, otherwise returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
         return self._identifiers.get(self._create_identifier(number, prefix))
@@ -201,18 +181,15 @@ class RequestCache(object):
         Returns the Cache associated with IDENTIFIER, and removes it from this RequestCache, when it exists, otherwise
         returns None.
         """
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
 
         identifier = self._create_identifier(number, prefix)
         cache = self._identifiers.get(identifier)
         if cache:
-            logger.debug("cancel timeout for %s", cache)
-
-            self._callback.unregister(cache.callback_identifier)
+            self._cancel_timeout(cache)
             del self._identifiers[identifier]
-
             return cache
 
     def _on_timeout(self, cache):
@@ -223,7 +200,7 @@ class RequestCache(object):
         _on_timeout will CACHE.on_timeout().
         """
 
-        assert self._callback.is_current_thread, "RequestCache must be used on the Dispersy.callback thread"
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
 
         logger.debug("timeout on %s", cache)
@@ -236,3 +213,19 @@ class RequestCache(object):
 
     def _create_identifier(self, number, prefix):
         return u"%s:%d" % (prefix, number)
+
+    def clear(self):
+        """
+        Clear the cache, canceling all pending tasks.
+
+        """
+        logger.debug("Clearing %s [%s]", self, len(self._identifiers))
+        for cache in self._identifiers.itervalues():
+            self._cancel_timeout(cache)
+        self._identifiers.clear()
+
+    def _cancel_timeout(self, cache):
+        logger.debug("canceling timeout for %s", cache)
+        dc = self._cache_timeout_tasks.pop(cache)
+        if dc.active():
+            dc.cancel()

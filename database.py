@@ -5,15 +5,16 @@ This module provides basic database functionalty and simple version control.
 @organization: Technical University Delft
 @contact: dispersy@frayja.com
 """
-
-from abc import ABCMeta, abstractmethod
-from sqlite3 import Connection
 import logging
 import sys
 import thread
+from abc import ABCMeta, abstractmethod
+from sqlite3 import Connection
 
-from .decorator import attach_runtime_statistics
 from .logger import get_logger
+from .util import attach_runtime_statistics
+
+
 logger = get_logger(__name__)
 
 

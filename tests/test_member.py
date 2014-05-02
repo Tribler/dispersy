@@ -1,8 +1,9 @@
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from .dispersytestclass import DispersyTestFunc
+from ..util import call_on_reactor_thread
 
 class TestMember(DispersyTestFunc):
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_verify(self):
         """
         Test test member.verify assuming create_signature works properly.
@@ -62,7 +63,7 @@ class TestMember(DispersyTestFunc):
         self.assertFalse(member.verify("0123456789", self._dispersy.crypto.create_signature(ec, "12345678"), offset=1, length=666))
         self.assertFalse(member.verify("0123456789E", self._dispersy.crypto.create_signature(ec, "12345678"), offset=1, length=666))
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_sign(self):
         """
         Test test member.sign assuming is_valid_signature works properly.

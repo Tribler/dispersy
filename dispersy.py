@@ -39,41 +39,46 @@ of, the name it uses as an internal identifier, and the class that will contain 
 import logging
 import os
 import sys
-from collections import defaultdict, Iterable
+from collections import defaultdict, Iterable, OrderedDict
+from hashlib import sha1
 from itertools import groupby, count
 from pprint import pformat
 from socket import inet_aton, error as socket_error
 from struct import unpack_from
 from time import time
-from traceback import print_exc
-from hashlib import sha1
 
 import netifaces
+from twisted.internet import reactor
+from twisted.internet.base import DelayedCall
+from twisted.internet.defer import inlineCallbacks, returnValue, Deferred
+from twisted.internet.task import LoopingCall
+from twisted.python.threadable import isInIOThread
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
 from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
-from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
+from .endpoint import Endpoint
 from .exception import CommunityNotFoundException, ConversionNotFoundException, MetaNotFoundException
-from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
+from .util import attach_runtime_statistics, get_logger, deprecated, init_instrumentation
 
 
-from collections import OrderedDict
+# Set up the instrumentation utilities
+init_instrumentation()
 
 logger = get_logger(__name__)
 
-from .callback import Callback
-from .endpoint import Endpoint
+FLUSH_DATABASE_INTERVAL = 60.0
+STATS_DETAILED_CANDIDATES_INTERVAL = 5.0
 
 
 class Dispersy(object):
@@ -83,12 +88,9 @@ class Dispersy(object):
     outgoing data for, possibly, multiple communities.
     """
 
-    def __init__(self, callback, endpoint, working_directory, database_filename=u"dispersy.db", crypto=ECCrypto()):
+    def __init__(self, endpoint, working_directory, database_filename=u"dispersy.db", crypto=ECCrypto()):
         """
         Initialise a Dispersy instance.
-
-        @param callback: Instance for callback scheduling.
-        @type callback: Callback
 
         @param endpoint: Instance for communication.
         @type callback: Endpoint
@@ -99,15 +101,13 @@ class Dispersy(object):
         @param database_filename: The database filename or u":memory:"
         @type database_filename: unicode
         """
-        assert isinstance(callback, Callback), type(callback)
         assert isinstance(endpoint, Endpoint), type(endpoint)
         assert isinstance(working_directory, unicode), type(working_directory)
         assert isinstance(database_filename, unicode), type(database_filename)
         assert isinstance(crypto, DispersyCrypto), type(crypto)
         super(Dispersy, self).__init__()
 
-        # the thread we will be using
-        self._callback = callback
+        self.running = False
 
         # communication endpoint
         self._endpoint = endpoint
@@ -117,10 +117,7 @@ class Dispersy(object):
 
         # _pending_callbacks contains all id's for registered calls that should be removed when the
         # Dispersy is stopped.  most of the time this contains all the generators that are used
-        self._pending_callbacks = {}
-        # add id(self) into the callback identifier to ensure multiple Dispersy instances can use
-        # the same Callback instance
-        self._pending_callbacks[u"candidate-walker"] = u"dispersy-candidate-walker-%d" % (id(self),)
+        self._pending_tasks = {}
 
         self._member_cache_by_hash = OrderedDict()
 
@@ -167,19 +164,6 @@ class Dispersy(object):
         # statistics...
         self._statistics = DispersyStatistics(self)
 
-        # memory profiler
-        if "--memory-dump" in sys.argv:
-            def memory_dump():
-                from meliae import scanner
-                start = time()
-                try:
-                    while True:
-                        yield float(60 * 60)
-                        scanner.dump_all_objects("memory-%d.out" % (time() - start))
-                except GeneratorExit:
-                    scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start))
-
-            self._callback.register(memory_dump)
 
     @staticmethod
     def _get_interface_addresses():
@@ -257,7 +241,7 @@ class Dispersy(object):
         logger.error("Unable to find our public interface!")
         return default
 
-    def _resolve_bootstrap_candidates(self, timeout):
+    def _resolve_bootstrap_candidates(self):
         """
         Resolve all bootstrap candidates within TIMEOUT seconds or fail.
 
@@ -274,12 +258,10 @@ class Dispersy(object):
         @return: True when all bootstrap candidates are resolved, otherwise False.
         @rtype: boolean
         """
-        assert self._callback.is_current_thread
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout >= 0.0, timeout
+        assert isInIOThread()
 
         def on_results(success):
-            assert self._callback.is_current_thread
+            assert isInIOThread()
             assert isinstance(success, bool), type(success)
 
             # even when success is False it is still possible that *some* addresses were resolved
@@ -300,35 +282,11 @@ class Dispersy(object):
             if success:
                 logger.debug("resolved all bootstrap addresses")
 
-        def retry_until_success():
-            for counter in count(1):
-                logger.warning("resolving bootstrap addresses (attempt #%d)", counter)
-                bootstrap.resolve(on_results)
-
-                # delay should be larger than the timeout used for bootstrap.resolve()
-                yield 300.0
-
-                if bootstrap.are_resolved:
-                    break
-
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
-        bootstrap = Bootstrap(self._callback, alternate_addresses or default_addresses)
+        bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-        if timeout == 0.0:
-            # retry until successful
-            self._callback.register(retry_until_success)
-
-        else:
-            # first attempt will block for at most TIMEOUT seconds
-            logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
-            # give low priority to ensure that on_results is called before the call returns
-            self._callback.call(bootstrap.resolve, kargs=dict(func=on_results, timeout=timeout, blocking=True), priority= -128)
-
-            if not bootstrap.are_resolved:
-                # unable to resolve all... retry until successful
-                self._callback.register(retry_until_success, delay=300.0)
-
+        bootstrap.resolve_until_success(now=True)
         return bootstrap.are_resolved
 
     @property
@@ -424,10 +382,6 @@ class Dispersy(object):
         return self._connection_type
 
     @property
-    def callback(self):
-        return self._callback
-
-    @property
     def database(self):
         """
         The Dispersy database singleton.
@@ -465,7 +419,7 @@ class Dispersy(object):
 
         Returns a list with loaded communities.
         """
-        assert self._callback.is_current_thread, "Must be called from the callback thread"
+        assert isInIOThread(), "Must be called from the callback thread"
         assert issubclass(community_cls, Community), type(community_cls)
         assert isinstance(args, tuple), type(args)
         assert kargs is None or isinstance(kargs, dict), type(kargs)
@@ -2289,19 +2243,13 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         Periodically called to commit database changes to disk.
         """
-        while True:
-            # 12/07/2012 Arno: apswtrace detects 7 s commits with yield 5 min, so reduce
-            # 09/10/2013 Boudewijn: the yield statement should not be inside the try/except (an
-            # exception is raised when the _flush_database generator is closed)
-            yield 60.0
+        try:
+            # flush changes to disk every 1 minutes
+            self._database.commit()
 
-            try:
-                # flush changes to disk every 1 minutes
-                self._database.commit()
-
-            except Exception as exception:
-                # OperationalError: database is locked
-                logger.exception("%s", exception)
+        except Exception as exception:
+            # OperationalError: database is locked
+            logger.exception("%s", exception)
 
     # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
     # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
@@ -2312,139 +2260,133 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         self._database.commit()
 
-    def start(self, timeout=10.0):
+    def start(self):
         """
         Starts Dispersy.
 
-        This method is thread safe.
-
-        1. starts callback
-        2. resolve bootstrap candidates (done in parallel)
-        3. opens database
-        4. opens endpoint
+        1. resolve bootstrap candidates (done in parallel)
+        2. opens database
+        3. opens endpoint
         """
 
-        assert not self._callback.is_running, "Must be called before callback.start()"
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout >= 0.0, timeout
+        assert isInIOThread()
 
-        def start():
-            assert self._callback.is_current_thread, "Must be called from the callback thread"
-
-            # resolve bootstrap candidates
-            self._resolve_bootstrap_candidates(timeout)
-
-            results.append((u"database", self._database.open()))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-
-            results.append((u"endpoint", self._endpoint.open(self)))
-            assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-            self._endpoint_ready()
-
-            # commit changes to the database periodically
-            id_ = u"flush-database-%d" % (id(self),)
-            self._pending_callbacks["flush_database"] = self._callback.register(self._flush_database, id_=id_)
-            # output candidate statistics
-            id_ = u"dispersy-detailed-candidates-%d" % (id(self),)
-            self._pending_callbacks["candidates"] = self._callback.register(self._stats_detailed_candidates, id_=id_)
+        if self.running:
+            raise RuntimeError("Dispersy is already running")
 
         # start
         logger.info("starting the Dispersy core...")
         results = []
 
-        results.append((u"callback", self._callback.start()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-        self._callback.call(start, priority=512)
+
+        # resolve bootstrap candidates
+        self._resolve_bootstrap_candidates()
+
+        results.append((u"database", self._database.open()))
+        assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+
+        results.append((u"endpoint", self._endpoint.open(self)))
+        assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
+        self._endpoint_ready()
+
+        # commit changes to the database periodically
+        self._pending_tasks["flush_database"] = lc = LoopingCall(self._flush_database)
+        lc.start(FLUSH_DATABASE_INTERVAL)
+        # output candidate statistics
+        self._pending_tasks["candidates"] = lc = LoopingCall(self._stats_detailed_candidates)
+        lc.start(STATS_DETAILED_CANDIDATES_INTERVAL)
+
 
         # log and return the result
         if all(result for _, result in results):
-            logger.info("Dispersy core ready (database: %s, port:%d)", self._database.file_path, self._endpoint.get_address()[1])
+            logger.info("Dispersy core ready (database: %s, port:%d)",
+                        self._database.file_path, self._endpoint.get_address()[1])
+            self.running = True
             return True
 
         else:
-            logger.error("Dispersy core unable to start all components [%s]", ", ".join("{0}:{1}".format(key, value) for key, value in results))
+            logger.error("Dispersy core unable to start all components [%s]",
+                         ", ".join("{0}:{1}".format(key, value) for key, value in results))
             return False
 
     def stop(self, timeout=10.0):
         """
         Stops Dispersy.
 
-        This method is thread safe.
-
-        1. stops callback
-           a. new tasks are no longer accepted
-           b. flushes existing tasks
-           c. stops existing generators
-        2. unload all communities
+        1. unload all communities
            in reverse define_auto_load order, starting with all undefined communities
-        3. closes endpoint
-        4. closes database
+        2. closes endpoint
+        3. closes database
 
-        Returns False when Dispersy isn't running, i.e. not callback.is_running, or when one of the
-        above steps fails.  Otherwise True is returned.
+        Returns False when Dispersy isn't running, or when one of the above steps fails.  Otherwise True is returned.
 
         Note that attempts will be made to process each step, even if one or more steps fail.  For
         example, when 'close endpoint' reports a failure the databases still be closed.
+
         """
+        assert isInIOThread()
         assert isinstance(timeout, float), type(timeout)
         assert 0.0 <= timeout, timeout
+
+        if not self.running:
+            raise RuntimeError("Dispersy is not running")
+
+        for name, task in self._pending_tasks.iteritems():
+            logger.debug("Stopping: %s", name)
+            if isinstance(task, Deferred) and not task.called:
+                # Have in mind that any deferred in the pending tasks list should have been constructed with a
+                # canceler function.
+                task.cancel()
+            elif isinstance(task, DelayedCall) and task.active():
+                task.cancel()
+            elif isinstance(task, LoopingCall) and task.running:
+                task.stop()
 
         def unload_communities(communities):
             for community in communities:
                 if community.cid in self._communities:
+                    logger.debug("Unloading %s (the reactor has %s delayed calls scheduled)", community, len(reactor.getDelayedCalls()))
                     community.unload_community()
+                    logger.debug("Unloaded  %s (the reactor has %s delayed calls scheduled now)", community, len(reactor.getDelayedCalls()))
+                else:
+                    logger.warning("Attempting to unload %s which is not loaded", community)
 
-        def ordered_unload_communities():
-            # unload communities that are not defined
+        logger.info('Stopping Dispersy Core..')
+        # output statistics before we stop
+        if logger.isEnabledFor(logging.DEBUG):
+            self._statistics.update()
+            logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
+
+        logger.info("stopping the Dispersy core...")
+        results = {u"endpoint": None, u"database": None}
+
+        # unload communities that are not defined
+        unload_communities([community
+                            for community
+                            in self._communities.itervalues()
+                            if not community.get_classification() in self._auto_load_communities])
+
+        # unload communities in reverse auto load order
+        for classification in reversed(self._auto_load_communities):
             unload_communities([community
                                 for community
                                 in self._communities.itervalues()
-                                if not community.get_classification() in self._auto_load_communities])
+                                if community.get_classification() == classification])
 
-            # unload communities in reverse auto load order
-            for classification in reversed(self._auto_load_communities):
-                unload_communities([community
-                                    for community
-                                    in self._communities.itervalues()
-                                    if community.get_classification() == classification])
 
-            # stop walking (this should not be necessary, but bugs may cause the walker to keep
-            # running and/or be re-started when a community is loaded)
-            self._callback.unregister(self._pending_callbacks[u"candidate-walker"])
+        # stop endpoint
+        results[u"endpoint"] = self._endpoint.close(timeout)
 
+        # stop the database
+        results[u"database"] = self._database.close()
+
+        # log and return the result
+        if all(result for result in results.itervalues()):
+            logger.info("Dispersy core properly stopped")
             return True
-
-        def stop():
-            # unload all communities
-            results[u"community"] = ordered_unload_communities()
-
-            # stop endpoint
-            results[u"endpoint"] = self._endpoint.close(timeout)
-
-            # stop the database
-            results[u"database"] = self._database.close()
-
-        if self._callback.is_running:
-            # output statistics before we stop
-            if logger.isEnabledFor(logging.DEBUG):
-                self._statistics.update()
-                logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
-
-            logger.info("stopping the Dispersy core...")
-            results = {u"callback": None, u"community": None, u"endpoint": None, u"database": None}
-            results[u"callback"] = self._callback.stop(timeout, final_func=stop)
-
-            # log and return the result
-            if all(result for result in results.itervalues()):
-                logger.info("Dispersy core properly stopped")
-                return True
-
-            else:
-                logger.error("Dispersy core unable to stop all components [%s]", results)
-                return False
-
         else:
-            logger.warning("Dispersy is already stopping, ignoring second call to Dispersy.stop()")
+            logger.error("Dispersy core unable to stop all components [%s]", results)
             return False
 
     def _stats_detailed_candidates(self):
@@ -2458,8 +2400,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Exception: all communities with classification "PreviewChannelCommunity" are ignored.
         """
         summary = get_logger("dispersy-stats-detailed-candidates")
-        while summary.isEnabledFor(logging.DEBUG):
-            yield 5.0
+        if summary.isEnabledFor(logging.DEBUG):
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
             summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d",
@@ -2498,3 +2439,5 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                       category,
                                       candidate.connection_type,
                                       candidate)
+        else:
+            self._pending_tasks.pop("candidates").stop()

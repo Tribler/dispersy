@@ -1,25 +1,27 @@
 from unittest import TestCase
-from .debugcommunity.node import DebugNode
-from .debugcommunity.community import DebugCommunity
 
-from ..callback import Callback
+# Do not (re)move the reactor import, even if we aren't using it
+# (nose starts the reactor in a separate thread when importing this)
+from nose.twistedtools import reactor
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.threads import blockingCallFromThread
+
+from ..bootstrap import Bootstrap
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
+from .debugcommunity.community import DebugCommunity
+from .debugcommunity.node import DebugNode
+
+
+# Kill bootstraping so it doesn't mess with the tests
+Bootstrap.enabled = False
+
 
 logger = get_logger(__name__)
 
-def call_on_mm_thread(func):
-    def helper(*args, **kargs):
-        return args[0]._mm.call(func, *args, **kargs)
-    helper.__name__ = func.__name__
-    return helper
 
 class DispersyTestFunc(TestCase):
-
-    # every Dispersy instance gets its own Callback thread with its own number.  this is useful in
-    # some debugging scenarios.
-    _thread_counter = 0
 
     def on_callback_exception(self, exception, is_fatal):
         return True
@@ -29,6 +31,7 @@ class DispersyTestFunc(TestCase):
 
         self.dispersy_objects = []
 
+        self.assertFalse(reactor.getDelayedCalls())
         self._mm = None
         self._mm, = self.create_nodes()
 
@@ -39,24 +42,35 @@ class DispersyTestFunc(TestCase):
         super(DispersyTestFunc, self).tearDown()
 
         for dispersy in self.dispersy_objects:
-            dispersy.stop()
+            blockingCallFromThread(reactor, dispersy.stop)
+
+        pending = reactor.getDelayedCalls()
+        if pending:
+            logger.warning("Found delayed calls in reactor:")
+            for dc in pending:
+                fun = dc.func
+                logger.warning("    %s", fun)
+            logger.warning("Failing")
+        assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity):
-        nodes = []
-        for _ in range(amount):
-            DispersyTestFunc._thread_counter += 1
-            callback = Callback("Test-%d" % (self._thread_counter,))
-            callback.attach_exception_handler(self.on_callback_exception)
+        @inlineCallbacks
+        def _create_nodes(amount, store_identity, tunnel, communityclass):
+            nodes = []
+            for _ in range(amount):
+                # TODO(emilon): do the log observer stuff instead
+                # callback.attach_exception_handler(self.on_callback_exception)
 
-            dispersy = Dispersy(callback, ManualEnpoint(0), u".", u":memory:")
-            dispersy.start()
+                dispersy = Dispersy(ManualEnpoint(0), u".", u":memory:")
+                dispersy.start()
 
-            self.dispersy_objects.append(dispersy)
+                self.dispersy_objects.append(dispersy)
 
-            def create_node():
                 node = DebugNode(self, dispersy, communityclass, c_master_member=self._mm)
-                callback.call(node.init_my_member, kargs={'tunnel':tunnel, 'store_identity':store_identity})
-                return node
+                yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
 
-            nodes.append(callback.call(create_node))
-        return nodes
+                nodes.append(node)
+            logger.debug("create_nodes, nodes created: %s", nodes)
+            returnValue(nodes)
+
+        return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, communityclass)

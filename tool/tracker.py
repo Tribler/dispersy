@@ -18,6 +18,29 @@ Outputs destroyed communities whenever encountered:
 Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
 whenever a introduction request is received for a destroyed overlay.
 """
+import errno
+import logging.config
+import optparse  # deprecated since python 2.7
+import os
+import signal
+import sys
+from time import time
+
+from twisted.internet import reactor
+from twisted.internet.task import LoopingCall
+from twisted.python.threadable import isInIOThread
+
+from ..candidate import LoopbackCandidate
+from ..community import Community, HardKilledCommunity
+from ..conversion import BinaryConversion
+from ..crypto import NoVerifyCrypto, NoCrypto
+from ..dispersy import Dispersy
+from ..endpoint import StandaloneEndpoint
+from ..exception import ConversionNotFoundException, CommunityNotFoundException
+from ..logger import get_logger, get_context_filter
+
+
+COMMUNITY_CLEANUP_INTERVAL = 180.0
 
 if __name__ == "__main__":
     # Concerning the relative imports, from PEP 328:
@@ -30,16 +53,6 @@ if __name__ == "__main__":
     print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
     exit(1)
 
-
-from time import time
-import errno
-import logging.config
-# optparse is deprecated since python 2.7
-import optparse
-import os
-import signal
-import sys
-
 # use logger.conf if it exists
 if os.path.exists("logger.conf"):
     # will raise an exception when logger.conf is malformed
@@ -47,16 +60,8 @@ if os.path.exists("logger.conf"):
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
-from ..candidate import BootstrapCandidate, LoopbackCandidate
-from ..community import Community, HardKilledCommunity
-from ..conversion import BinaryConversion
-from ..crypto import NoVerifyCrypto, NoCrypto
-from ..dispersy import Dispersy
-from ..endpoint import StandaloneEndpoint
-from ..exception import ConversionNotFoundException, CommunityNotFoundException
-from ..logger import get_logger, get_context_filter
-from ..message import Message, DropMessage
-from .mainthreadcallback import MainThreadCallback
+
+
 logger = get_logger(__name__)
 
 if sys.platform == 'win32':
@@ -224,25 +229,31 @@ class TrackerCommunity(Community):
 
 class TrackerDispersy(Dispersy):
 
-    def __init__(self, callback, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
-        super(TrackerDispersy, self).__init__(callback, endpoint, working_directory, u":memory:", crypto)
+    def __init__(self, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
+        super(TrackerDispersy, self).__init__(endpoint, working_directory, u":memory:", crypto)
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
         self._silent = silent
         self._my_member = None
+        self._batch_cache = {}
 
-    def start(self, timeout=10.0):
-        if super(TrackerDispersy, self).start(timeout):
+    def start(self):
+        assert isInIOThread()
+        if super(TrackerDispersy, self).start():
             self._create_my_member()
             self._load_persistent_storage()
-            self._callback.register(self._unload_communities)
+
+            lc = LoopingCall(self.unload_inactive_communities)
+            self._pending_tasks["unload inactive communities"] = lc
+            lc.start(COMMUNITY_CLEANUP_INTERVAL)
 
             self.define_auto_load(TrackerCommunity, self._my_member)
             self.define_auto_load(TrackerHardKilledCommunity, self._my_member)
 
             if not self._silent:
-                self._callback.register(self._report_statistics)
+                self._statistics_looping_call = LoopingCall(self._report_statistics)
+                self._statistics_looping_call.start(300)
 
             return True
         return False
@@ -277,7 +288,7 @@ class TrackerDispersy(Dispersy):
                 except:
                     logger.exception("Error while loading from persistent-destroy-community.data")
 
-    def _unload_communities(self):
+    def unload_inactive_communities(self):
         def is_active(community, now):
             # check 1: does the community have any active candidates
             if community.update_strikes(now) < 3:
@@ -291,28 +302,24 @@ class TrackerDispersy(Dispersy):
             # the community is inactive
             return False
 
-        while True:
-            yield 180.0
-            now = time()
-            inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-            logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
-            for community in inactive:
-                community.unload_community()
+        now = time()
+        inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
+        logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
+        for community in inactive:
+            community.unload_community()
 
     def _report_statistics(self):
-        while True:
-            yield 300.0
-            mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
-            for community in self._communities.itervalues():
-                mapping[type(community)] += 1
+        mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
+        for community in self._communities.itervalues():
+            mapping[type(community)] += 1
 
-            print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
-            print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
-            print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
+        print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
+        print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
+        print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
-            if self._statistics.outgoing:
-                for key, value in self._statistics.outgoing.iteritems():
-                    print "OUTGOING", key, value
+        if self._statistics.outgoing:
+            for key, value in self._statistics.outgoing.iteritems():
+                print "OUTGOING", key, value
 
     def create_introduction_request(self, community, destination, allow_sync, forward=True):
         return
@@ -359,21 +366,27 @@ def main():
     else:
         crypto = NoVerifyCrypto()
 
-    # setup
-    dispersy = TrackerDispersy(MainThreadCallback("Dispersy"), StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+    container = [None]
 
-    def signal_handler(sig, frame):
-        logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
-        dispersy.stop()
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    def run():
+        # setup
+        dispersy = TrackerDispersy(StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
+        container[0] = dispersy
+        def signal_handler(sig, frame):
+            logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
+            dispersy.stop()
+            reactor.stop()
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
-    # start
-    if not dispersy.start():
-        raise RuntimeError("Unable to start Dispersy")
+        # start
+        if not dispersy.start():
+            raise RuntimeError("Unable to start Dispersy")
 
     # wait forever
-    dispersy.callback.loop()
+    reactor.exitCode = 0
+    reactor.callWhenRunning(run)
+    reactor.run()
 
     # return 1 on exception, otherwise 0
-    exit(1 if dispersy.callback.exception else 0)
+    exit(reactor.exitCode)

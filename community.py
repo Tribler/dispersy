@@ -8,39 +8,44 @@ Community instance.
 @contact: dispersy@frayja.com
 """
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from itertools import islice, groupby
 from math import ceil
 from random import random, Random, randint, shuffle
 from time import time
 
+from twisted.internet import reactor
+from twisted.internet.base import DelayedCall
+from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.task import LoopingCall, deferLater
+from twisted.python.threadable import isInIOThread
+
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .candidate import Candidate, WalkCandidate, BootstrapCandidate, LoopbackCandidate
+from .candidate import Candidate, WalkCandidate, BootstrapCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
-from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .exception import ConversionNotFoundException, MetaNotFoundException
-from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
                       DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
 from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommunityPayload, DynamicSettingsPayload,
                       IdentityPayload, MissingIdentityPayload, IntroductionRequestPayload, IntroductionResponsePayload,
-                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingLastMessagePayload,
-                      MissingSequencePayload, MissingProofPayload, SignatureRequestPayload, SignatureResponsePayload)
+                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingSequencePayload, MissingProofPayload,
+                      SignatureRequestPayload, SignatureResponsePayload)
 from .requestcache import RequestCache, SignatureRequestCache, IntroductionRequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-
-
-from collections import OrderedDict
+from .util import runtime_duration_warning, attach_runtime_statistics, get_logger, deprecated
 
 
 logger = get_logger(__name__)
 
+DOWNLOAD_MM_PK_INTERVAL = 15.0
+PERIODIC_CLEANUP_INTERVAL = 5.0
+TAKE_STEP_INTERVAL = 5
 
 class SyncCache(object):
 
@@ -110,7 +115,7 @@ class Community(object):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        assert dispersy.callback.is_current_thread
+        assert isInIOThread()
         master = dispersy.get_new_member(u"high")
 
         # new community instance
@@ -158,7 +163,7 @@ class Community(object):
     def get_master_members(cls, dispersy):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert dispersy.callback.is_current_thread
+        assert isInIOThread()
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
         return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
@@ -180,6 +185,7 @@ class Community(object):
         @param my_member: The my member that identifies you in this community.
         @type my_member: Member
         """
+        assert isInIOThread()
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
@@ -187,17 +193,17 @@ class Community(object):
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
 
-        assert dispersy.callback.is_current_thread
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
+
+        self._last_sync_time = 0
 
         # Dispersy
         self._dispersy = dispersy
 
-        # _pending_callbacks contains all id's for registered calls that should be removed when the
-        # community is unloaded.  most of the time this contains all the generators that are being
-        # used by the community
-        self._pending_callbacks = []
+        # _pending_tasks contains all pending calls that should be removed when the
+        # community is unloaded.
+        self._pending_tasks = {}
 
         # batch caching incoming packets
         self._batch_cache = {}
@@ -206,7 +212,9 @@ class Community(object):
         self._delayed_key = defaultdict(list)
         self._delayed_value = defaultdict(list)
 
-        self._dispersy.callback.register(self._periodically_clean_delayed)
+        lc = LoopingCall(self._periodically_clean_delayed)
+        lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
+        self._pending_tasks["periodic cleanup"] = lc
 
         create_identity = True
         try:
@@ -237,8 +245,9 @@ class Community(object):
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
-            self._pending_callbacks.append(self._dispersy.callback.register(self._download_master_member_identity))
-
+            lc = LoopingCall(self._download_master_member_identity)
+            self._pending_tasks["download master member identity"] = lc
+            reactor.callLater(0, lc.start, DOWNLOAD_MM_PK_INTERVAL, now=True)
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
         # define all available messages
@@ -306,7 +315,7 @@ class Community(object):
             logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
 
         # assigns temporary cache objects to unique identifiers
-        self._request_cache = RequestCache(self._dispersy.callback)
+        self._request_cache = RequestCache()
 
         # initial timeline.  the timeline will keep track of member permissions
         self._timeline = Timeline(self)
@@ -333,7 +342,7 @@ class Community(object):
 
         # start walker, if needed
         if self.dispersy_enable_candidate_walker:
-            self._dispersy.callback.register(self.take_step)
+            self.start_walking()
 
         # turn on/off pruning
         self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
@@ -378,27 +387,23 @@ class Community(object):
                 assert message.authentication.member.mid == self._master_member.mid
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
+                self.cancel_pending_task("download master member identity")
 
-        delay = 2.0
-        while not self._master_member.public_key:
-            try:
-                public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
-            except StopIteration:
-                pass
+        try:
+            public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
+        except StopIteration:
+            pass
+        else:
+            if public_key:
+                logger.debug("%s found master member", self._cid.encode("HEX"))
+                self._master_member = self._dispersy.get_member(public_key=str(public_key))
+                assert self._master_member.public_key
+                self.cancel_pending_task("download master member identity")
             else:
-                if public_key:
-                    logger.debug("%s found master member", self._cid.encode("HEX"))
-                    self._master_member = self._dispersy.get_member(public_key=str(public_key))
-                    assert self._master_member.public_key
-                    break
-
-            for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
-                if candidate:
-                    logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
-                    self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
-
-            yield delay
-            delay = min(300.0, delay * 1.1)
+                for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
+                    if candidate:
+                        logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
+                        self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
 
     def _initialize_meta_messages(self):
         assert isinstance(self._meta_messages, dict)
@@ -477,7 +482,7 @@ class Community(object):
         Enable the fast candidate walker.
 
         When True is returned, the take_step method will initially take step more often to boost
-        the number of candidates available at startup. 
+        the number of candidates available at startup.
         The candidate fast walker is disabled by default.
         """
         return False
@@ -949,15 +954,28 @@ class Community(object):
         else:
             return 2 ** 63 - 1
 
+    def cancel_pending_task(self, key):
+        task = self._pending_tasks.pop(key)
+        if isinstance(task, Deferred) and not task.called:
+            # Have in mind that any deferred in the pending tasks list should have been constructed with a
+            # canceller function.
+            task.cancel()
+        elif isinstance(task, DelayedCall) and task.active():
+            task.cancel()
+        elif isinstance(task, LoopingCall) and task.running:
+            task.stop()
+
     def unload_community(self):
         """
         Unload a single community.
         """
-        # remove all pending callbacks
-        for id_ in self._pending_callbacks:
-            self._dispersy.callback.unregister(id_)
-        self._pending_callbacks = []
+        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks.itervalues()]), self._pending_tasks
+        # cancel all pending tasks
+        for key in self._pending_tasks.keys():
+            self.cancel_pending_task(key)
 
+        self._pending_tasks.clear()
+        self._request_cache.clear()
         self._dispersy.detach_community(self)
 
     def claim_global_time(self):
@@ -1072,7 +1090,8 @@ class Community(object):
         assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
-    def take_step(self):
+    @inlineCallbacks
+    def start_walking(self):
         most_recent_sync = None
 
         if self.dispersy_enable_fast_candidate_walker:
@@ -1105,23 +1124,29 @@ class Community(object):
                     self.create_introduction_request(candidate, allow_sync=False)
 
                 # wait for NAT hole punching
-                yield 1.0
+                yield deferLater(reactor, 1, lambda: None)
 
-        while True:
-            # if cid not in self._dispersy._communities it is detached, but not unloaded
-            if self.cid in self._dispersy._communities:
-                now = time()
-                logger.debug("previous sync was %.1f seconds ago", now - most_recent_sync if most_recent_sync else -1)
+        lc = LoopingCall(self.take_step)
+        self._pending_tasks["take step"] = lc
+        lc.start(TAKE_STEP_INTERVAL, now=True)
 
-                candidate = self.dispersy_get_walk_candidate()
-                if candidate:
-                    logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
-                    self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
-                else:
-                    logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
-                most_recent_sync = time()
+    # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
+    # calls in any loop converted to a LoopingCall
+    def take_step(self):
+        # if cid not in self._dispersy._communities it is detached, but not unloaded
+        if self.cid in self._dispersy._communities:
+            now = time()
+            logger.debug("previous sync was %.1f seconds ago", now - self._last_sync_time if self._last_sync_time else -1)
 
-            yield 5.0
+            candidate = self.dispersy_get_walk_candidate()
+            if candidate:
+                logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+                self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
+            else:
+                logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
+            self._last_sync_time = time()
+
+
 
     def _iter_category(self, category, strict=True):
         # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
@@ -1871,20 +1896,15 @@ class Community(object):
         del self._delayed_value[delayed]
 
     def _periodically_clean_delayed(self):
-        while True:
-            now = time()
-            for delayed in self._delayed_value.keys():
-                if now > delayed.timestamp + 10:
-                    self._remove_delayed(delayed)
-                    delayed.on_timeout()
-
-                    self.dispersy.statistics.delay_timeout += 1
-
-                    self._dispersy._statistics.drop_count += 1
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
-                                                        "delay_timeout:%s" % delayed)
-
-            yield 5.0
+        now = time()
+        for delayed in self._delayed_value.keys():
+            if now > delayed.timestamp + 10:
+                self._remove_delayed(delayed)
+                delayed.on_timeout()
+                self.dispersy.statistics.delay_timeout += 1
+                self._dispersy._statistics.drop_count += 1
+                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
+                                                    "delay_timeout:%s" % delayed)
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
@@ -1912,13 +1932,13 @@ class Community(object):
                          for candidate, packet in cur_packets]
                 if meta.batch.enabled and cache:
                     if meta in self._batch_cache:
-                        task_identifier, current_timestamp, current_batch = self._batch_cache[meta]
+                        _, current_batch = self._batch_cache[meta]
                         current_batch.extend(batch)
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
-                        # TODO(emilon): add it to the pending callbacks
-                        task_identifier = self._dispersy._callback.register(self._on_batch_cache_timeout, (meta,), delay=meta.batch.max_window)
-                        self._batch_cache[meta] = (task_identifier, timestamp, batch)
+                        self._pending_tasks[meta] = reactor.callLater(meta.batch.max_window,
+                                                                                          self._process_message_batch, meta)
+                        self._batch_cache[meta] = (timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
                     logger.debug("not batching, handling %d messages inmediately", len(batch))
@@ -1930,18 +1950,20 @@ class Community(object):
                 self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "convert_packets_into_batch:unknown conversion", len(cur_packets))
                 self._dispersy._statistics.drop_count += len(cur_packets)
 
-    def _on_batch_cache_timeout(self, meta):
+    def _process_message_batch(self, meta):
         """
-        Start processing a batch of messages once the cache timeout occurs.
+        Start processing a batch of messages.
 
-        This method is called meta.batch.max_window seconds after the first message in this batch
-        arrived.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
+        This method is called meta.batch.max_window seconds after the first message in this batch arrived or when
+        flushing all the batches.  All messages in this batch have been 'cached' together in self._batch_cache[meta].
         Hopefully the delay caused the batch to collect as many messages as possible.
+
         """
         assert isinstance(meta, Message)
         assert meta in self._batch_cache
 
-        _, _, batch = self._batch_cache.pop(meta)
+        _, batch = self._batch_cache.pop(meta)
+        self.cancel_pending_task(meta)
         logger.debug("processing %sx %s batched messages", len(batch), meta.name)
 
         return self._on_batch_cache(meta, batch)
@@ -1994,8 +2016,8 @@ class Community(object):
         Remove all batches currently scheduled.
         """
         # remove any items that are left in the cache
-        for task_identifier, _, _ in self._batch_cache.itervalues():
-            self._dispersy._callback.unregister(task_identifier)
+        for meta in self._batch_cache.iterkeys():
+            self.cancel_pending_task(meta)
         self._batch_cache.clear()
 
     def flush_batch_cache(self):
@@ -2004,10 +2026,10 @@ class Community(object):
         """
         flush_list = [(meta, tup) for meta, tup in
                       self._batch_cache.iteritems() if isinstance(meta.distribution, SyncDistribution)]
-        for meta, (task_identifier, timestamp, batch) in flush_list:
-            logger.debug("flush cached %dx %s messages (id: %s)", len(batch), meta.name, task_identifier)
-            self._dispersy._callback.unregister(task_identifier)
-            self._on_batch_cache_timeout(meta)
+
+        for meta, (_, batch) in flush_list:
+            logger.debug("flush cached %dx %s messages (dc: %s)", len(batch), meta.name, self._pending_tasks[meta])
+            self._process_message_batch(meta)
 
     def on_messages(self, messages):
         """
@@ -3466,8 +3488,7 @@ class Community(object):
         for message in messages:
             logger.debug("received %s policy changes", len(message.payload.policies))
             for meta, policy in message.payload.policies:
-                # TODO currently choosing the range that changed in a naive way, only using the
-                # lowest global time value
+                # TODO: currently choosing the range that changed in a naive way, only using the lowest global time value
                 if meta in changes:
                     range_ = changes[meta]
                 else:

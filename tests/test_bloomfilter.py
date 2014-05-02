@@ -1,9 +1,9 @@
-from time import time
 from unittest import TestCase
 
 from ..bloomfilter import BloomFilter
-from ..decorator import attach_profiler
 from ..logger import get_logger
+
+
 logger = get_logger(__name__)
 
 
