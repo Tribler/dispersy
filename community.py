@@ -174,10 +174,11 @@ class Community(object):
     @classmethod
     def init_community(cls, dispersy, master, my_member, *args, **kargs):
         """
-        Create a new community owned by my_member.
+        Initializes a new community, using master as the identifier and my_member as the
+        public/private keypair to be used when sending messages.
 
-        Each unique community, that exists out in the world, is identified by a public/private key
-        pair.  When the create_community method is called such a key pair is generated.
+        Each community is identified by the hash of the public key of the master member.
+        This member is created in the create_community method.
 
         Furthermore, my_member will be granted permission to use all the messages that the community
         provides.
@@ -188,17 +189,16 @@ class Community(object):
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
 
-        @param my_member: The Member that will be granted Permit, Authorize, and Revoke for all
-         messages.
+        @param my_member: The my member that identifies you in this community.
         @type my_member: Member
 
         @param args: optional arguments that are passed to the community constructor.
         @type args: tuple
 
         @param kargs: optional keyword arguments that are passed to the community constructor.
-        @type args: dictionary
+        @type kargs: dictionary
 
-        @return: The created community instance.
+        @return: The initialized community instance.
         @rtype: Community
         """
         from .dispersy import Dispersy
