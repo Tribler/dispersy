@@ -128,7 +128,7 @@ class Bootstrap(object):
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
     @inlineCallbacks
-    def resolve(self, timeout=60.0):
+    def resolve(self):
         """
         Resolve all unresolved trackers on a separate thread.
 
@@ -137,9 +137,6 @@ class Bootstrap(object):
         2. after TIMEOUT seconds (with False as the first parameter).
 
         """
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout > 0.0, timeout
-
         success = False
         if Bootstrap.enabled:
             if self.are_resolved:

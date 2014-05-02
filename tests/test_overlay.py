@@ -65,10 +65,6 @@ class TestOverlay(DispersyTestFunc):
                 for sleep in Community.take_step(self):
                     yield sleep
 
-            @property
-            def dispersy_enable_fast_candidate_walker(self):
-                return enable_fast_walker
-
             @inlineCallbacks
             def fast_walker(self):
                 for _ in xrange(10):

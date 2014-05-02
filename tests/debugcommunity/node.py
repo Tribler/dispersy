@@ -190,7 +190,6 @@ class DebugNode(object):
 
         return self.send_packet(message.packet, candidate)
 
-    #@call_on_dispersy_thread
     def process_packets(self, timeout=1.0):
         """
         Process all packets on the nodes' socket.

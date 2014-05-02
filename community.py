@@ -202,7 +202,7 @@ class Community(object):
         # Dispersy
         self._dispersy = dispersy
 
-        # _pending_callbacks contains all pending calls that should be removed when the
+        # _pending_tasks contains all pending calls that should be removed when the
         # community is unloaded.
         self._pending_tasks = {}
 
@@ -388,7 +388,7 @@ class Community(object):
                 assert message.authentication.member.mid == self._master_member.mid
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
-                self._pending_tasks.pop("download master member identity").stop()
+                self.cancel_pending_task("download master member identity")
 
         try:
             public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
@@ -399,7 +399,7 @@ class Community(object):
                 logger.debug("%s found master member", self._cid.encode("HEX"))
                 self._master_member = self._dispersy.get_member(public_key=str(public_key))
                 assert self._master_member.public_key
-                self._pending_tasks.pop("download master member identity").stop()
+                self.cancel_pending_task("download master member identity")
             else:
                 for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
                     if candidate:

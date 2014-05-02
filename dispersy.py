@@ -303,7 +303,7 @@ class Dispersy(object):
         else:
             logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
             # first attempt will block for at most TIMEOUT seconds
-            result = yield bootstrap.resolve(timeout=timeout).addCallback(on_results)
+            result = yield bootstrap.resolve().addCallback(on_results)
             now = False
 
         bootstrap.resolve_until_success(now=now)
