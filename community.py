@@ -44,7 +44,7 @@ from .timeline import Timeline
 
 logger = get_logger(__name__)
 
-DOWNLOAD_MM_PK_INTERVAL = 300.0
+DOWNLOAD_MM_PK_INTERVAL = 15.0
 PERIODIC_CLEANUP_INTERVAL = 5.0
 TAKE_STEP_INTERVAL = 5
 
