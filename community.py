@@ -24,11 +24,9 @@ from .authentication import NoAuthentication, MemberAuthentication, DoubleMember
 from .bloomfilter import BloomFilter
 from .candidate import Candidate, WalkCandidate, BootstrapCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
-from .decorator import runtime_duration_warning, attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
 from .exception import ConversionNotFoundException, MetaNotFoundException
-from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
                       DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
@@ -40,6 +38,7 @@ from .requestcache import RequestCache, SignatureRequestCache, IntroductionReque
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
+from .util import runtime_duration_warning, attach_runtime_statistics, get_logger, deprecated
 
 
 logger = get_logger(__name__)

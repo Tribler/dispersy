@@ -6,7 +6,6 @@ from struct import pack, unpack_from, Struct
 from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .candidate import Candidate
-from .decorator import attach_runtime_statistics
 from .destination import Destination, CommunityDestination, CandidateDestination
 from .distribution import Distribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .exception import MetaNotFoundException
@@ -14,6 +13,9 @@ from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .payload import Payload
 from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
+from .util import attach_runtime_statistics
+
+
 logger = get_logger(__name__)
 
 

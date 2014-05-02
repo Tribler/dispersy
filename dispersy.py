@@ -59,25 +59,26 @@ from .bootstrap import Bootstrap
 from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
-from .decorator import attach_runtime_statistics
 from .destination import CommunityDestination, CandidateDestination
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
 from .endpoint import Endpoint
 from .exception import CommunityNotFoundException, ConversionNotFoundException, MetaNotFoundException
-from .logger import get_logger, deprecated
 from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
+from .util import attach_runtime_statistics, get_logger, deprecated, init_instrumentation
 
+
+# Set up the instrumentation utilities
+init_instrumentation()
 
 logger = get_logger(__name__)
 
 FLUSH_DATABASE_INTERVAL = 60.0
 STATS_DETAILED_CANDIDATES_INTERVAL = 5.0
-MEMORY_DUMP_INTERVAL = float(60 * 60)
 
 
 class Dispersy(object):
@@ -163,13 +164,6 @@ class Dispersy(object):
         # statistics...
         self._statistics = DispersyStatistics(self)
 
-        # memory profiler
-        if "--memory-dump" in sys.argv:
-            start = time()
-            from meliae import scanner
-            self._pending_tasks['memory-dump'] = lc = LopingCall(lambda: scanner.dump_all_objects("memory-%d.out" % (time() - start)))
-            lc.start(MEMORY_DUMP_INTERVAL, now=True)
-            reactor.addSystemEventTrigger("before", "shutdown", lambda: scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start)))
 
     @staticmethod
     def _get_interface_addresses():

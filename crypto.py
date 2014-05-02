@@ -1,11 +1,13 @@
+from hashlib import sha1
 from math import ceil
 from struct import Struct
-from hashlib import sha1
-
-from .decorator import attach_runtime_statistics
 
 from M2Crypto import EC, BIO
 from M2Crypto.EC import EC_pub
+
+from .util import attach_runtime_statistics
+
+
 _STRUCT_L = Struct(">L")
 
 # Allow all available curves.

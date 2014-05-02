@@ -1,9 +1,10 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from time import time
 from threading import RLock
+from time import time
 
-from .decorator import _runtime_statistics
+from .util import _runtime_statistics
+
 
 class Statistics(object):
 
