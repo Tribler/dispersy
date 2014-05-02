@@ -130,11 +130,7 @@ class Bootstrap(object):
     @inlineCallbacks
     def resolve(self):
         """
-        Resolve all unresolved trackers on a separate thread.
-
-        FUNC is called when either:
-        1. all trackers are resolved (with True as the first parameter), or
-        2. after TIMEOUT seconds (with False as the first parameter).
+        Resolve all unresolved trackers asynchronously.
 
         """
         success = False

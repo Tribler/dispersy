@@ -241,8 +241,7 @@ class Dispersy(object):
         logger.error("Unable to find our public interface!")
         return default
 
-    @inlineCallbacks
-    def _resolve_bootstrap_candidates(self, timeout):
+    def _resolve_bootstrap_candidates(self):
         """
         Resolve all bootstrap candidates within TIMEOUT seconds or fail.
 
@@ -260,8 +259,6 @@ class Dispersy(object):
         @rtype: boolean
         """
         assert isInIOThread()
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout >= 0.0, timeout
 
         def on_results(success):
             assert isInIOThread()
@@ -289,19 +286,8 @@ class Dispersy(object):
         default_addresses = Bootstrap.get_default_addresses()
         bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-
-        if timeout == 0.0:
-            now = True
-            # retry until successful
-
-        else:
-            logger.debug("resolving bootstrap addresses (%.1s timeout)", timeout)
-            # first attempt will block for at most TIMEOUT seconds
-            result = yield bootstrap.resolve().addCallback(on_results)
-            now = False
-
-        bootstrap.resolve_until_success(now=now)
-        returnValue(bootstrap.are_resolved)
+        bootstrap.resolve_until_success(now=True)
+        return bootstrap.are_resolved
 
     @property
     def working_directory(self):
@@ -2274,7 +2260,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         self._database.commit()
 
-    def start(self, timeout=10.0):
+    def start(self):
         """
         Starts Dispersy.
 
@@ -2284,8 +2270,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
 
         assert isInIOThread()
-        assert isinstance(timeout, float), type(timeout)
-        assert timeout >= 0.0, timeout
 
         if self.running:
             raise RuntimeError("Dispersy is already running")
@@ -2297,7 +2281,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
         # resolve bootstrap candidates
-        self._resolve_bootstrap_candidates(timeout)
+        self._resolve_bootstrap_candidates()
 
         results.append((u"database", self._database.open()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]

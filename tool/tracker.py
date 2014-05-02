@@ -235,8 +235,8 @@ class TrackerDispersy(Dispersy):
         self._my_member = None
         self._batch_cache = {}
 
-    def start(self, timeout=10.0):
-        if super(TrackerDispersy, self).start(timeout):
+    def start(self):
+        if super(TrackerDispersy, self).start():
             self._create_my_member()
             self._load_persistent_storage()
             reactor.callLater(0, self._unload_communities)
