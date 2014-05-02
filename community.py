@@ -1857,7 +1857,7 @@ class Community(object):
         # public key
         if not mid:
             return member
-        if member and isinstance(member, Member):
+        if isinstance(member, Member):
             has_identity = member.has_identity(self)
             if not has_identity:
                 # check database and update identity set if found
