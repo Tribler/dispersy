@@ -1,6 +1,5 @@
 from .debugcommunity.community import DebugCommunity
-from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from .dispersytestclass import DispersyTestFunc
 
 
 class TestNeighborhood(DispersyTestFunc):

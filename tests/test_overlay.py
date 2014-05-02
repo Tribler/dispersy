@@ -11,7 +11,8 @@ from ..conversion import DefaultConversion
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from .dispersytestclass import DispersyTestFunc
+from ..util import call_on_reactor_thread
 
 
 logger = get_logger(__name__)
@@ -38,7 +39,7 @@ class TestOverlay(DispersyTestFunc):
                                        version="\x01",
                                        enable_fast_walker=True)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def check_live_overlay(self, cid_hex, version, enable_fast_walker):
         class Conversion(DebugCommunityConversion):
             # there are overlays that modify the introduction request, ensure that the returned offset 'consumed' all

@@ -2,31 +2,24 @@ from unittest import TestCase
 
 # Do not (re)move the reactor import, even if we aren't using it
 # (nose starts the reactor in a separate thread when importing this)
-from nose.twistedtools import reactor, deferred
-
-
+from nose.twistedtools import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import blockingCallFromThread
 
-# Kill bootstraping so it doesn't mess up with the tests
 from ..bootstrap import Bootstrap
-Bootstrap.enabled = False
-
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 
-import sys
+
+# Kill bootstraping so it doesn't mess with the tests
+Bootstrap.enabled = False
+
 
 logger = get_logger(__name__)
 
-def call_on_mm_thread(func):
-    def helper(*args, **kargs):
-        return args[0]._mm.call(func, *args, **kargs)
-    helper.__name__ = func.__name__
-    return helper
 
 class DispersyTestFunc(TestCase):
 
@@ -66,7 +59,7 @@ class DispersyTestFunc(TestCase):
             nodes = []
             for _ in range(amount):
                 # TODO(emilon): do the log observer stuff instead
-                #callback.attach_exception_handler(self.on_callback_exception)
+                # callback.attach_exception_handler(self.on_callback_exception)
 
                 dispersy = Dispersy(ManualEnpoint(0), u".", u":memory:")
                 dispersy.start()

@@ -1,14 +1,16 @@
-
-from .debugcommunity.community import DebugCommunity
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
 from ..exception import CommunityNotFoundException
 from ..logger import get_logger
+from ..util import call_on_reactor_thread
+from .debugcommunity.community import DebugCommunity
+from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 
 
 class TestClassification(DispersyTestFunc):
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_reclassify_unloaded_community(self):
         """
         Load a community, reclassify it, load all communities of that classification to check.
@@ -36,7 +38,7 @@ class TestClassification(DispersyTestFunc):
             self.fail()
         self.assertEqual(classification, ClassTestB.get_classification())
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_reclassify_loaded_community(self):
         """
         Load a community, reclassify it, load all communities of that classification to check.
@@ -62,7 +64,7 @@ class TestClassification(DispersyTestFunc):
             self.fail()
         self.assertEqual(classification, ClassTestD.get_classification())
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_load_one_communities(self):
         """
         Try to load communities of a certain classification while there is exactly one such
@@ -83,7 +85,7 @@ class TestClassification(DispersyTestFunc):
         self.assertEqual(len(communities), 1)
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_load_two_communities(self):
         """
         Try to load communities of a certain classification while there is exactly two such
@@ -111,7 +113,7 @@ class TestClassification(DispersyTestFunc):
         self.assertIsInstance(communities[0], LoadTwoCommunities)
         self.assertIsInstance(communities[1], LoadTwoCommunities)
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_enable_autoload(self, auto_load=True):
         """
         Test enable autoload.

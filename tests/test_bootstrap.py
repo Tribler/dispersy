@@ -1,6 +1,7 @@
 from os import environ, getcwd, path
 from socket import getfqdn
 from subprocess import Popen, PIPE, STDOUT
+from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
 
@@ -9,9 +10,9 @@ from ..candidate import BootstrapCandidate
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
-from .debugcommunity.node import DebugNode
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
-from threading import Thread
+from .dispersytestclass import DispersyTestFunc
+
+
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
 

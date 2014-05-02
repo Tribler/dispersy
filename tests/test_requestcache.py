@@ -1,9 +1,11 @@
 from ..requestcache import RequestCache, NumberCache, RandomNumberCache
-from .dispersytestclass import DispersyTestFunc, call_on_mm_thread
+from ..util import call_on_reactor_thread
+from .dispersytestclass import DispersyTestFunc
+
 
 class TestRequestCache(DispersyTestFunc):
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_single_cache(self):
         """
         Tests standard add, has, get, and pop behavior.
@@ -24,7 +26,7 @@ class TestRequestCache(DispersyTestFunc):
         self.assertIsNone(request_cache.get(u"test", cache.number))
         self.assertIsNone(request_cache.pop(u"test", cache.number))
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_multiple_caches(self):
         """
         Tests standard add, has, get, and pop behavior.
@@ -56,7 +58,7 @@ class TestRequestCache(DispersyTestFunc):
             self.assertIsNone(request_cache.get(u"test", cache.number))
             self.assertIsNone(request_cache.pop(u"test", cache.number))
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_request_cache_double_pop_bug(self):
         request_cache = RequestCache()
         cache = RandomNumberCache(request_cache, u"test")
@@ -76,7 +78,7 @@ class TestRequestCache(DispersyTestFunc):
         self.assertIsNone(request_cache.get(u"test", cache.number))
         self.assertIsNone(request_cache.pop(u"test", cache.number))
 
-    @call_on_mm_thread
+    @call_on_reactor_thread
     def test_fixed_number(self):
         """
         Tests NumberCache

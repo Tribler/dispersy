@@ -16,19 +16,9 @@ from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 from .community import DebugCommunity
-
+from ...util import call_on_reactor_thread
 
 logger = get_logger(__name__)
-
-
-def call_on_reactor_thread(func):
-    def helper(*args, **kargs):
-        if isInIOThread():
-            return func(*args, **kargs)
-        else:
-            return blockingCallFromThread(reactor, func, *args, **kargs)
-    helper.__name__ = func.__name__
-    return helper
 
 class DebugNode(object):
 
