@@ -435,7 +435,7 @@ class Dispersy(object):
             for master in community_cls.get_master_members(self):
                 if not master.mid in self._communities:
                     logger.debug("Loading %s at start", community_cls.get_classification())
-                    community = community_cls(self, master, my_member, *args, **kargs)
+                    community = community_cls.init_community(self, master, my_member, *args, **kargs)
                     communities.append(community)
                     assert community.master_member.mid == master.mid
                     assert community.master_member.mid in self._communities
@@ -521,7 +521,7 @@ class Dispersy(object):
                 assert public_key
                 if private_key_from_db != private_key:
                     self.database.execute(u"UPDATE member SET public_key = ?, private_key = ? WHERE id = ?",
-                    (buffer(public_key), buffer(private_key), database_id))
+                        (buffer(public_key), buffer(private_key), database_id))
             else:
                 # the private key from the database overrules the public key argument
                 if private_key_from_db:
@@ -531,14 +531,14 @@ class Dispersy(object):
                 elif public_key:
                     if public_key_from_db != public_key:
                         self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?",
-                    (buffer(public_key), database_id))
+                            (buffer(public_key), database_id))
 
                 # no priv/pubkey arguments passed, maybe use the public key from the database
                 elif public_key_from_db:
                     key = self.crypto.key_from_public_bin(public_key_from_db)
 
                 else:
-                    return
+                    return DummyMember(self, database_id, mid)
 
         # the member is not in the database, insert it
         elif public_key or private_key:
@@ -550,7 +550,9 @@ class Dispersy(object):
                 (buffer(mid), buffer(public_key), buffer(private_key)), get_lastrowid=True)
         else:
             # We could't find the key on the DB, nothing else to do
-            return
+            database_id = self.database.execute(u"INSERT INTO member (mid) VALUES (?)",
+                (buffer(mid),), get_lastrowid=True)
+            return DummyMember(self, database_id, mid)
 
         member = Member(self, key, database_id, mid)
 
@@ -570,64 +572,6 @@ class Dispersy(object):
         assert isinstance(securitylevel, unicode), type(securitylevel)
         key = self.crypto.generate_key(securitylevel)
         return self.get_member(private_key=self.crypto.key_to_bin(key))
-
-    def get_temporary_member_from_id(self, mid):
-        """
-        Returns a temporary Member instance reserving the MID until (hopefully) the public key
-        becomes available.
-
-        This method should be used with caution as this will create a real Member without having the
-        public key available.  This method is (sometimes) used when joining a community when we only
-        have its CID (=MID).
-
-        @param mid: The 20 byte sha1 digest indicating a member.
-        @type mid: string
-
-        @return: A (Dummy)Member instance
-        @rtype: DummyMember or Member
-        """
-        assert isinstance(mid, str), type(mid)
-        assert len(mid) == 20, len(mid)
-        return self._member_cache_by_hash.get(mid) or DummyMember(self, mid)
-
-    def get_member_from_id(self, mid):
-        """
-        Returns None or the Member instance associated with mid, where mid is the sha1 digest of a member public key.
-
-        Since we may not have the public key associated to MID, this method may return None.  In such a case it is
-        sometimes possible to raise DelayPacketByMissingMember to obtain the public key.
-
-        @param mid: The 20 byte sha1 digest indicating a member.  @type mid: string
-
-        @return: The Member instance associated with the key or None.  @rtype: Member
-
-        """
-        assert isinstance(mid, str), type(mid)
-        assert len(mid) == 20, len(mid)
-        member = self._member_cache_by_hash.get(mid)
-        if not member:
-            members = [self.get_member(public_key=str(public_key))
-                       for public_key,
-                       in list(self._database.execute(u"SELECT public_key FROM member WHERE mid = ?", (buffer(mid),)))
-                       if public_key]
-            if members:
-                # Register the unlikely event of a hash collision
-                if len(members) > 1:
-                    logger.warning("Found several public keys matching mid %s: %s\nReturning the first one.",
-                        mid, str((str(member) for member in members)))
-                    members.sort()
-                member = members[0]
-            else:
-                member = None
-        return member
-
-    @deprecated("Use get_member() instead")
-    def get_members_from_id(self, mid):
-        """
-        Deprecated, use get_member_from_id()
-        """
-        member = self.get_member_from_id(mid)
-        return [member] if member else []
 
     def get_member_from_database_id(self, database_id):
         """
@@ -798,7 +742,7 @@ class Dispersy(object):
                     if load or (auto_load and auto_load_flag):
 
                         if classification in self._auto_load_communities:
-                            master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_temporary_member_from_id(cid)
+                            master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_member(mid=cid)
                             cls, my_member, args, kargs = self._auto_load_communities[classification]
                             community = cls(self, master, my_member, *args, **kargs)
                             assert master.mid in self._communities

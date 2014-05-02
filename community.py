@@ -119,7 +119,7 @@ class Community(object):
         master = dispersy.get_new_member(u"high")
 
         # new community instance
-        community = cls(dispersy, master, my_member, *args, **kargs)
+        community = cls.init_community(dispersy, master, my_member, *args, **kargs)
 
         # create the dispersy-identity for the master member
         message = community.create_identity(sign_with_master=True)
@@ -166,15 +166,19 @@ class Community(object):
         assert isInIOThread()
         logger.debug("retrieving all master members owning %s communities", cls.get_classification())
         execute = dispersy.database.execute
-        return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_temporary_member_from_id(str(mid))
+        return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_member(mid=str(mid))
                 for mid, public_key,
                 in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
 
-    def __init__(self, dispersy, master, my_member, attach=True):
+    @classmethod
+    def init_community(cls, dispersy, master, my_member, *args, **kargs):
         """
-        Loading, or joining an existing community can be done by calling the constructor.
-        Creating a new instance of a community needs to use the create_community() call.
+        Initializes a new community, using master as the identifier and my_member as the
+        public/private keypair to be used when sending messages.
+
+        Each community is identified by the hash of the public key of the master member.
+        This member is created in the create_community method.
 
         @param dispersy: The Dispersy instance where this community will attach itself to.
         @type dispersy: Dispersy
@@ -184,7 +188,30 @@ class Community(object):
 
         @param my_member: The my member that identifies you in this community.
         @type my_member: Member
+
+        @param args: optional arguments that are passed to the community constructor.
+        @type args: tuple
+
+        @param kargs: optional keyword arguments that are passed to the community constructor.
+        @type kargs: dictionary
+
+        @return: The initialized community instance.
+        @rtype: Community
         """
+        from .dispersy import Dispersy
+        assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(my_member, Member), type(my_member)
+        assert my_member.public_key, my_member.database_id
+        assert my_member.private_key, my_member.database_id
+        assert isInIOThread()
+
+        # new community instance
+        community = cls(dispersy, master, my_member)
+        community.initialize(*args, **kargs)
+
+        return community
+
+    def __init__(self, dispersy, master, my_member):
         assert isInIOThread()
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
@@ -193,13 +220,36 @@ class Community(object):
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
 
-        logger.info("initializing:  %s", self.get_classification())
-        logger.debug("master member: %s %s", master.mid.encode("HEX"), "" if master.public_key else " (no public key available)")
-
-        self._last_sync_time = 0
-
+        assert isInIOThread()
+        super(Community, self).__init__()
         # Dispersy
         self._dispersy = dispersy
+
+        # community data
+        self._database_id = None
+        self._database_version = None
+
+        self._cid = master.mid
+        self._master_member = master
+        self._my_member = my_member
+
+    def initialize(self, attach=True):
+        """
+        Loading, or joining an existing community can be done by calling the constructor.
+        Creating a new instance of a community needs to use the create_community() call.
+
+        @param master: The master member that identifies the community.
+        @type master: DummyMember or Member
+
+        @param my_member: The my member that identifies you in this community.
+        @type my_member: Member
+        """
+        assert isInIOThread()
+        logger.info("initializing:  %s", self.get_classification())
+        logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
+            "" if self._master_member.public_key else " (no public key available)")
+
+        self._last_sync_time = 0
 
         # _pending_tasks contains all pending calls that should be removed when the
         # community is unloaded.
@@ -219,28 +269,28 @@ class Community(object):
         create_identity = True
         try:
             self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
-                u"SELECT id, member, database_version FROM community WHERE master = ?", (master.database_id,)).next()
+                u"SELECT id, member, database_version FROM community WHERE master = ?",
+                (self._master_member.database_id,)).next()
 
             # if we're called with a different my_member, update the table to reflect this
-            if my_member_did != my_member.database_id:
-                dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
-                                  (my_member.database_id, master.database_id))
+            if my_member_did != self._my_member.database_id:
+                self._dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
+                    (self._my_member.database_id, self._master_member.database_id))
             else:
                 # using the same my_member, don't create a new identity
                 create_identity = False
 
         except StopIteration:
-            dispersy.database.execute(u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
-                                  (master.database_id, my_member.database_id, self.get_classification()))
+            self._dispersy.database.execute(
+                u"INSERT INTO community(master, member, classification) VALUES(?, ?, ?)",
+                (self._master_member.database_id, self._my_member.database_id, self.get_classification()))
 
             self._database_id, self._database_version = self._dispersy.database.execute(
-                u"SELECT id, database_version FROM community WHERE master = ?", (master.database_id,)).next()
+                u"SELECT id, database_version FROM community WHERE master = ?",
+                (self._master_member.database_id,)).next()
 
         logger.debug("database id:   %d", self._database_id)
 
-        self._cid = master.mid
-        self._master_member = master
-        self._my_member = my_member
         logger.debug("my member:     %s", self._my_member.mid.encode("HEX"))
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
@@ -271,14 +321,14 @@ class Community(object):
                 del self.meta_message_cache[name]
 
         if update_list:
-            self.dispersy.database.executemany(u"UPDATE meta_message SET priority = ?, direction = ? WHERE id = ?",
+            self._dispersy.database.executemany(u"UPDATE meta_message SET priority = ?, direction = ? WHERE id = ?",
                 update_list)
 
         if self.meta_message_cache:
             insert_list = []
             for name, data in self.meta_message_cache.iteritems():
                 insert_list.append((self.database_id, name, data["priority"], data["direction"]))
-            self.dispersy.database.executemany(u"INSERT INTO meta_message (community, name, priority, direction) VALUES (?, ?, ?, ?)",
+            self._dispersy.database.executemany(u"INSERT INTO meta_message (community, name, priority, direction) VALUES (?, ?, ?, ?)",
                 insert_list)
 
             for database_id, name in self._dispersy.database.execute(u"SELECT id, name FROM meta_message WHERE community = ?", (self._database_id,)):
@@ -353,7 +403,7 @@ class Community(object):
 
         if attach:
             # tell dispersy that there is a new community
-            dispersy.attach_community(self)
+            self._dispersy.attach_community(self)
 
     @property
     def candidates(self):
@@ -1802,8 +1852,22 @@ class Community(object):
         member = self._dispersy.get_member(mid=mid, public_key=public_key, private_key=private_key)
         # We only need to check if this member has an identity message in this community if we still don't have the full
         # public key
-        if not mid or (member and member.has_identity(self)):
+        if not mid:
             return member
+        if isinstance(member, Member):
+            has_identity = member.has_identity(self)
+            if not has_identity:
+                # check database and update identity set if found
+                try:
+                    self._dispersy.database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",
+                        (member.database_id, self.get_meta_message(u"dispersy-identity").database_id)).next()
+                except StopIteration:
+                    pass
+                else:
+                    member.add_identity(self)
+                    has_identity = True
+            if has_identity:
+                return member
 
     def _generic_timeline_check(self, messages):
         meta = messages[0].meta
@@ -2946,6 +3010,11 @@ class Community(object):
         message = meta.impl(authentication=(self.master_member if sign_with_master else self.my_member,),
                             distribution=(global_time,))
         self._dispersy.store_update_forward([message], store, update, False)
+        # indicate that we have the identity message
+        if sign_with_master:
+            self.master_member.add_identity(self)
+        else:
+            self.my_member.add_identity(self)
         return message
 
     def create_missing_identity(self, candidate, dummy_member):
@@ -3560,6 +3629,8 @@ class HardKilledCommunity(Community):
     def __init__(self, *args, **kargs):
         super(HardKilledCommunity, self).__init__(*args, **kargs)
 
+    def initialize(self, *args, **kargs):
+        super(HardKilledCommunity, self).initialize(*args, **kargs)
         destroy_message_id = self._meta_messages[u"dispersy-destroy-community"].database_id
         try:
             packet, = self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? LIMIT 1", (destroy_message_id,)).next()

@@ -5,18 +5,12 @@ from M2Crypto.EC import EC_pub, EC
 
 class DummyMember(object):
 
-    def __init__(self, dispersy, mid):
+    def __init__(self, dispersy, database_id, mid):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
+        assert isinstance(database_id, int), type(database_id)
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
-        database = dispersy.database
-
-        try:
-            database_id, = database.execute(u"SELECT id FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).next()
-        except StopIteration:
-            database_id = database.execute(u"INSERT INTO member (mid) VALUES (?)",
-                (buffer(mid),), get_lastrowid=True)
 
         self._database_id = database_id
         self._mid = mid
@@ -165,6 +159,9 @@ class Member(DummyMember):
         self._ec = self._crypto.key_from_private_bin(private_key)
         self._database.execute(u"UPDATE member SET private_key=? WHERE id=?", (buffer(private_key), self._database_id))
 
+    def add_identity(self, community):
+        self._has_identity.add(community.cid)
+
     def has_identity(self, community):
         """
         Returns True when we have a dispersy-identity message for this member in COMMUNITY.
@@ -172,17 +169,7 @@ class Member(DummyMember):
         from .community import Community
         assert isinstance(community, Community)
 
-        if community.cid in self._has_identity:
-            return True
-        else:
-            try:
-                self._database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",
-                                       (self._database_id, community.get_meta_message(u"dispersy-identity").database_id)).next()
-            except StopIteration:
-                return False
-            else:
-                self._has_identity.add(community.cid)
-                return True
+        return community.cid in self._has_identity
 
     def verify(self, data, signature, offset=0, length=0):
         """
