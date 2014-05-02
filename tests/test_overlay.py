@@ -51,8 +51,6 @@ class TestOverlay(DispersyTestFunc):
         class WCommunity(DebugCommunity):
             def __init__(self, dispersy, master):
                 super(WCommunity, self).__init__(dispersy, master)
-                if enable_fast_walker:
-                    reactor.callLater(0, self.fast_walker)
 
             def initiate_conversions(self):
                 return [DefaultConversion(self), Conversion(self, version)]
@@ -65,39 +63,10 @@ class TestOverlay(DispersyTestFunc):
                 for sleep in Community.take_step(self):
                     yield sleep
 
-            @inlineCallbacks
-            def fast_walker(self):
-                for _ in xrange(10):
-                    now = time()
+            @property
+            def dispersy_enable_fast_candidate_walker(self):
+                return enable_fast_walker
 
-                    # count -everyone- that is active (i.e. walk or stumble)
-                    active_canidates = list(self.dispersy_yield_verified_candidates())
-                    if len(active_canidates) > 20:
-                        logger.debug("there are %d active non-bootstrap candidates available, prematurely quitting fast walker", len(active_canidates))
-                        break
-
-                    # request bootstrap peers that are eligible
-                    eligible_candidates = [candidate
-                                           for candidate
-                                           in self._dispersy.bootstrap_candidates
-                                           if candidate.is_eligible_for_walk(now)]
-                    for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
-                        logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
-                        self.create_introduction_request(candidate, allow_sync=False)
-
-                    # request peers that are eligible
-                    eligible_candidates = [candidate
-                                           for candidate
-                                           in self._candidates.itervalues()
-                                           if candidate.is_eligible_for_walk(now)]
-                    for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
-                        logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
-                        self.create_introduction_request(candidate, allow_sync=False)
-
-                    # wait for NAT hole punching
-                    yield reactor.deferLater(1, lambda _: None)
-
-                summary.debug("finished")
 
         class Info(object):
             pass
