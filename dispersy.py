@@ -50,7 +50,7 @@ from time import time
 import netifaces
 from twisted.internet import reactor
 from twisted.internet.base import DelayedCall
-from twisted.internet.defer import inlineCallbacks, returnValue, Deferred
+from twisted.internet.defer import Deferred
 from twisted.internet.task import LoopingCall
 from twisted.python.threadable import isInIOThread
 
@@ -69,7 +69,7 @@ from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
-from .util import attach_runtime_statistics, get_logger, deprecated, init_instrumentation
+from .util import attach_runtime_statistics, get_logger, init_instrumentation
 
 
 # Set up the instrumentation utilities
