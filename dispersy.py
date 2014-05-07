@@ -745,7 +745,7 @@ class Dispersy(object):
                         if classification in self._auto_load_communities:
                             master = self.get_member(public_key=str(master_public_key)) if master_public_key else self.get_member(mid=cid)
                             cls, my_member, args, kargs = self._auto_load_communities[classification]
-                            community = cls(self, master, my_member, *args, **kargs)
+                            community = cls.init_community(self, master, my_member, *args, **kargs)
                             assert master.mid in self._communities
                             return community
 
