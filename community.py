@@ -1058,18 +1058,6 @@ class Community(object):
         """
         self._database_version = self._dispersy.database.check_community_database(self, self._database_version)
 
-    def get_default_conversion(self):
-        """
-        Returns the default conversion (defined as the last conversion).
-
-        Raises ConversionNotFoundException() when no conversions are available.
-        """
-        if self._conversions:
-            return self._conversions[-1]
-
-        logger.warning("unable to find default conversion (there are no conversions available)")
-        raise ConversionNotFoundException()
-
     def get_conversion_for_packet(self, packet):
         """
         Returns the conversion associated with PACKET.
@@ -2710,7 +2698,7 @@ class Community(object):
         Create the Conversion instances for this community instance.
 
         This method is called once for each community when it is created.  The resulting Conversion instances can be
-        obtained using get_default_conversion(), get_conversion_for_packet(), and get_conversion_for_message().
+        obtained using get_conversion_for_packet() and get_conversion_for_message().
 
         Returns a list with all Conversion instances that this community will support.  Note that the ordering of
         Conversion classes determines what the get_..._conversion_...() methods return.
