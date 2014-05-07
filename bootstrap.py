@@ -143,21 +143,25 @@ class Bootstrap(object):
                 for (host, port), ip in zip(addresses, ips):
                     if ip:
                         candidate = BootstrapCandidate((str(ip), port), False)
-                        logger.debug("Resolved %s into %s", host, candidate)
+                        logger.info("Resolved %s into %s", host, candidate)
                         self._candidates[(host, port)] = candidate
                         success = True
                     else:
-                        logger.info("Could not resolve bootstrap candidate: %s:%s", host, port)
+                        logger.warn("Could not resolve bootstrap candidate: %s:%s", host, port)
         returnValue(success)
 
-    def resolve_until_success(self, interval=300, now=False):
+    def resolve_until_success(self, interval=300, now=False, callback=None):
         def resolution_lc():
             if self.are_resolved:
                 self._resolution_lc.stop()
                 self._resolution_lc = None
+
             else:
-                logger.warning("Resolving bootstrap addresses")
-                return self.resolve()
+                logger.info("Resolving bootstrap addresses")
+                deferred = self.resolve()
+                if callback:
+                    deferred.addCallback(callback)
+
         if not self._resolution_lc and Bootstrap.enabled:
             self._resolution_lc = LoopingCall(resolution_lc)
             self._resolution_lc.start(interval, now)
