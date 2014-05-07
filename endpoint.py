@@ -12,6 +12,8 @@ from twisted.internet import reactor
 
 from .candidate import Candidate
 from .logger import get_logger
+from .message import DropPacket, DelayPacket
+from .exception import CommunityNotFoundException, ConversionNotFoundException
 
 
 logger = get_logger(__name__)
@@ -78,10 +80,21 @@ class Endpoint(object):
         return True
 
     def log_packet(self, sock_addr, packet, outbound=True):
+        name = "???"
         try:
-            name = self._dispersy.convert_packet_to_meta_message(packet, load=False, auto_load=False).name
+            community = self._dispersy.get_community(packet[2:22], load=False, auto_load=False)
+
+            # find associated conversion
+            conversion = community.get_conversion_for_packet(packet)
+            name = conversion.decode_meta_message(packet).name
+        except CommunityNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
+        except ConversionNotFoundException:
+            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
+        except (DropPacket, DelayPacket) as exception:
+            logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
         except:
-            name = "???"
+            pass
         logger.debug("%30s %s %15s:%-5d %4d bytes", name, '->'if outbound else '<-', sock_addr[0], sock_addr[1], len(packet))
 
         if outbound:

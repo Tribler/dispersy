@@ -1453,32 +1453,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             message.undone = undone
             return message
 
-    def convert_packet_to_meta_message(self, packet, community=None, load=True, auto_load=True):
-        """
-        Returns the Message representing the packet or None when no conversion is possible.
-        """
-        assert isinstance(packet, str)
-        assert isinstance(community, (type(None), Community))
-        assert isinstance(load, bool)
-        assert isinstance(auto_load, bool)
-
-        # find associated community
-        try:
-            if not community:
-                community = self.get_community(packet[2:22], load, auto_load)
-
-            # find associated conversion
-            conversion = community.get_conversion_for_packet(packet)
-            return conversion.decode_meta_message(packet)
-
-        except CommunityNotFoundException:
-            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-        except ConversionNotFoundException:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-        except (DropPacket, DelayPacket) as exception:
-            logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-        return None
-
     def convert_packet_to_message(self, packet, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
         Returns the Message.Implementation representing the packet or None when no conversion is
