@@ -271,6 +271,7 @@ class Dispersy(object):
                 # _bootstrap_candidates.update
                 if not candidate.sock_addr in self._bootstrap_candidates:
                     self._bootstrap_candidates[candidate.sock_addr] = candidate
+
             logger.debug("there are %d available bootstrap candidates (%d new)",
                          len(self._bootstrap_candidates), len(self._bootstrap_candidates) - previous_length)
 
@@ -286,7 +287,7 @@ class Dispersy(object):
         default_addresses = Bootstrap.get_default_addresses()
         bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-        bootstrap.resolve_until_success(now=True)
+        bootstrap.resolve_until_success(now=True, callback=on_results)
         return bootstrap.are_resolved
 
     @property
