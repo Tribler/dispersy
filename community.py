@@ -1045,43 +1045,18 @@ class Community(object):
             self._global_time = global_time
 
             if self._do_pruning:
-                self._check_for_pruning()
-
-    def _check_for_pruning(self):
-        """
-        Check for messages that need to be pruned because the global time changed.  Should be called
-        whenever self._global_time is increased.
-        """
-        for meta in self._meta_messages.itervalues():
-            if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
-                # TODO: some messages should support a notifier when a message is pruned
-                # logger.debug("checking pruning for %s @%d", meta.name, self._global_time)
-                # packets = [str(packet)
-                #            for packet,
-                #            in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? AND global_time <= ?",
-                #                                               (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))]
-                # if packets:
-
-                self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
-                                                (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
+                # Check for messages that need to be pruned because the global time changed.
+                for meta in self._meta_messages.itervalues():
+                    if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
+                         self._dispersy.database.execute(
+                            u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
+                            (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
 
     def dispersy_check_database(self):
         """
         Called each time after the community is loaded and attached to Dispersy.
         """
         self._database_version = self._dispersy.database.check_community_database(self, self._database_version)
-
-    def get_default_conversion(self):
-        """
-        Returns the default conversion (defined as the last conversion).
-
-        Raises ConversionNotFoundException() when no conversions are available.
-        """
-        if self._conversions:
-            return self._conversions[-1]
-
-        logger.warning("unable to find default conversion (there are no conversions available)")
-        raise ConversionNotFoundException()
 
     def get_conversion_for_packet(self, packet):
         """
@@ -2723,7 +2698,7 @@ class Community(object):
         Create the Conversion instances for this community instance.
 
         This method is called once for each community when it is created.  The resulting Conversion instances can be
-        obtained using get_default_conversion(), get_conversion_for_packet(), and get_conversion_for_message().
+        obtained using get_conversion_for_packet() and get_conversion_for_message().
 
         Returns a list with all Conversion instances that this community will support.  Note that the ordering of
         Conversion classes determines what the get_..._conversion_...() methods return.

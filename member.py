@@ -45,30 +45,6 @@ class DummyMember(object):
     def has_identity(self, community):
         return False
 
-    @property
-    def must_store(self):
-        return False
-
-    @must_store.setter
-    def must_store(self, value):
-        pass
-
-    @property
-    def must_ignore(self):
-        return False
-
-    @must_ignore.setter
-    def must_ignore(self, value):
-        pass
-
-    @property
-    def must_blacklist(self):
-        return False
-
-    @must_blacklist.setter
-    def must_blacklist(self, value):
-        pass
-
     def verify(self, data, signature, offset=0, length=0):
         return False
 
@@ -151,13 +127,6 @@ class Member(DummyMember):
         The length, in bytes, of a signature.
         """
         return self._signature_length
-
-    def set_private_key(self, private_key):
-        assert isinstance(private_key, str)
-        assert self._private_key == ""
-        self._private_key = private_key
-        self._ec = self._crypto.key_from_private_bin(private_key)
-        self._database.execute(u"UPDATE member SET private_key=? WHERE id=?", (buffer(private_key), self._database_id))
 
     def add_identity(self, community):
         self._has_identity.add(community.cid)
