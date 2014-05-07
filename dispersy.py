@@ -55,11 +55,11 @@ from twisted.internet.task import LoopingCall
 from twisted.python.threadable import isInIOThread
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
-from .bootstrap import Bootstrap
-from .candidate import BootstrapCandidate, LoopbackCandidate, WalkCandidate, Candidate
+from .candidate import LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
 from .destination import CommunityDestination, CandidateDestination
+from .discovery.community import DiscoveryCommunity
 from .dispersydatabase import DispersyDatabase
 from .distribution import (SyncDistribution, FullSyncDistribution, LastSyncDistribution,
                            DirectDistribution)
@@ -146,9 +146,6 @@ class Dispersy(object):
         logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
         logger.debug("my WAN address is %s:%d", self._wan_address[0], self._wan_address[1])
         logger.debug("my connection type is %s", self._connection_type)
-
-        # bootstrap peers
-        self._bootstrap_candidates = dict()
 
         # communities that can be auto loaded.  classification:(cls, args, kargs) pairs.
         self._auto_load_communities = OrderedDict()
@@ -243,55 +240,6 @@ class Dispersy(object):
         logger.error("Unable to find our public interface!")
         return default
 
-    def _resolve_bootstrap_candidates(self):
-        """
-        Resolve all bootstrap candidates within TIMEOUT seconds or fail.
-
-        When TIMEOUT is larger than 0.0 we first attempts to resolve the bootstrap candidates while
-        blocking for at most TIMEOUT seconds, returning True when successful.
-
-        When TIMEOUT is 0.0 or when the bootstrap candidates were not all resolved within TIMEOUT
-        seconds we will return False and schedule a retry every 300 seconds until all bootstrap
-        candidates are successfully resolved.
-
-        @param timeout: Number of maximum seconds to wait.
-        @type timeout: float
-
-        @return: True when all bootstrap candidates are resolved, otherwise False.
-        @rtype: boolean
-        """
-        assert isInIOThread()
-
-        def on_results(success):
-            assert isInIOThread()
-            assert isinstance(success, bool), type(success)
-
-            # even when success is False it is still possible that *some* addresses were resolved
-            previous_length = len(self._bootstrap_candidates)
-            for candidate in self._bootstrap.candidates:
-                # we do not want existing candidates to be overwritten, hence we can not use
-                # _bootstrap_candidates.update
-                if not candidate.sock_addr in self._bootstrap_candidates:
-                    self._bootstrap_candidates[candidate.sock_addr] = candidate
-
-            logger.debug("there are %d available bootstrap candidates (%d new)",
-                         len(self._bootstrap_candidates), len(self._bootstrap_candidates) - previous_length)
-
-            # ensure none of the current candidates in Community._candidates point to bootstrap
-            # candidates
-            for community in self._communities.itervalues():
-                community.update_bootstrap_candidates(self._bootstrap_candidates.itervalues())
-
-            if success:
-                logger.debug("resolved all bootstrap addresses")
-
-        alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
-        default_addresses = Bootstrap.get_default_addresses()
-        self._bootstrap = Bootstrap(alternate_addresses or default_addresses)
-
-        self._bootstrap.resolve_until_success(now=True, callback=on_results)
-        return self._bootstrap.are_resolved
-
     @property
     def working_directory(self):
         """
@@ -331,10 +279,6 @@ class Dispersy(object):
             if not self.is_valid_address(self._lan_address):
                 logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
                 self._lan_address = (self._wan_address[0], self._lan_address[1])
-
-        # our address may not be a bootstrap address
-        if self._lan_address in self._bootstrap_candidates:
-            del self._bootstrap_candidates[self._lan_address]
 
         # our address may not be a candidate
         for community in self._communities.itervalues():
@@ -1352,6 +1296,12 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             if isinstance(message.candidate, WalkCandidate):
                 message.candidate.global_time = message.distribution.global_time
 
+                # TODO: we should move the associate call to Candidate in stead of WalkCandidate
+                if isinstance(message.meta.authentication, MemberAuthentication):
+                    # until we implement a proper 3-way handshake we are going to assume that the creator of
+                    # this message is associated to this candidate
+                    message.candidate.associate(message.authentication.member)
+
         return messages
 
     def load_message(self, community, member, global_time, verify=False):
@@ -1626,10 +1576,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         # if update_sync_range:
         # notify that global times have changed
         #     meta.community.update_sync_range(meta, update_sync_range)
-
-    @property
-    def bootstrap_candidates(self):
-        return self._bootstrap_candidates.itervalues()
 
     def estimate_lan_and_wan_addresses(self, sock_addr, lan_address, wan_address):
         """
@@ -2122,9 +2068,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         Starts Dispersy.
 
-        1. resolve bootstrap candidates (done in parallel)
-        2. opens database
-        3. opens endpoint
+        1. opens database
+        2. opens endpoint
+        3. loads the DiscoveryCommunity
         """
 
         assert isInIOThread()
@@ -2137,9 +2083,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         results = []
 
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
-
-        # resolve bootstrap candidates
-        self._resolve_bootstrap_candidates()
 
         results.append((u"database", self._database.open()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
@@ -2161,6 +2104,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             logger.info("Dispersy core ready (database: %s, port:%d)",
                         self._database.file_path, self._endpoint.get_address()[1])
             self.running = True
+
+            # Load DiscoveryCommunity
+            logger.info("Dispersy core loading DiscoveryCommunity")
+            # TODO: pass None instead of new member, let community decide if we need a new member or not.
+            self.define_auto_load(DiscoveryCommunity, self.get_new_member(), load=True)
             return True
 
         else:
@@ -2289,16 +2237,15 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         categories[candidate.get_category(now)].append(candidate)
 
                 summary.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(self._bootstrap_candidates))
+                summary.debug("--- [%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]))
 
                 for category, candidates in categories.iteritems():
                     aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
-                        summary.debug("%5.1fs %s%s%s %-7s %-13s %s",
+                        summary.debug("%5.1fs %s%s %-7s %-13s %s",
                                       min(age, 999.0),
                                       "O" if candidate.get_category(now) is None else " ",
                                       "E" if candidate.is_eligible_for_walk(now) else " ",
-                                      "B" if isinstance(candidate, BootstrapCandidate) else " ",
                                       category,
                                       candidate.connection_type,
                                       candidate)

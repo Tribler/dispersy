@@ -22,12 +22,14 @@ CANDIDATE_ELIGIBLE_DELAY = 27.5
 CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY = 57.5
 CANDIDATE_WALK_LIFETIME = 57.5
 CANDIDATE_STUMBLE_LIFETIME = 57.5
+CANDIDATE_DISCOVERED_LIFETIME = 57.5
 CANDIDATE_INTRO_LIFETIME = 27.5
 CANDIDATE_LIFETIME = 180.0
 assert isinstance(CANDIDATE_ELIGIBLE_DELAY, float)
 assert isinstance(CANDIDATE_ELIGIBLE_BOOTSTRAP_DELAY, float)
 assert isinstance(CANDIDATE_WALK_LIFETIME, float)
 assert isinstance(CANDIDATE_STUMBLE_LIFETIME, float)
+assert isinstance(CANDIDATE_DISCOVERED_LIFETIME, float)
 assert isinstance(CANDIDATE_INTRO_LIFETIME, float)
 assert isinstance(CANDIDATE_LIFETIME, float)
 
@@ -100,13 +102,14 @@ class WalkCandidate(Candidate):
         self._connection_type = connection_type
 
         # Member instances that this Candidate is associated with
-        self._associations = set()
+        self._association = None
 
         # properties to determine the category
         self._last_walk_reply = 0.0
         self._last_walk = 0.0
         self._last_stumble = 0.0
         self._last_intro = 0.0
+        self._last_discovered = 0.0
 
         # the highest global time that one of the walks reported from this Candidate
         self._global_time = 0
@@ -130,7 +133,8 @@ class WalkCandidate(Candidate):
 
     def merge(self, other):
         assert isinstance(other, WalkCandidate), type(other)
-        self._associations.update(other._associations)
+        if other.get_member():
+            self._association = other.get_member()
         self._last_walk_reply = max(self._last_walk_reply, other._last_walk_reply)
         self._last_walk = max(self._last_walk, other._last_walk)
         self._last_stumble = max(self._last_stumble, other._last_stumble)
@@ -147,31 +151,32 @@ class WalkCandidate(Candidate):
 
     def associate(self, member):
         """
-        Once it is confirmed that the candidate is represented by a member, i.e. though a 3-way
-        handshake, the member can be associated with the candidate.
+        Once it is confirmed that the candidate is represented by a member,
+        the member can be associated with the candidate.
         """
         assert isinstance(member, Member)
-        self._associations.add(member)
+        self._association = member
 
     def is_associated(self, member):
         """
         Check if the member is associated with this candidate.
         """
         assert isinstance(member, Member)
-        return member in self._associations
+        return self._association == member
 
     def disassociate(self, member):
         """
         Remove the association with a member.
         """
         assert isinstance(member, Member)
-        self._associations.remove(member)
+        if self._association == member:
+            self._association = None
 
-    def get_members(self):
+    def get_member(self):
         """
-        Returns all unique Member instances associated to this candidate.
+        Returns the Member associated to this candidate.
         """
-        return self._associations
+        return self._association
 
     def age(self, now, category=u""):
         """
@@ -184,7 +189,8 @@ class WalkCandidate(Candidate):
         - walk :: NOW - candidate.last_walk
         - stumble :: NOW - candidate.last_stumble
         - intro :: NOW - candidate.last_intro
-        - none :: NOW - max(candidate.last_walk, candidate.last_stumble, candidate.last_intro)
+        - discovered :: NOW - candidate.last_discovered
+        - none :: NOW - max(candidate.last_walk, candidate.last_stumble, candidate.last_intro, candidate.last_discovered)
         """
         if not category:
             category = self.get_category(now)
@@ -192,7 +198,8 @@ class WalkCandidate(Candidate):
         mapping = {u"walk": now - self._last_walk,
                    u"stumble": now - self._last_stumble,
                    u"intro": now - self._last_intro,
-                   None: now - max(self._last_walk, self._last_stumble, self._last_intro)}
+                   u"discovered": now - self._last_discovered,
+                   None: now - max(self._last_walk, self._last_stumble, self._last_intro, self._last_discovered)}
 
         return mapping[category]
 
@@ -218,6 +225,10 @@ class WalkCandidate(Candidate):
     def last_intro(self):
         return self._last_intro
 
+    @property
+    def last_discovered(self):
+        return self._last_discovered
+
     def get_category(self, now):
         """
         Returns the category (u"walk", u"stumble", u"intro", or None) depending on the current
@@ -226,15 +237,18 @@ class WalkCandidate(Candidate):
         assert isinstance(now, float), type(now)
 
         if now < self._last_walk_reply + CANDIDATE_WALK_LIFETIME:
-            assert self._associations, "a candidate in the walk category must have at least one associated member"
+            assert self._association, "a candidate in the walk category must have at least one associated member"
             return u"walk"
 
         if now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
-            assert self._associations, "a candidate in the stumble category must have at least one associated member"
+            assert self._association, "a candidate in the stumble category must have at least one associated member"
             return u"stumble"
 
         if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
             return u"intro"
+
+        if now < self._last_discovered + CANDIDATE_DISCOVERED_LIFETIME:
+            return u"discovered"
 
         return None
 
@@ -267,6 +281,13 @@ class WalkCandidate(Candidate):
         assert isinstance(now, float), type(now)
         self._last_intro = now
 
+    def discovered(self, now):
+        """
+        Called when we discovered this candidate in the DiscoveryCommunity.
+        """
+        assert isinstance(now, float), type(now)
+        self._last_discovered = now
+
     def update(self, tunnel, lan_address, wan_address, connection_type):
         assert isinstance(tunnel, bool)
         assert lan_address == ("0.0.0.0", 0) or is_address(lan_address), lan_address
@@ -294,27 +315,6 @@ class WalkCandidate(Candidate):
         else:
             # should not occur
             return "{%s:%d %s:%d %s:%d}" % (self._sock_addr[0], self._sock_addr[1], self._lan_address[0], self._lan_address[1], self._wan_address[0], self._wan_address[1])
-
-
-class BootstrapCandidate(WalkCandidate):
-
-    def __init__(self, sock_addr, tunnel):
-        super(BootstrapCandidate, self).__init__(sock_addr, tunnel, sock_addr, sock_addr, connection_type=u"public")
-
-    def is_eligible_for_walk(self, now):
-        """
-        Bootstrap nodes are, by definition, always online, hence the timeouts do not apply.
-        """
-        return self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now
-
-    def is_associated(self, member):
-        """
-        Bootstrap nodes are, by definition, always associated hence we return true.
-        """
-        return True
-
-    def __str__(self):
-        return "B!" + super(BootstrapCandidate, self).__str__()
 
 
 class LoopbackCandidate(Candidate):

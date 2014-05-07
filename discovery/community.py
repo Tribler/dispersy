@@ -1,4 +1,5 @@
 # Written by Niels Zeilemaker, Egbert Bouman
+import os
 import sys
 import logging
 
@@ -8,7 +9,7 @@ from collections import namedtuple
 from twisted.internet.task import LoopingCall
 
 from ..authentication import NoAuthentication, MemberAuthentication
-from ..candidate import CANDIDATE_WALK_LIFETIME, WalkCandidate, BootstrapCandidate, Candidate
+from ..candidate import CANDIDATE_WALK_LIFETIME, WalkCandidate, Candidate
 from ..community import Community
 from ..conversion import DefaultConversion
 from ..destination import CandidateDestination, Destination
@@ -18,6 +19,7 @@ from ..member import DummyMember, Member
 from ..message import Message, DelayMessageByProof, DropMessage
 from ..resolution import PublicResolution
 from ..logger import get_logger
+from .bootstrap import Bootstrap
 
 logger = get_logger(__name__)
 logger.setLevel(logging.INFO)
@@ -135,6 +137,42 @@ class DiscoveryCommunity(Community):
         self.send_packet_size = 0
         self.reply_packet_size = 0
 
+        self._resolve_bootstrap_candidates()
+
+    def _resolve_bootstrap_candidates(self):
+        """
+        Resolve all bootstrap candidates within TIMEOUT seconds or fail.
+
+        When TIMEOUT is larger than 0.0 we first attempts to resolve the bootstrap candidates while
+        blocking for at most TIMEOUT seconds, returning True when successful.
+
+        When TIMEOUT is 0.0 or when the bootstrap candidates were not all resolved within TIMEOUT
+        seconds we will return False and schedule a retry every 300 seconds until all bootstrap
+        candidates are successfully resolved.
+
+        @param timeout: Number of maximum seconds to wait.
+        @type timeout: float
+
+        @return: True when all bootstrap candidates are resolved, otherwise False.
+        @rtype: boolean
+        """
+        def on_results(success):
+            assert isinstance(success, bool), type(success)
+
+            # even when success is False it is still possible that *some* addresses were resolved
+            for sock_addr in self.bootstrap.candidates:
+                self.add_discovered_candidate(Candidate(sock_addr, False))
+
+            if success:
+                logger.debug("resolved all bootstrap addresses")
+
+        alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
+        default_addresses = Bootstrap.get_default_addresses()
+        self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
+
+        self.bootstrap.resolve_until_success(now=True, callback=on_results)
+        return self.bootstrap.are_resolved
+
     @classmethod
     def get_master_members(cls, dispersy):
 # generated: Fri Apr 25 13:37:28 2014
@@ -168,11 +206,11 @@ class DiscoveryCommunity(Community):
     def initiate_conversions(self):
         return [DefaultConversion(self), DiscoveryConversion(self)]
 
-    @property
     def my_preferences(self):
         return [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
 
     def add_taste_buddies(self, new_taste_buddies):
+        my_communities = dict((community.cid, community) for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
         for new_taste_buddy in new_taste_buddies:
             if DEBUG_VERBOSE:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: new taste buddy?", new_taste_buddy
@@ -196,6 +234,11 @@ class DiscoveryCommunity(Community):
                 if 'create_ping_requests' not in self._pending_tasks:
                     self._pending_tasks['create_ping_requests'] = lc = LoopingCall(self.create_ping_requests)
                     lc.start(PING_INTERVAL)
+
+            # add taste buddy to overlapping communities
+            for cid in new_taste_buddy.preferences:
+                if cid in my_communities:
+                    my_communities[cid].add_discovered_candidate(new_taste_buddy.candidate)
 
         self.taste_buddies.sort(reverse=True)
 
@@ -226,7 +269,7 @@ class DiscoveryCommunity(Community):
 
     def is_taste_buddy_mid(self, mid):
         for tb in self.yield_taste_buddies():
-            if mid in [member.mid for member in tb.candidate.get_members()]:
+            if mid == tb.candidate.get_member().mid:
                 return tb
 
     def reset_taste_buddy(self, candidate):
@@ -316,17 +359,17 @@ class DiscoveryCommunity(Community):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         if DEBUG:
-            print >> sys.stderr, long(time()), "DiscoveryCommunity: creating intro request", isinstance(destination, BootstrapCandidate), self.is_taste_buddy(destination), self.has_possible_taste_buddies(destination), destination
+            print >> sys.stderr, long(time()), "DiscoveryCommunity: creating intro request", self.is_taste_buddy(destination), self.has_possible_taste_buddies(destination), destination
 
         send = False
-        if not isinstance(destination, BootstrapCandidate) and not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination):
+        if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination) and destination.sock_addr not in self.bootstrap.candidates:
             send = self.create_similarity_request(destination)
 
         if not send:
             self.send_introduction_request(destination, allow_sync=allow_sync)
 
     def create_similarity_request(self, destination):
-        payload = self.my_preferences[:self.max_prefs]
+        payload = self.my_preferences()[:self.max_prefs]
         if payload:
             cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload))
 
@@ -368,7 +411,7 @@ class DiscoveryCommunity(Community):
         meta = self.get_meta_message(u"similarity-response")
 
         for message in messages:
-            payload = (message.payload.identifier, self.my_preferences[:self.max_prefs], self.process_similarity_request(message))
+            payload = (message.payload.identifier, self.my_preferences()[:self.max_prefs], self.process_similarity_request(message))
             response_message = meta.impl(authentication=(self.my_member,), distribution=(self.global_time,), payload=payload)
 
             if DEBUG_VERBOSE:
@@ -382,7 +425,7 @@ class DiscoveryCommunity(Community):
 
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
-        overlap_count = len(set(self.my_preferences) & set(his_preferences))
+        overlap_count = len(set(self.my_preferences()) & set(his_preferences))
         self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member, message.candidate)])
 
         # Determine overlap for top taste buddies.
@@ -423,7 +466,7 @@ class DiscoveryCommunity(Community):
 
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
-        overlap_count = len(set(self.my_preferences) & his_preferences)
+        overlap_count = len(set(self.my_preferences()) & his_preferences)
         self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member, message.candidate)])
 
         # Update possible taste buddies.

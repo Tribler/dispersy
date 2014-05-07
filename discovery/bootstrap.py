@@ -4,8 +4,7 @@ from twisted.internet import reactor
 from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
 
-from .candidate import BootstrapCandidate
-from .logger import get_logger
+from ..logger import get_logger
 
 
 logger = get_logger(__name__)
@@ -13,7 +12,7 @@ logger = get_logger(__name__)
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
-# DNS entries are resolved only a single BootstrapCandidate is made.  This requires a potential
+# DNS entries are resolved only a single Candidate is made.  This requires a potential
 # attacker to disrupt the DNS servers for both domains at the same time.
 _DEFAULT_ADDRESSES = (
     # DNS entries on tribler.org
@@ -100,7 +99,7 @@ class Bootstrap(object):
     @property
     def candidates(self):
         """
-        Returns all *resolved* BootstrapCandidate instances.
+        Returns all *resolved* ip, port pairs.
 
         Note: this method is thread safe.
         """
@@ -142,9 +141,8 @@ class Bootstrap(object):
                 ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
                 for (host, port), ip in zip(addresses, ips):
                     if ip:
-                        candidate = BootstrapCandidate((str(ip), port), False)
                         logger.info("Resolved %s into %s", host, candidate)
-                        self._candidates[(host, port)] = candidate
+                        self._candidates[(host, port)] = (str(ip), port)
                         success = True
                     else:
                         logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)

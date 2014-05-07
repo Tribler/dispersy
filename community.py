@@ -22,7 +22,7 @@ from twisted.python.threadable import isInIOThread
 
 from .authentication import NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
-from .candidate import Candidate, WalkCandidate, BootstrapCandidate
+from .candidate import Candidate, WalkCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .destination import CommunityDestination, CandidateDestination
 from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
@@ -234,7 +234,7 @@ class Community(object):
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
         assert isInIOThread()
-        
+
         super(Community, self).__init__()
         # Dispersy
         self._dispersy = dispersy
@@ -382,10 +382,6 @@ class Community(object):
         self._introduced_candidates = self._iter_category(u'intro')
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
 
-        self._bootstrap_candidates = dict()
-        self._bootstrap_candidates_iterator = self._iter_bootstrap()
-        self.update_bootstrap_candidates(self._dispersy.bootstrap_candidates)
-
         # statistics...
         self._statistics = CommunityStatistics(self)
 
@@ -416,7 +412,7 @@ class Community(object):
                 self.dispersy.sanity_check(self)
             except ValueError:
                 logger.exception("sanity check fail for %s", self)
-        
+
         #add community to communities dict
         self.dispersy._communities[self.cid] = self
         self.dispersy._statistics.dict_inc(self.dispersy._statistics.attachment, self.cid)
@@ -1045,7 +1041,7 @@ class Community(object):
 
         self._pending_tasks.clear()
         self._request_cache.clear()
-        
+
         del self.dispersy._communities[self.cid]
 
     def claim_global_time(self):
@@ -1254,22 +1250,6 @@ class Community(object):
             elif not has_result:
                 yield None
 
-    def _iter_bootstrap(self, once=False):
-        while True:
-            no_result = True
-
-            bootstrap_candidates = self._bootstrap_candidates.values()
-            for candidate in bootstrap_candidates:
-                if candidate.is_eligible_for_walk(time()):
-                    no_result = False
-                    yield candidate
-
-            if no_result:
-                yield None
-
-            if once:
-                break
-
     def dispersy_yield_candidates(self):
         """
         Yields all candidates that are part of this community.
@@ -1277,8 +1257,6 @@ class Community(object):
         The returned 'walk', 'stumble', and 'intro' candidates are randomised on every call and
         returned only once each.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-
         now = time()
         candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble", u"intro")]
         shuffle(candidates)
@@ -1291,8 +1269,6 @@ class Community(object):
         The returned 'walk' and 'stumble' candidates are randomised on every call and returned only
         once each.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-
         now = time()
         candidates = [candidate for candidate in self._candidates.itervalues() if candidate.get_category(now) in (u"walk", u"stumble")]
         shuffle(candidates)
@@ -1304,8 +1280,6 @@ class Community(object):
         This method is used by the walker to choose the candidates to introduce when an introduction
         request is received.
         """
-        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-
         first_candidates = [None, None]
         while True:
             def get_walked():
@@ -1360,8 +1334,6 @@ class Community(object):
         # bootstrap peers can not be visited multiple times within 55 seconds.  this is handled by
         # the Candidate.is_eligible_for_walk(...) method
 
-        assert all(not sock_address in self._candidates for sock_address in self._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
-
         from sys import maxsize
 
         now = time()
@@ -1369,8 +1341,8 @@ class Community(object):
         # cleanup obsolete candidates
         self.cleanup_candidates()
 
-        categories = [(maxsize, None), (maxsize, None), (maxsize, None)]
-        category_sizes = [0, 0, 0]
+        categories = [(maxsize, None), (maxsize, None), (maxsize, None), (maxsize, None)]
+        category_sizes = [0, 0, 0, 0]
 
         for candidate in self._candidates.itervalues():
             if candidate.is_eligible_for_walk(now):
@@ -1384,44 +1356,39 @@ class Community(object):
                 elif category == u"intro":
                     categories[2] = min(categories[2], (candidate.last_intro, candidate))
                     category_sizes[2] += 1
+                elif category == u"discovered":
+                    categories[3] = min(categories[3], (candidate.last_discovered, candidate))
+                    category_sizes[3] += 1
 
-        walk, stumble, intro = [candidate for _, candidate in categories]
-        while walk or stumble or intro:
+        walk, stumble, intro, discovered = [candidate for _, candidate in categories]
+        while walk or stumble or intro or discovered:
             r = random()
 
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
-            if r <= .4975:  # ~50%
+            if r <= .475:  # ~50%
                 if walk:
-                    logger.debug("returning [%2d:%2d:%2d walk   ] %s", category_sizes[0], category_sizes[1], category_sizes[2], walk)
+                    logger.debug("returning [%2d:%2d:%2d:%2d walk] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], walk)
                     return walk
 
-            elif r <= .995:  # ~50%
+            elif r <= .95:  # ~50%
                 if stumble or intro:
                     while True:
                         if random() <= .5:
                             if stumble:
-                                logger.debug("returning [%2d:%2d:%2d stumble] %s", category_sizes[0], category_sizes[1], category_sizes[2], stumble)
+                                logger.debug("returning [%2d:%2d:%2d:%2d stumble] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], stumble)
                                 return stumble
 
                         else:
                             if intro:
-                                logger.debug("returning [%2d:%2d:%2d intro  ] %s", category_sizes[0], category_sizes[1], category_sizes[2], intro)
+                                logger.debug("returning [%2d:%2d:%2d:%2d intro] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], intro)
                                 return intro
 
-            else:  # ~.5%
-                candidate = self._bootstrap_candidates_iterator.next()
-                if candidate:
-                    logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0], category_sizes[1], category_sizes[2], candidate)
-                    return candidate
+            else:
+                if discovered:
+                    logger.debug("returning [%2d:%2d:%2d:%2d discovered] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], discovered)
+                    return discovered
 
-        bootstrap_candidates = list(self._iter_bootstrap(once=True))
-        shuffle(bootstrap_candidates)
-        for candidate in bootstrap_candidates:
-            if candidate:
-                logger.debug("returning [%2d:%2d:%2d bootstr] %s", category_sizes[0], category_sizes[1], category_sizes[2], candidate)
-                return candidate
-
-        logger.debug("no candidates or bootstrap candidates available")
+        logger.debug("no candidates available")
         return None
 
     def create_candidate(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
@@ -1440,16 +1407,14 @@ class Community(object):
 
         1. returns an existing candidate from self._candidates, or
 
-        2. returns a bootstrap candidate from self._bootstrap_candidates, or
-
-        3. returns an existing candidate with the same host on a different port if this candidate is
+        2. returns an existing candidate with the same host on a different port if this candidate is
            marked as a symmetric NAT.  When replace is True, the existing candidate is moved from
            its previous sock_addr to the new sock_addr.
 
-        4. Or returns None
+        3. Or returns None
         """
         # use existing (bootstrap) candidate
-        candidate = self._candidates.get(sock_addr) or self._bootstrap_candidates.get(sock_addr)
+        candidate = self._candidates.get(sock_addr)
         logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
 
         if candidate is None:
@@ -1507,25 +1472,23 @@ class Community(object):
         return candidate
 
     def add_candidate(self, candidate):
-        if not isinstance(candidate, BootstrapCandidate):
-            assert isinstance(candidate, WalkCandidate), type(candidate)
-            assert candidate.sock_addr not in self._bootstrap_candidates.iterkeys(), "none of the bootstrap candidates may be in self._candidates"
+        assert isinstance(candidate, WalkCandidate), type(candidate)
 
-            if candidate.sock_addr not in self._candidates:
-                self._candidates[candidate.sock_addr] = candidate
-                self._dispersy.statistics.total_candidates_discovered += 1
+        if candidate.sock_addr not in self._candidates:
+            self._candidates[candidate.sock_addr] = candidate
+            self._dispersy.statistics.total_candidates_discovered += 1
 
-    def update_bootstrap_candidates(self, candidates):
+    def add_discovered_candidate(self, d_candidate):
         """
-        Informs the community that BootstrapCandidate instances are available.
-
-        This method will ensure that none of the self._candidates point to a known
-        BootstrapCandidate.
+        Informs the community that a new Candidate was discovered in the DiscoveryCommunity.
         """
-        self._bootstrap_candidates.clear()
-        for candidate in candidates:
-            self._bootstrap_candidates[candidate.sock_addr] = BootstrapCandidate(candidate.sock_addr, candidate.tunnel)
-            self._candidates.pop(candidate.sock_addr, None)
+        candidate = self.get_candidate(d_candidate.sock_addr, replace=False)
+        if not candidate:
+            if isinstance(d_candidate, WalkCandidate):
+                candidate = self.create_candidate(d_candidate.sock_addr, d_candidate.tunnel, d_candidate.lan_address, d_candidate.wan_address, d_candidate.connection_type)
+            else:
+                candidate = self.create_candidate(d_candidate.sock_addr, d_candidate.tunnel, d_candidate.sock_addr, d_candidate.sock_addr, u"unknown")
+        candidate.discovered(time())
 
     def get_candidate_mid(self, mid):
         member = self._dispersy.get_member(mid=mid)
@@ -2431,12 +2394,11 @@ class Community(object):
             candidate.stumble(now)
             message._candidate = candidate
 
+            # associate member, we've just upgraded to a walk_candidate hence we need to call associate here
+            candidate.associate(message.authentication.member)
+
             # apply vote to determine our WAN address
             self._dispersy.wan_address_vote(message.payload.destination_address, candidate)
-
-            # until we implement a proper 3-way handshake we are going to assume that the creator of
-            # this message is associated to this candidate
-            candidate.associate(message.authentication.member)
 
             self.filter_duplicate_candidate(candidate)
             logger.debug("received introduction request from %s", candidate)
@@ -2534,18 +2496,10 @@ class Community(object):
                     yield DropMessage(message, "invalid LAN introduction address [is_valid_address]")
                     continue
 
-                if message.payload.lan_introduction_address in self._dispersy._bootstrap_candidates:
-                    yield DropMessage(message, "invalid LAN introduction address [is_bootstrap_candidate]")
-                    continue
-
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
                 if not self._dispersy.is_valid_address(message.payload.wan_introduction_address):
                     yield DropMessage(message, "invalid WAN introduction address [is_valid_address]")
-                    continue
-
-                if message.payload.wan_introduction_address in self._dispersy._bootstrap_candidates:
-                    yield DropMessage(message, "invalid WAN introduction address [is_bootstrap_candidate]")
                     continue
 
                 if message.payload.wan_introduction_address == self._dispersy._wan_address:
@@ -2573,10 +2527,6 @@ class Community(object):
             candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address, message.candidate.tunnel, payload.connection_type)
             candidate.walk_response(now)
 
-            # until we implement a proper 3-way handshake we are going to assume that the creator of
-            # this message is associated to this candidate
-            candidate.associate(message.authentication.member)
-
             self.filter_duplicate_candidate(candidate)
             logger.debug("introduction response from %s", candidate)
 
@@ -2585,8 +2535,6 @@ class Community(object):
 
             # increment statistics only the first time
             self._dispersy._statistics.walk_success += 1
-            if isinstance(candidate, BootstrapCandidate):
-                self._dispersy._statistics.walk_bootstrap_success += 1
 
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.incoming_introduction_response, candidate.sock_addr)
 
@@ -2615,18 +2563,10 @@ class Community(object):
                 if self._dispersy._statistics.received_introductions is not None:
                     self._dispersy._statistics.received_introductions[candidate.sock_addr][introduced.sock_addr] += 1
 
-                # TEMP: see which peers we get returned by the trackers
-                if self._dispersy._statistics.bootstrap_candidates is not None and isinstance(message.candidate, BootstrapCandidate):
-                    self._dispersy._statistics.bootstrap_candidates[introduced.sock_addr] = self._dispersy._statistics.bootstrap_candidates.get(introduced.sock_addr, 0) + 1
-
             else:
                 # update statistics
                 if self._dispersy._statistics.received_introductions is not None:
                     self._dispersy._statistics.received_introductions[candidate.sock_addr]['-ignored-'] += 1
-
-                # TEMP: see which peers we get returned by the trackers
-                if self._dispersy._statistics.bootstrap_candidates is not None and isinstance(message.candidate, BootstrapCandidate):
-                    self._dispersy._statistics.bootstrap_candidates["none"] = self._dispersy._statistics.bootstrap_candidates.get("none", 0) + 1
 
     def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
@@ -2639,7 +2579,7 @@ class Community(object):
         advice = True
 
         # obtain sync range
-        if not allow_sync or isinstance(destination, BootstrapCandidate):
+        if not allow_sync:
             # do not request a sync when we connecting to a bootstrap candidate
             sync = None
 
@@ -2699,8 +2639,6 @@ class Community(object):
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
             self._dispersy.statistics.walk_attempt += 1
-            if isinstance(destination, BootstrapCandidate):
-                self._dispersy.statistics.walk_bootstrap_attempt += 1
             if request.payload.advice:
                 self._dispersy.statistics.walk_advice_outgoing_request += 1
             self._dispersy._statistics.dict_inc(self._dispersy.statistics.outgoing_introduction_request, destination.sock_addr)

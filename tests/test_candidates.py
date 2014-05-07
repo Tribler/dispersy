@@ -56,13 +56,9 @@ def print_unittest_combinations():
 
 class NoBootstrapDebugCommunity(DebugCommunity):
 
-    def _iter_bootstrap(self, once=False):
-        while True:
-            yield None
-
-            if once:
-                break
-
+    @property
+    def dispersy_enable_candidate_walker(self):
+        return False
 
 class TestCandidates(DispersyTestFunc):
     """

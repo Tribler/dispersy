@@ -5,7 +5,6 @@ from binascii import hexlify, unhexlify
 from ..message import DropPacket
 from ..conversion import BinaryConversion
 from ..bloomfilter import BloomFilter
-from ..candidate import BootstrapCandidate
 
 
 def bytes_to_long(val, nrbytes=0):
@@ -106,9 +105,8 @@ class DiscoveryConversion(BinaryConversion):
     def _encode_introduction_request(self, message):
         data = BinaryConversion._encode_introduction_request(self, message)
 
-        if not isinstance(message.destination.candidates[0], BootstrapCandidate):
-            if message.payload.introduce_me_to:
-                data.insert(0, pack('!c20s', 'Y', message.payload.introduce_me_to))
+        if message.payload.introduce_me_to:
+            data.insert(0, pack('!c20s', 'Y', message.payload.introduce_me_to))
         return data
 
     def _decode_introduction_request(self, placeholder, offset, data):

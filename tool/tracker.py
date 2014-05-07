@@ -199,7 +199,6 @@ class TrackerCommunity(Community):
         """
         Get an active candidate that is part of this community in Round Robin (Not random anymore).
         """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
         first_candidate = None
         while True:
             result = self._walked_stumbled_candidates.next()
