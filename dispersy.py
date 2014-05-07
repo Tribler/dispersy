@@ -889,7 +889,10 @@ class Dispersy(object):
                 if not self.is_valid_address(lan_address):
                     lan_address = (self._wan_address[0], self._lan_address[1])
                 set_lan_address(lan_address)
-                self._remove_own_address_from_candidates()
+                # remove our lan/wan addresses from all communities candidate lists
+                for community in self._communities.itervalues():
+                    community.remove_candidate(self._wan_address)
+                    community.remove_candidate(self._lan_address)
 
         #
         # check self._connection_type
@@ -912,14 +915,6 @@ class Dispersy(object):
                 set_connection_type(u"symmetric-NAT")
         else:
             set_connection_type(u"unknown")
-
-    def _remove_own_address_from_candidates(self):
-        """
-        Remove our lan/wan adresses from all communities candidate lists.
-        """
-        for community in self._communities.itervalues():
-            community.remove_candidate(self._wan_address)
-            community.remove_candidate(self._lan_address)
 
     def _is_duplicate_sync_message(self, message):
         """
