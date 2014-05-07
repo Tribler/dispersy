@@ -28,12 +28,21 @@ MEMORY_DUMP_INTERVAL = float(60 * 60)
 def call_on_reactor_thread(func):
     def helper(*args, **kargs):
         if isInIOThread():
+            # TODO(emilon): Do we really want it to block if its on the reactor thread?
             return func(*args, **kargs)
         else:
             return reactor.callFromThread(func, *args, **kargs)
     helper.__name__ = func.__name__
     return helper
 
+def blocking_call_on_reactor_thread(func):
+    def helper(*args, **kargs):
+        if isInIOThread():
+            return func(*args, **kargs)
+        else:
+            return blockingCallFromThread(reactor, func, *args, **kargs)
+    helper.__name__ = func.__name__
+    return helper
 
 def documentation(documented_func):
     def helper(func):

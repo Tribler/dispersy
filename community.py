@@ -233,6 +233,9 @@ class Community(object):
         self._master_member = master
         self._my_member = my_member
 
+        # _pending_tasks contains all pending calls that should be removed when the community is unloaded.
+        self._pending_tasks = {}
+
     def initialize(self, attach=True):
         """
         Loading, or joining an existing community can be done by calling the constructor.
@@ -250,10 +253,6 @@ class Community(object):
             "" if self._master_member.public_key else " (no public key available)")
 
         self._last_sync_time = 0
-
-        # _pending_tasks contains all pending calls that should be removed when the
-        # community is unloaded.
-        self._pending_tasks = {}
 
         # batch caching incoming packets
         self._batch_cache = {}
