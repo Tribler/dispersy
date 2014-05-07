@@ -5,6 +5,7 @@ import logging
 from time import time
 from random import shuffle, choice
 from collections import namedtuple
+from twisted.internet.task import LoopingCall
 
 from ..authentication import NoAuthentication, MemberAuthentication
 from ..candidate import CANDIDATE_WALK_LIFETIME, WalkCandidate, BootstrapCandidate, Candidate
@@ -191,7 +192,10 @@ class DiscoveryCommunity(Community):
                     print >> sys.stderr, long(time()), "DiscoveryCommunity: new taste buddy? yes, adding to list"
 
                 self.taste_buddies.append(new_taste_buddy)
-                self._pending_callbacks.append(self.dispersy.callback.persistent_register(u"send_ping_requests", self.create_ping_requests, delay=new_taste_buddy.time_remaining() - 5.0))
+
+                if 'create_ping_requests' not in self._pending_tasks:
+                    self._pending_tasks['create_ping_requests'] = lc = LoopingCall(self.create_ping_requests)
+                    lc.start(PING_INTERVAL)
 
         self.taste_buddies.sort(reverse=True)
 
@@ -534,14 +538,11 @@ class DiscoveryCommunity(Community):
                     self.community.remove_taste_buddy(candidate)
 
     def create_ping_requests(self):
-        while True:
-            tbs = [tb.candidate for tb in self.yield_taste_buddies() if tb.time_remaining() < PING_INTERVAL]
+        tbs = [tb.candidate for tb in self.yield_taste_buddies() if tb.time_remaining() < PING_INTERVAL]
 
-            if tbs:
-                cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tbs))
-                self._create_pingpong(u"ping", tbs, cache.number)
-
-            yield PING_INTERVAL
+        if tbs:
+            cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tbs))
+            self._create_pingpong(u"ping", tbs, cache.number)
 
     def on_ping(self, messages):
         for message in messages:
