@@ -30,7 +30,7 @@ def call_on_reactor_thread(func):
         if isInIOThread():
             return func(*args, **kargs)
         else:
-            return blockingCallFromThread(reactor, func, *args, **kargs)
+            return reactor.callFromThread(func, *args, **kargs)
     helper.__name__ = func.__name__
     return helper
 
@@ -218,5 +218,3 @@ def start_memory_dumper():
     from meliae import scanner
     LoopingCall(lambda: scanner.dump_all_objects("memory-%d.out" % (time() - start))).start(MEMORY_DUMP_INTERVAL, now=True)
     reactor.addSystemEventTrigger("before", "shutdown", lambda: scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start)))
-#
-# util.py ends here
