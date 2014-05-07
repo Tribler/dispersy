@@ -147,7 +147,7 @@ class Bootstrap(object):
                         self._candidates[(host, port)] = candidate
                         success = True
                     else:
-                        logger.warn("Could not resolve bootstrap candidate: %s:%s", host, port)
+                        logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
         returnValue(success)
 
     def resolve_until_success(self, interval=300, now=False, callback=None):
