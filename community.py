@@ -1045,25 +1045,12 @@ class Community(object):
             self._global_time = global_time
 
             if self._do_pruning:
-                self._check_for_pruning()
-
-    def _check_for_pruning(self):
-        """
-        Check for messages that need to be pruned because the global time changed.  Should be called
-        whenever self._global_time is increased.
-        """
-        for meta in self._meta_messages.itervalues():
-            if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
-                # TODO: some messages should support a notifier when a message is pruned
-                # logger.debug("checking pruning for %s @%d", meta.name, self._global_time)
-                # packets = [str(packet)
-                #            for packet,
-                #            in self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message = ? AND global_time <= ?",
-                #                                               (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))]
-                # if packets:
-
-                self._dispersy.database.execute(u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
-                                                (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
+                # Check for messages that need to be pruned because the global time changed.
+                for meta in self._meta_messages.itervalues():
+                    if isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning):
+                         self._dispersy.database.execute(
+                            u"DELETE FROM sync WHERE meta_message = ? AND global_time <= ?",
+                            (meta.database_id, self._global_time - meta.distribution.pruning.prune_threshold))
 
     def dispersy_check_database(self):
         """
