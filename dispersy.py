@@ -2196,15 +2196,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # OperationalError: database is locked
             logger.exception("%s", exception)
 
-    # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
-    # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
-    @deprecated("Use dispersy.database.commit() instead")
-    def _commit_now(self):
-        """
-        Flush changes to disk.
-        """
-        self._database.commit()
-
     def start(self):
         """
         Starts Dispersy.
