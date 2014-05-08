@@ -50,7 +50,7 @@ from time import time
 import netifaces
 from twisted.internet import reactor
 from twisted.internet.base import DelayedCall
-from twisted.internet.defer import inlineCallbacks, returnValue, Deferred
+from twisted.internet.defer import Deferred
 from twisted.internet.task import LoopingCall
 from twisted.python.threadable import isInIOThread
 
@@ -69,7 +69,7 @@ from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
-from .util import attach_runtime_statistics, get_logger, deprecated, init_instrumentation
+from .util import attach_runtime_statistics, get_logger, init_instrumentation
 
 
 # Set up the instrumentation utilities
@@ -889,7 +889,10 @@ class Dispersy(object):
                 if not self.is_valid_address(lan_address):
                     lan_address = (self._wan_address[0], self._lan_address[1])
                 set_lan_address(lan_address)
-                self._remove_own_address_from_candidates()
+                # remove our lan/wan addresses from all communities candidate lists
+                for community in self._communities.itervalues():
+                    community.remove_candidate(self._wan_address)
+                    community.remove_candidate(self._lan_address)
 
         #
         # check self._connection_type
@@ -912,14 +915,6 @@ class Dispersy(object):
                 set_connection_type(u"symmetric-NAT")
         else:
             set_connection_type(u"unknown")
-
-    def _remove_own_address_from_candidates(self):
-        """
-        Remove our lan/wan adresses from all communities candidate lists.
-        """
-        for community in self._communities.itervalues():
-            community.remove_candidate(self._wan_address)
-            community.remove_candidate(self._lan_address)
 
     def _is_duplicate_sync_message(self, message):
         """
@@ -1457,32 +1452,6 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             message.packet_id = packet_id
             message.undone = undone
             return message
-
-    def convert_packet_to_meta_message(self, packet, community=None, load=True, auto_load=True):
-        """
-        Returns the Message representing the packet or None when no conversion is possible.
-        """
-        assert isinstance(packet, str)
-        assert isinstance(community, (type(None), Community))
-        assert isinstance(load, bool)
-        assert isinstance(auto_load, bool)
-
-        # find associated community
-        try:
-            if not community:
-                community = self.get_community(packet[2:22], load, auto_load)
-
-            # find associated conversion
-            conversion = community.get_conversion_for_packet(packet)
-            return conversion.decode_meta_message(packet)
-
-        except CommunityNotFoundException:
-            logger.warning("unable to convert a %d byte packet (unknown community)", len(packet))
-        except ConversionNotFoundException:
-            logger.warning("unable to convert a %d byte packet (unknown conversion)", len(packet))
-        except (DropPacket, DelayPacket) as exception:
-            logger.warning("unable to convert a %d byte packet (%s)", len(packet), exception)
-        return None
 
     def convert_packet_to_message(self, packet, community=None, load=True, auto_load=True, candidate=None, verify=True):
         """
@@ -2195,15 +2164,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         except Exception as exception:
             # OperationalError: database is locked
             logger.exception("%s", exception)
-
-    # TODO this -private- method is not used by Dispersy (only from the Tribler SearchGridManager).
-    # It can be removed.  The SearchGridManager can call dispersy.database.commit() instead
-    @deprecated("Use dispersy.database.commit() instead")
-    def _commit_now(self):
-        """
-        Flush changes to disk.
-        """
-        self._database.commit()
 
     def start(self):
         """

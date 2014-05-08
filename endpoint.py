@@ -79,7 +79,11 @@ class Endpoint(object):
 
     def log_packet(self, sock_addr, packet, outbound=True):
         try:
-            name = self._dispersy.convert_packet_to_meta_message(packet, load=False, auto_load=False).name
+            community = self._dispersy.get_community(packet[2:22], load=False, auto_load=False)
+
+            # find associated conversion
+            conversion = community.get_conversion_for_packet(packet)
+            name = conversion.decode_meta_message(packet).name
         except:
             name = "???"
         logger.debug("%30s %s %15s:%-5d %4d bytes", name, '->'if outbound else '<-', sock_addr[0], sock_addr[1], len(packet))
