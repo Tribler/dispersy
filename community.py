@@ -265,7 +265,6 @@ class Community(object):
         lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
         self._pending_tasks["periodic cleanup"] = lc
 
-        create_identity = True
         try:
             self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
                 u"SELECT id, member, database_version FROM community WHERE master = ?",
@@ -275,9 +274,6 @@ class Community(object):
             if my_member_did != self._my_member.database_id:
                 self._dispersy.database.execute(u"UPDATE community SET member = ? WHERE master = ?",
                     (self._my_member.database_id, self._master_member.database_id))
-            else:
-                # using the same my_member, don't create a new identity
-                create_identity = False
 
         except StopIteration:
             self._dispersy.database.execute(
@@ -394,10 +390,18 @@ class Community(object):
             self.start_walking()
 
         # turn on/off pruning
-        self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and isinstance(meta.distribution.pruning, GlobalTimePruning) for meta in self._meta_messages.itervalues())
+        self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and
+                               isinstance(meta.distribution.pruning, GlobalTimePruning)
+                               for meta in self._meta_messages.itervalues())
 
-        if create_identity:
-            # create my dispersy-identity
+        try:
+            # check if we have already created the identity message
+            self.dispersy._database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ? LIMIT 1",
+                                   (self._my_member.database_id, self.get_meta_message
+                                    (u"dispersy-identity").database_id)).next()
+            self._my_member.add_identity(self)
+        except StopIteration:
+            # we haven't do it now
             self.create_identity()
 
         if attach:
