@@ -137,6 +137,8 @@ class DiscoveryCommunity(Community):
         self.send_packet_size = 0
         self.reply_packet_size = 0
 
+    def initialize(self, *args, **kwargs):
+        super(DiscoveryCommunity, self).initialize(*args, **kwargs)
         self._resolve_bootstrap_candidates()
 
     def _resolve_bootstrap_candidates(self):
