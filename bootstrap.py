@@ -165,3 +165,7 @@ class Bootstrap(object):
         if not self._resolution_lc and Bootstrap.enabled:
             self._resolution_lc = LoopingCall(resolution_lc)
             self._resolution_lc.start(interval, now)
+
+    def stop(self):
+        if self._resolution_lc and self._resolution_lc.running:
+            self._resolution_lc.stop()

@@ -119,6 +119,8 @@ class Dispersy(object):
         # Dispersy is stopped.  most of the time this contains all the generators that are used
         self._pending_tasks = {}
 
+        self._bootstrap = None
+
         self._member_cache_by_hash = OrderedDict()
 
         # our data storage
@@ -266,7 +268,7 @@ class Dispersy(object):
 
             # even when success is False it is still possible that *some* addresses were resolved
             previous_length = len(self._bootstrap_candidates)
-            for candidate in bootstrap.candidates:
+            for candidate in self._bootstrap.candidates:
                 # we do not want existing candidates to be overwritten, hence we can not use
                 # _bootstrap_candidates.update
                 if not candidate.sock_addr in self._bootstrap_candidates:
@@ -285,10 +287,10 @@ class Dispersy(object):
 
         alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._working_directory, "bootstraptribler.txt"))
         default_addresses = Bootstrap.get_default_addresses()
-        bootstrap = Bootstrap(alternate_addresses or default_addresses)
+        self._bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-        bootstrap.resolve_until_success(now=True, callback=on_results)
-        return bootstrap.are_resolved
+        self._bootstrap.resolve_until_success(now=True, callback=on_results)
+        return self._bootstrap.are_resolved
 
     @property
     def working_directory(self):
@@ -2236,6 +2238,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if not self.running:
             raise RuntimeError("Dispersy is not running")
+
+        if self._bootstrap:
+            self._bootstrap.stop()
 
         for name, task in self._pending_tasks.iteritems():
             logger.debug("Stopping: %s", name)
