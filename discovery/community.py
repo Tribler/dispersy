@@ -28,7 +28,7 @@ from payload import *
 from conversion import DiscoveryConversion, bytes_to_long
 
 DEBUG = True
-DEBUG_VERBOSE = True
+DEBUG_VERBOSE = False
 
 PING_INTERVAL = CANDIDATE_WALK_LIFETIME / 5
 PING_TIMEOUT = CANDIDATE_WALK_LIFETIME / 2
