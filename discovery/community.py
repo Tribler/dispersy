@@ -270,6 +270,8 @@ class DiscoveryCommunity(Community):
                 return tb
 
     def is_taste_buddy_mid(self, mid):
+        assert isinstance(mid, str)
+        assert len(mid) == 20
         for tb in self.yield_taste_buddies():
             if mid == tb.candidate.get_member().mid:
                 return tb
