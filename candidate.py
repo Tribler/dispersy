@@ -42,6 +42,9 @@ class Candidate(object):
         self._sock_addr = sock_addr
         self._tunnel = tunnel
 
+        # Member instances that this Candidate is associated with
+        self._association = None
+
     @property
     def sock_addr(self):
         return self._sock_addr
@@ -49,6 +52,35 @@ class Candidate(object):
     @property
     def tunnel(self):
         return self._tunnel
+
+    def associate(self, member):
+        """
+        Once it is confirmed that the candidate is represented by a member,
+        the member can be associated with the candidate.
+        """
+        assert isinstance(member, Member)
+        self._association = member
+
+    def is_associated(self, member):
+        """
+        Check if the member is associated with this candidate.
+        """
+        assert isinstance(member, Member)
+        return self._association == member
+
+    def disassociate(self, member):
+        """
+        Remove the association with a member.
+        """
+        assert isinstance(member, Member)
+        if self._association == member:
+            self._association = None
+
+    def get_member(self):
+        """
+        Returns the Member associated to this candidate.
+        """
+        return self._association
 
     def __str__(self):
         return "{%s:%d}" % self._sock_addr
@@ -101,9 +133,6 @@ class WalkCandidate(Candidate):
         self._wan_address = wan_address
         self._connection_type = connection_type
 
-        # Member instances that this Candidate is associated with
-        self._association = None
-
         # properties to determine the category
         self._last_walk_reply = 0.0
         self._last_walk = 0.0
@@ -132,14 +161,15 @@ class WalkCandidate(Candidate):
         return self._connection_type
 
     def merge(self, other):
-        assert isinstance(other, WalkCandidate), type(other)
         if other.get_member():
             self._association = other.get_member()
-        self._last_walk_reply = max(self._last_walk_reply, other._last_walk_reply)
-        self._last_walk = max(self._last_walk, other._last_walk)
-        self._last_stumble = max(self._last_stumble, other._last_stumble)
-        self._last_intro = max(self._last_intro, other._last_intro)
-        self._global_time = max(self._global_time, other._global_time)
+
+        if isinstance(other, WalkCandidate):
+            self._last_walk_reply = max(self._last_walk_reply, other._last_walk_reply)
+            self._last_walk = max(self._last_walk, other._last_walk)
+            self._last_stumble = max(self._last_stumble, other._last_stumble)
+            self._last_intro = max(self._last_intro, other._last_intro)
+            self._global_time = max(self._global_time, other._global_time)
 
     @property
     def global_time(self):
@@ -149,34 +179,7 @@ class WalkCandidate(Candidate):
     def global_time(self, global_time):
         self._global_time = max(self._global_time, global_time)
 
-    def associate(self, member):
-        """
-        Once it is confirmed that the candidate is represented by a member,
-        the member can be associated with the candidate.
-        """
-        assert isinstance(member, Member)
-        self._association = member
 
-    def is_associated(self, member):
-        """
-        Check if the member is associated with this candidate.
-        """
-        assert isinstance(member, Member)
-        return self._association == member
-
-    def disassociate(self, member):
-        """
-        Remove the association with a member.
-        """
-        assert isinstance(member, Member)
-        if self._association == member:
-            self._association = None
-
-    def get_member(self):
-        """
-        Returns the Member associated to this candidate.
-        """
-        return self._association
 
     def age(self, now, category=u""):
         """

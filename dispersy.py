@@ -1296,11 +1296,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             if isinstance(message.candidate, WalkCandidate):
                 message.candidate.global_time = message.distribution.global_time
 
-                # TODO: we should move the associate call to Candidate in stead of WalkCandidate
-                if isinstance(message.meta.authentication, MemberAuthentication):
-                    # until we implement a proper 3-way handshake we are going to assume that the creator of
-                    # this message is associated to this candidate
-                    message.candidate.associate(message.authentication.member)
+            if isinstance(message.meta.authentication, MemberAuthentication):
+                # until we implement a proper 3-way handshake we are going to assume that the creator of
+                # this message is associated to this candidate
+                message.candidate.associate(message.authentication.member)
 
         return messages
 
