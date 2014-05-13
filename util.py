@@ -227,3 +227,20 @@ def start_memory_dumper():
     from meliae import scanner
     LoopingCall(lambda: scanner.dump_all_objects("memory-%d.out" % (time() - start))).start(MEMORY_DUMP_INTERVAL, now=True)
     reactor.addSystemEventTrigger("before", "shutdown", lambda: scanner.dump_all_objects("memory-%d-shutdown.out" % (time() - start)))
+
+#
+# Other utils
+#
+
+def unhandled_error_observer(event):
+    """
+    Stop the reactor if we get an unhandled error.
+    """
+    if event['isError']:
+        logger.warning("Strict, mode enabled, stopping the reactor")
+        # TODO(emilon): Should we try to stop dispersy too?
+        reactor.exitCode = 1
+        if reactor.running:
+            logger.warning("reactor.running: %s", reactor.running)
+            reactor.stop()
+            logger.warning("XXXreactor.running: %s", reactor.running)
