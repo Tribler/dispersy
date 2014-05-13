@@ -272,6 +272,9 @@ class DiscoveryCommunity(Community):
     def is_taste_buddy_mid(self, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
+
+        print >> sys.stderr, long(time()), "DiscoveryCommunity: current tastebuddy list", len(self.taste_buddies), [tb.candidate_mid for tb in self.taste_buddies]
+
         for tb in self.yield_taste_buddies():
             if mid == tb.candidate.get_member().mid:
                 return tb
@@ -474,7 +477,7 @@ class DiscoveryCommunity(Community):
         self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member, message.candidate)])
 
         # Update possible taste buddies.
-        request = self._request_cache.get(u"similarity", message.payload.identifier)
+        request = self._request_cache.pop(u"similarity", message.payload.identifier)
         if request:
             possibles = []
             original_list = request.preference_list
