@@ -485,7 +485,7 @@ class Dispersy(object):
         assert isinstance(mid, str)
         assert isinstance(public_key, str)
         assert isinstance(private_key, str)
-        assert not mid or len(mid) == 20
+        assert not mid or len(mid) == 20, (mid.encode("HEX"), len(mid))
         assert not public_key or self.crypto.is_valid_public_bin(public_key)
         assert not private_key or self.crypto.is_valid_private_bin(private_key)
 
@@ -1518,25 +1518,28 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
 
-        self._statistics.received_count += len(packets)
+        if self.running:
+            self._statistics.received_count += len(packets)
 
-        # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
-        # for identities we have already received but not processed yet. (248 == identity message ID)
-        #                                           /-------------------------------\
-        sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] == chr(248) else tup[1][22])  # community ID, community version, message meta type
-        groupby_key = lambda tup: tup[1][2:22]  # community ID
-        for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
-            # find associated community
-            try:
-                community = self.get_community(community_id)
-                community.on_incoming_packets(list(iterator), cache, timestamp)
+            # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
+            # for identities we have already received but not processed yet. (248 == identity message ID)
+            #                                           /-------------------------------\
+            sort_key = lambda tup: (tup[1][2:22], tup[1][1], 0 if tup[1][22] == chr(248) else tup[1][22])  # community ID, community version, message meta type
+            groupby_key = lambda tup: tup[1][2:22]  # community ID
+            for community_id, iterator in groupby(sorted(packets, key=sort_key), key=groupby_key):
+                # find associated community
+                try:
+                    community = self.get_community(community_id)
+                    community.on_incoming_packets(list(iterator), cache, timestamp)
 
-            except CommunityNotFoundException:
-                packets = list(iterator)
-                candidates = set([candidate for candidate, _ in packets])
-                logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
-                self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
-                self._statistics.drop_count += 1
+                except CommunityNotFoundException:
+                    packets = list(iterator)
+                    candidates = set([candidate for candidate, _ in packets])
+                    logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
+                    self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
+                    self._statistics.drop_count += 1
+        else:
+            logger.info("dropping %d packets as dispersy is not running", len(packets))
 
     @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
@@ -2238,6 +2241,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if not self.running:
             raise RuntimeError("Dispersy is not running")
+
+        self.running = False
 
         if self._bootstrap:
             self._bootstrap.stop()

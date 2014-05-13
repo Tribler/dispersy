@@ -1140,7 +1140,7 @@ class Community(object):
                                        if candidate.is_eligible_for_walk(now)]
                 for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
                     logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
-                    self.create_introduction_request(candidate, allow_sync=False)
+                    self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
                 # request peers that are eligible
                 eligible_candidates = [candidate
@@ -1149,7 +1149,7 @@ class Community(object):
                                        if candidate.is_eligible_for_walk(now)]
                 for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
                     logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
-                    self.create_introduction_request(candidate, allow_sync=False)
+                    self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
                 # wait for NAT hole punching
                 yield deferLater(reactor, 1, lambda: None)
@@ -2714,7 +2714,7 @@ class Community(object):
         """
         pass
 
-    def create_introduction_request(self, destination, allow_sync, forward=True):
+    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))

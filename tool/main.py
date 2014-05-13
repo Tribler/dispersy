@@ -81,15 +81,7 @@ def main_real(setup=None):
     context_filter.identifier = opt.log_identifier
 
     if opt.strict:
-        def unhandled_error_observer(event):
-            """
-            Stop the reactor if we get an unhandled error.
-            """
-            if event['isError']:
-                logger.warning("Strict, mode enabled, stopping the reactor")
-                # TODO(emilon): Should we try to stop dispersy too?
-                reactor.exitCode = 1
-                reactor.stop()
+        from ..util import unhandled_error_observer
         addObserver(unhandled_error_observer)
 
     # setup
