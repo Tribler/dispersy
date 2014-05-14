@@ -9,6 +9,7 @@ class SimilarityRequestPayload(Payload):
 
             for preference in preference_list:
                 assert isinstance(preference, str), type(preference)
+                assert len(preference) == 20, len(preference)
 
             self._identifier = identifier
             self._preference_list = preference_list
@@ -31,6 +32,7 @@ class SimilarityResponsePayload(Payload):
 
             for preference in preference_list:
                 assert isinstance(preference, str), type(preference)
+                assert len(preference) == 20, len(preference)
 
             for bitfield in tb_overlap:
                 assert isinstance(bitfield, tuple), type(bitfield)

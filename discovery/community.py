@@ -69,6 +69,10 @@ class TasteBuddy():
 class ActualTasteBuddy(TasteBuddy):
     def __init__(self, overlap, preferences, timestamp, candidate_mid, candidate):
         TasteBuddy.__init__(self, overlap, preferences, candidate.sock_addr)
+        assert isinstance(timestamp, (long, float)), type(timestamp)
+        assert isinstance(candidate_mid, str), type(candidate_mid)
+        assert len(candidate_mid) == 20, len(candidate_mid)
+
         self.timestamp = timestamp
         self.candidate = candidate
         self.candidate_mid = candidate_mid
@@ -100,6 +104,8 @@ class ActualTasteBuddy(TasteBuddy):
 class PossibleTasteBuddy(TasteBuddy):
     def __init__(self, overlap, preferences, timestamp, candidate_mid, received_from):
         assert isinstance(timestamp, (long, float)), type(timestamp)
+        assert isinstance(candidate_mid, str), type(candidate_mid)
+        assert len(candidate_mid) == 20, len(candidate_mid)
         assert isinstance(received_from, WalkCandidate), type(received_from)
 
         TasteBuddy.__init__(self, overlap, preferences, None)
@@ -125,8 +131,8 @@ class PossibleTasteBuddy(TasteBuddy):
 
 class DiscoveryCommunity(Community):
 
-    def __init__(self, dispersy, master, my_member, max_prefs=10, max_tbs=25):
-        super(DiscoveryCommunity, self).__init__(dispersy, master, my_member)
+    def initialize(self, attach=True, max_prefs=25, max_tbs=25):
+        super(DiscoveryCommunity, self).initialize(attach=attach)
 
         self.max_prefs = max_prefs
         self.max_tbs = max_tbs
@@ -137,27 +143,6 @@ class DiscoveryCommunity(Community):
         self.send_packet_size = 0
         self.reply_packet_size = 0
 
-    def initialize(self, *args, **kwargs):
-        super(DiscoveryCommunity, self).initialize(*args, **kwargs)
-        self._resolve_bootstrap_candidates()
-
-    def _resolve_bootstrap_candidates(self):
-        """
-        Resolve all bootstrap candidates within TIMEOUT seconds or fail.
-
-        When TIMEOUT is larger than 0.0 we first attempts to resolve the bootstrap candidates while
-        blocking for at most TIMEOUT seconds, returning True when successful.
-
-        When TIMEOUT is 0.0 or when the bootstrap candidates were not all resolved within TIMEOUT
-        seconds we will return False and schedule a retry every 300 seconds until all bootstrap
-        candidates are successfully resolved.
-
-        @param timeout: Number of maximum seconds to wait.
-        @type timeout: float
-
-        @return: True when all bootstrap candidates are resolved, otherwise False.
-        @rtype: boolean
-        """
         def on_results(success):
             assert isinstance(success, bool), type(success)
 
@@ -173,7 +158,6 @@ class DiscoveryCommunity(Community):
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
         self.bootstrap.resolve_until_success(now=True, callback=on_results)
-        return self.bootstrap.are_resolved
 
     @classmethod
     def get_master_members(cls, dispersy):
@@ -273,10 +257,10 @@ class DiscoveryCommunity(Community):
         assert isinstance(mid, str)
         assert len(mid) == 20
 
-        print >> sys.stderr, long(time()), "DiscoveryCommunity: current tastebuddy list", len(self.taste_buddies), [tb.candidate_mid for tb in self.taste_buddies]
+#        print >> sys.stderr, long(time()), "DiscoveryCommunity: current tastebuddy list", len(self.taste_buddies), [tb.candidate_mid.encode('HEX') for tb in self.taste_buddies]
 
         for tb in self.yield_taste_buddies():
-            if mid == tb.candidate.get_member().mid:
+            if mid == tb.candidate_mid:
                 return tb
 
     def reset_taste_buddy(self, candidate):
@@ -381,7 +365,7 @@ class DiscoveryCommunity(Community):
             cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload))
 
             if DEBUG_VERBOSE:
-                print >> sys.stderr, long(time()), "DiscoveryCommunity: create similarity request for", destination, "with identifier", cache.number
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: create similarity request for", destination, "with identifier", cache.number, len(payload)
 
             self.send_similarity_request(destination, cache.number, payload)
             return True
@@ -395,8 +379,8 @@ class DiscoveryCommunity(Community):
         if self._dispersy._forward([request]):
             self.send_packet_size += len(request.packet)
 
-            if DEBUG_VERBOSE:
-                print >> sys.stderr, long(time()), "DiscoveryCommunity: sending similarity request to", destination, "containing", payload
+            if DEBUG:
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: sending similarity request to", destination, "containing", [preference.encode('HEX') for preference in payload]
 
             return True
         return False
@@ -433,14 +417,14 @@ class DiscoveryCommunity(Community):
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
         overlap_count = len(set(self.my_preferences()) & set(his_preferences))
-        self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member, message.candidate)])
+        self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, message.candidate)])
 
         # Determine overlap for top taste buddies.
         bitfields = []
         for tb in list(self.yield_taste_buddies())[:self.max_tbs]:
             # Size of the bitfield is fixed and set to 4 bytes.
             bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
-            bitfields.append((tb.candidate_mid.mid, bitfield))
+            bitfields.append((tb.candidate_mid, bitfield))
 
         return bitfields
 
@@ -474,7 +458,7 @@ class DiscoveryCommunity(Community):
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
         overlap_count = len(set(self.my_preferences()) & his_preferences)
-        self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member, message.candidate)])
+        self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member.mid, message.candidate)])
 
         # Update possible taste buddies.
         request = self._request_cache.pop(u"similarity", message.payload.identifier)
@@ -534,13 +518,6 @@ class DiscoveryCommunity(Community):
     def get_tb_or_candidate_mid(self, mid):
         tb = self.is_taste_buddy_mid(mid)
         if tb:
-            return tb.candidate
-
-        # no exact match, see if this is a friend
-        _mid = bytes_to_long(mid)
-        tbs = [tb for tb in self.yield_taste_buddies() if tb.does_overlap(_mid)]
-        if tbs:
-            tb = choice(tbs)
             return tb.candidate
 
         return self.get_candidate_mid(mid)
