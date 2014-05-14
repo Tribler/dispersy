@@ -45,9 +45,9 @@ class TasteBuddy():
         self.preferences = preferences
         self.sock_addr = sock_addr
 
-    def update_overlap(self, other):
+    def update_overlap(self, other, compute_overlap):
         self.preferences = self.preferences | other.preferences
-        self.overlap = len(self.preferences)
+        self.overlap = compute_overlap(self.preferences)
 
     def does_overlap(self, preference):
         return preference in self.preferences
@@ -206,7 +206,7 @@ class DiscoveryCommunity(Community):
                     if DEBUG_VERBOSE:
                         print >> sys.stderr, long(time()), "DiscoveryCommunity: new taste buddy? no, equal to", new_taste_buddy, taste_buddy
 
-                    taste_buddy.update_overlap(new_taste_buddy)
+                    taste_buddy.update_overlap(new_taste_buddy, self.compute_overlap)
                     new_taste_buddies.remove(new_taste_buddy)
                     break
 
@@ -287,7 +287,7 @@ class DiscoveryCommunity(Community):
 
             for i, possible in enumerate(self.possible_taste_buddies):
                 if possible == new_possible:
-                    new_possible.update_overlap(possible)
+                    new_possible.update_overlap(possible, self.compute_overlap)
 
                     # replace in list
                     self.possible_taste_buddies[i] = new_possible
@@ -416,17 +416,21 @@ class DiscoveryCommunity(Community):
 
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
-        overlap_count = len(set(self.my_preferences()) & set(his_preferences))
+        overlap_count = self.compute_overlap(his_preferences)
         self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, message.candidate)])
 
         # Determine overlap for top taste buddies.
         bitfields = []
-        for tb in list(self.yield_taste_buddies())[:self.max_tbs]:
+        sorted_tbs = sorted([self.compute_overlap(tb.preferences) for tb in self.taste_buddies])
+        for tb in sorted_tbs[:self.max_tbs]:
             # Size of the bitfield is fixed and set to 4 bytes.
             bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
             bitfields.append((tb.candidate_mid, bitfield))
 
         return bitfields
+
+    def compute_overlap(self, his_prefs, my_prefs=None):
+        return len(set(his_prefs) & set(my_prefs or self.my_preferences()))
 
     def check_similarity_response(self, messages):
         for message in messages:
