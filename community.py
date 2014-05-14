@@ -1427,7 +1427,7 @@ class Community(object):
 
                     if replace:
                         self.remove_candidate(candidate.sock_addr)
-                        self._candidates[sock_addr] = candidate = self.create_or_update_walkcandidate(sock_addr, candidate.lan_address, candidate.wan_address, candidate.tunnel, candidate.connection_type)
+                        self._candidates[sock_addr] = candidate = self.create_or_update_walkcandidate(sock_addr, candidate.lan_address, candidate.wan_address, candidate.tunnel, candidate.connection_type, candidate)
                     break
 
             else:
@@ -1461,15 +1461,17 @@ class Community(object):
             candidate = self.create_candidate(message.candidate.sock_addr, message.candidate.tunnel, source_lan_address, source_wan_address, message.payload.connection_type)
             return candidate
 
-    def create_or_update_walkcandidate(self, sock_addr, lan_address, wan_address, tunnel, connection_type):
+    def create_or_update_walkcandidate(self, sock_addr, lan_address, wan_address, tunnel, connection_type, candidate=None):
         lan_address, wan_address = self._dispersy.estimate_lan_and_wan_addresses(sock_addr, lan_address, wan_address)
 
-        candidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
-        if candidate:
-            candidate.update(tunnel, lan_address, wan_address, connection_type)
+        wcandidate = self.get_candidate(sock_addr, replace=True, lan_address=lan_address)
+        if wcandidate:
+            wcandidate.update(tunnel, lan_address, wan_address, connection_type)
         else:
-            candidate = self.create_candidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
-        return candidate
+            wcandidate = self.create_candidate(sock_addr, tunnel, lan_address, wan_address, connection_type)
+        if candidate:
+            wcandidate.merge(candidate)
+        return wcandidate
 
     def add_candidate(self, candidate):
         assert isinstance(candidate, WalkCandidate), type(candidate)
@@ -2390,12 +2392,9 @@ class Community(object):
         # make all candidates available for introduction
         #
         for message in messages:
-            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, message.payload.connection_type)
+            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, message.payload.connection_type, message.candidate)
             candidate.stumble(now)
             message._candidate = candidate
-
-            # associate member, we've just upgraded to a walk_candidate hence we need to call associate here
-            candidate.associate(message.authentication.member)
 
             # apply vote to determine our WAN address
             self._dispersy.wan_address_vote(message.payload.destination_address, candidate)
@@ -2524,7 +2523,7 @@ class Community(object):
 
         for message in messages:
             payload = message.payload
-            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address, message.candidate.tunnel, payload.connection_type)
+            candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, payload.source_lan_address, payload.source_wan_address, message.candidate.tunnel, payload.connection_type, message.candidate)
             candidate.walk_response(now)
 
             self.filter_duplicate_candidate(candidate)
@@ -2781,7 +2780,7 @@ class Community(object):
             cache.on_puncture()
 
             if not (message.payload.source_lan_address == ("0.0.0.0", 0) or message.payload.source_wan_address == ("0.0.0.0", 0)):
-                candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, u"unknown")
+                candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, u"unknown", message.candidate)
                 candidate.intro(now)
 
                 logger.debug("received punture from %s", candidate)

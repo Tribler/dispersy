@@ -3,7 +3,7 @@ from ..payload import Payload, IntroductionRequestPayload
 
 class SimilarityRequestPayload(Payload):
     class Implementation(Payload.Implementation):
-        def __init__(self, meta, identifier, preference_list):
+        def __init__(self, meta, identifier, lan_address, wan_address, connection_type, preference_list):
             assert isinstance(identifier, int), type(identifier)
             assert not preference_list or isinstance(preference_list, (list, tuple)), type(preference_list)
 
@@ -13,10 +13,25 @@ class SimilarityRequestPayload(Payload):
 
             self._identifier = identifier
             self._preference_list = preference_list
+            self._lan_address = lan_address
+            self._wan_address = wan_address
+            self._connection_type = connection_type
 
         @property
         def identifier(self):
             return self._identifier
+
+        @property
+        def lan_address(self):
+            return self._lan_address
+
+        @property
+        def wan_address(self):
+            return self._wan_address
+
+        @property
+        def connection_type(self):
+            return self._connection_type
 
         @property
         def preference_list(self):

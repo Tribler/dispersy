@@ -72,6 +72,7 @@ class ActualTasteBuddy(TasteBuddy):
         assert isinstance(timestamp, (long, float)), type(timestamp)
         assert isinstance(candidate_mid, str), type(candidate_mid)
         assert len(candidate_mid) == 20, len(candidate_mid)
+        assert isinstance(candidate, WalkCandidate), type(candidate)
 
         self.timestamp = timestamp
         self.candidate = candidate
@@ -93,7 +94,9 @@ class ActualTasteBuddy(TasteBuddy):
             return self.candidate_mid == other.mid
 
         elif isinstance(other, Candidate):
-            return self.candidate_mid == other.get_member().mid
+            if other.get_member():
+                return self.candidate_mid == other.get_member().mid
+            return self.candidate.sock_addr == other.sock_addr
 
         elif isinstance(other, tuple):
             return self.candidate.sock_addr == other
@@ -374,7 +377,7 @@ class DiscoveryCommunity(Community):
 
     def send_similarity_request(self, destination, identifier, payload):
         meta_request = self.get_meta_message(u"similarity-request")
-        request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(identifier, payload))
+        request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(identifier, self._dispersy.lan_address, self._dispersy.wan_address, self._dispersy.connection_type, payload))
 
         if self._dispersy._forward([request]):
             self.send_packet_size += len(request.packet)
@@ -411,13 +414,15 @@ class DiscoveryCommunity(Community):
             self._dispersy._send([message.candidate], [response_message])
 
     def process_similarity_request(self, message):
+        wcandidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.lan_address, message.payload.wan_address, message.candidate.tunnel, message.payload.connection_type, message.candidate)
+
         # Update actual taste buddies.
         his_preferences = message.payload.preference_list
 
         assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
         overlap_count = self.compute_overlap(his_preferences)
-        self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, message.candidate)])
+        self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, wcandidate)])
 
         # Determine overlap for top taste buddies.
         bitfields = []
@@ -508,11 +513,14 @@ class DiscoveryCommunity(Community):
         for message in messages:
             introduce_me_to = ''
             if message.payload.introduce_me_to:
+                candidate = self.get_walkcandidate(message)
+                message._candidate = candidate
+
                 if DEBUG:
-                    ctb = self.is_taste_buddy(message.candidate)
+                    ctb = self.is_taste_buddy(candidate)
                     print >> sys.stderr, "Got intro request from", ctb, ctb.overlap if ctb else 0
 
-                self.requested_introductions[candidate] = introduce_me_to = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
+                self.requested_introductions[candidate.get_member().mid] = introduce_me_to = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
 
             if DEBUG:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: got introduction request", message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-', introduce_me_to, self.requested_introductions
@@ -528,9 +536,10 @@ class DiscoveryCommunity(Community):
 
     def dispersy_get_introduce_candidate(self, exclude_candidate=None):
         if exclude_candidate:
-            if exclude_candidate in self.requested_introductions:
-                intro_me_candidate = self.requested_introductions[exclude_candidate]
-                del self.requested_introductions[exclude_candidate]
+            exclude_candidate_mid = exclude_candidate.get_member().mid
+            if exclude_candidate_mid in self.requested_introductions:
+                intro_me_candidate = self.requested_introductions[exclude_candidate_mid]
+                del self.requested_introductions[exclude_candidate_mid]
                 return intro_me_candidate
 
         return Community.dispersy_get_introduce_candidate(self, exclude_candidate)

@@ -1,6 +1,7 @@
 from struct import pack, unpack_from
 from random import choice, sample
 from binascii import hexlify, unhexlify
+from socket import inet_ntoa, inet_aton
 
 from ..message import DropPacket
 from ..conversion import BinaryConversion
@@ -27,8 +28,11 @@ class DiscoveryConversion(BinaryConversion):
 
     def _encode_similarity_request(self, message):
         preference_list = message.payload.preference_list
-        fmt = "!H" + "20s"*len(preference_list)
-        packet = pack(fmt, message.payload.identifier, *preference_list)
+        peer_info = [inet_aton(message.payload.lan_address[0]), message.payload.lan_address[1],
+                     inet_aton(message.payload.wan_address[0]), message.payload.wan_address[1],
+                     self._encode_connection_type_map[message.payload.connection_type]]
+        fmt = "!H4sH4sHB" + "20s"*len(preference_list)
+        packet = pack(fmt, message.payload.identifier, *(peer_info + preference_list))
         return packet,
 
     def _decode_similarity_request(self, placeholder, offset, data):
@@ -37,6 +41,14 @@ class DiscoveryConversion(BinaryConversion):
 
         identifier, = unpack_from('!H', data, offset)
         offset += 2
+        lan_ip, lan_port = unpack_from('!4sH', data, offset)
+        lan_address = (inet_ntoa(lan_ip), lan_port)
+        offset += 6
+        wan_ip, wan_port = unpack_from('!4sH', data, offset)
+        wan_address = (inet_ntoa(wan_ip), wan_port)
+        offset += 6
+        connection_type = self._decode_connection_type_map[unpack_from('!B', data, offset)[0]]
+        offset += 1
 
         length = len(data) - offset
         if length % 20 != 0:
@@ -48,7 +60,7 @@ class DiscoveryConversion(BinaryConversion):
             preference_list = unpack_from('!' + hashpack, data, offset)
         offset += length
 
-        return offset, placeholder.meta.payload.implement(identifier, preference_list)
+        return offset, placeholder.meta.payload.implement(identifier, lan_address, wan_address, connection_type, preference_list)
 
     def _encode_similarity_response(self, message):
         preference_list = message.payload.preference_list
