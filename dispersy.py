@@ -883,7 +883,7 @@ class Dispersy(object):
                     except StopIteration:
                         pass
                     else:
-                        self._statistics.dict_inc(self._statistics.outgoing, u"-duplicate-undo-")
+                        community.statistics.increase_msg_count(u"outgoing", u"-duplicate-undo-")
                         self._endpoint.send([message.candidate], [str(proof)])
 
             else:
@@ -990,7 +990,7 @@ class Dispersy(object):
                         if (global_time, packet) < (message.distribution.global_time, message.packet):
                             # we keep PACKET (i.e. the message that we currently have in our database)
                             # reply with the packet to let the peer know
-                            self._statistics.dict_inc(self._statistics.outgoing, '-duplicate-sequence-')
+                            message.community.statistics.increase_msg_count(u"outgoing", u"-duplicate-sequence-")
                             self._endpoint.send([message.candidate], [packet])
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
@@ -1131,7 +1131,7 @@ class Dispersy(object):
                             # from this batch.
                             pass
                         else:
-                            self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-")
+                            message.community.statistics.increase_msg_count(u"outgoing", u"-sequence-")
                             self._endpoint.send([message.candidate], [str(packet)])
 
                     return DropMessage(message, "old message by member^global_time")
@@ -1232,7 +1232,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                         # apparently the sender does not have this message yet
                         if message.distribution.history_size == 1:
                             packet_id, have_packet = tim.values()[0]
-                            self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-")
+                            message.community.statistics.increase_msg_count(u"outgoing", u"-sequence-")
                             self._endpoint.send([message.candidate], [have_packet])
 
                         logger.debug("drop %s %s@%d (older than %s)", message.name, members, message.distribution.global_time, min(tim))
@@ -1428,7 +1428,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(timestamp, float), timestamp
 
         if self.running:
-            self._statistics.received_count += len(packets)
+            self._statistics.total_received += len(packets)
 
             # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
             # for identities we have already received but not processed yet. (248 == identity message ID)
@@ -1445,8 +1445,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                     packets = list(iterator)
                     candidates = set([candidate for candidate, _ in packets])
                     logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
-                    self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
-                    self._statistics.drop_count += 1
+                    self._statistics.msg_statistics.increase_count(
+                        u"drop", u"_convert_packets_into_batch:unknown community")
         else:
             logger.info("dropping %d packets as dispersy is not running", len(packets))
 
@@ -1687,8 +1687,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("commit user generated message")
                 self._database.commit()
 
-                self._statistics.created_count += my_messages
-                self._statistics.dict_inc(self._statistics.created, messages[0].meta.name, my_messages)
+                for message in messages:
+                    if message.authentication.member != message.community.my_member:
+                        continue
+                    message.community.statistics.increase_msg_count(u"created", message.meta.name)
 
         if forward:
             return self._forward(messages)
@@ -1798,7 +1800,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if messages_send:
             for message in messages:
-                self._statistics.dict_inc(self._statistics.outgoing, message.meta.name, len(candidates))
+                message.community.statistics.increase_msg_count(
+                    u"outgoing", message.meta.name, len(candidates))
 
         return messages_send
 
@@ -2225,9 +2228,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
             summary.debug("walk-attempt %d; success %d; invalid %d",
-                          self._statistics.walk_attempt,
-                          self._statistics.walk_success,
-                          self._statistics.walk_invalid_response_identifier)
+                self._statistics.walk_statistics.attempt_count,
+                self._statistics.walk_statistics.success_count,
+                self._statistics.walk_statistics.invalid_response_identifier_count)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":

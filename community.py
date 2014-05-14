@@ -253,7 +253,19 @@ class Community(object):
         # _pending_tasks contains all pending calls that should be removed when the community is unloaded.
         self._pending_tasks = {}
 
-    def initialize(self):
+        self._statistics = CommunityStatistics(self)
+
+    def initialize(self, attach=True):
+        """
+        Loading, or joining an existing community can be done by calling the constructor.
+        Creating a new instance of a community needs to use the create_community() call.
+
+        @param master: The master member that identifies the community.
+        @type master: DummyMember or Member
+
+        @param my_member: The my member that identifies you in this community.
+        @type my_member: Member
+        """
         assert isInIOThread()
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
@@ -386,7 +398,7 @@ class Community(object):
         self._walk_candidates = self._iter_categories([u'walk', u'stumble', u'intro'])
 
         # statistics...
-        self._statistics = CommunityStatistics(self)
+        self._statistics.update()
 
         # start walker, if needed
         if self.dispersy_enable_candidate_walker:
@@ -1466,7 +1478,7 @@ class Community(object):
 
         if candidate.sock_addr not in self._candidates:
             self._candidates[candidate.sock_addr] = candidate
-            self._dispersy.statistics.total_candidates_discovered += 1
+            self._statistics.increase_discovered_candidates()
 
     def add_discovered_candidate(self, d_candidate):
         """
@@ -1846,12 +1858,10 @@ class Community(object):
     def _drop(self, drop, packet, candidate):
         logger.warning("drop a %d byte packet %s from %s", len(packet), drop, candidate)
         if isinstance(drop, DropPacket):
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "drop_packet:%s" % drop)
-            self._dispersy._statistics.drop_count += 1
+            self._statistics.increase_msg_count(u"drop", u"drop_packet:%s" % drop)
 
         elif isinstance(drop, DropMessage):
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "drop_message:%s" % drop)
-            self._dispersy._statistics.drop_count += 1
+            self._statistics.increase_msg_count(u"drop", u"drop_message:%s" % drop)
 
     def _delay(self, match_info, delay, packet, candidate):
         assert len(match_info) == 4, match_info
@@ -1877,16 +1887,16 @@ class Community(object):
 
         if send_request:
             delay.send_request(self, candidate)
-            self._dispersy._statistics.delay_send += 1
+            self._statistics.increase_delay_msg_count(u"send")
 
         logger.debug("delay a %d byte packet/message (%s) from %s", len(packet), delay, candidate)
-        self._dispersy._statistics.delay_count += 1
+        self._statistics.increase_delay_msg_count(u"received")
 
         if isinstance(delay, DelayMessage):
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "delay_message:%s" % delay)
+            self._statistics.increase_msg_count(u"delay", u"delay_message:%s" % delay)
 
         elif isinstance(delay, DelayPacket):
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.delay, "delay_packet:%s" % delay)
+            self._statistics.increase_msg_count(u"delay", u"delay_packet:%s" % delay)
             delay.delayed = packet
             delay.candidate = candidate
 
@@ -1907,7 +1917,7 @@ class Community(object):
                         delayed_keys.remove(key)
 
                         if len(delayed_keys) == 0 or delayed.resume_immediately:
-                            self.dispersy.statistics.delay_success += 1
+                            self._statistics.increase_delay_msg_count(u"success")
                             self._remove_delayed(delayed)
                             succeeded.add(delayed)
         for delayed in succeeded:
@@ -1927,10 +1937,8 @@ class Community(object):
             if now > delayed.timestamp + 10:
                 self._remove_delayed(delayed)
                 delayed.on_timeout()
-                self.dispersy.statistics.delay_timeout += 1
-                self._dispersy._statistics.drop_count += 1
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop,
-                                                    "delay_timeout:%s" % delayed)
+                self._statistics.increase_delay_msg_count(u"timeout")
+                self._statistics.increase_msg_count(u"drop", u"delay_timeout:%s" % delayed)
 
     def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
         """
@@ -1973,8 +1981,8 @@ class Community(object):
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.drop, "convert_packets_into_batch:unknown conversion", len(cur_packets))
-                self._dispersy._statistics.drop_count += len(cur_packets)
+                self._statistics.increase_msg_count(
+                    u"drop", u"convert_packets_into_batch:unknown conversion", len(cur_packets))
 
     def _process_message_batch(self, meta):
         """
@@ -2142,9 +2150,7 @@ class Community(object):
 
         # store to disk and update locally
         if self._dispersy.store_update_forward(possibly_messages, True, True, False):
-
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.success, meta.name, len(messages))
-            self._dispersy._statistics.success_count += len(messages)
+            self._statistics.increase_msg_count(u"success", meta.name, len(messages))
 
             # tell what happened
             debug_end = time()
@@ -2465,13 +2471,13 @@ class Community(object):
 
                 if packets:
                     logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-sync-", len(packets))
+                    self._statistics.increase_msg_count(u"outgoing", u"-sync-", len(packets))
                     self._dispersy._endpoint.send([message.candidate], packets)
 
     def check_introduction_response(self, messages):
         for message in messages:
             if not self.request_cache.has(u"introduction-request", message.payload.identifier):
-                self._dispersy._statistics.walk_invalid_response_identifier += 1
+                self._statistics.walk_statistics.increase_count(u"invalid_response_identifier")
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2519,8 +2525,7 @@ class Community(object):
             self._dispersy.wan_address_vote(payload.destination_address, candidate)
 
             # increment statistics only the first time
-            self._dispersy._statistics.walk_success += 1
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.incoming_introduction_response, candidate.sock_addr)
+            self._statistics.walk_statistics.increase_count(u"success", candidate_addr=candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
@@ -2620,8 +2625,7 @@ class Community(object):
             else:
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
-            self._dispersy.statistics.walk_attempt += 1
-            self._dispersy._statistics.dict_inc(self._dispersy.statistics.outgoing_introduction_request, destination.sock_addr)
+            self.statistics.walk_statistics.increase_count(u"attempt", candidate_addr=destination.sock_addr)
 
             self._dispersy._forward([request])
 
@@ -2787,7 +2791,8 @@ class Community(object):
                     pass
 
             if responses:
-                self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-missing-message", len(responses))
+                self._statistics.increase_msg_count(
+                    u"outgoing", u"-missing-message", len(responses))
                 self._dispersy._endpoint.send([candidate], responses)
             else:
                 logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
@@ -2872,7 +2877,8 @@ class Community(object):
 
                 if packets:
                     logger.debug("responding with %d identity messages", len(packets))
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-dispersy-identity", len(packets))
+                    self._statistics.increase_msg_count(
+                        u"outgoing", u"-dispersy-identity", len(packets))
                     self._dispersy._endpoint.send([message.candidate], packets)
 
                 else:
@@ -2971,7 +2977,7 @@ class Community(object):
                                  msg.distribution.sequence_number,
                                  candidate)
 
-            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-sequence-", len(packets))
+            self._statistics.increase_msg_count(u"outgoing", u"-sequence-", len(packets))
             self._dispersy._endpoint.send([candidate], packets)
 
     def create_missing_proof(self, candidate, message):
@@ -2994,7 +3000,7 @@ class Community(object):
                 allowed, proofs = self.timeline.check(msg)
                 if allowed and proofs:
                     logger.debug("we found %d packets containing proof for %s", len(proofs), message.candidate)
-                    self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, u"-proof-", len(proofs))
+                    self._statistics.increase_msg_count(u"outgoing", u"-proof-", len(proofs))
                     self._dispersy._endpoint.send([message.candidate], [proof.packet for proof in proofs])
 
                 else:
@@ -3295,7 +3301,7 @@ class Community(object):
                             message.payload.process_undo = False
                             yield message
                             # the sender apparently does not have the lower dispersy-undo message, lets give it back
-                            self._dispersy._statistics.dict_inc(self._dispersy._statistics.outgoing, db_msg.name)
+                            self._statistics.increase_msg_count(u"outgoing", db_msg.name)
                             self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
 
                             yield DispersyDuplicatedUndo(db_msg, message)
@@ -3568,5 +3574,5 @@ class HardKilledCommunity(Community):
 
     def on_introduction_request(self, messages):
         if self._destroy_community_packet:
-            self._dispersy.statistics.dict_inc(self._dispersy.statistics.outgoing, u"-destroy-community")
+            self.statistics.increase_msg_count(u"outgoing", u"-destroy-community")
             self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])

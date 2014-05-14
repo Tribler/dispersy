@@ -106,7 +106,8 @@ class IntroductionRequestCache(RandomNumberCache):
 
             logger.debug("walker timeout for %s", self.helper_candidate)
 
-            self.community.dispersy.statistics.dict_inc(self.community.dispersy.statistics.walk_fail, self.helper_candidate.sock_addr)
+            self.community.dispersy.statistics.walk_statistics.increase_count(
+                u"failure", candidate_addr=self.helper_candidate.sock_addr)
 
             # set the walk repsonse to be invalid
             self.helper_candidate.walk_response(-1.0)
