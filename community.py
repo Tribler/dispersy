@@ -1023,6 +1023,9 @@ class Community(object):
         Unload a single community.
         """
         assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks.itervalues()]), self._pending_tasks
+
+        self.purge_batch_cache()
+
         # cancel all pending tasks
         for key in self._pending_tasks.keys():
             self.cancel_pending_task(key)
