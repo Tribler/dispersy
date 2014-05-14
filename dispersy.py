@@ -2063,7 +2063,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # OperationalError: database is locked
             logger.exception("%s", exception)
 
-    def start(self):
+    def start(self, autoload_discovery=True):
         """
         Starts Dispersy.
 
@@ -2104,10 +2104,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                         self._database.file_path, self._endpoint.get_address()[1])
             self.running = True
 
-            # Load DiscoveryCommunity
-            logger.info("Dispersy core loading DiscoveryCommunity")
-            # TODO: pass None instead of new member, let community decide if we need a new member or not.
-            self.define_auto_load(DiscoveryCommunity, self.get_new_member(), load=True)
+            if autoload_discovery:
+                # Load DiscoveryCommunity
+                logger.info("Dispersy core loading DiscoveryCommunity")
+                # TODO: pass None instead of new member, let community decide if we need a new member or not.
+                self.define_auto_load(DiscoveryCommunity, self.get_new_member(), load=True)
             return True
 
         else:
