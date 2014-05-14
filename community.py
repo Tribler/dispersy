@@ -2520,7 +2520,6 @@ class Community(object):
 
             # increment statistics only the first time
             self._dispersy._statistics.walk_success += 1
-
             self._dispersy._statistics.dict_inc(self._dispersy._statistics.incoming_introduction_response, candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
@@ -2622,8 +2621,6 @@ class Community(object):
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
             self._dispersy.statistics.walk_attempt += 1
-            if isinstance(destination, BootstrapCandidate):
-                self._dispersy.statistics.walk_bootstrap_attempt += 1
             self._dispersy._statistics.dict_inc(self._dispersy.statistics.outgoing_introduction_request, destination.sock_addr)
 
             self._dispersy._forward([request])

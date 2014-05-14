@@ -2224,12 +2224,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if summary.isEnabledFor(logging.DEBUG):
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d",
+            summary.debug("walk-attempt %d; success %d; invalid %d",
                           self._statistics.walk_attempt,
                           self._statistics.walk_success,
-                          self._statistics.walk_invalid_response_identifier,
-                          self._statistics.walk_bootstrap_attempt,
-                          self._statistics.walk_bootstrap_success)
+                          self._statistics.walk_invalid_response_identifier)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":

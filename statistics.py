@@ -95,8 +95,6 @@ class DispersyStatistics(Statistics):
 
         self.walk_attempt = 0
         self.walk_success = 0
-        self.walk_bootstrap_attempt = 0
-        self.walk_bootstrap_success = 0
         self.walk_invalid_response_identifier = 0
 
         self.wan_address = None
@@ -190,8 +188,6 @@ class DispersyStatistics(Statistics):
 
         self.walk_attempt = 0
         self.walk_success = 0
-        self.walk_bootstrap_attempt = 0
-        self.walk_bootstrap_success = 0
 
         if self.are_debug_statistics_enabled():
             self.drop = defaultdict(int)

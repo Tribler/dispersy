@@ -89,12 +89,6 @@ class TestOverlay(DispersyTestFunc):
             info.diff = now - begin
             info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.itervalues()]
             info.verified_candidates = [(candidate, candidate.get_category(now)) for candidate in community.dispersy_yield_verified_candidates()]
-            info.bootstrap_attempt = self._dispersy.statistics.walk_bootstrap_attempt
-            info.bootstrap_success = self._dispersy.statistics.walk_bootstrap_success
-            info.bootstrap_ratio = 100.0 * info.bootstrap_success / info.bootstrap_attempt if info.bootstrap_attempt else 0.0
-            info.candidate_attempt = self._dispersy.statistics.walk_attempt - self._dispersy.statistics.walk_bootstrap_attempt
-            info.candidate_success = self._dispersy.statistics.walk_success - self._dispersy.statistics.walk_bootstrap_success
-            info.candidate_ratio = 100.0 * info.candidate_success / info.candidate_attempt if info.candidate_attempt else 0.0
             info.lan_address = self._dispersy.lan_address
             info.wan_address = self._dispersy.wan_address
             info.connection_type = self._dispersy.connection_type
@@ -107,8 +101,6 @@ class TestOverlay(DispersyTestFunc):
                          len([_ for _, category in info.candidates if category == u"stumble"]),
                          len([_ for _, category in info.candidates if category == u"intro"]),
                          len([_ for _, category in info.candidates if category is None]))
-            summary.debug("bootstrap walking: %d/%d ~%.1f%%", info.bootstrap_success, info.bootstrap_attempt, info.bootstrap_ratio)
-            summary.debug("candidate walking: %d/%d ~%.1f%%", info.candidate_success, info.candidate_attempt, info.candidate_ratio)
 
         helper_requests = defaultdict(lambda: defaultdict(int))
         helper_responses = defaultdict(lambda: defaultdict(int))
@@ -143,19 +135,15 @@ class TestOverlay(DispersyTestFunc):
 
         # write graph statistics
         with open("%s_connections.txt" % cid_hex, "w+") as handle:
-            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
+            handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
             for info in history:
-                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
+                handle.write("%f   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
                         info.diff,
                         len(info.verified_candidates),
                         len([_ for _, category in info.candidates if category == u"walk"]),
                         len([_ for _, category in info.candidates if category == u"stumble"]),
                         len([_ for _, category in info.candidates if category == u"intro"]),
                         len([_ for _, category in info.candidates if category is None]),
-                        info.bootstrap_attempt,
-                        info.bootstrap_success,
-                        info.candidate_attempt,
-                        info.candidate_success,
                         info.incoming_walks,
                         "%s:%d" % info.lan_address,
                         "%s:%d" % info.wan_address,
@@ -173,8 +161,8 @@ class TestOverlay(DispersyTestFunc):
             info = history[-1]
             import socket
 
-            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES B_ATTEMPTS B_SUCCESSES C_ATTEMPTS C_SUCCESSES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
-            handle.write("%f \"%s\" %s %f %f %f %f %f %d %d %d %d %d %s %s \"%s\"\n" % (
+            handle.write("TIMESTAMP HOSTNAME CID_HEX AVG_VERIFIED_CANDIDATES AVG_WALK_CANDIDATES AVG_STUMBLE_CANDIDATES AVG_INTRO_CANDIDATES AVG_NONE_CANDIDATES INCOMING_WALKS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
+            handle.write("%f \"%s\" %s %f %f %f %f %f %d %s %s \"%s\"\n" % (
                     time(),
                     socket.gethostname(),
                     cid_hex,
@@ -183,10 +171,6 @@ class TestOverlay(DispersyTestFunc):
                     average_stumble_candidates,
                     average_intro_candidates,
                     average_none_candidates,
-                    info.bootstrap_attempt,
-                    info.bootstrap_success,
-                    info.candidate_attempt,
-                    info.candidate_success,
                     info.incoming_walks,
                     "%s:%d" % info.lan_address,
                     "%s:%d" % info.wan_address,
