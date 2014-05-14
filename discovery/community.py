@@ -90,16 +90,16 @@ class ActualTasteBuddy(TasteBuddy):
             return self.sock_addr == other.sock_addr
 
         elif isinstance(other, Member):
-            return other in self.candidate.get_members()
+            return self.candidate_mid == other.mid
 
         elif isinstance(other, Candidate):
-            return self.candidate.sock_addr == other.sock_addr
+            return self.candidate_mid == other.get_member().mid
 
         elif isinstance(other, tuple):
             return self.candidate.sock_addr == other
 
     def __str__(self):
-        return "ATB_%d_%s_%s_%s" % (self.timestamp, self.overlap, self.preferences, self.candidate)
+        return "ATB_%d_%s_%s_%s" % (self.timestamp, self.overlap, self.candidate_mid.encode('HEX'), self.candidate)
 
 class PossibleTasteBuddy(TasteBuddy):
     def __init__(self, overlap, preferences, timestamp, candidate_mid, received_from):
@@ -308,7 +308,7 @@ class DiscoveryCommunity(Community):
             too_old = self.possible_taste_buddies[i].time_remaining() == 0
             is_tb = self.is_taste_buddy_mid(self.possible_taste_buddies[i].candidate_mid)
 
-            if to_old or is_tb:
+            if too_old or is_tb:
                 if DEBUG:
                     print >> sys.stderr, long(time()), "DiscoveryCommunity: removing possible tastebuddy", long(time()), too_old, is_tb, self.possible_taste_buddies[i]
                 self.possible_taste_buddies.pop(i)
@@ -421,8 +421,8 @@ class DiscoveryCommunity(Community):
 
         # Determine overlap for top taste buddies.
         bitfields = []
-        sorted_tbs = sorted([self.compute_overlap(tb.preferences) for tb in self.taste_buddies])
-        for tb in sorted_tbs[:self.max_tbs]:
+        sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies], reverse=True)
+        for _, tb in sorted_tbs[:self.max_tbs]:
             # Size of the bitfield is fixed and set to 4 bytes.
             bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
             bitfields.append((tb.candidate_mid, bitfield))
@@ -453,6 +453,9 @@ class DiscoveryCommunity(Community):
 
             self.process_similarity_response(message)
             self.reply_packet_size += len(message.packet)
+
+            destination, introduce_me_to = self.get_most_similar(message.candidate)
+            self.send_introduction_request(destination, introduce_me_to)
 
     def process_similarity_response(self, message):
         # Update actual taste buddies.
@@ -505,17 +508,14 @@ class DiscoveryCommunity(Community):
         for message in messages:
             introduce_me_to = ''
             if message.payload.introduce_me_to:
-                candidate = self.get_walkcandidate(message)
-                message._candidate = candidate
-
                 if DEBUG:
-                    ctb = self.is_taste_buddy(candidate)
-                    print >> sys.stderr, "Got intro request from", ctb, ctb.overlap
+                    ctb = self.is_taste_buddy(message.candidate)
+                    print >> sys.stderr, "Got intro request from", ctb, ctb.overlap if ctb else 0
 
                 self.requested_introductions[candidate] = introduce_me_to = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
 
             if DEBUG:
-                print >> sys.stderr, long(time()), "DiscoveryCommunity: got introduction request", message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '', introduce_me_to, self.requested_introductions
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: got introduction request", message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-', introduce_me_to, self.requested_introductions
 
         self._disp_intro_handler(messages)
 
