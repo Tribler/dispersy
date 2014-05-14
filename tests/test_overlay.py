@@ -95,7 +95,6 @@ class TestOverlay(DispersyTestFunc):
             info.candidate_attempt = self._dispersy.statistics.walk_attempt - self._dispersy.statistics.walk_bootstrap_attempt
             info.candidate_success = self._dispersy.statistics.walk_success - self._dispersy.statistics.walk_bootstrap_success
             info.candidate_ratio = 100.0 * info.candidate_success / info.candidate_attempt if info.candidate_attempt else 0.0
-            info.incoming_walks = self._dispersy.statistics.walk_advice_incoming_request
             info.lan_address = self._dispersy.lan_address
             info.wan_address = self._dispersy.wan_address
             info.connection_type = self._dispersy.connection_type

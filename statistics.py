@@ -99,17 +99,6 @@ class DispersyStatistics(Statistics):
         self.walk_bootstrap_success = 0
         self.walk_invalid_response_identifier = 0
 
-        # nr of outgoing introduction-request messages with payload.advice == True
-        self.walk_advice_outgoing_request = 0
-        # nr of incoming introduction-response messages that introduce a candidate
-        self.walk_advice_incoming_response = 0
-        # nr of incoming introduction-response messages that introduce a previously unknown candidate
-        self.walk_advice_incoming_response_new = 0
-        # nr of incoming introduction-request messages with payload.advice == True
-        self.walk_advice_incoming_request = 0
-        # nr of outgoing introduction-response messages that introduce a candidate
-        self.walk_advice_outgoing_response = 0
-
         self.wan_address = None
 
         # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry

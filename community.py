@@ -2374,7 +2374,6 @@ class Community(object):
         responses = []
         requests = []
         now = time()
-        self._dispersy._statistics.walk_advice_incoming_request += len(messages)
 
         #
         # make all candidates available for introduction
@@ -2408,7 +2407,6 @@ class Community(object):
 
             if introduced:
                 logger.debug("telling %s that %s exists %s", candidate, introduced, type(self))
-                self._dispersy._statistics.walk_advice_outgoing_response += 1
 
                 # create introduction response
                 responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier)))
@@ -2533,8 +2531,6 @@ class Community(object):
             lan_introduction_address = payload.lan_introduction_address
             wan_introduction_address = payload.wan_introduction_address
             if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0)):
-                self._dispersy._statistics.walk_advice_incoming_response += 1
-
                 # we need to choose either the lan or wan address to be used as the sock_addr
                 # currently we base this decision on the wan ip, if its the same as ours we're probably behind the same NAT and hence must use the lan address
                 sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._dispersy._wan_address[0] else wan_introduction_address
@@ -2626,8 +2622,8 @@ class Community(object):
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
             self._dispersy.statistics.walk_attempt += 1
-            if request.payload.advice:
-                self._dispersy.statistics.walk_advice_outgoing_request += 1
+            if isinstance(destination, BootstrapCandidate):
+                self._dispersy.statistics.walk_bootstrap_attempt += 1
             self._dispersy._statistics.dict_inc(self._dispersy.statistics.outgoing_introduction_request, destination.sock_addr)
 
             self._dispersy._forward([request])

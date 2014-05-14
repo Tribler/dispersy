@@ -2230,12 +2230,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                           self._statistics.walk_invalid_response_identifier,
                           self._statistics.walk_bootstrap_attempt,
                           self._statistics.walk_bootstrap_success)
-            summary.debug("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                          self._statistics.walk_advice_outgoing_request,
-                          self._statistics.walk_advice_incoming_response,
-                          self._statistics.walk_advice_incoming_response_new,
-                          self._statistics.walk_advice_incoming_request,
-                          self._statistics.walk_advice_outgoing_response)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
