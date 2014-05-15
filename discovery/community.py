@@ -129,7 +129,7 @@ class PossibleTasteBuddy(TasteBuddy):
         return self.candidate_mid == other.candidate_mid
 
     def __str__(self):
-        return "PTB_%d_%d_%s_%s_%s" % (self.timestamp, self.overlap, self.preferences, self.candidate_mid.encode("HEX"), self.received_from)
+        return "PTB_%d_%d_%s_%s" % (self.timestamp, self.overlap, self.candidate_mid.encode("HEX"), self.received_from)
 
     def __hash__(self):
         return hash(self.candidate_mid)
@@ -515,14 +515,11 @@ class DiscoveryCommunity(Community):
         for message in messages:
             introduce_me_to = ''
             if message.payload.introduce_me_to:
-                candidate = self.get_walkcandidate(message)
-                message._candidate = candidate
-
                 if DEBUG:
-                    ctb = self.is_taste_buddy(candidate)
+                    ctb = self.is_taste_buddy(message.candidate)
                     print >> sys.stderr, "Got intro request from", ctb, ctb.overlap if ctb else 0
 
-                self.requested_introductions[candidate.get_member().mid] = introduce_me_to = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
+                self.requested_introductions[message.candidate.get_member().mid] = introduce_me_to = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
 
             if DEBUG:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: got introduction request", message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-', introduce_me_to, self.requested_introductions
