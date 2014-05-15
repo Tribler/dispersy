@@ -372,22 +372,16 @@ class DiscoveryCommunity(Community):
             if DEBUG_VERBOSE:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: create similarity request for", destination, "with identifier", cache.number, len(payload)
 
-            self.send_similarity_request(destination, cache.number, payload)
+            meta_request = self.get_meta_message(u"similarity-request")
+            request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(cache.number, self._dispersy.lan_address, self._dispersy.wan_address, self._dispersy.connection_type, payload))
+
+            if self._dispersy._forward([request]):
+                self.send_packet_size += len(request.packet)
+
+                if DEBUG:
+                    print >> sys.stderr, long(time()), "DiscoveryCommunity: sending similarity request to", destination, "containing", [preference.encode('HEX') for preference in payload]
             return True
 
-        return False
-
-    def send_similarity_request(self, destination, identifier, payload):
-        meta_request = self.get_meta_message(u"similarity-request")
-        request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(identifier, self._dispersy.lan_address, self._dispersy.wan_address, self._dispersy.connection_type, payload))
-
-        if self._dispersy._forward([request]):
-            self.send_packet_size += len(request.packet)
-
-            if DEBUG:
-                print >> sys.stderr, long(time()), "DiscoveryCommunity: sending similarity request to", destination, "containing", [preference.encode('HEX') for preference in payload]
-
-            return True
         return False
 
     def check_similarity_request(self, messages):
@@ -407,37 +401,35 @@ class DiscoveryCommunity(Community):
         meta = self.get_meta_message(u"similarity-response")
 
         for message in messages:
-            payload = (message.payload.identifier, self.my_preferences()[:self.max_prefs], self.process_similarity_request(message))
+
+            wcandidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.lan_address, message.payload.wan_address, message.candidate.tunnel, message.payload.connection_type, message.candidate)
+
+            # Update actual taste buddies.
+            his_preferences = message.payload.preference_list
+
+            assert all(isinstance(his_preference, str) for his_preference in his_preferences)
+
+            overlap_count = self.compute_overlap(his_preferences)
+            self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, wcandidate)])
+
+            if DEBUG:
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: got similarity request from", message.candidate, overlap_count
+
+            # Determine overlap for top taste buddies.
+            bitfields = []
+            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies if tb != message.candidate], reverse=True)
+            for _, tb in sorted_tbs[:self.max_tbs]:
+                # Size of the bitfield is fixed and set to 4 bytes.
+                bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
+                bitfields.append((tb.candidate_mid, bitfield))
+
+            payload = (message.payload.identifier, self.my_preferences()[:self.max_prefs], bitfields)
             response_message = meta.impl(authentication=(self.my_member,), distribution=(self.global_time,), payload=payload)
 
             if DEBUG_VERBOSE:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: sending similarity response to", message.candidate, "containing", payload
 
             self._dispersy._send([message.candidate], [response_message])
-
-    def process_similarity_request(self, message):
-        wcandidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.lan_address, message.payload.wan_address, message.candidate.tunnel, message.payload.connection_type, message.candidate)
-
-        # Update actual taste buddies.
-        his_preferences = message.payload.preference_list
-
-        assert all(isinstance(his_preference, str) for his_preference in his_preferences)
-
-        overlap_count = self.compute_overlap(his_preferences)
-        self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, wcandidate)])
-
-        if DEBUG:
-            print >> sys.stderr, long(time()), "DiscoveryCommunity: got similarity request from", message.candidate, overlap_count
-
-        # Determine overlap for top taste buddies.
-        bitfields = []
-        sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies if tb != message.candidate], reverse=True)
-        for _, tb in sorted_tbs[:self.max_tbs]:
-            # Size of the bitfield is fixed and set to 4 bytes.
-            bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
-            bitfields.append((tb.candidate_mid, bitfield))
-
-        return bitfields
 
     def compute_overlap(self, his_prefs, my_prefs=None):
         return len(set(his_prefs) & set(my_prefs or self.my_preferences()))
@@ -461,35 +453,33 @@ class DiscoveryCommunity(Community):
             if DEBUG:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: got similarity response from", message.candidate
 
-            self.process_similarity_response(message)
+            # Update actual taste buddies.
+            payload = message.payload
+            his_preferences = set(payload.preference_list)
+
+            assert all(isinstance(his_preference, str) for his_preference in his_preferences)
+
+            overlap_count = len(set(self.my_preferences()) & his_preferences)
+            self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member.mid, message.candidate)])
+
+            # Update possible taste buddies.
+            request = self._request_cache.pop(u"similarity", message.payload.identifier)
+            if request:
+                possibles = []
+                original_list = request.preference_list
+                for candidate_mid, bitfield in message.payload.tb_overlap:
+                    tb_preferences = set([original_list[index] for index in range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
+                    possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences, time(), candidate_mid, message.candidate))
+
+                self.add_possible_taste_buddies(possibles)
+
+            elif DEBUG:
+                print >> sys.stderr, long(time()), "DiscoveryCommunity: could not get similarity requestcache for", message.payload.identifier
+
             self.reply_packet_size += len(message.packet)
 
             destination, introduce_me_to = self.get_most_similar(message.candidate)
             self.send_introduction_request(destination, introduce_me_to)
-
-    def process_similarity_response(self, message):
-        # Update actual taste buddies.
-        payload = message.payload
-        his_preferences = set(payload.preference_list)
-
-        assert all(isinstance(his_preference, str) for his_preference in his_preferences)
-
-        overlap_count = len(set(self.my_preferences()) & his_preferences)
-        self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member.mid, message.candidate)])
-
-        # Update possible taste buddies.
-        request = self._request_cache.pop(u"similarity", message.payload.identifier)
-        if request:
-            possibles = []
-            original_list = request.preference_list
-            for candidate_mid, bitfield in message.payload.tb_overlap:
-                tb_preferences = set([original_list[index] for index in range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
-                possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences, time(), candidate_mid, message.candidate))
-
-            self.add_possible_taste_buddies(possibles)
-
-        elif DEBUG:
-            print >> sys.stderr, long(time()), "DiscoveryCommunity: could not get similarity requestcache for", message.payload.identifier
 
     def send_introduction_request(self, destination, introduce_me_to=None, allow_sync=True, advice=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
