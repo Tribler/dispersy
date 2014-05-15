@@ -122,6 +122,8 @@ class PossibleTasteBuddy(TasteBuddy):
         return diff if diff > 0 else 0
 
     def __eq__(self, other):
+        if isinstance(other, Member):
+            return self.candidate_mid == other.mid
         if isinstance(other, Candidate):
             return self.received_from.sock_addr == other.sock_addr
         return self.candidate_mid == other.candidate_mid
@@ -284,7 +286,7 @@ class DiscoveryCommunity(Community):
                 assert isinstance(possible, PossibleTasteBuddy), type(possible)
 
         for new_possible in possibles:
-            if self.is_taste_buddy_mid(new_possible.candidate_mid):
+            if self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
                 possibles.remove(new_possible)
                 continue
 
@@ -426,7 +428,7 @@ class DiscoveryCommunity(Community):
 
         # Determine overlap for top taste buddies.
         bitfields = []
-        sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies], reverse=True)
+        sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies if tb != message.candidate], reverse=True)
         for _, tb in sorted_tbs[:self.max_tbs]:
             # Size of the bitfield is fixed and set to 4 bytes.
             bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
