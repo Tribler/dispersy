@@ -426,6 +426,9 @@ class DiscoveryCommunity(Community):
         overlap_count = self.compute_overlap(his_preferences)
         self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, wcandidate)])
 
+        if DEBUG:
+            print >> sys.stderr, long(time()), "DiscoveryCommunity: got similarity request from", message.candidate, overlap_count
+
         # Determine overlap for top taste buddies.
         bitfields = []
         sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb) for tb in self.taste_buddies if tb != message.candidate], reverse=True)
@@ -455,7 +458,7 @@ class DiscoveryCommunity(Community):
 
     def on_similarity_response(self, messages):
         for message in messages:
-            if DEBUG_VERBOSE:
+            if DEBUG:
                 print >> sys.stderr, long(time()), "DiscoveryCommunity: got similarity response from", message.candidate
 
             self.process_similarity_response(message)
