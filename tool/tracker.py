@@ -135,6 +135,10 @@ class TrackerCommunity(Community):
         return False
 
     @property
+    def dispersy_enable_candidate_walker_responses(self):
+        return True
+
+    @property
     def dispersy_sync_bloom_filter_strategy(self):
         # disable sync bloom filter
         return lambda request_cache: None

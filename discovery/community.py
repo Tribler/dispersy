@@ -153,12 +153,16 @@ class DiscoveryCommunity(Community):
 
             # even when success is False it is still possible that *some* addresses were resolved
             for sock_addr in self.bootstrap.candidates:
+                print >> sys.stderr, "Adding", sock_addr, "as discovered candidate"
                 self.add_discovered_candidate(Candidate(sock_addr, False))
 
             if success:
                 logger.debug("resolved all bootstrap addresses")
 
-        alternate_addresses = Bootstrap.load_addresses_from_file(os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
+        bootstrap_file = os.path.join(self._dispersy._working_directory, "bootstraptribler.txt")
+        print >> sys.stderr, "Expecting bootstrapfile at", os.path.abspath(bootstrap_file), os.path.exists(bootstrap_file)
+        alternate_addresses = Bootstrap.load_addresses_from_file(bootstrap_file)
+
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
