@@ -410,7 +410,8 @@ class Community(object):
 
         #check/sanity check the database
         self.dispersy_check_database()
-        if "--sanity-check" in sys.argv:
+        from sys import argv
+        if "--sanity-check" in argv:
             try:
                 self.dispersy.sanity_check(self)
             except ValueError:
