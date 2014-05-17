@@ -229,7 +229,7 @@ class Community(object):
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
-        assert master.cid not in dispersy._communities
+        assert master.mid not in dispersy._communities
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
