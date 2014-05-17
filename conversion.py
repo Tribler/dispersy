@@ -80,9 +80,9 @@ class Conversion(object):
         """
         Returns True when DATA can be decoded using this conversion.
         """
+        #at least a length of 23, as we need the prefix + 1 byte messagetype
         assert isinstance(data, str), type(data)
         assert len(data) >= 23
-        assert data[:22] == self._prefix
         
         return (len(data) >= 23 and data[:22] == self._prefix)
         
@@ -1226,11 +1226,10 @@ class NoDefBinaryConversion(Conversion):
         Decode a binary string into a Message instance.
         """
         assert isinstance(data, str), type(data)
-        
         if not self.can_decode_message(data):
             raise DropPacket("Cannot decode message")
         
-        return self._decode_message_map.get(data[22]).meta
+        return self._decode_message_map[data[22]].meta
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
     def decode_message(self, candidate, data, verify=True, allow_empty_signature=False):
@@ -1248,13 +1247,11 @@ class NoDefBinaryConversion(Conversion):
         assert isinstance(data, str)
         assert isinstance(verify, bool)
         assert isinstance(allow_empty_signature, bool)
-        assert len(data) >= 22
-        assert data[:22] == self._prefix, (data[:22].encode("HEX"), self._prefix.encode("HEX"))
 
         if not self.can_decode_message(data):
             raise DropPacket("Cannot decode message")
 
-        decode_functions = self._decode_message_map.get(data[22])
+        decode_functions = self._decode_message_map[data[22]]
 
         # placeholder
         placeholder = self.Placeholder(candidate, decode_functions.meta, 23, data, verify, allow_empty_signature)
