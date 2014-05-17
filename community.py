@@ -419,7 +419,7 @@ class Community(object):
         
         #add community to communities dict
         self.dispersy._communities[self.cid] = self
-        self.dispersy._statistics.dict_inc(self._statistics.attachment, community.cid)
+        self.dispersy._statistics.dict_inc(self.dispersy._statistics.attachment, community.cid)
 
     @property
     def candidates(self):
