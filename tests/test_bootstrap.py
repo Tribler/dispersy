@@ -195,7 +195,7 @@ class TestBootstrapServers(DispersyTestFunc):
         MAX_RTT = 0.5
         for _ in xrange(PING_COUNT):
             community.ping(time())
-            yield 5.0
+            sleep(5)
             community.summary()
 
         # cleanup
@@ -331,8 +331,8 @@ class TestBootstrapServers(DispersyTestFunc):
                 for member in members:
                     community.prepare_ping(member)
 
-            yield 5.0
-        yield 15.0
+            sleep(5)
+        sleep(15)
 
         logger.info("ping-ping")
         BEGIN = time()
@@ -340,13 +340,13 @@ class TestBootstrapServers(DispersyTestFunc):
             for community in communities:
                 for _ in xrange(MEMBERS / 100):
                     community.ping_from_queue(100)
-                    yield 0.1
+                    sleep(0.1)
 
             for community in communities:
                 community.summary()
         END = time()
 
-        yield 10.0
+        sleep(10)
         logger.info("--- did %d requests per community", ROUNDS * MEMBERS)
         logger.info("--- spread over %.2f seconds", END - BEGIN)
         for community in communities:
