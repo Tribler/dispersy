@@ -588,58 +588,6 @@ class Dispersy(object):
         except StopIteration:
             pass
 
-    def attach_community(self, community):
-        """
-        Add a community to the Dispersy instance.
-
-        Each community must be known to Dispersy, otherwise an incoming message will not be able to
-        be passed along to it's associated community.
-
-        In general this method is called from the Community.__init__(...) method.
-
-        @param community: The community that will be added.
-        @type community: Community
-        """
-        assert isinstance(community, Community)
-        logger.debug("%s %s", community.cid.encode("HEX"), community.get_classification())
-        assert not community.cid in self._communities
-        self._communities[community.cid] = community
-        community.dispersy_check_database()
-
-        # count the number of times that a community was attached
-        self._statistics.dict_inc(self._statistics.attachment, community.cid)
-
-        if __debug__:
-            # schedule the sanity check... it also checks that the dispersy-identity is available and
-            # when this is a create or join this message is created only after the attach_community
-            if "--sanity-check" in sys.argv:
-                try:
-                    self.sanity_check(community)
-                except ValueError:
-                    logger.exception("sanity check fail for %s", community)
-                    assert False, "One or more exceptions occurred during sanity check"
-
-    def detach_community(self, community):
-        """
-        Remove an attached community from the Dispersy instance.
-
-        Once a community is detached it will no longer receive incoming messages.
-        However, when the community is marked as auto_load a new instance of this community
-        will be created when a message for this community is received.
-
-        @param community: The community that will be added.
-        @type community: Community
-        """
-        assert isinstance(community, Community)
-        assert community.cid in self._communities
-        assert self._communities[community.cid] == community
-
-        logger.debug("Community %s %s is detached", community.cid.encode("HEX"), community.get_classification())
-        del self._communities[community.cid]
-
-        # remove any items that are left in the cache
-        community.purge_batch_cache()
-
     def reclassify_community(self, source, destination):
         """
         Change a community classification.
