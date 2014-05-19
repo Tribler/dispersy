@@ -136,8 +136,8 @@ class PossibleTasteBuddy(TasteBuddy):
 
 class DiscoveryCommunity(Community):
 
-    def initialize(self, attach=True, max_prefs=25, max_tbs=25):
-        super(DiscoveryCommunity, self).initialize(attach=attach)
+    def initialize(self, max_prefs=25, max_tbs=25):
+        super(DiscoveryCommunity, self).initialize()
 
         self.max_prefs = max_prefs
         self.max_tbs = max_tbs
@@ -166,7 +166,9 @@ class DiscoveryCommunity(Community):
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-        self._pending_tasks["bootstrap_resolution"] = self.bootstrap.resolve_until_success(now=True, callback=on_results)
+        lc = self.bootstrap.resolve_until_success(now=True, callback=on_results)
+        if lc:
+            self._pending_tasks["bootstrap_resolution"] = lc
 
     @classmethod
     def get_master_members(cls, dispersy):
