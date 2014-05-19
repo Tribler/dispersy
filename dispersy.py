@@ -2231,13 +2231,13 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 if community.get_classification() == u"PreviewChannelCommunity":
                     continue
 
-                categories = {u"walk": [], u"stumble": [], u"intro": [], None: []}
+                categories = {u"walk": [], u"stumble": [], u"intro": [], u"discovered": [], None: []}
                 for candidate in community.candidates.itervalues():
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
                 summary.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                summary.debug("--- [%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]))
+                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(categories[u"discovered"]))
 
                 for category, candidates in categories.iteritems():
                     aged = [(candidate.age(now, category), candidate) for candidate in candidates]
