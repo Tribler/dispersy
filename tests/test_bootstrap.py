@@ -5,7 +5,7 @@ from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
 
-from ..bootstrap import Bootstrap
+from ..discovery.bootstrap import Bootstrap
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity

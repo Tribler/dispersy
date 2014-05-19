@@ -6,7 +6,7 @@ from nose.twistedtools import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import blockingCallFromThread
 
-from ..bootstrap import Bootstrap
+from ..discovery.bootstrap import Bootstrap
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
