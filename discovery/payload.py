@@ -75,7 +75,8 @@ class ExtendedIntroPayload(IntroductionRequestPayload):
     class Implementation(IntroductionRequestPayload.Implementation):
 
         def __init__(self, meta, destination_address, source_lan_address, source_wan_address, advice, connection_type, sync, identifier, introduce_me_to=None):
-            IntroductionRequestPayload.Implementation.__init__(self, meta, destination_address, source_lan_address, source_wan_address, advice, connection_type, sync, identifier)
+            IntroductionRequestPayload.Implementation.__init__(
+                self, meta, destination_address, source_lan_address, source_wan_address, advice, connection_type, sync, identifier)
             if introduce_me_to:
                 assert isinstance(introduce_me_to, str), 'introduce_me_to should be str'
                 assert len(introduce_me_to) == 20, len(introduce_me_to)

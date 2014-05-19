@@ -11,10 +11,14 @@ from ..bloomfilter import BloomFilter
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
         super(DiscoveryConversion, self).__init__(community, "\x01")
-        self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), lambda message: self._encode_decode(self._encode_similarity_request, self._decode_similarity_request, message), self._decode_similarity_request)
-        self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), lambda message: self._encode_decode(self._encode_similarity_response, self._decode_similarity_response, message), self._decode_similarity_response)
-        self.define_meta_message(chr(3), community.get_meta_message(u"ping"), lambda message: self._encode_decode(self._encode_ping, self._decode_ping, message), self._decode_ping)
-        self.define_meta_message(chr(4), community.get_meta_message(u"pong"), lambda message: self._encode_decode(self._encode_pong, self._decode_pong, message), self._decode_pong)
+        self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), lambda message: self._encode_decode(
+            self._encode_similarity_request, self._decode_similarity_request, message), self._decode_similarity_request)
+        self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), lambda message: self._encode_decode(
+            self._encode_similarity_response, self._decode_similarity_response, message), self._decode_similarity_response)
+        self.define_meta_message(chr(3), community.get_meta_message(u"ping"), lambda message: self._encode_decode(
+            self._encode_ping, self._decode_ping, message), self._decode_ping)
+        self.define_meta_message(chr(4), community.get_meta_message(u"pong"), lambda message: self._encode_decode(
+            self._encode_pong, self._decode_pong, message), self._decode_pong)
 
     def _encode_similarity_request(self, message):
         preference_list = message.payload.preference_list
