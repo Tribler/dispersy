@@ -6,7 +6,6 @@ from nose.twistedtools import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import blockingCallFromThread
 
-from ..discovery.bootstrap import Bootstrap
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
@@ -29,8 +28,7 @@ class DispersyTestFunc(TestCase):
 
         self.assertFalse(reactor.getDelayedCalls())
         self._mm = None
-        # Don't load DiscoveryCommunity so it doesn't mess with the tests
-        self._mm, = self.create_nodes(autoload_discovery=False)
+        self._mm, = self.create_nodes()
 
         self._dispersy = self._mm._dispersy
         self._community = self._mm._community
@@ -50,7 +48,7 @@ class DispersyTestFunc(TestCase):
             logger.warning("Failing")
         assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
-    def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity, autoload_discovery=True):
+    def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity, autoload_discovery=False):
         @inlineCallbacks
         def _create_nodes(amount, store_identity, tunnel, communityclass, autoload_discovery):
             nodes = []

@@ -65,7 +65,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            node, = self.create_nodes(1, communityclass=Community)
+            node, = self.create_nodes(1, communityclass=Community, autoload_discovery=True)
 
             # node sends introduction request
             destination = Candidate(tracker_address, False)
@@ -112,8 +112,11 @@ class TestBootstrapServers(DispersyTestFunc):
                 self._summary = {}
                 self._hostname = {}
                 self._identifiers = {}
-                # self._pcandidates = self._dispersy._bootstrap_candidates.values()
-                self._pcandidates = [Candidate(("130.161.211.198", 6431))]
+                self._pcandidates = []
+                for community in self._dispersy.get_communities():
+                    if isinstance(community, DiscoveryCommunity):
+                        self._pcandidates = [Candidate(*sock_addr) for sock_addr in community.bootstrap.candidates]
+                # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
 
                 for candidate in self._pcandidates:
                     self._request[candidate.sock_addr] = {}
