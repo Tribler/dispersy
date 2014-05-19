@@ -24,7 +24,6 @@ class TestBootstrapServers(DispersyTestFunc):
         Runs tracker.py and connects to it.
         """
 
-        Bootstrap.enable = True
         tracker_file = "dispersy/tool/tracker.py"
         tracker_path = getcwd()
         while tracker_path:

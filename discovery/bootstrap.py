@@ -50,7 +50,6 @@ _DEFAULT_ADDRESSES = (
 
 
 class Bootstrap(object):
-    enabled = True
 
     @staticmethod
     def load_addresses_from_file(filename):
@@ -133,19 +132,18 @@ class Bootstrap(object):
 
         """
         success = False
-        if Bootstrap.enabled:
-            if self.are_resolved:
-                success = True
-            else:
-                addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
-                ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
-                for (host, port), ip in zip(addresses, ips):
-                    if ip:
-                        logger.info("Resolved %s into %s:%d", host, ip, port)
-                        self._candidates[(host, port)] = (str(ip), port)
-                        success = True
-                    else:
-                        logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
+        if self.are_resolved:
+            success = True
+        else:
+            addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
+            ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
+            for (host, port), ip in zip(addresses, ips):
+                if ip:
+                    logger.info("Resolved %s into %s:%d", host, ip, port)
+                    self._candidates[(host, port)] = (str(ip), port)
+                    success = True
+                else:
+                    logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
         returnValue(success)
 
     def resolve_until_success(self, interval=300, now=False, callback=None):
@@ -160,7 +158,7 @@ class Bootstrap(object):
                 if callback:
                     deferred.addCallback(callback)
 
-        if not self._resolution_lc and Bootstrap.enabled:
+        if not self._resolution_lc:
             self._resolution_lc = LoopingCall(resolution_lc)
             self._resolution_lc.start(interval, now)
         return self._resolution_lc

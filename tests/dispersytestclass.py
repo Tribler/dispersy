@@ -14,10 +14,6 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 
 
-# Kill bootstraping so it doesn't mess with the tests
-Bootstrap.enabled = False
-
-
 logger = get_logger(__name__)
 
 
@@ -33,7 +29,8 @@ class DispersyTestFunc(TestCase):
 
         self.assertFalse(reactor.getDelayedCalls())
         self._mm = None
-        self._mm, = self.create_nodes()
+        # Don't load DiscoveryCommunity so it doesn't mess with the tests
+        self._mm, = self.create_nodes(autoload_discovery=False)
 
         self._dispersy = self._mm._dispersy
         self._community = self._mm._community
@@ -53,16 +50,16 @@ class DispersyTestFunc(TestCase):
             logger.warning("Failing")
         assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
-    def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity):
+    def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity, autoload_discovery=True):
         @inlineCallbacks
-        def _create_nodes(amount, store_identity, tunnel, communityclass):
+        def _create_nodes(amount, store_identity, tunnel, communityclass, autoload_discovery):
             nodes = []
             for _ in range(amount):
                 # TODO(emilon): do the log observer stuff instead
                 # callback.attach_exception_handler(self.on_callback_exception)
 
                 dispersy = Dispersy(ManualEnpoint(0), u".", u":memory:")
-                dispersy.start()
+                dispersy.start(autoload_discovery=autoload_discovery)
 
                 self.dispersy_objects.append(dispersy)
 
@@ -73,4 +70,4 @@ class DispersyTestFunc(TestCase):
             logger.debug("create_nodes, nodes created: %s", nodes)
             returnValue(nodes)
 
-        return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, communityclass)
+        return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, communityclass, autoload_discovery)
