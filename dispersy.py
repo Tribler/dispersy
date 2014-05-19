@@ -119,8 +119,6 @@ class Dispersy(object):
         # Dispersy is stopped.  most of the time this contains all the generators that are used
         self._pending_tasks = {}
 
-        self._bootstrap = None
-
         self._member_cache_by_hash = OrderedDict()
 
         # our data storage
@@ -2139,9 +2137,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             raise RuntimeError("Dispersy is not running")
 
         self.running = False
-
-        if self._bootstrap:
-            self._bootstrap.stop()
 
         for name, task in self._pending_tasks.iteritems():
             logger.debug("Stopping: %s", name)

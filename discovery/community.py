@@ -166,7 +166,7 @@ class DiscoveryCommunity(Community):
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
 
-        self.bootstrap.resolve_until_success(now=True, callback=on_results)
+        self._pending_tasks["bootstrap_resolution"] = self.bootstrap.resolve_until_success(now=True, callback=on_results)
 
     @classmethod
     def get_master_members(cls, dispersy):
