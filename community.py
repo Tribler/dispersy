@@ -2477,7 +2477,7 @@ class Community(object):
     def check_introduction_response(self, messages):
         for message in messages:
             if not self.request_cache.has(u"introduction-request", message.payload.identifier):
-                self._statistics.walk_statistics.increase_count(u"invalid_response_identifier")
+                self._statistics.invalid_response_identifier_count += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
@@ -2525,7 +2525,9 @@ class Community(object):
             self._dispersy.wan_address_vote(payload.destination_address, candidate)
 
             # increment statistics only the first time
-            self._statistics.walk_statistics.increase_count(u"success", candidate_addr=candidate.sock_addr)
+            self._statistics.walk_success_count += 1
+            self._statistics.incoming_intro_count += 1
+            self._statistics.dict_inc(u"incoming_intro_dict", candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
@@ -2625,7 +2627,9 @@ class Community(object):
             else:
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
-            self.statistics.walk_statistics.increase_count(u"attempt", candidate_addr=destination.sock_addr)
+            self.statistics.walk_attemp_count += 1
+            self.statistics.outgoing_intro_count += 1
+            self.statistics.dict_inc(u"outgoing_intro_dict", destination.sock_addr)
 
             self._dispersy._forward([request])
 

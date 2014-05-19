@@ -2228,9 +2228,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
             summary.debug("walk-attempt %d; success %d; invalid %d",
-                self._statistics.walk_statistics.attempt_count,
-                self._statistics.walk_statistics.success_count,
-                self._statistics.walk_statistics.invalid_response_identifier_count)
+                self._statistics.walk_attempt_count,
+                self._statistics.walk_success_count,
+                self._statistics.invalid_response_identifier_count)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":

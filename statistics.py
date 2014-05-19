@@ -15,6 +15,8 @@ class Statistics(object):
         self._lock = RLock()
 
     def dict_inc(self, dictionary, key, value=1):
+        if not isinstance(dictionary, dict):
+            self.__getattribute__(dictionary)[key] += value
         if dictionary != None:
             with self._lock:
                 dictionary[key] += value
@@ -49,69 +51,6 @@ class Statistics(object):
     @abstractmethod
     def update(self):
         pass
-
-
-class WalkStatistics(object):
-
-    def __init__(self, incoming_intro_dict=defaultdict(int), outgoing_intro_dict=defaultdict(int)):
-        super(WalkStatistics, self).__init__()
-        self._lock = RLock()
-
-        self.attempt_count = 0
-        self.success_count = 0
-        self.failure_count = 0
-        self.failure_dict = defaultdict(int)
-        self.invalid_response_identifier_count = 0
-
-        self.incoming_intro_count = 0
-        self.incoming_intro_dict = incoming_intro_dict
-        self.outgoing_intro_count = 0
-        self.outgoing_intro_dict = outgoing_intro_dict
-
-    def __deepcopy__(self):
-        with self._lock:
-            the_copy = WalkStatistics(deepcopy(self.incoming_intro_dict), deepcopy(self.outgoing_intro_dict))
-            the_copy.attempt_count = self.attempt_count
-            the_copy.success_count = self.success_count
-            the_copy.invalid_response_identifier_count = self.invalid_response_identifier_count
-
-            the_copy.incoming_intro_count = self.incoming_intro_count
-            the_copy.outgoing_intro_count = self.outgoing_intro_count
-
-            return the_copy
-
-    def increase_count(self, category, candidate_addr=None, value=1):
-        with self._lock:
-            if category == u"attempt":
-                self.attempt_count += value
-
-                self.outgoing_intro_count += value
-                self.outgoing_intro_dict[candidate_addr] += value
-            elif category == u"success":
-                self.success_count += value
-
-                self.incoming_intro_count += value
-                self.incoming_intro_dict[candidate_addr] += value
-            elif category == u"invalid_response_identifier":
-                self.invalid_response_identifier_count += value
-            elif category == u"failure":
-                self.failure_count += value
-                self.failure_dict[candidate_addr] += value
-            else:
-                assert False, "Unexpected walk category %s" % category
-
-    def reset(self):
-        with self._lock:
-            self.attempt_count = 0
-            self.success_count = 0
-            self.failure_count = 0
-            self.failure_dict.clear()
-            self.invalid_response_identifier_count = 0
-
-            self.incoming_intro_count = 0
-            self.incoming_intro_dict.clear()
-            self.outgoing_intro_count = 0
-            self.outgoing_intro_dict.clear()
 
 
 class MessageStatistics(object):
@@ -211,7 +150,17 @@ class DispersyStatistics(Statistics):
         # nr of candidates introduced/stumbled upon
         self.total_candidates_discovered = 0
 
-        self.walk_statistics = WalkStatistics()
+        # walk statistics
+        self.walk_attempt_count = 0
+        self.walk_success_count = 0
+        self.walk_failure_count = 0
+        self.walk_failure_dict = None
+        self.invalid_response_identifier_count = 0
+
+        self.incoming_intro_count = 0
+        self.incoming_intro_dict = None
+        self.outgoing_intro_count = 0
+        self.outgoing_intro_dict = None
 
         # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
         # represents a key from the attach_runtime_statistics decorator
@@ -241,6 +190,10 @@ class DispersyStatistics(Statistics):
         if self._enabled != enable:
             self._enabled = enable
             if enable:
+                self.walk_failure_dict = defaultdict(int)
+                self.incoming_intro_dict = defaultdict(int)
+                self.outgoing_intro_dict = defaultdict(int)
+
                 self.attachment = defaultdict(int)
                 self.database = defaultdict(int)
                 self.endpoint_recv = defaultdict(int)
@@ -251,6 +204,10 @@ class DispersyStatistics(Statistics):
                 self.received_introductions = defaultdict(lambda: defaultdict(int))
 
             else:
+                self.walk_failure_dict = None
+                self.incoming_intro_dict = None
+                self.outgoing_intro_dict = None
+
                 self.attachment = None
                 self.database = None
                 self.endpoint_recv = None
@@ -286,10 +243,25 @@ class DispersyStatistics(Statistics):
         self.cur_sendqueue = self._dispersy.endpoint.cur_sendqueue
         self.start = self.timestamp = time()
 
+        # walk statistics
+        self.walk_attempt_count = 0
+        self.walk_success_count = 0
+        self.walk_failure_count = 0
+        self.walk_failure_dict = None
+        self.invalid_response_identifier_count = 0
+
+        self.incoming_intro_count = 0
+        self.incoming_intro_dict = None
+        self.outgoing_intro_count = 0
+        self.outgoing_intro_dict = None
+
         self.msg_statistics.reset()
-        self.walk_statistics.reset()
 
         if self.are_debug_statistics_enabled():
+            self.walk_failure_dict = defaultdict(int)
+            self.incoming_intro_dict = defaultdict(int)
+            self.outgoing_intro_dict = defaultdict(int)
+
             self.attachment = defaultdict(int)
             self.database = defaultdict(int)
             self.endpoint_recv = defaultdict(int)
@@ -324,7 +296,6 @@ class CommunityStatistics(Statistics):
         self.total_candidates_discovered = 0
 
         self.msg_statistics = MessageStatistics()
-        self.walk_statistics = WalkStatistics()
 
         self.sync_bloom_new = 0
         self.sync_bloom_reuse = 0
@@ -361,4 +332,3 @@ class CommunityStatistics(Statistics):
     def reset(self):
         self.total_candidates_discovered = 0
         self.msg_statistics.reset()
-        self.walk_statistics.reset()
