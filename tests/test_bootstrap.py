@@ -6,6 +6,7 @@ from time import time, sleep
 from unittest import skip, skipUnless
 
 from ..discovery.bootstrap import Bootstrap
+from ..candidate import Candidate
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
