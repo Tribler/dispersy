@@ -53,8 +53,8 @@ class Conversion(object):
         # by _prefix.
         self._prefix = dispersy_version + community_version + community.cid
         assert len(self._prefix) == 22  # when this assumption changes, we need to ensure the
-                                       # dispersy_version and community_version properties are
-                                       # returned correctly
+                                        # dispersy_version and community_version properties are
+                                        # returned correctly
 
     @property
     def community(self):
@@ -76,22 +76,23 @@ class Conversion(object):
     def prefix(self):
         return self._prefix
 
-    @abstractmethod
     def can_decode_message(self, data):
         """
         Returns True when DATA can be decoded using this conversion.
         """
+        #at least a length of 23, as we need the prefix + 1 byte messagetype
         assert isinstance(data, str), type(data)
-
+        assert len(data) >= 23
+        
+        return (len(data) >= 23 and data[:22] == self._prefix)
+        
     @abstractmethod
     def decode_meta_message(self, data):
         """
         Obtain the dispersy meta message from DATA.
         @return: Message
         """
-        assert isinstance(data, str)
-        assert len(data) >= 22
-        assert data[:22] == self._prefix
+        assert self.can_decode_message(data)
 
     @abstractmethod
     def decode_message(self, address, data, verify=True):
@@ -102,9 +103,7 @@ class Conversion(object):
 
         Returns a Message instance.
         """
-        assert isinstance(data, str)
-        assert len(data) >= 22
-        assert data[:22] == self._prefix
+        assert self.can_decode_message(data)
 
     @abstractmethod
     def can_encode_message(self, message):
@@ -122,7 +121,7 @@ class Conversion(object):
 
         Returns a binary string.
         """
-        assert isinstance(message, Message), type(message)
+        assert self.can_encode_message(message)
         assert isinstance(sign, bool), type(sign)
 
     def __str__(self):
@@ -356,7 +355,7 @@ class NoDefBinaryConversion(Conversion):
         identifier, = self._struct_H.unpack_from(data, offset)
         offset += 2
 
-        message = self._decode_message(placeholder.candidate, data[offset:], True, True)
+        message = self.decode_message(placeholder.candidate, data[offset:], True, True)
         offset = len(data)
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, identifier, message)
@@ -372,7 +371,7 @@ class NoDefBinaryConversion(Conversion):
         identifier, = self._struct_H.unpack_from(data, offset)
         offset += 2
 
-        message = self._decode_message(placeholder.candidate, data[offset:], True, True)
+        message = self.decode_message(placeholder.candidate, data[offset:], True, True)
         offset = len(data)
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, identifier, message)
@@ -1213,31 +1212,46 @@ class NoDefBinaryConversion(Conversion):
     def _decode_empty_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
+    def can_decode_message(self, data):
+        """
+        Returns True when DATA can be decoded using this conversion.
+        """
+        assert isinstance(data, str), type(data)
+        return (len(data) >= 23 and
+                data[:22] == self._prefix and
+                data[22] in self._decode_message_map)
+
+    def decode_meta_message(self, data):
+        """
+        Decode a binary string into a Message instance.
+        """
+        assert isinstance(data, str), type(data)
+        if not self.can_decode_message(data):
+            raise DropPacket("Cannot decode message")
+        
+        return self._decode_message_map[data[22]].meta
+
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
-    def _decode_message(self, candidate, data, verify, allow_empty_signature):
+    def decode_message(self, candidate, data, verify=True, allow_empty_signature=False):
         """
         Decode a binary string into a Message structure, with some
         Dispersy specific parameters.
 
         When VERIFY is True the signature(s), if applicable, are verified.  Otherwise the
         signature(s) are ignored.
-
+        
         Invalid signature(s) will cause DropPacket to be raised, except when ALLOW_EMPTY_SIGNATURE
         is True and the failed signature consist of \x00 bytes.
         """
+        assert isinstance(candidate, Candidate), candidate
         assert isinstance(data, str)
         assert isinstance(verify, bool)
         assert isinstance(allow_empty_signature, bool)
-        assert len(data) >= 22
-        assert data[:22] == self._prefix, (data[:22].encode("HEX"), self._prefix.encode("HEX"))
 
-        if len(data) < 100:
-            DropPacket("Packet is to small to decode")
+        if not self.can_decode_message(data):
+            raise DropPacket("Cannot decode message")
 
-        # meta_message
-        decode_functions = self._decode_message_map.get(data[22])
-        if decode_functions is None:
-            raise DropPacket("Unknown message code %d" % ord(data[22]))
+        decode_functions = self._decode_message_map[data[22]]
 
         # placeholder
         placeholder = self.Placeholder(candidate, decode_functions.meta, 23, data, verify, allow_empty_signature)
@@ -1268,41 +1282,6 @@ class NoDefBinaryConversion(Conversion):
         assert isinstance(placeholder.offset, (int, long))
 
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
-
-    def can_decode_message(self, data):
-        """
-        Returns True when DATA can be decoded using this conversion.
-        """
-        assert isinstance(data, str), type(data)
-        return (len(data) >= 23 and
-                data[:22] == self._prefix and
-                data[22] in self._decode_message_map)
-
-    def decode_meta_message(self, data):
-        """
-        Decode a binary string into a Message instance.
-        """
-        assert isinstance(data, str)
-        assert data[:22] == self._prefix, (data[:22].encode("HEX"), self._prefix.encode("HEX"))
-
-        if len(data) < 23:
-            raise DropPacket("Packet is to small to decode")
-
-        # meta_message
-        decode_functions = self._decode_message_map.get(data[22])
-        if decode_functions is None:
-            raise DropPacket("Unknown message code %d" % ord(data[22]))
-
-        return decode_functions.meta
-
-    def decode_message(self, candidate, data, verify=True):
-        """
-        Decode a binary string into a Message.Implementation structure.
-        """
-        assert isinstance(candidate, Candidate), candidate
-        assert isinstance(data, str), data
-        assert isinstance(verify, bool)
-        return self._decode_message(candidate, data, verify, False)
 
     def __str__(self):
         return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
