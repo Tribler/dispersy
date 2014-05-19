@@ -212,15 +212,29 @@ class Community(object):
         return community
 
     def __init__(self, dispersy, master, my_member):
+        """
+        Please never call the constructor of a community directly, always use
+        create_community or init_community.
+
+        @param dispersy: The Dispersy object.
+        @type dispersy: Dispersy
+    
+        @param master: The master member that identifies the community.
+        @type master: DummyMember or Member
+
+        @param my_member: The my member that identifies you in this community.
+        @type my_member: Member
+        """
         assert isInIOThread()
         from .dispersy import Dispersy
         assert isinstance(dispersy, Dispersy), type(dispersy)
         assert isinstance(master, DummyMember), type(master)
+        assert master.mid not in dispersy._communities
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-
         assert isInIOThread()
+        
         super(Community, self).__init__()
         # Dispersy
         self._dispersy = dispersy
@@ -236,17 +250,7 @@ class Community(object):
         # _pending_tasks contains all pending calls that should be removed when the community is unloaded.
         self._pending_tasks = {}
 
-    def initialize(self, attach=True):
-        """
-        Loading, or joining an existing community can be done by calling the constructor.
-        Creating a new instance of a community needs to use the create_community() call.
-
-        @param master: The master member that identifies the community.
-        @type master: DummyMember or Member
-
-        @param my_member: The my member that identifies you in this community.
-        @type my_member: Member
-        """
+    def initialize(self):
         assert isInIOThread()
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
@@ -404,9 +408,18 @@ class Community(object):
             # we haven't do it now
             self.create_identity()
 
-        if attach:
-            # tell dispersy that there is a new community
-            self._dispersy.attach_community(self)
+        #check/sanity check the database
+        self.dispersy_check_database()
+        from sys import argv
+        if "--sanity-check" in argv:
+            try:
+                self.dispersy.sanity_check(self)
+            except ValueError:
+                logger.exception("sanity check fail for %s", self)
+        
+        #add community to communities dict
+        self.dispersy._communities[self.cid] = self
+        self.dispersy._statistics.dict_inc(self.dispersy._statistics.attachment, self.cid)
 
     @property
     def candidates(self):
@@ -1032,7 +1045,8 @@ class Community(object):
 
         self._pending_tasks.clear()
         self._request_cache.clear()
-        self._dispersy.detach_community(self)
+        
+        del self.dispersy._communities[self.cid]
 
     def claim_global_time(self):
         """
@@ -1164,20 +1178,16 @@ class Community(object):
     # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
     # calls in any loop converted to a LoopingCall
     def take_step(self):
-        # if cid not in self._dispersy._communities it is detached, but not unloaded
-        if self.cid in self._dispersy._communities:
-            now = time()
-            logger.debug("previous sync was %.1f seconds ago", now - self._last_sync_time if self._last_sync_time else -1)
+        now = time()
+        logger.debug("previous sync was %.1f seconds ago", now - self._last_sync_time if self._last_sync_time else -1)
 
-            candidate = self.dispersy_get_walk_candidate()
-            if candidate:
-                logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
-                self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
-            else:
-                logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
-            self._last_sync_time = time()
-
-
+        candidate = self.dispersy_get_walk_candidate()
+        if candidate:
+            logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+            self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
+        else:
+            logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
+        self._last_sync_time = time()
 
     def _iter_category(self, category, strict=True):
         # strict=True will ensure both candidate.lan_address and candidate.wan_address are not
