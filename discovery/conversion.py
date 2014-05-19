@@ -8,16 +8,6 @@ from ..conversion import BinaryConversion
 from ..bloomfilter import BloomFilter
 
 
-def bytes_to_long(val, nrbytes=0):
-    if nrbytes < 0 and (val[0] == "-" or val[0] == "+"):
-        _val = long(hexlify(val[1:][::-1]), 16)
-        if val[0] == "-":
-            return -_val
-        return _val
-    else:
-        return long(hexlify(val[::-1]), 16)
-
-
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
         super(DiscoveryConversion, self).__init__(community, "\x01")

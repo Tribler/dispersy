@@ -22,10 +22,9 @@ from ..logger import get_logger
 from .bootstrap import Bootstrap
 
 logger = get_logger(__name__)
-logger.setLevel(logging.INFO)
 
 from payload import *
-from conversion import DiscoveryConversion, bytes_to_long
+from conversion import DiscoveryConversion
 
 DEBUG_VERBOSE = False
 
