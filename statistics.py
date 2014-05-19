@@ -16,7 +16,8 @@ class Statistics(object):
 
     def dict_inc(self, dictionary, key, value=1):
         if not isinstance(dictionary, dict):
-            self.__getattribute__(dictionary)[key] += value
+            with self._lock:
+                getattr(self, dictionary)[key] += value
         if dictionary != None:
             with self._lock:
                 dictionary[key] += value
@@ -58,8 +59,9 @@ class MessageStatistics(object):
     def __init__(self):
         super(MessageStatistics, self).__init__()
         self._lock = RLock()
+        self._enabled = False
 
-        self.valid_count = 0
+        self.success_count = 0
         self.drop_count = 0
         self.created_count = 0
         self.outgoing_count = 0
@@ -67,49 +69,43 @@ class MessageStatistics(object):
         self.delay_received_count = 0
         self.delay_send_count = 0
         self.delay_timeout_count = 0
-        self.delay_valid_count = 0
+        self.delay_success_count = 0
 
-        self.valid_dict = defaultdict(int)
-        self.drop_dict = defaultdict(int)
-        self.created_dict = defaultdict(int)
-        self.delay_dict = defaultdict(int)
-        self.outgoing_dict = defaultdict(int)
+        self.success_dict = None
+        self.drop_dict = None
+        self.created_dict = None
+        self.delay_dict = None
+        self.outgoing_dict = None
 
     def increase_count(self, category, name, value=1):
         with self._lock:
-            if category == u"success":
-                self.valid_count += value
-                self.valid_dict[name] += value
-            elif category == u"outgoing":
-                self.outgoing_count += value
-                self.outgoing_dict[name] += value
-            elif category == u"created":
-                self.created_count += value
-                self.created_dict[name] += value
-            elif category == u"drop":
-                self.drop_count += value
-                self.drop_dict[name] += value
-            elif category == u"delay":
-                self.delay_dict[name] += value
-            else:
-                assert False, "Unexpected message category %s" % category
+            count_name = u"%s_count" % category
+            dict_name = u"%s_dict" % category
+            if hasattr(self, count_name):
+                setattr(self, count_name, getattr(self, count_name) + value)
+            if getattr(self, dict_name) is not None:
+                getattr(self, dict_name)[name] += value
 
     def increase_delay_count(self, category, value=1):
         with self._lock:
-            if category == u"received":
-                self.delay_received_count += value
-            elif category == u"send":
-                self.delay_send_count += value
-            elif category == u"success":
-                self.delay_valid_count += value
-            elif category == u"timeout":
-                self.delay_timeout_count += value
-            else:
-                assert False, "Unexpected category %s for delay message" % category
+            count_name = u"delay_%s_count" % category
+            setattr(self, count_name, getattr(self, count_name) + value)
+
+    def enable(self, enabled):
+        with self._lock:
+            if self._enabled != enabled:
+                self._enabled = enabled
+                assigned_value = lambda: defaultdict(int) if enabled else None
+
+                self.success_dict = assigned_value()
+                self.outgoing_dict = assigned_value()
+                self.created_dict = assigned_value()
+                self.drop_dict = assigned_value()
+                self.delay_dict = assigned_value()
 
     def reset(self):
         with self._lock:
-            self.valid_count = 0
+            self.success_count = 0
             self.drop_count = 0
             self.created_count = 0
             self.outgoing_count = 0
@@ -117,13 +113,14 @@ class MessageStatistics(object):
             self.delay_received_count = 0
             self.delay_send_count = 0
             self.delay_timeout_count = 0
-            self.delay_valid_count = 0
+            self.delay_success_count = 0
 
-            self.valid_dict.clear()
-            self.drop_dict.clear()
-            self.created_dict.clear()
-            self.delay_dict.clear()
-            self.outgoing_dict.clear()
+            if self._enabled:
+                self.success_dict.clear()
+                self.drop_dict.clear()
+                self.created_dict.clear()
+                self.delay_dict.clear()
+                self.outgoing_dict.clear()
 
 
 class DispersyStatistics(Statistics):
@@ -189,6 +186,7 @@ class DispersyStatistics(Statistics):
     def enable_debug_statistics(self, enable):
         if self._enabled != enable:
             self._enabled = enable
+            self.msg_statistics.enable(enable)
             if enable:
                 self.walk_failure_dict = defaultdict(int)
                 self.incoming_intro_dict = defaultdict(int)
