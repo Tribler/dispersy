@@ -5,8 +5,8 @@ from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
 
-from ..bootstrap import Bootstrap
-from ..candidate import BootstrapCandidate
+from ..discovery.bootstrap import Bootstrap
+from ..candidate import Candidate
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
@@ -24,7 +24,6 @@ class TestBootstrapServers(DispersyTestFunc):
         Runs tracker.py and connects to it.
         """
 
-        Bootstrap.enable = True
         tracker_file = "dispersy/tool/tracker.py"
         tracker_path = getcwd()
         while tracker_path:
@@ -66,18 +65,18 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            node, = self.create_nodes(1, communityclass=Community)
+            node, = self.create_nodes(1, communityclass=Community, autoload_discovery=True)
 
             # node sends introduction request
-            destination = BootstrapCandidate(tracker_address, False)
+            destination = Candidate(tracker_address, False)
             node.send_message(node.create_introduction_request(destination=destination,
-                                                                        source_lan = node.lan_address,
-                                                                        source_wan = node.wan_address,
-                                                                        advice = True,
-                                                                        connection_type = u"unknown",
-                                                                        sync = None,
-                                                                        identifier = 4242,
-                                                                        global_time = 42),
+                                                                        source_lan=node.lan_address,
+                                                                        source_wan=node.wan_address,
+                                                                        advice=True,
+                                                                        connection_type=u"unknown",
+                                                                        sync=None,
+                                                                        identifier=4242,
+                                                                        global_time=42),
                               destination)
 
             # node receives missing identity
@@ -85,7 +84,7 @@ class TestBootstrapServers(DispersyTestFunc):
             self.assertEqual(message.payload.mid, node.my_member.mid)
 
             packet = node.fetch_packets([u"dispersy-identity", ], node.my_member.mid)[0]
-            node.send_packet(packet,  destination)
+            node.send_packet(packet, destination)
 
             node.process_packets()
 
@@ -113,8 +112,11 @@ class TestBootstrapServers(DispersyTestFunc):
                 self._summary = {}
                 self._hostname = {}
                 self._identifiers = {}
-                self._pcandidates = self._dispersy._bootstrap_candidates.values()
-                # self._pcandidates = [BootstrapCandidate(("130.161.211.198", 6431))]
+                self._pcandidates = []
+                for community in self._dispersy.get_communities():
+                    if isinstance(community, DiscoveryCommunity):
+                        self._pcandidates = [Candidate(*sock_addr) for sock_addr in community.bootstrap.candidates]
+                # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
 
                 for candidate in self._pcandidates:
                     self._request[candidate.sock_addr] = {}
@@ -225,7 +227,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 self._pcandidates = candidates
                 self._queue = []
                 # self._pcandidates = self._dispersy._bootstrap_candidates.values()
-                # self._pcandidates = [BootstrapCandidate(("130.161.211.198", 6431))]
+                # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
 
                 for candidate in self._pcandidates:
                     self._request[candidate.sock_addr] = {}
@@ -317,7 +319,7 @@ class TestBootstrapServers(DispersyTestFunc):
 
         logger.info("prepare communities, members, etc")
         with self._dispersy.database:
-            candidates = [BootstrapCandidate(("130.161.211.245", 6429), False)]
+            candidates = [Candidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates) for _ in xrange(COMMUNITIES)]
             members = [self._dispersy.get_new_member(u"low") for _ in xrange(MEMBERS)]
 

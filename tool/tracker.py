@@ -34,6 +34,7 @@ from ..candidate import LoopbackCandidate
 from ..community import Community, HardKilledCommunity
 from ..conversion import BinaryConversion
 from ..crypto import NoVerifyCrypto, NoCrypto
+from ..discovery.community import DiscoveryCommunity
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..exception import ConversionNotFoundException, CommunityNotFoundException
@@ -130,6 +131,14 @@ class TrackerCommunity(Community):
         return False
 
     @property
+    def dispersy_enable_candidate_walker(self):
+        return False
+
+    @property
+    def dispersy_enable_candidate_walker_responses(self):
+        return True
+
+    @property
     def dispersy_sync_bloom_filter_strategy(self):
         # disable sync bloom filter
         return lambda request_cache: None
@@ -199,7 +208,6 @@ class TrackerCommunity(Community):
         """
         Get an active candidate that is part of this community in Round Robin (Not random anymore).
         """
-        assert all(not sock_address in self._candidates for sock_address in self._dispersy._bootstrap_candidates.iterkeys()), "none of the bootstrap candidates may be in self._candidates"
         first_candidate = None
         while True:
             result = self._walked_stumbled_candidates.next()
@@ -226,6 +234,22 @@ class TrackerCommunity(Community):
                     continue
 
             return result
+
+    def on_introduction_request(self, messages):
+        if not self._dispersy._silent:
+            hex_cid = self.cid.encode("HEX")
+            for message in messages:
+                host, port = message.candidate.sock_addr
+                print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+        return super(TrackerCommunity, self).on_introduction_request(messages)
+
+    def on_introduction_response(self, messages):
+        if not self._dispersy._silent:
+            hex_cid = self.cid.encode("HEX")
+            for message in messages:
+                host, port = message.candidate.sock_addr
+                print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
+        return super(TrackerCommunity, self).on_introduction_response(messages)
 
 class TrackerDispersy(Dispersy):
 
@@ -289,11 +313,15 @@ class TrackerDispersy(Dispersy):
 
     def unload_inactive_communities(self):
         def is_active(community, now):
-            # check 1: does the community have any active candidates
+            # check 1: DiscoveryCommunity is always active
+            if isinstance(community, DiscoveryCommunity):
+                return True
+
+            # check 2: does the community have any active candidates
             if community.update_strikes(now) < 3:
                 return True
 
-            # check 2: does the community have any cached messages waiting to be processed
+            # check 3: does the community have any cached messages waiting to be processed
             for meta in self._batch_cache.iterkeys():
                 if meta.community == community:
                     return True
@@ -308,36 +336,17 @@ class TrackerDispersy(Dispersy):
             community.unload_community()
 
     def _report_statistics(self):
-        mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0}
+        mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0, DiscoveryCommunity: 0}
         for community in self._communities.itervalues():
             mapping[type(community)] += 1
 
         print "BANDWIDTH", self._endpoint.total_up, self._endpoint.total_down
-        print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity]
+        print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity], mapping[DiscoveryCommunity]
         print "CANDIDATE2", sum(len(list(community.dispersy_yield_verified_candidates())) for community in self._communities.itervalues())
 
         if self._statistics.outgoing:
             for key, value in self._statistics.outgoing.iteritems():
                 print "OUTGOING", key, value
-
-    def create_introduction_request(self, community, destination, allow_sync, forward=True):
-        return
-
-    def on_introduction_request(self, messages):
-        if not self._silent:
-            hex_cid = self.cid.encode("HEX")
-            for message in messages:
-                host, port = message.candidate.sock_addr
-                print "REQ_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
-        return super(TrackerDispersy, self).on_introduction_request(messages)
-
-    def on_introduction_response(self, messages):
-        if not self._silent:
-            hex_cid = self.cid.encode("HEX")
-            for message in messages:
-                host, port = message.candidate.sock_addr
-                print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
-        return super(TrackerDispersy, self).on_introduction_response(messages)
 
 
 def main():
