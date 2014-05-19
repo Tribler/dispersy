@@ -255,17 +255,7 @@ class Community(object):
 
         self._statistics = CommunityStatistics(self)
 
-    def initialize(self, attach=True):
-        """
-        Loading, or joining an existing community can be done by calling the constructor.
-        Creating a new instance of a community needs to use the create_community() call.
-
-        @param master: The master member that identifies the community.
-        @type master: DummyMember or Member
-
-        @param my_member: The my member that identifies you in this community.
-        @type my_member: Member
-        """
+    def initialize(self):
         assert isInIOThread()
         logger.info("initializing:  %s", self.get_classification())
         logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
