@@ -1829,7 +1829,7 @@ class Community(object):
         @rtype: [Conversion]
         """
         pass
-    
+
     def get_member(self, *argv, **kwargs):
         assert not argv, "Only named arguments are allowed"
         mid = kwargs.pop("mid", "")
@@ -2204,7 +2204,7 @@ class Community(object):
         """
         pass
 
-    def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
+    def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10, forward=True):
         """
         Create a dispersy-signature-request message.
 
@@ -2219,9 +2219,9 @@ class Community(object):
         Receiving the dispersy-signed-response message results in a call to RESPONSE_FUNC.  The
         first parameter for this call is the SignatureRequestCache instance returned by
         create_signature_request, the second parameter is the proposed message that was sent back,
-        the third parameter is a boolean indicating weather MESSAGE was modified.
+        the third parameter is a boolean indicating whether MESSAGE was modified.
 
-        RESPONSE_FUNC must return a boolean value indicating weather the proposed message (the
+        RESPONSE_FUNC must return a boolean value indicating whether the proposed message (the
         second parameter) is accepted.  Once we accept all signature responses we will add our own
         signature and the last proposed message is stored, updated, and forwarded.
 
@@ -2241,7 +2241,7 @@ class Community(object):
         @type response_args: tuple
 
         @param timeout: How long before a timeout is generated.
-        @type timeout: float
+        @type timeout: int/float
 
         @param forward: When True the messages are forwarded (as defined by their message
          destination policy) to other nodes in the community.  This parameter should (almost always)
@@ -2253,7 +2253,7 @@ class Community(object):
         assert isinstance(message.authentication, DoubleMemberAuthentication.Implementation)
         assert hasattr(response_func, "__call__")
         assert isinstance(response_args, tuple)
-        assert isinstance(timeout, float)
+        assert isinstance(timeout, (int, float))
         assert isinstance(forward, bool)
 
         # the members that need to sign
@@ -3130,7 +3130,7 @@ class Community(object):
 
         self._dispersy.store_update_forward([message], store, update, forward)
         return message
-    
+
     def on_authorize(self, messages, initializing=False):
         """
         Process a dispersy-authorize message.
@@ -3205,7 +3205,7 @@ class Community(object):
 
         self._dispersy.store_update_forward([message], store, update, forward)
         return message
-    
+
     def on_revoke(self, messages, initializing=False):
         """
         Process a dispersy-revoke message.
@@ -3290,7 +3290,7 @@ class Community(object):
 
                 self._dispersy.store_update_forward([msg], store, update, forward)
                 return msg
-            
+
     def check_undo(self, messages):
         # Note: previously all MESSAGES have been checked to ensure that the sequence numbers are
         # correct.  this check takes into account the messages in the batch.  hence, if one of these
