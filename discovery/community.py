@@ -536,8 +536,9 @@ class DiscoveryCommunity(Community):
                 self.requested_introductions[message.candidate.get_member().mid] = introduce_me_to = self.get_tb_or_candidate_mid(
                     message.payload.introduce_me_to)
 
-            logger.debug("DiscoveryCommunity: got introduction request %s %s", message.payload.introduce_me_to.encode(
-                "HEX") if message.payload.introduce_me_to else '-', introduce_me_to, self.requested_introductions)
+            logger.debug("DiscoveryCommunity: got introduction request %s %s %s",
+                         message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-',
+                         introduce_me_to, self.requested_introductions)
 
         self._disp_intro_handler(messages)
 
