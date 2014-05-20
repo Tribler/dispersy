@@ -1687,10 +1687,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("commit user generated message")
                 self._database.commit()
 
-                for message in messages:
-                    if message.authentication.member != message.community.my_member:
-                        continue
-                    message.community.statistics.increase_msg_count(u"created", message.meta.name)
+                messages[0].community.statistics.increase_msg_count(u"created", messages[0].meta.name, my_messages)
 
         if forward:
             return self._forward(messages)

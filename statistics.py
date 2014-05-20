@@ -16,7 +16,8 @@ class Statistics(object):
     def dict_inc(self, dictionary, key, value=1):
         with self._lock:
             assert hasattr(self, dictionary), u"%s doesn't exist in statistics" % dictionary
-            getattr(self, dictionary)[key] += value
+            if getattr(self, dictionary) is not None:
+                getattr(self, dictionary)[key] += value
 
     def get_dict(self):
         """
@@ -154,6 +155,11 @@ class DispersyStatistics(Statistics):
         self.incoming_intro_dict = None
         self.outgoing_intro_count = 0
         self.outgoing_intro_dict = None
+
+        self.attachment = None
+        self.endpoint_recv = None
+        self.endpoint_send = None
+        self.received_introductions = None
 
         # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
         # represents a key from the attach_runtime_statistics decorator
