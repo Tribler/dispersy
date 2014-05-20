@@ -402,7 +402,7 @@ class Dispersy(object):
     def attach_community(self, community):
         # add community to communities dict
         self._communities[community.cid] = community
-        self._statistics.dict_inc(self._statistics.attachment, community.cid)
+        self._statistics.dict_inc(u"attachment", community.cid)
 
         # let discovery community know
         if self._discovery_community:

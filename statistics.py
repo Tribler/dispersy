@@ -2,7 +2,6 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from threading import RLock
 from time import time
-from copy import deepcopy
 
 from .util import _runtime_statistics
 
@@ -15,12 +14,9 @@ class Statistics(object):
         self._lock = RLock()
 
     def dict_inc(self, dictionary, key, value=1):
-        if not isinstance(dictionary, dict):
-            with self._lock:
-                getattr(self, dictionary)[key] += value
-        if dictionary != None:
-            with self._lock:
-                dictionary[key] += value
+        with self._lock:
+            assert hasattr(self, dictionary), u"%s doesn't exist in statistics" % dictionary
+            getattr(self, dictionary)[key] += value
 
     def get_dict(self):
         """
@@ -187,31 +183,18 @@ class DispersyStatistics(Statistics):
         if self._enabled != enable:
             self._enabled = enable
             self.msg_statistics.enable(enable)
-            if enable:
-                self.walk_failure_dict = defaultdict(int)
-                self.incoming_intro_dict = defaultdict(int)
-                self.outgoing_intro_dict = defaultdict(int)
 
-                self.attachment = defaultdict(int)
-                self.database = defaultdict(int)
-                self.endpoint_recv = defaultdict(int)
-                self.endpoint_send = defaultdict(int)
-                self.bootstrap_candidates = defaultdict(int)
+            dict_assigned_value = lambda: defaultdict(int) if enable else None
+            self.walk_failure_dict = dict_assigned_value()
+            self.incoming_intro_dict = dict_assigned_value()
+            self.outgoing_intro_dict = dict_assigned_value()
 
-                # SOURCE:INTRODUCED:COUNT nested dictionary
-                self.received_introductions = defaultdict(lambda: defaultdict(int))
+            self.attachment = dict_assigned_value()
+            self.endpoint_recv = dict_assigned_value()
+            self.endpoint_send = dict_assigned_value()
 
-            else:
-                self.walk_failure_dict = None
-                self.incoming_intro_dict = None
-                self.outgoing_intro_dict = None
-
-                self.attachment = None
-                self.database = None
-                self.endpoint_recv = None
-                self.endpoint_send = None
-                self.bootstrap_candidates = None
-                self.received_introductions = None
+             # SOURCE:INTRODUCED:COUNT nested dictionary
+            self.received_introductions = defaultdict(lambda: defaultdict(int)) if enable else None
 
     def are_debug_statistics_enabled(self):
         return self._enabled
@@ -255,10 +238,8 @@ class DispersyStatistics(Statistics):
             self.outgoing_intro_dict = defaultdict(int)
 
             self.attachment = defaultdict(int)
-            self.database = defaultdict(int)
             self.endpoint_recv = defaultdict(int)
             self.endpoint_send = defaultdict(int)
-            self.bootstrap_candidates = defaultdict(int)
             self.received_introductions = defaultdict(lambda: defaultdict(int))
 
 
