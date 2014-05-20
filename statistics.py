@@ -219,11 +219,6 @@ class DispersyStatistics(Statistics):
     def update(self, database=False):
         self.timestamp = time()
 
-        self.total_down = self._dispersy.endpoint.total_down
-        self.total_up = self._dispersy.endpoint.total_up
-        self.total_send = self._dispersy.endpoint.total_send
-        self.cur_sendqueue = self._dispersy.endpoint.cur_sendqueue
-
         self.communities = [community.statistics for community in self._dispersy.get_communities()]
         for community in self.communities:
             community.update(database=database)
@@ -233,12 +228,11 @@ class DispersyStatistics(Statistics):
         self.runtime = [statistic.get_dict(entry=entry) for entry, statistic in _runtime_statistics.iteritems()]
 
     def reset(self):
-        self._dispersy.endpoint.reset_statistics()
-        self.total_down = self._dispersy.endpoint.total_down
-        self.total_up = self._dispersy.endpoint.total_up
-        self.total_send = self._dispersy.endpoint.total_send
+        self.total_down = 0
+        self.total_up = 0
+        self.total_send = 0
         self.total_received = 0
-        self.cur_sendqueue = self._dispersy.endpoint.cur_sendqueue
+        self.cur_sendqueue = 0
         self.start = self.timestamp = time()
 
         # walk statistics

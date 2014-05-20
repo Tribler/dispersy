@@ -29,32 +29,6 @@ class Endpoint(object):
 
     def __init__(self):
         self._dispersy = None
-        self._total_up = 0
-        self._total_down = 0
-        self._total_send = 0
-        self._cur_sendqueue = 0
-
-    @property
-    def total_up(self):
-        return self._total_up
-
-    @property
-    def total_down(self):
-        return self._total_down
-
-    @property
-    def total_send(self):
-        return self._total_send
-
-    @property
-    def cur_sendqueue(self):
-        return self._cur_sendqueue
-
-    def reset_statistics(self):
-        self._total_up = 0
-        self._total_down = 0
-        self._total_send = 0
-        self._cur_sendqueue = 0
 
     @abstractmethod
     def get_address(self):
@@ -112,12 +86,12 @@ class NullEndpoint(Endpoint):
     def send(self, candidates, packets):
         if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
-        self._total_up += sum(len(packet) for packet in packets) * len(candidates)
+        self._dispersy.statistics.total_up += sum(len(packet) for packet in packets) * len(candidates)
 
     def send_packet(self, candidate, packet):
         if len(packet) > 2 ** 16 - 60:
             raise RuntimeError("UDP does not support %d byte packets" % len(packet))
-        self._total_up += len(packet)
+        self._dispersy.statistics.total_up += len(packet)
 
 
 class RawserverEndpoint(Endpoint):
@@ -165,7 +139,7 @@ class RawserverEndpoint(Endpoint):
         # the rawserver SUCKS.  every now and then exceptions are not shown and apparently we are
         # sometimes called without any packets...
         if packets:
-            self._total_down += sum(len(data) for _, data in packets)
+            self._dispersy.statistics.total_down += sum(len(data) for _, data in packets)
             if logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
                     self.log_packet(sock_addr, data, outbound=False)
@@ -207,8 +181,8 @@ class RawserverEndpoint(Endpoint):
         if len(packet) > 2 ** 16 - 60:
             raise RuntimeError("UDP does not support %d byte packets" % len(packet))
 
-        self._total_up += len(packet)
-        self._total_send += 1
+        self._dispersy.statistics.total_up += len(packet)
+        self._dispersy.statistics.total_send += 1
 
         data = TUNNEL_PREFIX + packet if candidate.tunnel else packet
 
@@ -259,7 +233,7 @@ class RawserverEndpoint(Endpoint):
                     self._add_task(self._process_sendqueue, 0.1, "process_sendqueue")
                     logger.debug("%d left in sendqueue", len(self._sendqueue))
 
-                self._cur_sendqueue = len(self._sendqueue)
+                self._dispersy.statistics.cur_sendqueue = len(self._sendqueue)
 
 
 class StandaloneEndpoint(RawserverEndpoint):
@@ -455,8 +429,8 @@ class TunnelEndpoint(Endpoint):
         if len(packet) > 2 ** 16 - 60:
             raise RuntimeError("UDP does not support %d byte packets" % len(packet))
 
-        self._total_up += len(packet)
-        self._total_send += 1
+        self._dispersy.statistics.total_up += len(packet)
+        self._dispersy.statistics.total_send += 1
 
         with self._swift.splock:
             self._swift.send_tunnel(self._session, candidate.sock_addr, packet)
@@ -471,7 +445,7 @@ class TunnelEndpoint(Endpoint):
         if logger.isEnabledFor(logging.DEBUG):
             self.log_packet(sock_addr, data, outbound=False)
 
-        self._total_down += len(data)
+        self._dispersy.statistics.total_down += len(data)
         # The endpoint runs on it's own thread, so we can't do a callLater here
         reactor.callFromThread(self.dispersythread_data_came_in, sock_addr, data, time())
 
