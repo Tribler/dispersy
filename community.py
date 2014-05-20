@@ -404,7 +404,7 @@ class Community(object):
             # we haven't do it now
             self.create_identity()
 
-        #check/sanity check the database
+        # check/sanity check the database
         self.dispersy_check_database()
         from sys import argv
         if "--sanity-check" in argv:
@@ -413,7 +413,7 @@ class Community(object):
             except ValueError:
                 logger.exception("sanity check fail for %s", self)
 
-        #add community to communities dict
+        # add community to communities dict
         self.dispersy._communities[self.cid] = self
         self.dispersy._statistics.dict_inc(self.dispersy._statistics.attachment, self.cid)
 
@@ -1133,8 +1133,6 @@ class Community(object):
 
     @inlineCallbacks
     def start_walking(self):
-        most_recent_sync = None
-
         if self.dispersy_enable_fast_candidate_walker:
             for _ in xrange(10):
                 now = time()
@@ -1145,15 +1143,6 @@ class Community(object):
                     logger.debug("there are %d active non-bootstrap candidates available, "
                                  "prematurely quitting fast walker", len(active_canidates))
                     break
-
-                # request bootstrap peers that are eligible
-                eligible_candidates = [candidate
-                                       for candidate
-                                       in self._dispersy.bootstrap_candidates
-                                       if candidate.is_eligible_for_walk(now)]
-                for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
-                    logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
-                    self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
                 # request peers that are eligible
                 eligible_candidates = [candidate
