@@ -2514,9 +2514,9 @@ class Community(object):
             self._dispersy.wan_address_vote(payload.destination_address, candidate)
 
             # increment statistics only the first time
-            self._statistics.walk_success_count += 1
-            self._statistics.incoming_intro_count += 1
-            self._statistics.dict_inc(u"incoming_intro_dict", candidate.sock_addr)
+            self._dispersy._statistics.walk_success_count += 1
+            self._dispersy._statistics.incoming_intro_count += 1
+            self._dispersy._statistics.dict_inc(u"incoming_intro_dict", candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
