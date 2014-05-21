@@ -123,7 +123,7 @@ class PossibleTasteBuddy(TasteBuddy):
         if isinstance(other, Member):
             return self.candidate_mid == other.mid
         if isinstance(other, Candidate):
-            return self.received_from.sock_addr == other.sock_addr
+            return self.received_from == other
         return self.candidate_mid == other.candidate_mid
 
     def __str__(self):
@@ -481,28 +481,32 @@ class DiscoveryCommunity(Community):
 
     def on_similarity_response(self, messages):
         for message in messages:
-            logger.debug("DiscoveryCommunity: got similarity response from %s", message.candidate)
-
-            # Update actual taste buddies.
-            payload = message.payload
-            his_preferences = set(payload.preference_list)
-
-            assert all(isinstance(his_preference, str) for his_preference in his_preferences)
-
-            overlap_count = len(set(self.my_preferences()) & his_preferences)
-            self.add_taste_buddies(
-                [ActualTasteBuddy(overlap_count, his_preferences, time(), message.authentication.member.mid, message.candidate)])
-
             # Update possible taste buddies.
             request = self._request_cache.pop(u"similarity", message.payload.identifier)
             if request:
+                # use walkcandidate stored in request_cache
+                w_candidate = request.requested_candidate
+                assert message.candidate.get_member().mid == w_candidate.get_member().mid
+
+                logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
+
+                # Update actual taste buddies.
+                payload = message.payload
+                his_preferences = set(payload.preference_list)
+
+                assert all(isinstance(his_preference, str) for his_preference in his_preferences)
+
+                overlap_count = len(set(self.my_preferences()) & his_preferences)
+                self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
+                                                         message.authentication.member.mid, w_candidate)])
+
                 possibles = []
                 original_list = request.preference_list
                 for candidate_mid, bitfield in message.payload.tb_overlap:
-                    tb_preferences = set(
-                        [original_list[index] for index in range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
-                    possibles.append(
-                        PossibleTasteBuddy(len(tb_preferences), tb_preferences, time(), candidate_mid, message.candidate))
+                    tb_preferences = set([original_list[index] for index in
+                                          range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
+                    possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences,
+                                                        time(), candidate_mid, w_candidate))
 
                 self.add_possible_taste_buddies(possibles)
 
@@ -595,8 +599,7 @@ class DiscoveryCommunity(Community):
             return len(self.received_candidates) == len(self.requested_candidates)
 
         def did_request(self, candidate):
-            # TODO: change if there's an __eq__ implemented in candidate
-            return candidate.sock_addr in [rcandidate.sock_addr for rcandidate in self.requested_candidates]
+            return candidate in self.requested_candidates
 
         def on_timeout(self):
             for candidate in self.requested_candidates:

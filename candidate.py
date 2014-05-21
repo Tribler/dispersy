@@ -90,7 +90,11 @@ class Candidate(object):
         True when OTHER is a Candidate instance and self.sock_addr == other.sock_addr, otherwise
         False.
         """
-        return isinstance(other, Candidate) and self._sock_addr == other.sock_addr
+        if isinstance(other, Candidate):
+            if self._association and other.get_member():
+                return self._association.mid == other.get_member().mid
+            return self._sock_addr == other.sock_addr
+        return False
 
     def __ne__(self, other):
         """
