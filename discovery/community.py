@@ -157,6 +157,7 @@ class DiscoveryCommunity(Community):
 
             lc = LoopingCall(self.insert_trackers)
             lc.start(INSERT_TRACKER_INTERVAL)
+            self._pending_tasks["insert_trackers"] = lc
 
             if success:
                 logger.debug("Resolved all bootstrap addresses")
