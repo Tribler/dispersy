@@ -4,7 +4,7 @@ import sys
 import logging
 
 from time import time
-from random import shuffle, choice
+from random import shuffle
 from collections import namedtuple
 from twisted.internet.task import LoopingCall
 
@@ -30,6 +30,7 @@ DEBUG_VERBOSE = False
 
 PING_INTERVAL = CANDIDATE_WALK_LIFETIME / 5
 PING_TIMEOUT = CANDIDATE_WALK_LIFETIME / 2
+INSERT_TRACKER_INTERVAL = 300
 TIME_BETWEEN_CONNECTION_ATTEMPTS = 10.0
 
 
@@ -150,9 +151,13 @@ class DiscoveryCommunity(Community):
             assert isinstance(success, bool), type(success)
 
             # even when success is False it is still possible that *some* addresses were resolved
-            for sock_addr in self.bootstrap.candidates:
-                logger.debug("Adding %s as discovered candidate", sock_addr)
-                self.add_discovered_candidate(Candidate(sock_addr, False))
+            for candidate in self.bootstrap.candidates:
+                logger.debug("Adding %s as discovered candidate", candidate)
+                self.add_discovered_candidate(candidate)
+
+            lc = LoopingCall(self.insert_trackers)
+            lc.start(INSERT_TRACKER_INTERVAL)
+            self._pending_tasks["insert_trackers"] = lc
 
             if success:
                 logger.debug("Resolved all bootstrap addresses")
@@ -168,6 +173,12 @@ class DiscoveryCommunity(Community):
         lc = self.bootstrap.resolve_until_success(now=True, callback=on_results)
         if lc:
             self._pending_tasks["bootstrap_resolution"] = lc
+
+    def insert_trackers(self):
+        for community in self._dispersy.get_communities():
+            if community.dispersy_enable_candidate_walker:
+                for candidate in self.bootstrap.candidates:
+                    community.add_discovered_candidate(candidate)
 
     @classmethod
     def get_master_members(cls, dispersy):
@@ -207,7 +218,9 @@ class DiscoveryCommunity(Community):
         return [DefaultConversion(self), DiscoveryConversion(self)]
 
     def my_preferences(self):
-        return [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
+        my_prefs = [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
+        shuffle(my_prefs)
+        return my_prefs
 
     def add_taste_buddies(self, new_taste_buddies):
         my_communities = dict((community.cid, community)
@@ -369,7 +382,7 @@ class DiscoveryCommunity(Community):
             destination), self.has_possible_taste_buddies(destination), destination)
 
         send = False
-        if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination) and destination.sock_addr not in self.bootstrap.candidates:
+        if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination) and destination.sock_addr not in self.bootstrap.candidate_addresses:
             send = self.create_similarity_request(destination)
 
         if not send:

@@ -115,7 +115,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 self._pcandidates = []
                 for community in self._dispersy.get_communities():
                     if isinstance(community, DiscoveryCommunity):
-                        self._pcandidates = [Candidate(*sock_addr) for sock_addr in community.bootstrap.candidates]
+                        self._pcandidates = [community.bootstrap.candidates]
                 # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
 
                 for candidate in self._pcandidates:

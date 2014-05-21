@@ -5,6 +5,7 @@ from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
 
 from ..logger import get_logger
+from ..candidate import Candidate
 
 
 logger = get_logger(__name__)
@@ -106,6 +107,11 @@ class Bootstrap(object):
             return [candidate for candidate in self._candidates.itervalues() if candidate]
 
     @property
+    def candidate_addresses(self):
+        with self._lock:
+            return [candidate.sock_addr for candidate in self._candidates.itervalues() if candidate]
+
+    @property
     def progress(self):
         """
         Returns a (resolved_count, total_count) tuple.
@@ -140,7 +146,7 @@ class Bootstrap(object):
             for (host, port), ip in zip(addresses, ips):
                 if ip:
                     logger.info("Resolved %s into %s:%d", host, ip, port)
-                    self._candidates[(host, port)] = (str(ip), port)
+                    self._candidates[(host, port)] = Candidate((str(ip), port), False)
                     success = True
                 else:
                     logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
