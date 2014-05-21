@@ -106,7 +106,7 @@ def main_real(setup=None):
 
 def main(setup=None):
     reactor.exitCode = 0
-    reactor.callWhenRunning(0, setup)
+    reactor.callWhenRunning(setup)
     # start the reactor
     reactor.run()
     exit(reactor.exitCode)
