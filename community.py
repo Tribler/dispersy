@@ -209,6 +209,9 @@ class Community(object):
         community = cls(dispersy, master, my_member)
         community.initialize(*args, **kargs)
 
+        # add to dispersy
+        dispersy.attach_community(community)
+
         return community
 
     def __init__(self, dispersy, master, my_member):
@@ -412,10 +415,6 @@ class Community(object):
                 self.dispersy.sanity_check(self)
             except ValueError:
                 logger.exception("sanity check fail for %s", self)
-
-        # add community to communities dict
-        self.dispersy._communities[self.cid] = self
-        self.dispersy._statistics.dict_inc(self.dispersy._statistics.attachment, self.cid)
 
     @property
     def candidates(self):
@@ -1042,7 +1041,7 @@ class Community(object):
         self._pending_tasks.clear()
         self._request_cache.clear()
 
-        del self.dispersy._communities[self.cid]
+        self.dispersy.detach_community(self)
 
     def claim_global_time(self):
         """

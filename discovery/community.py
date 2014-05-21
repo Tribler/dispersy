@@ -64,7 +64,6 @@ class TasteBuddy():
     def __hash__(self):
         return hash(self.sock_addr)
 
-
 class ActualTasteBuddy(TasteBuddy):
     def __init__(self, overlap, preferences, timestamp, candidate_mid, candidate):
         TasteBuddy.__init__(self, overlap, preferences, candidate.sock_addr)
@@ -150,14 +149,8 @@ class DiscoveryCommunity(Community):
         def on_results(success):
             assert isinstance(success, bool), type(success)
 
-            # even when success is False it is still possible that *some* addresses were resolved
-            for candidate in self.bootstrap.candidates:
-                logger.debug("Adding %s as discovered candidate", candidate)
-                self.add_discovered_candidate(candidate)
-
-            lc = LoopingCall(self.insert_trackers)
-            lc.start(INSERT_TRACKER_INTERVAL)
-            self._pending_tasks["insert_trackers"] = lc
+            self._pending_tasks["insert_trackers"] = lc = LoopingCall(self.insert_trackers)
+            lc.start(INSERT_TRACKER_INTERVAL, now=True)
 
             if success:
                 logger.debug("Resolved all bootstrap addresses")
@@ -178,6 +171,7 @@ class DiscoveryCommunity(Community):
         for community in self._dispersy.get_communities():
             if community.dispersy_enable_candidate_walker:
                 for candidate in self.bootstrap.candidates:
+                    logger.debug("Adding %s %s as discovered candidate", type(community), candidate)
                     community.add_discovered_candidate(candidate)
 
     @classmethod
@@ -221,6 +215,12 @@ class DiscoveryCommunity(Community):
         my_prefs = [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
         shuffle(my_prefs)
         return my_prefs
+
+    def new_community(self, community):
+        if community.dispersy_enable_candidate_walker:
+            for candidate in self.bootstrap.candidates:
+                logger.debug("Adding %s %s as discovered candidate", type(community), candidate)
+                community.add_discovered_candidate(candidate)
 
     def add_taste_buddies(self, new_taste_buddies):
         my_communities = dict((community.cid, community)

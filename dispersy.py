@@ -119,6 +119,8 @@ class Dispersy(object):
         # Dispersy is stopped.  most of the time this contains all the generators that are used
         self._pending_tasks = {}
 
+        self._discovery_community = None
+
         self._member_cache_by_hash = OrderedDict()
 
         # our data storage
@@ -396,6 +398,18 @@ class Dispersy(object):
         assert issubclass(community, Community)
         assert community.get_classification() in self._auto_load_communities
         del self._auto_load_communities[community.get_classification()]
+
+    def attach_community(self, community):
+        # add community to communities dict
+        self._communities[community.cid] = community
+        self._statistics.dict_inc(self._statistics.attachment, community.cid)
+
+        # let discovery community know
+        if self._discovery_community and community != self._discovery_community:
+            self._discovery_community.new_community(community)
+
+    def detach_community(self, community):
+        del self._communities[community.cid]
 
     def attach_progress_handler(self, func):
         assert callable(func), "handler must be callable"
@@ -2105,8 +2119,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             if autoload_discovery:
                 # Load DiscoveryCommunity
                 logger.info("Dispersy core loading DiscoveryCommunity")
+
                 # TODO: pass None instead of new member, let community decide if we need a new member or not.
-                self.define_auto_load(DiscoveryCommunity, self.get_new_member(), load=True)
+                self._discovery_community = self.define_auto_load(DiscoveryCommunity, self.get_new_member(), load=True)[0]
             return True
 
         else:
