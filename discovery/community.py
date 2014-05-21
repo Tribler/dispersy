@@ -4,7 +4,7 @@ import sys
 import logging
 
 from time import time
-from random import shuffle, choice
+from random import shuffle
 from collections import namedtuple
 from twisted.internet.task import LoopingCall
 
@@ -207,7 +207,9 @@ class DiscoveryCommunity(Community):
         return [DefaultConversion(self), DiscoveryConversion(self)]
 
     def my_preferences(self):
-        return [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
+        my_prefs = [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
+        shuffle(my_prefs)
+        return my_prefs
 
     def add_taste_buddies(self, new_taste_buddies):
         my_communities = dict((community.cid, community)
