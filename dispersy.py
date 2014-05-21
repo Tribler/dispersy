@@ -883,8 +883,7 @@ class Dispersy(object):
                     except StopIteration:
                         pass
                     else:
-                        community.statistics.increase_msg_count(u"outgoing", u"-duplicate-undo-")
-                        self._endpoint.send([message.candidate], [str(proof)])
+                        self._send_packets([message.candidate], [str(proof)], community, "-caused by duplicate-undo-")
 
             else:
                 signature_length = message.authentication.member.signature_length
@@ -990,8 +989,8 @@ class Dispersy(object):
                         if (global_time, packet) < (message.distribution.global_time, message.packet):
                             # we keep PACKET (i.e. the message that we currently have in our database)
                             # reply with the packet to let the peer know
-                            message.community.statistics.increase_msg_count(u"outgoing", u"-duplicate-sequence-")
-                            self._endpoint.send([message.candidate], [packet])
+                            self._send_packets([message.candidate], [packet],
+                                message.community, "-caused by duplicate-sequence-")
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
 
@@ -1131,8 +1130,8 @@ class Dispersy(object):
                             # from this batch.
                             pass
                         else:
-                            message.community.statistics.increase_msg_count(u"outgoing", u"-sequence-")
-                            self._endpoint.send([message.candidate], [str(packet)])
+                            self._send_packets([message.candidate], [str(packet)],
+                                message.community, "-caused by missing-sequence-")
 
                     return DropMessage(message, "old message by member^global_time")
 
@@ -1232,8 +1231,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                         # apparently the sender does not have this message yet
                         if message.distribution.history_size == 1:
                             packet_id, have_packet = tim.values()[0]
-                            message.community.statistics.increase_msg_count(u"outgoing", u"-sequence-")
-                            self._endpoint.send([message.candidate], [have_packet])
+                            self._send_packets([message.candidate], [have_packet],
+                                message.community, "-caused by missing-sequence-")
 
                         logger.debug("drop %s %s@%d (older than %s)", message.name, members, message.distribution.global_time, min(tim))
                         return DropMessage(message, "old message by members^global_time")
@@ -1801,6 +1800,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     u"outgoing", message.meta.name, len(candidates))
 
         return messages_send
+
+    def _send_packets(self, candidates, packets, community, msg_type):
+        """A wrap method to use send() in endpoint.
+        """
+        self._endpoint.send(candidates, packets)
+        community.statistics.increase_msg_count(u"outgoing", msg_type, len(candidates) * len(packets))
 
     def is_valid_address(self, address):
         """

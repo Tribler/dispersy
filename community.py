@@ -2461,8 +2461,7 @@ class Community(object):
 
                 if packets:
                     logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
-                    self._statistics.increase_msg_count(u"outgoing", u"-sync-", len(packets))
-                    self._dispersy._endpoint.send([message.candidate], packets)
+                    self._dispersy._send_packets([message.candidate], packets, self, "-caused by sync-")
 
     def check_introduction_response(self, messages):
         for message in messages:
@@ -2785,9 +2784,7 @@ class Community(object):
                     pass
 
             if responses:
-                self._statistics.increase_msg_count(
-                    u"outgoing", u"-missing-message", len(responses))
-                self._dispersy._endpoint.send([candidate], responses)
+                self._dispersy._send_packets([candidate], responses, self, "-caused by missing-message-")
             else:
                 logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
 
@@ -2871,9 +2868,7 @@ class Community(object):
 
                 if packets:
                     logger.debug("responding with %d identity messages", len(packets))
-                    self._statistics.increase_msg_count(
-                        u"outgoing", u"-dispersy-identity", len(packets))
-                    self._dispersy._endpoint.send([message.candidate], packets)
+                    self._dispersy._send_packets([message.candidate], packets, self, "-caused by missing-identity-")
 
                 else:
                     assert not message.payload.mid == self.my_member.mid, "we should always have our own dispersy-identity"
@@ -2971,8 +2966,7 @@ class Community(object):
                                  msg.distribution.sequence_number,
                                  candidate)
 
-            self._statistics.increase_msg_count(u"outgoing", u"-sequence-", len(packets))
-            self._dispersy._endpoint.send([candidate], packets)
+            self._dispersy._send_packets([candidate], packets, self, u"-sequence-")
 
     def create_missing_proof(self, candidate, message):
         meta = self.get_meta_message(u"dispersy-missing-proof")
@@ -2994,8 +2988,7 @@ class Community(object):
                 allowed, proofs = self.timeline.check(msg)
                 if allowed and proofs:
                     logger.debug("we found %d packets containing proof for %s", len(proofs), message.candidate)
-                    self._statistics.increase_msg_count(u"outgoing", u"-proof-", len(proofs))
-                    self._dispersy._endpoint.send([message.candidate], [proof.packet for proof in proofs])
+                    self._dispersy._send_packets([message.candidate], [proof.packet for proof in proofs], self, "-caused by missing-proof-")
 
                 else:
                     logger.debug("unable to give %s missing proof.  allowed:%s.  proofs:%d packets", message.candidate, allowed, len(proofs))
@@ -3295,8 +3288,7 @@ class Community(object):
                             message.payload.process_undo = False
                             yield message
                             # the sender apparently does not have the lower dispersy-undo message, lets give it back
-                            self._statistics.increase_msg_count(u"outgoing", db_msg.name)
-                            self._dispersy._endpoint.send([message.candidate], [db_msg.packet])
+                            self._dispersy._send_packets([message.candidate], [db_msg.packet], self, db_msg.name)
 
                             yield DispersyDuplicatedUndo(db_msg, message)
                             break
@@ -3568,5 +3560,5 @@ class HardKilledCommunity(Community):
 
     def on_introduction_request(self, messages):
         if self._destroy_community_packet:
-            self.statistics.increase_msg_count(u"outgoing", u"-destroy-community")
-            self._dispersy.endpoint.send([message.candidate for message in messages], [self._destroy_community_packet])
+            self._dispersy._send_packets([message.candidate for message in messages], [self._destroy_community_packet],
+                self, "-caused by destroy-community-")
