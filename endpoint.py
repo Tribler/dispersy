@@ -410,22 +410,12 @@ class TunnelEndpoint(Endpoint):
 
     def open(self, dispersy):
         super(TunnelEndpoint, self).open(dispersy)
-        self._swift.add_download(self)
+        self._swift.register_tunnel(self._session,self.i2ithread_data_came_in)
         return True
 
     def close(self, timeout=0.0):
-        self._swift.remove_download(self, True, True)
+        self._swift.unregister_tunnel(self._session)
         return super(TunnelEndpoint, self).close(timeout)
-
-    def get_def(self):
-        class DummyDef(object):
-
-            def get_roothash(self):
-                return "dispersy-endpoint"
-
-            def get_roothash_as_hex(self):
-                return "dispersy-endpoint".encode("HEX")
-        return DummyDef()
 
     def get_address(self):
         return ("0.0.0.0", self._swift.listenport)
