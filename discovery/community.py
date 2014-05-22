@@ -128,7 +128,7 @@ class PossibleTasteBuddy(TasteBuddy):
             return cmp((self.overlap, self.timestamp, self.random_sort_value),
                        (other.overlap, other.timestamp, other.random_sort_value))
 
-        return super(PossibleTasteBuddy, self).__cmp__(other)
+        return TasteBuddy.__cmp__(self, other)
 
     def __eq__(self, other):
         if isinstance(other, Member):
