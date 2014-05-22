@@ -510,14 +510,14 @@ class DiscoveryCommunity(Community):
 
                 self.add_possible_taste_buddies(possibles)
 
+
+                destination, introduce_me_to = self.get_most_similar(w_candidate)
+                self.send_introduction_request(destination, introduce_me_to)
+
+                self.reply_packet_size += len(message.packet)
             else:
-                logger.debug(
-                    "DiscoveryCommunity: could not get similarity requestcache for %s", message.payload.identifier)
-
-            self.reply_packet_size += len(message.packet)
-
-            destination, introduce_me_to = self.get_most_similar(message.candidate)
-            self.send_introduction_request(destination, introduce_me_to)
+                logger.debug("DiscoveryCommunity: could not get similarity requestcache for %s",
+                             message.payload.identifier)
 
     def send_introduction_request(self, destination, introduce_me_to=None, allow_sync=True, advice=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
