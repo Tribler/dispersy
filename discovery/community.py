@@ -402,7 +402,7 @@ class DiscoveryCommunity(Community):
             destination), self.has_possible_taste_buddies(destination), destination)
 
         send = False
-        if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination) and destination.sock_addr not in self.bootstrap.candidate_addresses:
+        if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination):
             send = self.create_similarity_request(destination)
 
         if not send:
