@@ -2616,10 +2616,6 @@ class Community(object):
             else:
                 logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
 
-            self._dispersy.statistics.walk_attempt_count += 1
-            self._dispersy.statistics.outgoing_intro_count += 1
-            self._dispersy.statistics.dict_inc(u"outgoing_intro_dict", destination.sock_addr)
-
             self._dispersy._forward([request])
 
         return request
