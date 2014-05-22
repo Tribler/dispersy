@@ -5,8 +5,11 @@ from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
 
-from ..discovery.bootstrap import Bootstrap
+from twisted.internet import reactor
+from twisted.internet.threads import blockingCallFromThread
+
 from ..candidate import Candidate
+from ..discovery.community import DiscoveryCommunity
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
@@ -113,6 +116,9 @@ class TestBootstrapServers(DispersyTestFunc):
                 self._hostname = {}
                 self._identifiers = {}
                 self._pcandidates = []
+
+            def initialize(self, *args, **kargs):
+                super(PingCommunity, self).initialize(*args, **kargs)
                 for community in self._dispersy.get_communities():
                     if isinstance(community, DiscoveryCommunity):
                         self._pcandidates = [community.bootstrap.candidates]
@@ -189,7 +195,10 @@ class TestBootstrapServers(DispersyTestFunc):
                     test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
                     test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
-        community = PingCommunity.create_community(self._dispersy, self._my_member)
+        self._mm, = self.create_nodes()
+        def create_community():
+            return PingCommunity.create_community(self._dispersy, self._dispersy.get_new_member())
+        community = blockingCallFromThread(reactor, create_community)
 
         test = self
         PING_COUNT = 10
@@ -200,13 +209,10 @@ class TestBootstrapServers(DispersyTestFunc):
             sleep(5)
             community.summary()
 
-        # cleanup
-        community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
-
         # assert when not all of the servers are responding
         community.finish(PING_COUNT, PING_COUNT * ASSERT_MARGIN, MAX_RTT)
 
+    # TODO(emilon): port this to twisted
     @skip("The stress test is not actually a unittest")
     def test_perform_heavy_stress_test(self):
         """
