@@ -43,6 +43,7 @@ class TasteBuddy():
         self.overlap = overlap
         self.preferences = preferences
         self.sock_addr = sock_addr
+        self.random_sort_value = random()
 
     def update_overlap(self, other, compute_overlap):
         self.preferences = self.preferences | other.preferences
@@ -53,7 +54,9 @@ class TasteBuddy():
 
     def __cmp__(self, other):
         if isinstance(other, TasteBuddy):
-            return cmp(self.overlap, other.overlap)
+            # we sort by overlap, then random
+            return cmp((self.overlap, self.random_sort_value),
+                       (other.overlap, other.random_sort_value))
 
         elif isinstance(other, int):
             return cmp(len(self.overlap), other)
@@ -121,9 +124,9 @@ class PossibleTasteBuddy(TasteBuddy):
 
     def __cmp__(self, other):
         if isinstance(other, PossibleTasteBuddy):
-            if self.overlap == other.other:
-                return cmp(other.timestamp, self.timestamp)
-            return cmp(self.overlap, other.overlap)
+            # we want to sort based on overlap, then time desc, then random
+            return cmp((self.overlap, self.timestamp, self.random_sort_value),
+                       (other.overlap, other.timestamp, other.random_sort_value))
 
         return super(PossibleTasteBuddy, self).__cmp__(other)
 
@@ -459,13 +462,12 @@ class DiscoveryCommunity(Community):
 
             logger.debug("DiscoveryCommunity: got similarity request from %s %s", message.candidate, overlap_count)
 
-            # Determine overlap for top taste buddies, adding random to randomize order for tbs with same
-            # overlap
+            # Determine overlap for top taste buddies
             bitfields = []
-            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), random(), tb)
+            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb)
                                 for tb in self.taste_buddies if tb != message.candidate], reverse=True)
 
-            for _, _, tb in sorted_tbs[:self.max_tbs]:
+            for _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
                 bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8))
                                 if his_preferences[index] in tb.preferences])
@@ -517,13 +519,14 @@ class DiscoveryCommunity(Community):
                 self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
                                                          message.authentication.member.mid, w_candidate)])
 
+                now = time()
                 possibles = []
                 original_list = request.preference_list
                 for candidate_mid, bitfield in message.payload.tb_overlap:
                     tb_preferences = set([original_list[index] for index in
                                           range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
                     possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences,
-                                                        time(), candidate_mid, w_candidate))
+                                                        now, candidate_mid, w_candidate))
 
                 self.add_possible_taste_buddies(possibles)
 
