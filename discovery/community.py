@@ -486,8 +486,6 @@ class DiscoveryCommunity(Community):
             if request:
                 # use walkcandidate stored in request_cache
                 w_candidate = request.requested_candidate
-                assert message.candidate.get_member().mid == w_candidate.get_member().mid
-
                 logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
 
                 # Update actual taste buddies.
