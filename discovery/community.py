@@ -469,10 +469,10 @@ class DiscoveryCommunity(Community):
 
             # Determine overlap for top taste buddies
             bitfields = []
-            sorted_tbs = sorted([(self.compute_overlap(his_preferences, tb.preferences), tb)
+            sorted_tbs = sorted([(self.compute_overlap(his_preferences, tb.preferences), random(), tb)
                                 for tb in self.taste_buddies if tb != message.candidate], reverse=True)
 
-            for _, tb in sorted_tbs[:self.max_tbs]:
+            for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
                 bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8))
                                 if his_preferences[index] in tb.preferences])
