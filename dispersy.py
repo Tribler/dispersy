@@ -405,7 +405,7 @@ class Dispersy(object):
         self._statistics.dict_inc(self._statistics.attachment, community.cid)
 
         # let discovery community know
-        if self._discovery_community and community != self._discovery_community:
+        if self._discovery_community:
             self._discovery_community.new_community(community)
 
     def detach_community(self, community):
