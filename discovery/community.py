@@ -160,8 +160,9 @@ class DiscoveryCommunity(Community):
         def on_results(success):
             assert isinstance(success, bool), type(success)
 
-            self._pending_tasks["insert_trackers"] = lc = LoopingCall(self.insert_trackers)
-            lc.start(INSERT_TRACKER_INTERVAL, now=True)
+            if "insert_trackers" not in self._pending_tasks:
+                self._pending_tasks["insert_trackers"] = lc = LoopingCall(self.periodically_insert_trackers)
+                lc.start(INSERT_TRACKER_INTERVAL, now=True)
 
             if success:
                 logger.debug("Resolved all bootstrap addresses")
@@ -178,12 +179,15 @@ class DiscoveryCommunity(Community):
         if lc:
             self._pending_tasks["bootstrap_resolution"] = lc
 
-    def insert_trackers(self):
-        for community in self._dispersy.get_communities():
-            if community.dispersy_enable_candidate_walker:
-                for candidate in self.bootstrap.candidates:
-                    logger.debug("Adding %s %s as discovered candidate", type(community), candidate)
-                    community.add_discovered_candidate(candidate)
+    def periodically_insert_trackers(self):
+        communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
+        if self not in communities:  # make sure we are in the communities list
+            communities.append(self)
+
+        for community in communities:
+            for candidate in self.bootstrap.candidates:
+                logger.debug("Adding %s %s as discovered candidate", type(community), candidate)
+                community.add_discovered_candidate(candidate)
 
     @classmethod
     def get_master_members(cls, dispersy):
