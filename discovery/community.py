@@ -4,7 +4,7 @@ import sys
 import logging
 
 from time import time
-from random import shuffle
+from random import shuffle, random
 from collections import namedtuple
 from twisted.internet.task import LoopingCall
 
@@ -118,6 +118,14 @@ class PossibleTasteBuddy(TasteBuddy):
         too_old = time() - PING_TIMEOUT
         diff = self.timestamp - too_old
         return diff if diff > 0 else 0
+
+    def __cmp__(self, other):
+        if isinstance(other, PossibleTasteBuddy):
+            if self.overlap == other.other:
+                return cmp(other.timestamp, self.timestamp)
+            return cmp(self.overlap, other.overlap)
+
+        return super(PossibleTasteBuddy, self).__cmp__(other)
 
     def __eq__(self, other):
         if isinstance(other, Member):
@@ -256,6 +264,7 @@ class DiscoveryCommunity(Community):
                     my_communities[cid].add_discovered_candidate(new_taste_buddy.candidate)
 
         self.taste_buddies.sort(reverse=True)
+        self.taste_buddies = self.taste_buddies[:self.max_tbs]
 
         if DEBUG_VERBOSE:
             logger.debug("DiscoveryCommunity: current tastebuddy list %s %s", len(
@@ -307,8 +316,9 @@ class DiscoveryCommunity(Community):
             for possible in possibles:
                 assert isinstance(possible, PossibleTasteBuddy), type(possible)
 
+        low_sim = self.get_least_similar_tb()
         for new_possible in possibles:
-            if self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
+            if new_possible <= low_sim or self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
                 possibles.remove(new_possible)
                 continue
 
@@ -333,13 +343,15 @@ class DiscoveryCommunity(Community):
                          len(self.possible_taste_buddies))
 
     def clean_possible_taste_buddies(self):
+        low_sim = self.get_least_similar_tb()
         for i in range(len(self.possible_taste_buddies) - 1, -1, -1):
+            to_low_sim = self.possible_taste_buddies[i] <= low_sim
             too_old = self.possible_taste_buddies[i].time_remaining() == 0
             is_tb = self.is_taste_buddy_mid(self.possible_taste_buddies[i].candidate_mid)
 
-            if too_old or is_tb:
-                logger.debug("DiscoveryCommunity: removing possible tastebuddy %s %s %s",
-                             too_old, is_tb, self.possible_taste_buddies[i])
+            if to_low_sim or too_old or is_tb:
+                logger.debug("DiscoveryCommunity: removing possible tastebuddy %s %s %s %s",
+                             to_low_sim, too_old, is_tb, self.possible_taste_buddies[i])
                 self.possible_taste_buddies.pop(i)
 
     def has_possible_taste_buddies(self, candidate):
@@ -358,6 +370,11 @@ class DiscoveryCommunity(Community):
             return most_similar.received_from, most_similar.candidate_mid
 
         return candidate, None
+
+    def get_least_similar_tb(self):
+        if self.taste_buddies:
+            return self.taste_buddies[-1]
+        return 0
 
     class SimilarityAttempt(RandomNumberCache):
         def __init__(self, community, requested_candidate, preference_list):
@@ -427,9 +444,9 @@ class DiscoveryCommunity(Community):
         meta = self.get_meta_message(u"similarity-response")
 
         for message in messages:
-
-            wcandidate = self.create_or_update_walkcandidate(
-                message.candidate.sock_addr, message.payload.lan_address, message.payload.wan_address, message.candidate.tunnel, message.payload.connection_type, message.candidate)
+            wcandidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.lan_address,
+                                                             message.payload.wan_address, message.candidate.tunnel,
+                                                             message.payload.connection_type, message.candidate)
 
             # Update actual taste buddies.
             his_preferences = message.payload.preference_list
@@ -437,19 +454,21 @@ class DiscoveryCommunity(Community):
             assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
             overlap_count = self.compute_overlap(his_preferences)
-            self.add_taste_buddies(
-                [ActualTasteBuddy(overlap_count, set(his_preferences), time(), message.authentication.member.mid, wcandidate)])
+            self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences),
+                                                     time(), message.authentication.member.mid, wcandidate)])
 
             logger.debug("DiscoveryCommunity: got similarity request from %s %s", message.candidate, overlap_count)
 
-            # Determine overlap for top taste buddies.
+            # Determine overlap for top taste buddies, adding random to randomize order for tbs with same
+            # overlap
             bitfields = []
-            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb)
+            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), random(), tb)
                                 for tb in self.taste_buddies if tb != message.candidate], reverse=True)
-            for _, tb in sorted_tbs[:self.max_tbs]:
+
+            for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
-                bitfield = sum(
-                    [2 ** index for index in range(min(len(his_preferences), 4 * 8)) if his_preferences[index] in tb.preferences])
+                bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8))
+                                if his_preferences[index] in tb.preferences])
                 bitfields.append((tb.candidate_mid, bitfield))
 
             payload = (message.payload.identifier, self.my_preferences()[:self.max_prefs], bitfields)
@@ -457,8 +476,8 @@ class DiscoveryCommunity(Community):
                 authentication=(self.my_member,), distribution=(self.global_time,), payload=payload)
 
             if DEBUG_VERBOSE:
-                logger.debug(
-                    "DiscoveryCommunity: sending similarity response to %s containing %s", message.candidate, payload)
+                logger.debug("DiscoveryCommunity: sending similarity response to %s containing %s",
+                             message.candidate, payload)
 
             self._dispersy._send([message.candidate], [response_message])
 
