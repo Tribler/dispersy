@@ -7,12 +7,11 @@ from time import time, sleep
 from unittest import skip, skipUnless
 
 from nose.twistedtools import reactor
-from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
 from twisted.internet.task import deferLater
 from twisted.internet.threads import blockingCallFromThread
 
-from ..candidate import Candidate
-from ..discovery.community import DiscoveryCommunity
+from ..candidate import Candidate, WalkCandidate
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger
@@ -24,6 +23,8 @@ from .dispersytestclass import DispersyTestFunc
 logger = get_logger(__name__)
 summary = get_logger("test-bootstrap-summary")
 
+PING_COUNT = 10
+MAX_RTT = 0.5
 
 class TestBootstrapServers(DispersyTestFunc):
 
@@ -124,37 +125,27 @@ class TestBootstrapServers(DispersyTestFunc):
 
                 self.test_d = Deferred()
 
-            def initialize(self, *args, **kargs):
-                super(PingCommunity, self).initialize(*args, **kargs)
-                for community in self._dispersy.get_communities():
-                    if isinstance(community, DiscoveryCommunity):
-                        self._pcandidates = [community.bootstrap.candidates]
-                # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
-            def _initialize_meta_messages(self):
-                super(PingCommunity, self)._initialize_meta_messages()
-
             @inlineCallbacks
             def start_walking(self):
-                ping_count = 10
-                assert_margin = 0.9
-                max_rtt = 0.5
-
                 for _ in xrange(10):
-                    self._pcandidates = list(self._iter_categories((u"discovered",), once=True))
-                    if self._pcandidates:
+                    if self._dispersy._discovery_community and self._dispersy._discovery_community.bootstrap.are_resolved:
+                        self._pcandidates = [self.get_candidate(address) for address in
+                                             set(self._dispersy._discovery_community.bootstrap.candidate_addresses)]
                         break
                     yield deferLater(reactor, 1, lambda: None)
                 else:
                     test.fail("No candidates discovered")
 
                 for candidate in self._pcandidates:
-                    self._hostname[candidate.sock_addr] = getfqdn(candidate.sock_addr[0])
+                    for (host, port), b_candidate in self._dispersy._discovery_community.bootstrap._candidates.iteritems():
+                        if candidate == b_candidate:
+                            self._hostname[candidate.sock_addr] = host
+                self._pcandidates.sort(cmp=lambda a,b: cmp(a.sock_addr, b.sock_addr))
 
-                for _ in xrange(ping_count):
+                for _ in xrange(PING_COUNT):
                     self.ping(time())
                     yield deferLater(reactor, 1, lambda: None)
                     self.summary()
-                self.finish(ping_count, ping_count * assert_margin, max_rtt)
                 self.test_d.callback(None)
 
             def on_introduction_response(self, messages):
@@ -176,7 +167,9 @@ class TestBootstrapServers(DispersyTestFunc):
                     self._request[candidate.sock_addr][request.payload.identifier] = now
 
             def summary(self):
-                for sock_addr, rtts in sorted(self._summary.iteritems()):
+                for candidate in self._pcandidates:
+                    sock_addr = candidate.sock_addr
+                    rtts = self._summary[sock_addr]
                     if rtts:
                         summary.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
                                      self._identifiers[sock_addr].encode("HEX"),
@@ -193,18 +186,27 @@ class TestBootstrapServers(DispersyTestFunc):
                 # write graph statistics
                 handle = open("summary.txt", "w+")
                 handle.write("HOST_NAME ADDRESS REQUESTS RESPONSES\n")
-                for sock_addr, rtts in self._summary.iteritems():
+                for candidate in self._pcandidates:
+                    sock_addr = candidate.sock_addr
+                    rtts = self._summary[sock_addr]
+
                     handle.write("%s %s:%d %d %d\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
                 handle.close()
 
                 handle = open("walk_rtts.txt", "w+")
                 handle.write("HOST_NAME ADDRESS RTT\n")
-                for sock_addr, rtts in self._summary.iteritems():
+                for candidate in self._pcandidates:
+                    sock_addr = candidate.sock_addr
+                    rtts = self._summary[sock_addr]
+
                     for rtt in rtts:
                         handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))
                 handle.close()
 
-                for sock_addr, rtts in self._summary.iteritems():
+                for candidate in self._pcandidates:
+                    sock_addr = candidate.sock_addr
+                    rtts = self._summary[sock_addr]
+
                     test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
                     test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
@@ -217,8 +219,11 @@ class TestBootstrapServers(DispersyTestFunc):
             community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
             yield community.test_d
             dispersy.stop()
+            returnValue(community)
 
-        blockingCallFromThread(reactor, do_pings)
+        assert_margin = 0.9
+        community = blockingCallFromThread(reactor, do_pings)
+        community.finish(PING_COUNT, PING_COUNT * assert_margin, MAX_RTT)
 
     # TODO(emilon): port this to twisted
     @skip("The stress test is not actually a unittest")
