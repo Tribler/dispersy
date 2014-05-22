@@ -990,7 +990,7 @@ class Dispersy(object):
                             # we keep PACKET (i.e. the message that we currently have in our database)
                             # reply with the packet to let the peer know
                             self._send_packets([message.candidate], [packet],
-                                message.community, "-caused by duplicate-sequence-")
+                                message.community, "-caused by check_full_sync-")
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
 
@@ -1131,7 +1131,7 @@ class Dispersy(object):
                             pass
                         else:
                             self._send_packets([message.candidate], [str(packet)],
-                                message.community, "-caused by missing-sequence-")
+                                message.community, "-caused by check_last_sync:check_member-")
 
                     return DropMessage(message, "old message by member^global_time")
 
@@ -1232,7 +1232,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                         if message.distribution.history_size == 1:
                             packet_id, have_packet = tim.values()[0]
                             self._send_packets([message.candidate], [have_packet],
-                                message.community, "-caused by missing-sequence-")
+                                message.community, "-caused by check_last_sync:check_double_member-")
 
                         logger.debug("drop %s %s@%d (older than %s)", message.name, members, message.distribution.global_time, min(tim))
                         return DropMessage(message, "old message by members^global_time")
