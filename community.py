@@ -2142,6 +2142,12 @@ class Community(object):
         if self._dispersy.store_update_forward(possibly_messages, True, True, False):
             self._statistics.increase_msg_count(u"success", meta.name, len(messages))
 
+            if meta.name == u"dispersy-introduction-response":
+                self._dispersy._statistics.walk_success_count += len(messages)
+                self._dispersy._statistics.incoming_intro_count += len(messages)
+                for message in messages:
+                    self._dispersy._statistics.dict_inc(u"incoming_intro_dict", message.candidate.sock_addr)
+
             # tell what happened
             debug_end = time()
             if debug_end - debug_begin > 1.0:
@@ -2512,11 +2518,6 @@ class Community(object):
 
             # apply vote to determine our WAN address
             self._dispersy.wan_address_vote(payload.destination_address, candidate)
-
-            # increment statistics only the first time
-            self._dispersy._statistics.walk_success_count += 1
-            self._dispersy._statistics.incoming_intro_count += 1
-            self._dispersy._statistics.dict_inc(u"incoming_intro_dict", candidate.sock_addr)
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
