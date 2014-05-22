@@ -446,6 +446,8 @@ class DiscoveryCommunity(Community):
     def on_similarity_request(self, messages):
         meta = self.get_meta_message(u"similarity-response")
 
+        # similar to on_introduction_request, we first add all requests to our taste_buddies
+        # and then create the replies
         for message in messages:
             wcandidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.lan_address,
                                                              message.payload.wan_address, message.candidate.tunnel,
@@ -453,21 +455,24 @@ class DiscoveryCommunity(Community):
 
             # Update actual taste buddies.
             his_preferences = message.payload.preference_list
-
             assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
             overlap_count = self.compute_overlap(his_preferences)
             self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences),
                                                      time(), message.authentication.member.mid, wcandidate)])
 
+
+        for message in messages:
             logger.debug("DiscoveryCommunity: got similarity request from %s %s", message.candidate, overlap_count)
+
+            his_preferences = message.payload.preference_list
 
             # Determine overlap for top taste buddies
             bitfields = []
-            sorted_tbs = sorted([(self.compute_overlap(tb.preferences), tb)
+            sorted_tbs = sorted([(self.compute_overlap(his_preferences, tb.preferences), random(), tb)
                                 for tb in self.taste_buddies if tb != message.candidate], reverse=True)
 
-            for _, tb in sorted_tbs[:self.max_tbs]:
+            for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
                 bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8))
                                 if his_preferences[index] in tb.preferences])
@@ -515,7 +520,7 @@ class DiscoveryCommunity(Community):
 
                 assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
-                overlap_count = len(set(self.my_preferences()) & his_preferences)
+                overlap_count = self.compute_overlap(his_preferences)
                 self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
                                                          message.authentication.member.mid, w_candidate)])
 
@@ -529,7 +534,6 @@ class DiscoveryCommunity(Community):
                                                         now, candidate_mid, w_candidate))
 
                 self.add_possible_taste_buddies(possibles)
-
 
                 destination, introduce_me_to = self.get_most_similar(w_candidate)
                 self.send_introduction_request(destination, introduce_me_to)
