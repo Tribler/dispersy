@@ -1,3 +1,4 @@
+from collections import defaultdict
 from os import environ, getcwd, path
 from socket import getfqdn
 from subprocess import Popen, PIPE, STDOUT
@@ -5,11 +6,15 @@ from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
 
-from twisted.internet import reactor
+from nose.twistedtools import reactor
+from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.task import deferLater
 from twisted.internet.threads import blockingCallFromThread
 
 from ..candidate import Candidate
 from ..discovery.community import DiscoveryCommunity
+from ..dispersy import Dispersy
+from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger
 from ..message import Message, DropMessage
 from .debugcommunity.community import DebugCommunity
@@ -111,11 +116,13 @@ class TestBootstrapServers(DispersyTestFunc):
                 super(PingCommunity, self).__init__(*args, **kargs)
 
                 self._pings_done = 0
-                self._request = {}
-                self._summary = {}
+                self._request = defaultdict(dict)
+                self._summary = defaultdict(list)
                 self._hostname = {}
-                self._identifiers = {}
+                self._identifiers = defaultdict(str)
                 self._pcandidates = []
+
+                self.test_d = Deferred()
 
             def initialize(self, *args, **kargs):
                 super(PingCommunity, self).initialize(*args, **kargs)
@@ -123,26 +130,32 @@ class TestBootstrapServers(DispersyTestFunc):
                     if isinstance(community, DiscoveryCommunity):
                         self._pcandidates = [community.bootstrap.candidates]
                 # self._pcandidates = [Candidate(("130.161.211.198", 6431))]
-
-                for candidate in self._pcandidates:
-                    self._request[candidate.sock_addr] = {}
-                    self._summary[candidate.sock_addr] = []
-                    self._hostname[candidate.sock_addr] = getfqdn(candidate.sock_addr[0])
-                    self._identifiers[candidate.sock_addr] = ""
-
             def _initialize_meta_messages(self):
                 super(PingCommunity, self)._initialize_meta_messages()
 
-            @property
-            def dispersy_enable_candidate_walker(self):
-                return False
+            @inlineCallbacks
+            def start_walking(self):
+                ping_count = 10
+                assert_margin = 0.9
+                max_rtt = 0.5
 
-            @property
-            def dispersy_enable_candidate_walker_responses(self):
-                return True
+                for _ in xrange(10):
+                    self._pcandidates = list(self._iter_categories((u"discovered",), once=True))
+                    if self._pcandidates:
+                        break
+                    yield deferLater(reactor, 1, lambda: None)
+                else:
+                    test.fail("No candidates discovered")
 
-            def take_step(self, allow_sync):
-                test.fail("we disabled the walker")
+                for candidate in self._pcandidates:
+                    self._hostname[candidate.sock_addr] = getfqdn(candidate.sock_addr[0])
+
+                for _ in xrange(ping_count):
+                    self.ping(time())
+                    yield deferLater(reactor, 1, lambda: None)
+                    self.summary()
+                self.finish(ping_count, ping_count * assert_margin, max_rtt)
+                self.test_d.callback(None)
 
             def on_introduction_response(self, messages):
                 now = time()
@@ -195,22 +208,17 @@ class TestBootstrapServers(DispersyTestFunc):
                     test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
                     test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
-        self._mm, = self.create_nodes()
-        def create_community():
-            return PingCommunity.create_community(self._dispersy, self._dispersy.get_new_member())
-        community = blockingCallFromThread(reactor, create_community)
-
         test = self
-        PING_COUNT = 10
-        ASSERT_MARGIN = 0.9
-        MAX_RTT = 0.5
-        for _ in xrange(PING_COUNT):
-            community.ping(time())
-            sleep(5)
-            community.summary()
 
-        # assert when not all of the servers are responding
-        community.finish(PING_COUNT, PING_COUNT * ASSERT_MARGIN, MAX_RTT)
+        @inlineCallbacks
+        def do_pings():
+            dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
+            dispersy.start(autoload_discovery=True)
+            community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
+            yield community.test_d
+            dispersy.stop()
+
+        blockingCallFromThread(reactor, do_pings)
 
     # TODO(emilon): port this to twisted
     @skip("The stress test is not actually a unittest")
