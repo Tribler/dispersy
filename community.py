@@ -253,6 +253,8 @@ class Community(object):
         # _pending_tasks contains all pending calls that should be removed when the community is unloaded.
         self._pending_tasks = {}
 
+        self._global_time = 0
+
         self._statistics = CommunityStatistics(self)
 
     def initialize(self):
