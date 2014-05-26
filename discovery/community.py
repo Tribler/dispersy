@@ -277,7 +277,6 @@ class DiscoveryCommunity(Community):
                     my_communities[cid].add_discovered_candidate(new_taste_buddy.candidate)
 
         self.taste_buddies.sort(reverse=True)
-        self.taste_buddies = self.taste_buddies[:self.max_tbs]
 
         if DEBUG_VERBOSE:
             logger.debug("DiscoveryCommunity: current tastebuddy list %s %s", len(
@@ -646,7 +645,7 @@ class DiscoveryCommunity(Community):
                     self.community.remove_taste_buddy(candidate)
 
     def create_ping_requests(self):
-        tbs = [tb.candidate for tb in self.yield_taste_buddies() if tb.time_remaining() < PING_INTERVAL]
+        tbs = [tb.candidate for tb in self.yield_taste_buddies() if tb.time_remaining() < PING_INTERVAL][:self.max_tbs]
 
         if tbs:
             cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tbs))
