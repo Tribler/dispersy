@@ -2472,7 +2472,7 @@ class Community(object):
     def check_introduction_response(self, messages):
         for message in messages:
             if not self.request_cache.has(u"introduction-request", message.payload.identifier):
-                self._statistics.invalid_response_identifier_count += 1
+                self._dispersy._statistics.invalid_response_identifier_count += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
 
