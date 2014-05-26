@@ -402,7 +402,7 @@ class Dispersy(object):
     def attach_community(self, community):
         # add community to communities dict
         self._communities[community.cid] = community
-        self._statistics.dict_inc(self._statistics.attachment, community.cid)
+        self._statistics.dict_inc(u"attachment", community.cid)
 
         # let discovery community know
         if self._discovery_community:
@@ -883,8 +883,7 @@ class Dispersy(object):
                     except StopIteration:
                         pass
                     else:
-                        self._statistics.dict_inc(self._statistics.outgoing, u"-duplicate-undo-")
-                        self._endpoint.send([message.candidate], [str(proof)])
+                        self._send_packets([message.candidate], [str(proof)], community, "-caused by duplicate-undo-")
 
             else:
                 signature_length = message.authentication.member.signature_length
@@ -990,8 +989,8 @@ class Dispersy(object):
                         if (global_time, packet) < (message.distribution.global_time, message.packet):
                             # we keep PACKET (i.e. the message that we currently have in our database)
                             # reply with the packet to let the peer know
-                            self._statistics.dict_inc(self._statistics.outgoing, '-duplicate-sequence-')
-                            self._endpoint.send([message.candidate], [packet])
+                            self._send_packets([message.candidate], [packet],
+                                message.community, "-caused by check_full_sync-")
                             yield DropMessage(message, "duplicate message by sequence number (1)")
                             continue
 
@@ -1131,8 +1130,8 @@ class Dispersy(object):
                             # from this batch.
                             pass
                         else:
-                            self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-")
-                            self._endpoint.send([message.candidate], [str(packet)])
+                            self._send_packets([message.candidate], [str(packet)],
+                                message.community, "-caused by check_last_sync:check_member-")
 
                     return DropMessage(message, "old message by member^global_time")
 
@@ -1232,8 +1231,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                         # apparently the sender does not have this message yet
                         if message.distribution.history_size == 1:
                             packet_id, have_packet = tim.values()[0]
-                            self._statistics.dict_inc(self._statistics.outgoing, u"-sequence-")
-                            self._endpoint.send([message.candidate], [have_packet])
+                            self._send_packets([message.candidate], [have_packet],
+                                message.community, "-caused by check_last_sync:check_double_member-")
 
                         logger.debug("drop %s %s@%d (older than %s)", message.name, members, message.distribution.global_time, min(tim))
                         return DropMessage(message, "old message by members^global_time")
@@ -1428,7 +1427,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(timestamp, float), timestamp
 
         if self.running:
-            self._statistics.received_count += len(packets)
+            self._statistics.total_received += len(packets)
 
             # Ugly hack to sort the identity messages before any other to avoid sending missing identity requests
             # for identities we have already received but not processed yet. (248 == identity message ID)
@@ -1445,8 +1444,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                     packets = list(iterator)
                     candidates = set([candidate for candidate, _ in packets])
                     logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
-                    self._statistics.dict_inc(self._statistics.drop, "_convert_packets_into_batch:unknown community")
-                    self._statistics.drop_count += 1
+                    self._statistics.msg_statistics.increase_count(
+                        u"drop", u"_convert_packets_into_batch:unknown community")
         else:
             logger.info("dropping %d packets as dispersy is not running", len(packets))
 
@@ -1687,8 +1686,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 logger.debug("commit user generated message")
                 self._database.commit()
 
-                self._statistics.created_count += my_messages
-                self._statistics.dict_inc(self._statistics.created, messages[0].meta.name, my_messages)
+                messages[0].community.statistics.increase_msg_count(u"created", messages[0].meta.name, my_messages)
 
         if forward:
             return self._forward(messages)
@@ -1798,9 +1796,22 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if messages_send:
             for message in messages:
-                self._statistics.dict_inc(self._statistics.outgoing, message.meta.name, len(candidates))
+                if message.meta.name == u"dispersy-introduction-request":
+                    for candidate in candidates:
+                        self.statistics.walk_attempt_count += 1
+                        self.statistics.outgoing_intro_count += 1
+                        self.statistics.dict_inc(u"outgoing_intro_dict", candidate.sock_addr)
+
+                message.community.statistics.increase_msg_count(
+                    u"outgoing", message.meta.name, len(candidates))
 
         return messages_send
+
+    def _send_packets(self, candidates, packets, community, msg_type):
+        """A wrap method to use send() in endpoint.
+        """
+        self._endpoint.send(candidates, packets)
+        community.statistics.increase_msg_count(u"outgoing", msg_type, len(candidates) * len(packets))
 
     def is_valid_address(self, address):
         """
@@ -2224,18 +2235,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if summary.isEnabledFor(logging.DEBUG):
             now = time()
             summary.debug("--- %s:%d (%s:%d) %s", self.lan_address[0], self.lan_address[1], self.wan_address[0], self.wan_address[1], self.connection_type)
-            summary.debug("walk-attempt %d; success %d; invalid %d; boot-attempt %d; boot-success %d",
-                          self._statistics.walk_attempt,
-                          self._statistics.walk_success,
-                          self._statistics.walk_invalid_response_identifier,
-                          self._statistics.walk_bootstrap_attempt,
-                          self._statistics.walk_bootstrap_success)
-            summary.debug("walk-advice-out-request %d; in-response %d; in-new %d; in-request %d; out-response %d",
-                          self._statistics.walk_advice_outgoing_request,
-                          self._statistics.walk_advice_incoming_response,
-                          self._statistics.walk_advice_incoming_response_new,
-                          self._statistics.walk_advice_incoming_request,
-                          self._statistics.walk_advice_outgoing_response)
+            summary.debug("walk-attempt %d; success %d; invalid %d",
+                self._statistics.walk_attempt_count,
+                self._statistics.walk_success_count,
+                self._statistics.invalid_response_identifier_count)
 
             for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
                 if community.get_classification() == u"PreviewChannelCommunity":
