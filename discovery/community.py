@@ -711,8 +711,9 @@ class PeerCache():
         if os.path.exists(self.filename):
             with open(self.filename, 'r') as fp:
                 for line in fp.readlines():
-                    wcandidate, info = self.parse_line(line)
-                    self.walkcandidates[wcandidate] = info
+                    if not line.startswith('#'):
+                        wcandidate, info = self.parse_line(line)
+                        self.walkcandidates[wcandidate] = info
             logger.debug('PeerCache: loaded %s, got %d peers', self.filename, len(self.walkcandidates))
 
     def clean_and_save(self):
@@ -730,10 +731,10 @@ class PeerCache():
         logger.debug('PeerCache: removed %d peers', old_num_candidates - len(self.walkcandidates))
 
         with open(self.filename, 'w') as fp:
-            lines = []
+            lines = ['# WAN address\t\tLAN address\t\tTunnel\tLast seen\t\tLast checked\tNumber of fails\n']
             for wcandidate, info in self.walkcandidates.iteritems():
                 line = '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,))
-                line += '\t'.join([str(info[key]) for key in self.info_keys]) + '\n'
+                line += '\t\t'.join([str(info[key]) for key in self.info_keys]) + '\n'
                 lines.append(line)
             fp.writelines(lines)
             logger.debug('PeerCache: saved %d peers to %s', len(self.walkcandidates), self.filename)
