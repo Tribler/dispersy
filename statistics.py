@@ -263,14 +263,7 @@ class CommunityStatistics(Statistics):
         self.hex_cid = community.cid.encode("HEX")
         self.hex_mid = community.my_member.mid.encode("HEX")
 
-        self.global_time = None
-        self.acceptable_global_time = None
-        self.dispersy_acceptable_global_time_range = None
-        self.candidates = None
-
         self.database = dict()
-        self.dispersy_enable_candidate_walker = None
-        self.dispersy_enable_candidate_walker_responses = None
 
         self.total_candidates_discovered = 0
 
@@ -280,6 +273,11 @@ class CommunityStatistics(Statistics):
         self.sync_bloom_reuse = 0
         self.sync_bloom_send = 0
         self.sync_bloom_skip = 0
+
+        self.dispersy_acceptable_global_time_range = self._community.dispersy_acceptable_global_time_range
+
+        self.dispersy_enable_candidate_walker = self._community.dispersy_enable_candidate_walker
+        self.dispersy_enable_candidate_walker_responses = self._community.dispersy_enable_candidate_walker_responses
 
     def increase_discovered_candidates(self, value=1):
         self.total_candidates_discovered += value
@@ -293,16 +291,22 @@ class CommunityStatistics(Statistics):
         self.msg_statistics.increase_delay_count(category, value)
         self._dispersy.statistics.msg_statistics.increase_delay_count(category, value)
 
-    def update(self, database=False):
-        self.acceptable_global_time = self._community.acceptable_global_time
-        self.dispersy_acceptable_global_time_range = self._community.dispersy_acceptable_global_time_range
-        self.dispersy_enable_candidate_walker = self._community.dispersy_enable_candidate_walker
-        self.dispersy_enable_candidate_walker_responses = self._community.dispersy_enable_candidate_walker_responses
-        self.global_time = self._community.global_time
+    @property
+    def acceptable_global_time(self):
+        return self._community.acceptable_global_time
+
+    @property
+    def global_time(self):
+        return self._community.global_time
+
+    @property
+    def candidates(self):
         now = time()
-        self.candidates = [(candidate.lan_address, candidate.wan_address, candidate.global_time)
+        return [(candidate.lan_address, candidate.wan_address, candidate.global_time)
             for candidate in self._community.candidates.itervalues()
-                if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
+            if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
+
+    def update(self, database=False):
         if database:
             self.database = dict(self._community.dispersy.database.execute(u"SELECT meta_message.name, COUNT(sync.id) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? GROUP BY sync.meta_message", (self._community.database_id,)))
         else:
