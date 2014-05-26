@@ -147,7 +147,7 @@ class PossibleTasteBuddy(TasteBuddy):
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
-        self.peer_cache = None
+        self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
 
         super(DiscoveryCommunity, self).initialize()
 
@@ -156,7 +156,6 @@ class DiscoveryCommunity(Community):
         self.taste_buddies = []
         self.possible_taste_buddies = []
         self.requested_introductions = {}
-        self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
 
         self.send_packet_size = 0
         self.reply_packet_size = 0
@@ -189,12 +188,9 @@ class DiscoveryCommunity(Community):
                     logger.debug("Adding %s %s as discovered candidate", type(community), candidate)
                     community.add_discovered_candidate(candidate)
 
-    def unload_community(self):
-        self.peer_cache.save()
-
     def dispersy_get_walk_candidate(self):
         candidate = super(DiscoveryCommunity, self).dispersy_get_walk_candidate()
-        return candidate or (self.peer_cache.get_peer() if self.peer_cache else None)
+        return candidate or self.peer_cache.get_peer()
 
     @classmethod
     def get_master_members(cls, dispersy):
@@ -252,7 +248,7 @@ class DiscoveryCommunity(Community):
                 logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
 
             if new_taste_buddy.candidate.connection_type == u'public':
-                self.peer_cache.add_peer(new_taste_buddy.candidate)
+                self.peer_cache.add_or_update_peer(new_taste_buddy.candidate)
 
             for taste_buddy in self.taste_buddies:
                 if new_taste_buddy == taste_buddy:
@@ -320,6 +316,8 @@ class DiscoveryCommunity(Community):
         for tb in self.yield_taste_buddies():
             if tb == candidate:
                 tb.timestamp = time()
+                if candidate.connection_type == u'public':
+                    self.peer_cache.add_or_update_peer(candidate)
                 break
 
     def remove_taste_buddy(self, candidate):
@@ -408,6 +406,7 @@ class DiscoveryCommunity(Community):
 
         def on_timeout(self):
             self.community.send_introduction_request(self.requested_candidate)
+            self.community.peer_cache.inc_num_fails(self.requested_candidate)
 
     def create_introduction_request(self, destination, allow_sync):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
@@ -527,6 +526,7 @@ class DiscoveryCommunity(Community):
                 # use walkcandidate stored in request_cache
                 w_candidate = request.requested_candidate
                 logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
+                self.peer_cache.set_last_checked(w_candidate, time())
 
                 # Update actual taste buddies.
                 payload = message.payload
@@ -705,25 +705,20 @@ class PeerCache():
         self.info_keys = ['last_seen', 'last_checked', 'num_fails']
         self.load()
 
+        self.community._pending_tasks["clean_and_save_peer_cache"] = lc = LoopingCall(self.clean_and_save)
+        lc.start(30, now=False)
+
     def load(self):
         if os.path.exists(self.filename):
             with open(self.filename, 'r') as fp:
                 for line in fp.readlines():
                     wcandidate, info = self.parse_line(line)
                     self.walkcandidates[wcandidate] = info
-                logger.debug('Loaded %s, got %d peers', self.filename, len(self.walkcandidates))
+            logger.debug('PeerCache: loaded %s, got %d peers', self.filename, len(self.walkcandidates))
 
-    def save(self):
-        with open(self.filename, 'w') as fp:
-            lines = []
-            for wcandidate, info in self.walkcandidates.iteritems():
-                line = '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,))
-                line += '\t'.join(map(str, info.values()))
-                lines.append(line)
-            fp.writelines(lines)
-            logger.debug('Saved %d peers to %s', len(self.walkcandidates), self.filename)
+    def clean_and_save(self):
+        old_num_candidates = len(self.walkcandidates)
 
-    def clean(self):
         for wcandidate, info in self.walkcandidates.iteritems():
             if info['num_fails'] > 3:
                 del self.walkcandidates[wcandidate]
@@ -733,18 +728,41 @@ class PeerCache():
             for _, wcandidate in sorted_keys[:self.walkcandidates_limit]:
                 del self.walkcandidates[wcandidate]
 
-    def add_peer(self, wcandidate):
+        logger.debug('PeerCache: removed %d peers', old_num_candidates - len(self.walkcandidates))
+
+        with open(self.filename, 'w') as fp:
+            lines = []
+            for wcandidate, info in self.walkcandidates.iteritems():
+                line = '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,))
+                line += '\t'.join([str(info[key]) for key in self.info_keys]) + '\n'
+                lines.append(line)
+            fp.writelines(lines)
+            logger.debug('PeerCache: saved %d peers to %s', len(self.walkcandidates), self.filename)
+
+    def add_or_update_peer(self, wcandidate):
         assert isinstance(wcandidate, WalkCandidate), type(wcandidate)
 
         if self.walkcandidates.has_key(wcandidate):
             self.walkcandidates[wcandidate]['last_seen'] = time()
         else:
             self.walkcandidates[wcandidate] = {'last_seen': time(), 'last_checked': 0, 'num_fails': 0}
-            self.clean()
 
     def get_peer(self):
         sorted_keys = sorted([(info['last_checked'], wcandidate) for wcandidate, info in self.walkcandidates.iteritems()])
-        return sorted_keys[0][1] if sorted_keys else None
+        candidate = sorted_keys[0][1] if sorted_keys else None
+        logger.debug('PeerCache: returning walk candidate %s', candidate)
+        return candidate
+
+    def get_peer_info(self, wcandidate):
+        return self.walkcandidates.get(wcandidate, None)
+
+    def inc_num_fails(self, wcandidate):
+        if self.walkcandidates.has_key(wcandidate):
+            self.walkcandidates[wcandidate]['num_fails'] += 1
+
+    def set_last_checked(self, wcandidate, last_checked):
+        if self.walkcandidates.has_key(wcandidate):
+            self.walkcandidates[wcandidate]['last_checked'] = last_checked
 
     def parse_line(self, line):
         row = line.split('\t')
