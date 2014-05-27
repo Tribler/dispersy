@@ -65,7 +65,7 @@ class DelayPacket(Exception):
         pass
 
     def on_success(self):
-        self._community.on_incoming_packets([(self.candidate, self.delayed)], timestamp=time())
+        return self.candidate, self.delayed
 
     def on_timeout(self):
         pass
@@ -130,8 +130,7 @@ class DelayMessage(DelayPacket):
         return self.__class__(delayed)
 
     def on_success(self):
-        self._community.on_messages([self.delayed])
-
+        return self.delayed
 
 class DelayMessageByProof(DelayMessage):
 
