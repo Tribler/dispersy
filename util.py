@@ -241,6 +241,4 @@ def unhandled_error_observer(event):
         # TODO(emilon): Should we try to stop dispersy too?
         reactor.exitCode = 1
         if reactor.running:
-            logger.warning("reactor.running: %s", reactor.running)
             reactor.stop()
-            logger.warning("XXXreactor.running: %s", reactor.running)

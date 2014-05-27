@@ -38,7 +38,6 @@ of, the name it uses as an internal identifier, and the class that will contain 
 """
 import logging
 import os
-import sys
 from collections import defaultdict, Iterable, OrderedDict
 from hashlib import sha1
 from itertools import groupby, count
@@ -50,8 +49,9 @@ from time import time
 import netifaces
 from twisted.internet import reactor
 from twisted.internet.base import DelayedCall
-from twisted.internet.defer import Deferred
+from twisted.internet.defer import Deferred, maybeDeferred, gatherResults
 from twisted.internet.task import LoopingCall
+from twisted.python.failure import Failure
 from twisted.python.threadable import isInIOThread
 
 from .authentication import MemberAuthentication, DoubleMemberAuthentication
@@ -1420,7 +1420,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(packets, (tuple, list)), packets
         assert len(packets) > 0, packets
         assert all(isinstance(packet, tuple) for packet in packets), packets
-        assert all(len(packet) == 2 for packet in packets), packets
+        assert all(len(packet) == 2 for packet in packets), packets # tuple(Candidate, datagram)
         assert all(isinstance(packet[0], Candidate) for packet in packets), packets
         assert all(isinstance(packet[1], str) for packet in packets), packets
         assert isinstance(cache, bool), cache
@@ -2086,6 +2086,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # OperationalError: database is locked
             logger.exception("%s", exception)
 
+    # TODO(emilon): Shouldn't start() just raise an exception if something goes wrong?, that would clean up a lot of cruft
     def start(self, autoload_discovery=True):
         """
         Starts Dispersy.
@@ -2191,7 +2192,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
 
         logger.info("stopping the Dispersy core...")
-        results = {u"endpoint": None, u"database": None}
+        results = {}
 
         # unload communities that are not defined
         unload_communities([community
@@ -2208,10 +2209,23 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
 
         # stop endpoint
-        results[u"endpoint"] = self._endpoint.close(timeout)
+        results[u"endpoint"] = maybeDeferred(self._endpoint.close, timeout)
 
         # stop the database
-        results[u"database"] = self._database.close()
+        results[u"database"] = maybeDeferred(self._database.close)
+
+        def check_stop_status(return_values):
+            failures = []
+            logger.debug("Checking dispersy stop results")
+            for name, result in zip(results.keys(), return_values):
+                if isinstance(result, Failure) or not result:
+                    failures.append((name, result))
+            if failures:
+                logger.error("Dispersy stop failed due to: %s", failures)
+                return False
+            return True
+
+        return gatherResults(results.values(), consumeErrors=True).addBoth(check_stop_status)
 
         # log and return the result
         if all(result for result in results.itervalues()):
