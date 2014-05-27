@@ -122,10 +122,10 @@ class MessageStatistics(object):
 
 class DispersyStatistics(Statistics):
 
-    def __init__(self, dispersy, enabled=False):
+    def __init__(self, dispersy):
         super(DispersyStatistics, self).__init__()
         self._dispersy = dispersy
-        self._enabled = enabled
+        self._enabled = False
 
         self.communities = None
         self.start = self.timestamp = time()
@@ -201,6 +201,9 @@ class DispersyStatistics(Statistics):
 
              # SOURCE:INTRODUCED:COUNT nested dictionary
             self.received_introductions = defaultdict(lambda: defaultdict(int)) if enable else None
+
+            for community in self._dispersy.get_communities():
+                community.statistics.enable_debug_statistics(enable)
 
     def are_debug_statistics_enabled(self):
         return self._enabled
@@ -305,6 +308,9 @@ class CommunityStatistics(Statistics):
         return [(candidate.lan_address, candidate.wan_address, candidate.global_time)
             for candidate in self._community.candidates.itervalues()
             if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
+
+    def enable_debug_statistics(self, enabled):
+        self.msg_statistics.enable(enabled)
 
     def update(self, database=False):
         if database:
