@@ -1900,7 +1900,7 @@ class Community(object):
                        message.distribution.global_time,
                        message.distribution.sequence_number if has_seq else None) for message in messages]
 
-        new_messages = set()
+        new_messages = defaultdict(set)
         new_packets = set()
         for received_key in received_keys:
             for key in self._delayed_key.keys():
@@ -1914,13 +1914,16 @@ class Community(object):
                             self._remove_delayed(delayed)
 
                             if isinstance(delayed, DelayMessage):
-                                new_messages.add(delayed.on_success())
+                                delayed_message = delayed.on_success()
+                                new_messages[delayed_message.meta].add(delayed_message)
                             else:
                                 new_packets.add(delayed.on_success())
 
         if new_messages:
-            logger.debug("resuming %d messages", len(new_messages))
-            self.on_messages(list(new_messages))
+            for messages in new_messages.itervalues():
+                logger.debug("resuming %d messages", len(new_messages))
+                self.on_messages(list(messages))
+                
         if new_packets:
             logger.debug("resuming %d packets", len(new_packets))
             self.on_incoming_packets(list(new_packets), timestamp=time())
