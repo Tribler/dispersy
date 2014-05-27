@@ -5,14 +5,18 @@ from time import time
 from unittest import skipUnless
 
 from nose.twistedtools import reactor
+from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import deferLater
 
 from ..community import Community
 from ..conversion import DefaultConversion
+from ..dispersy import Dispersy
+from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger
+from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
 from .dispersytestclass import DispersyTestFunc
-from ..util import call_on_reactor_thread
 
 
 logger = get_logger(__name__)
@@ -27,19 +31,14 @@ class TestOverlay(DispersyTestFunc):
                                        version="\x01",
                                        enable_fast_walker=False)
 
-    @skipUnless(environ.get("TEST_OVERLAY_BARTER") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
-    def test_barter_community(self):
-        return self.check_live_overlay(cid_hex="4fe1172862c649485c25b3d446337a35f389a2a2",
-                                       version="\x01",
-                                       enable_fast_walker=False)
-
     @skipUnless(environ.get("TEST_OVERLAY_SEARCH") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_search_community(self):
         return self.check_live_overlay(cid_hex="2782dc9253cef6cc9272ee8ed675c63743c4eb3a",
                                        version="\x01",
                                        enable_fast_walker=True)
 
-    @call_on_reactor_thread
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def check_live_overlay(self, cid_hex, version, enable_fast_walker):
         class Conversion(DebugCommunityConversion):
             # there are overlays that modify the introduction request, ensure that the returned offset 'consumed' all
@@ -49,24 +48,21 @@ class TestOverlay(DispersyTestFunc):
                 return len(data), payload
 
         class WCommunity(DebugCommunity):
-            def __init__(self, dispersy, master):
-                super(WCommunity, self).__init__(dispersy, master)
-
             def initiate_conversions(self):
                 return [DefaultConversion(self), Conversion(self, version)]
-
-            def dispersy_claim_sync_bloom_filter(self, request_cache):
-                # we only want to walk in the community, not exchange data
-                return None
-
-            def take_step(self):
-                for sleep in Community.take_step(self):
-                    yield sleep
 
             @property
             def dispersy_enable_fast_candidate_walker(self):
                 return enable_fast_walker
 
+            @property
+            def dispersy_enable_candidate_walker(self):
+                # disable candidate walker
+                return True
+
+            @property
+            def dispersy_enable_bloom_filter_sync(self):
+                return False
 
         class Info(object):
             pass
@@ -76,36 +72,40 @@ class TestOverlay(DispersyTestFunc):
         assert isinstance(enable_fast_walker, bool)
         cid = cid_hex.decode("HEX")
 
-        self._dispersy.statistics.enable_debug_statistics(True)
-        community = WCommunity(self._dispersy, self._dispersy.get_member(mid=cid), self._mm.my_member)
+        dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
+        dispersy.start(autoload_discovery=True)
+        dispersy.statistics.enable_debug_statistics(True)
+        community = WCommunity.init_community(dispersy, dispersy.get_member(mid=cid), dispersy.get_new_member())
         summary.info(community.cid.encode("HEX"))
-
         history = []
         begin = time()
         for _ in xrange(60 * 15):
-            yield 1.0
+            yield deferLater(reactor, 1, lambda: None)
             now = time()
             info = Info()
             info.diff = now - begin
             info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.itervalues()]
             info.verified_candidates = [(candidate, candidate.get_category(now)) for candidate in community.dispersy_yield_verified_candidates()]
+            info.incoming_walks = self._dispersy.statistics.incoming_intro_count
             info.lan_address = self._dispersy.lan_address
             info.wan_address = self._dispersy.wan_address
             info.connection_type = self._dispersy.connection_type
             history.append(info)
 
-            summary.info("after %.1f seconds there are %d verified candidates [w%d:s%d:i%d:n%d]",
+            summary.info("after %.1f seconds there are %d verified candidates [e%d:w%d:s%d:i%d:d%d:n%d]",
                          info.diff,
                          len([_ for _, category in info.candidates if category in (u"walk", u"stumble")]),
+                         len([_ for candidate,_ in info.candidates if candidate.is_eligible_for_walk(now)]),
                          len([_ for _, category in info.candidates if category == u"walk"]),
                          len([_ for _, category in info.candidates if category == u"stumble"]),
                          len([_ for _, category in info.candidates if category == u"intro"]),
+                         len([_ for _, category in info.candidates if category == u"discovered"]),
                          len([_ for _, category in info.candidates if category is None]))
 
         helper_requests = defaultdict(lambda: defaultdict(int))
         helper_responses = defaultdict(lambda: defaultdict(int))
 
-        for destination, requests in self._dispersy.statistics.outgoing_introduction_request.iteritems():
+        for destination, requests in self._dispersy.statistics.outgoing_intro_dict.iteritems():
             responses = self._dispersy.statistics.incoming_introduction_response[destination]
 
             # who introduced me to DESTINATION?
