@@ -56,7 +56,6 @@ class MessageStatistics(object):
     def __init__(self):
         super(MessageStatistics, self).__init__()
         self._lock = RLock()
-        self._enabled = False
 
         self.success_count = 0
         self.drop_count = 0
@@ -73,6 +72,8 @@ class MessageStatistics(object):
         self.created_dict = None
         self.delay_dict = None
         self.outgoing_dict = None
+
+        self._enabled = None
 
     def increase_count(self, category, name, value=1):
         with self._lock:
@@ -125,12 +126,9 @@ class DispersyStatistics(Statistics):
     def __init__(self, dispersy):
         super(DispersyStatistics, self).__init__()
         self._dispersy = dispersy
-        self._enabled = False
 
         self.communities = None
         self.start = self.timestamp = time()
-
-        self.msg_statistics = MessageStatistics()
 
         # nr of bytes up/down and packets send/received as reported by endpoint
         self.total_down = 0
@@ -165,9 +163,11 @@ class DispersyStatistics(Statistics):
         # represents a key from the attach_runtime_statistics decorator
         self.runtime = None
 
-        self.update()
-
+        self._enabled = None
+        self.msg_statistics = MessageStatistics()
         self.enable_debug_statistics(__debug__)
+
+        self.update()
 
     @property
     def database_version(self):
@@ -281,6 +281,8 @@ class CommunityStatistics(Statistics):
 
         self.dispersy_enable_candidate_walker = self._community.dispersy_enable_candidate_walker
         self.dispersy_enable_candidate_walker_responses = self._community.dispersy_enable_candidate_walker_responses
+
+        self.enable_debug_statistics(self._dispersy.statistics.are_debug_statistics_enabled())
 
     def increase_discovered_candidates(self, value=1):
         self.total_candidates_discovered += value
