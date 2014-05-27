@@ -1920,9 +1920,9 @@ class Community(object):
                                 new_packets.add(delayed.on_success())
 
         if new_messages:
-            for messages in new_messages.itervalues():
-                logger.debug("resuming %d messages", len(new_messages))
-                self.on_messages(list(messages))
+            for new_messages_meta in new_messages.itervalues():
+                logger.debug("resuming %d messages", len(new_messages_meta))
+                self.on_messages(list(new_messages_meta))
                 
         if new_packets:
             logger.debug("resuming %d packets", len(new_packets))
