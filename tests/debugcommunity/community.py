@@ -25,8 +25,15 @@ class DebugCommunity(Community):
     def initiate_conversions(self):
         return [DefaultConversion(self), DebugCommunityConversion(self)]
 
-    def take_step(self):
-        pass
+    @property
+    def dispersy_enable_candidate_walker(self):
+        # disable candidate walker
+        return False
+
+    @property
+    def dispersy_enable_candidate_walker_responses(self):
+        # enable walker responses
+        return True
 
     def initiate_meta_messages(self):
         messages = super(DebugCommunity, self).initiate_meta_messages()

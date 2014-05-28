@@ -221,7 +221,7 @@ class Community(object):
 
         @param dispersy: The Dispersy object.
         @type dispersy: Dispersy
-    
+
         @param master: The master member that identifies the community.
         @type master: DummyMember or Member
 
@@ -446,14 +446,6 @@ class Community(object):
         assert not self._master_member.public_key
         logger.debug("using dummy master member")
 
-        def on_dispersy_identity(message):
-            if message and not self._master_member:
-                logger.debug("%s received master member", self._cid.encode("HEX"))
-                assert message.authentication.member.mid == self._master_member.mid
-                self._master_member = message.authentication.member
-                assert self._master_member.public_key
-                self.cancel_pending_task("download master member identity")
-
         try:
             public_key, = self._dispersy.database.execute(u"SELECT public_key FROM member WHERE id = ?", (self._master_member.database_id,)).next()
         except StopIteration:
@@ -468,7 +460,7 @@ class Community(object):
                 for candidate in islice(self.dispersy_yield_verified_candidates(), 1):
                     if candidate:
                         logger.debug("%s asking for master member from %s", self._cid.encode("HEX"), candidate)
-                        self.create_missing_identity(candidate, self._master_member, on_dispersy_identity)
+                        self.create_missing_identity(candidate, self._master_member)
 
     def _initialize_meta_messages(self):
         assert isinstance(self._meta_messages, dict)
@@ -2182,7 +2174,14 @@ class Community(object):
         """
         We received a dispersy-identity message.
         """
-        pass
+        for message in messages:
+            if message.authentication.member.mid == self._master_member.mid:
+                logger.debug("%s received master member", self._cid.encode("HEX"))
+                self._master_member = message.authentication.member
+                assert self._master_member.public_key
+                if "download master member identity" in self._pending_tasks:
+                    self.cancel_pending_task("download master member identity")
+
 
     def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10, forward=True):
         """
