@@ -111,34 +111,6 @@ class TestOverlay(DispersyTestFunc):
                          len([_ for _, category in info.candidates if category == u"discovered"]),
                          len([_ for _, category in info.candidates if category is None]))
 
-        helper_requests = defaultdict(lambda: defaultdict(int))
-        helper_responses = defaultdict(lambda: defaultdict(int))
-
-        for destination, requests in dispersy.statistics.outgoing_intro_dict.iteritems():
-            responses = dispersy.statistics.incoming_introduction_response[destination]
-
-            # who introduced me to DESTINATION?
-            for helper, introductions in dispersy.statistics.received_introductions.iteritems():
-                if destination in introductions:
-                    helper_requests[helper][destination] = requests
-                    helper_responses[helper][destination] = responses
-
-        l = [(100.0 * sum(helper_responses[helper].itervalues()) / sum(helper_requests[helper].itervalues()),
-              sum(helper_requests[helper].itervalues()),
-              sum(helper_responses[helper].itervalues()),
-              helper_requests[helper],
-              helper_responses[helper],
-              helper)
-             for helper
-             in helper_requests]
-
-        for ratio, req, res, req_dict, res_dict, helper, in sorted(l):
-            summary.debug("%.1f%% %3d %3d %15s:%-4d  #%d %s", ratio, req, res, helper[0], helper[1],
-                          len(req_dict),
-                          "; ".join("%s:%d:%d/%d" % (addr[0], addr[1], res_dict[addr], req_dict[addr])
-                                    for addr
-                                    in req_dict))
-
         dispersy.statistics.update()
         summary.debug("\n%s", pformat(dispersy.statistics.get_dict()))
 

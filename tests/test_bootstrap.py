@@ -125,6 +125,12 @@ class TestBootstrapServers(DispersyTestFunc):
 
                 self.test_d = Deferred()
 
+
+            @property
+            def dispersy_enable_candidate_walker(self):
+                # disable candidate walker
+                return True
+
             @inlineCallbacks
             def start_walking(self):
                 for _ in xrange(10):
@@ -216,6 +222,7 @@ class TestBootstrapServers(DispersyTestFunc):
         def do_pings():
             dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
             dispersy.start(autoload_discovery=True)
+            self.dispersy_objects.append(dispersy)
             community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
             yield community.test_d
             dispersy.stop()
