@@ -247,7 +247,7 @@ class DiscoveryCommunity(Community):
             if DEBUG_VERBOSE:
                 logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
 
-            if new_taste_buddy.candidate.connection_type == u'public':
+            if new_taste_buddy.should_cache():
                 self.peer_cache.add_or_update_peer(new_taste_buddy.candidate)
 
             for taste_buddy in self.taste_buddies:
@@ -315,7 +315,7 @@ class DiscoveryCommunity(Community):
         for tb in self.yield_taste_buddies():
             if tb == candidate:
                 tb.timestamp = time()
-                if candidate.connection_type == u'public':
+                if tb.should_cache():
                     self.peer_cache.add_or_update_peer(candidate)
                 break
 
@@ -645,7 +645,8 @@ class DiscoveryCommunity(Community):
                     self.community.remove_taste_buddy(candidate)
 
     def create_ping_requests(self):
-        tbs = [tb.candidate for tb in self.yield_taste_buddies() if tb.time_remaining() < PING_INTERVAL][:self.max_tbs]
+        tbs = list(self.yield_taste_buddies())[:self.max_tbs]
+        tbs = [tb.candidate for tb in tbs if tb.time_remaining() < PING_INTERVAL]
 
         if tbs:
             cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tbs))
@@ -731,12 +732,10 @@ class PeerCache():
         logger.debug('PeerCache: removed %d peers', old_num_candidates - len(self.walkcandidates))
 
         with open(self.filename, 'w') as fp:
-            lines = ['# WAN address\t\tLAN address\t\tTunnel\tLast seen\t\tLast checked\tNumber of fails\n']
+            print >> fp, '# WAN address\t\tLAN address\t\tTunnel\tLast seen\t\tLast checked\tNumber of fails'
             for wcandidate, info in self.walkcandidates.iteritems():
-                line = '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,))
-                line += '\t\t'.join([str(info[key]) for key in self.info_keys]) + '\n'
-                lines.append(line)
-            fp.writelines(lines)
+                print >> fp, '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,)),
+                print >> fp, '\t\t'.join([str(info[key]) for key in self.info_keys])
             logger.debug('PeerCache: saved %d peers to %s', len(self.walkcandidates), self.filename)
 
     def add_or_update_peer(self, wcandidate):
