@@ -118,7 +118,7 @@ class TestOverlay(DispersyTestFunc):
         with open("%s_connections.txt" % cid_hex, "w+") as handle:
             handle.write("TIME VERIFIED_CANDIDATES WALK_CANDIDATES STUMBLE_CANDIDATES INTRO_CANDIDATES NONE_CANDIDATES INCOMING_WALKS OUTGOING_WALKS WALK_SUCCESS LAN_ADDRESS WAN_ADDRESS CONNECTION_TYPE\n")
             for info in history:
-                handle.write("%f   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
+                handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
                         info.diff,
                         len(info.verified_candidates),
                         len([_ for _, category in info.candidates if category == u"walk"]),
