@@ -25,6 +25,12 @@ summary = get_logger("test-overlay-summary")
 
 class TestOverlay(DispersyTestFunc):
 
+    def setUp(self):
+        super(DispersyTestFunc, self).setUp()
+
+        self.dispersy_objects = []
+
+
     @skipUnless(environ.get("TEST_OVERLAY_ALL_CHANNEL") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_all_channel_community(self):
         return self.check_live_overlay(cid_hex="8164f55c2f828738fa779570e4605a81fec95c9d",
@@ -75,6 +81,7 @@ class TestOverlay(DispersyTestFunc):
         dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
         dispersy.start(autoload_discovery=True)
         dispersy.statistics.enable_debug_statistics(True)
+        self.dispersy_objects.append(dispersy)
         community = WCommunity.init_community(dispersy, dispersy.get_member(mid=cid), dispersy.get_new_member())
         summary.info(community.cid.encode("HEX"))
         history = []
@@ -86,10 +93,10 @@ class TestOverlay(DispersyTestFunc):
             info.diff = now - begin
             info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.itervalues()]
             info.verified_candidates = [(candidate, candidate.get_category(now)) for candidate in community.dispersy_yield_verified_candidates()]
-            info.incoming_walks = self._dispersy.statistics.incoming_intro_count
-            info.lan_address = self._dispersy.lan_address
-            info.wan_address = self._dispersy.wan_address
-            info.connection_type = self._dispersy.connection_type
+            info.incoming_walks = dispersy.statistics.incoming_intro_count
+            info.lan_address = dispersy.lan_address
+            info.wan_address = dispersy.wan_address
+            info.connection_type = dispersy.connection_type
             history.append(info)
 
             summary.info("after %.1f seconds there are %d verified candidates [e%d:w%d:s%d:i%d:d%d:n%d]",
@@ -105,11 +112,11 @@ class TestOverlay(DispersyTestFunc):
         helper_requests = defaultdict(lambda: defaultdict(int))
         helper_responses = defaultdict(lambda: defaultdict(int))
 
-        for destination, requests in self._dispersy.statistics.outgoing_intro_dict.iteritems():
-            responses = self._dispersy.statistics.incoming_introduction_response[destination]
+        for destination, requests in dispersy.statistics.outgoing_intro_dict.iteritems():
+            responses = dispersy.statistics.incoming_introduction_response[destination]
 
             # who introduced me to DESTINATION?
-            for helper, introductions in self._dispersy.statistics.received_introductions.iteritems():
+            for helper, introductions in dispersy.statistics.received_introductions.iteritems():
                 if destination in introductions:
                     helper_requests[helper][destination] = requests
                     helper_responses[helper][destination] = responses
@@ -130,8 +137,8 @@ class TestOverlay(DispersyTestFunc):
                                     for addr
                                     in req_dict))
 
-        self._dispersy.statistics.update()
-        summary.debug("\n%s", pformat(self._dispersy.statistics.get_dict()))
+        dispersy.statistics.update()
+        summary.debug("\n%s", pformat(dispersy.statistics.get_dict()))
 
         # write graph statistics
         with open("%s_connections.txt" % cid_hex, "w+") as handle:
