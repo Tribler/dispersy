@@ -147,9 +147,9 @@ class PossibleTasteBuddy(TasteBuddy):
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
-        self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
-
         super(DiscoveryCommunity, self).initialize()
+        
+        self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
 
         self.max_prefs = max_prefs
         self.max_tbs = max_tbs
@@ -717,7 +717,7 @@ class PeerCache():
                     if not line.startswith('#'):
                         wcandidate, info = self.parse_line(line)
                         self.walkcandidates[wcandidate] = info
-            logger.debug('PeerCache: loaded %s, got %d peers', self.filename, len(self.walkcandidates))
+            logger.info('PeerCache: loaded %s, got %d peers', self.filename, len(self.walkcandidates))
 
     def clean_and_save(self):
         old_num_candidates = len(self.walkcandidates)
