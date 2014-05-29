@@ -254,6 +254,7 @@ class Community(object):
         self._pending_tasks = {}
 
         self._global_time = 0
+        self._candidates = OrderedDict()
 
         self._statistics = CommunityStatistics(self)
 
@@ -382,8 +383,6 @@ class Community(object):
         self._nrsyncpackets = 0
 
         # Initialize all the candidate iterators
-        self._candidates = OrderedDict()
-
         self._walked_candidates = self._iter_category(u'walk')
         self._stumbled_candidates = self._iter_category(u'stumble')
         self._introduced_candidates = self._iter_category(u'intro')
