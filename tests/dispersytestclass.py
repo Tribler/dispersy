@@ -1,3 +1,4 @@
+import os
 from unittest import TestCase
 
 # Do not (re)move the reactor import, even if we aren't using it
@@ -11,6 +12,7 @@ from ..endpoint import ManualEnpoint
 from ..logger import get_logger
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
+from ..discovery.community import PEERCACHE_FILENAME
 
 
 logger = get_logger(__name__)
@@ -38,6 +40,10 @@ class DispersyTestFunc(TestCase):
 
         for dispersy in self.dispersy_objects:
             blockingCallFromThread(reactor, dispersy.stop)
+            
+            peercache = os.path.join(dispersy._working_directory, PEERCACHE_FILENAME)
+            if os.path.isfile(peercache):
+                os.unlink(peercache)
 
         pending = reactor.getDelayedCalls()
         if pending:
