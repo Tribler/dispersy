@@ -2151,6 +2151,8 @@ class Community(object):
 
             if meta.name == u"dispersy-introduction-response":
                 self._dispersy._statistics.walk_success_count += len(messages)
+
+            elif meta.name == u"dispersy-introduction-request":
                 self._dispersy._statistics.incoming_intro_count += len(messages)
                 for message in messages:
                     self._dispersy._statistics.dict_inc(u"incoming_intro_dict", message.candidate.sock_addr)
