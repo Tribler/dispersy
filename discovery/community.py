@@ -316,7 +316,7 @@ class DiscoveryCommunity(Community):
             if tb == candidate:
                 tb.timestamp = time()
                 if tb.should_cache():
-                    self.peer_cache.add_or_update_peer(candidate)
+                    self.peer_cache.add_or_update_peer(tb.candidate)
                 break
 
     def remove_taste_buddy(self, candidate):
