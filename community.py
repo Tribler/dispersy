@@ -39,7 +39,7 @@ from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
 from .util import runtime_duration_warning, attach_runtime_statistics, get_logger, deprecated
-
+from .taskmanager import TaskManager
 
 logger = get_logger(__name__)
 
@@ -68,7 +68,7 @@ class DispersyDuplicatedUndo(DispersyInternalMessage):
         self.low_message = low_message
         self.high_message = high_message
 
-class Community(object):
+class Community(TaskManager):
     __metaclass__ = ABCMeta
 
     # Probability steps to get a sync skipped if the previous one was empty
@@ -250,9 +250,6 @@ class Community(object):
         self._master_member = master
         self._my_member = my_member
 
-        # _pending_tasks contains all pending calls that should be removed when the community is unloaded.
-        self._pending_tasks = {}
-
         self._global_time = 0
         self._candidates = OrderedDict()
 
@@ -273,9 +270,7 @@ class Community(object):
         self._delayed_key = defaultdict(list)
         self._delayed_value = defaultdict(list)
 
-        lc = LoopingCall(self._periodically_clean_delayed)
-        lc.start(PERIODIC_CLEANUP_INTERVAL, now=True)
-        self._pending_tasks["periodic cleanup"] = lc
+        self.register_task("periodic cleanup", LoopingCall(self._periodically_clean_delayed)).start(PERIODIC_CLEANUP_INTERVAL, now=True)
 
         try:
             self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
@@ -303,8 +298,8 @@ class Community(object):
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
             lc = LoopingCall(self._download_master_member_identity)
-            self._pending_tasks["download master member identity"] = lc
             reactor.callLater(0, lc.start, DOWNLOAD_MM_PK_INTERVAL, now=True)
+            self.register_task("download master member identity", lc)
         # pre-fetch some values from the database, this allows us to only query the database once
         self.meta_message_cache = {}
         # define all available messages
@@ -1010,30 +1005,15 @@ class Community(object):
         else:
             return 2 ** 63 - 1
 
-    def cancel_pending_task(self, key):
-        task = self._pending_tasks.pop(key)
-        if isinstance(task, Deferred) and not task.called:
-            # Have in mind that any deferred in the pending tasks list should have been constructed with a
-            # canceller function.
-            task.cancel()
-        elif isinstance(task, DelayedCall) and task.active():
-            task.cancel()
-        elif isinstance(task, LoopingCall) and task.running:
-            task.stop()
-
     def unload_community(self):
         """
         Unload a single community.
         """
-        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall)) for task in self._pending_tasks.itervalues()]), self._pending_tasks
 
         self.purge_batch_cache()
 
-        # cancel all pending tasks
-        for key in self._pending_tasks.keys():
-            self.cancel_pending_task(key)
+        self.cancel_all_pending_tasks()
 
-        self._pending_tasks.clear()
         self._request_cache.clear()
 
         self.dispersy.detach_community(self)
@@ -1150,9 +1130,7 @@ class Community(object):
                 # wait for NAT hole punching
                 yield deferLater(reactor, 1, lambda: None)
 
-        lc = LoopingCall(self.take_step)
-        self._pending_tasks["take step"] = lc
-        lc.start(TAKE_STEP_INTERVAL, now=True)
+        self.register_task("take step", LoopingCall(self.take_step)).start(TAKE_STEP_INTERVAL, now=True)
 
     # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
     # calls in any loop converted to a LoopingCall
@@ -1914,7 +1892,7 @@ class Community(object):
             for new_messages_meta in new_messages.itervalues():
                 logger.debug("resuming %d messages", len(new_messages_meta))
                 self.on_messages(list(new_messages_meta))
-                
+
         if new_packets:
             logger.debug("resuming %d packets", len(new_packets))
             self.on_incoming_packets(list(new_packets), timestamp=time())
@@ -1966,8 +1944,7 @@ class Community(object):
                         current_batch.extend(batch)
                         logger.debug("adding %d %s messages to existing cache", len(batch), meta.name)
                     else:
-                        self._pending_tasks[meta] = reactor.callLater(meta.batch.max_window,
-                                                                                          self._process_message_batch, meta)
+                        self.register_task(meta, reactor.callLater(meta.batch.max_window, self._process_message_batch, meta))
                         self._batch_cache[meta] = (timestamp, batch)
                         logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
                 else:
@@ -2180,9 +2157,8 @@ class Community(object):
                 logger.debug("%s received master member", self._cid.encode("HEX"))
                 self._master_member = message.authentication.member
                 assert self._master_member.public_key
-                if "download master member identity" in self._pending_tasks:
+                if self.is_pending_task_active("download master member identity"):
                     self.cancel_pending_task("download master member identity")
-
 
     def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10, forward=True):
         """
