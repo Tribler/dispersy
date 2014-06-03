@@ -574,7 +574,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             for handler in progress_handlers:
                 handler.Destroy()
 
-        if database_version < 20:
+        if database_version < 21:
             logger.debug("upgrade community %d -> %d", database_version, 20)
 
             # patch 14 -> 15 notes:
@@ -634,9 +634,9 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
             sequence_updates = []
             for meta in metas:
-                groups = groupby(self.execute(u"SELECT id, member, packet FROM sync "
+                groups = groupby(list(self.execute(u"SELECT id, member, packet FROM sync "
                                  u"WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)),
-                                 key=lambda tup: tup[1])
+                                 key=lambda tup: tup[1]))
                 for member_id, iterator in groups:
                     last_global_time = 0
                     last_sequence_number = 0
@@ -683,7 +683,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             if updates:
                 self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
 
-            self.execute(u"UPDATE community SET database_version = 20 WHERE id = ?", (community.database_id,))
+            self.execute(u"UPDATE community SET database_version = 21 WHERE id = ?", (community.database_id,))
             self.commit()
 
             for handler in progress_handlers:
