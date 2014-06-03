@@ -634,9 +634,9 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
             sequence_updates = []
             for meta in metas:
-                groups = groupby(list(self.execute(u"SELECT id, member, packet FROM sync "
-                                 u"WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)),
-                                 key=lambda tup: tup[1]))
+                rows = list(self.execute(u"SELECT id, member, packet FROM sync "
+                    u"WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)))
+                groups = groupby(rows, key=lambda tup: tup[1])
                 for member_id, iterator in groups:
                     last_global_time = 0
                     last_sequence_number = 0
