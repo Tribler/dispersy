@@ -722,7 +722,7 @@ class PeerCache():
     def clean_and_save(self):
         old_num_candidates = len(self.walkcandidates)
 
-        for wcandidate, info in self.walkcandidates.iteritems():
+        for wcandidate, info in self.walkcandidates.items():
             if info['num_fails'] > 3:
                 del self.walkcandidates[wcandidate]
 
