@@ -149,7 +149,7 @@ class DiscoveryCommunity(Community):
     def initialize(self, max_prefs=25, max_tbs=25):
         #needs to be called before super.initialize
         self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
-        
+
         super(DiscoveryCommunity, self).initialize()
 
         self.max_prefs = max_prefs
@@ -164,9 +164,9 @@ class DiscoveryCommunity(Community):
         def on_results(success):
             assert isinstance(success, bool), type(success)
 
-            if "insert_trackers" not in self._pending_tasks:
-                self._pending_tasks["insert_trackers"] = lc = LoopingCall(self.periodically_insert_trackers)
-                lc.start(INSERT_TRACKER_INTERVAL, now=True)
+            if not self.is_pending_task_active("insert_trackers"):
+                self.register_task("insert_trackers",
+                                LoopingCall(self.periodically_insert_trackers)).start(INSERT_TRACKER_INTERVAL, now=True)
 
             if success:
                 logger.debug("Resolved all bootstrap addresses")
@@ -181,7 +181,7 @@ class DiscoveryCommunity(Community):
 
         lc = self.bootstrap.resolve_until_success(now=True, callback=on_results)
         if lc:
-            self._pending_tasks["bootstrap_resolution"] = lc
+            self.register_task("bootstrap_resolution", lc)
 
     def periodically_insert_trackers(self):
         communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
@@ -272,9 +272,9 @@ class DiscoveryCommunity(Community):
 
                 self.taste_buddies.append(new_taste_buddy)
 
-                if 'create_ping_requests' not in self._pending_tasks:
-                    self._pending_tasks['create_ping_requests'] = lc = LoopingCall(self.create_ping_requests)
-                    lc.start(PING_INTERVAL)
+                if not self.is_pending_task_active('create_ping_requests'):
+                    self.register_task('create_ping_requests',
+                                       LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
 
             # add taste buddy to overlapping communities
             for cid in new_taste_buddy.preferences:
@@ -708,8 +708,7 @@ class PeerCache():
         self.info_keys = ['last_seen', 'last_checked', 'num_fails']
         self.load()
 
-        self.community._pending_tasks["clean_and_save_peer_cache"] = lc = LoopingCall(self.clean_and_save)
-        lc.start(30, now=False)
+        self.community.register_task("clean_and_save_peer_cache", LoopingCall(self.clean_and_save)).start(30, now=False)
 
     def load(self):
         if os.path.exists(self.filename):

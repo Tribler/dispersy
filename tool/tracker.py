@@ -268,9 +268,8 @@ class TrackerDispersy(Dispersy):
             self._create_my_member()
             self._load_persistent_storage()
 
-            lc = LoopingCall(self.unload_inactive_communities)
-            self._pending_tasks["unload inactive communities"] = lc
-            lc.start(COMMUNITY_CLEANUP_INTERVAL)
+            self.register_task("unload inactive communities",
+                               LoopingCall(self.unload_inactive_communities)).start(COMMUNITY_CLEANUP_INTERVAL)
 
             self.define_auto_load(TrackerCommunity, self._my_member)
             self.define_auto_load(TrackerHardKilledCommunity, self._my_member)

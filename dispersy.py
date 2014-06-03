@@ -69,6 +69,7 @@ from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
+from .taskmanager import TaskManager
 from .util import attach_runtime_statistics, get_logger, init_instrumentation
 
 
@@ -81,7 +82,7 @@ FLUSH_DATABASE_INTERVAL = 60.0
 STATS_DETAILED_CANDIDATES_INTERVAL = 5.0
 
 
-class Dispersy(object):
+class Dispersy(TaskManager):
 
     """
     The Dispersy class provides the interface to all Dispersy related commands, managing the in- and
@@ -114,10 +115,6 @@ class Dispersy(object):
 
         # where we store all data
         self._working_directory = os.path.abspath(working_directory)
-
-        # _pending_callbacks contains all id's for registered calls that should be removed when the
-        # Dispersy is stopped.  most of the time this contains all the generators that are used
-        self._pending_tasks = {}
 
         self._discovery_community = None
 
@@ -2115,12 +2112,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         self._endpoint_ready()
 
         # commit changes to the database periodically
-        self._pending_tasks["flush_database"] = lc = LoopingCall(self._flush_database)
-        lc.start(FLUSH_DATABASE_INTERVAL)
+        self.register_task("flush_database", LoopingCall(self._flush_database)).start(FLUSH_DATABASE_INTERVAL)
         # output candidate statistics
-        self._pending_tasks["candidates"] = lc = LoopingCall(self._stats_detailed_candidates)
-        lc.start(STATS_DETAILED_CANDIDATES_INTERVAL)
-
+        self.register_task("candidates",
+                           LoopingCall(self._stats_detailed_candidates)).start(STATS_DETAILED_CANDIDATES_INTERVAL)
 
         # log and return the result
         if all(result for _, result in results):
@@ -2165,16 +2160,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         self.running = False
 
-        for name, task in self._pending_tasks.iteritems():
-            logger.debug("Stopping: %s", name)
-            if isinstance(task, Deferred) and not task.called:
-                # Have in mind that any deferred in the pending tasks list should have been constructed with a
-                # canceler function.
-                task.cancel()
-            elif isinstance(task, DelayedCall) and task.active():
-                task.cancel()
-            elif isinstance(task, LoopingCall) and task.running:
-                task.stop()
+        self.cancel_all_pending_tasks()
 
         def unload_communities(communities):
             for community in communities:
@@ -2277,4 +2263,4 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                       candidate.connection_type,
                                       candidate)
         else:
-            self._pending_tasks.pop("candidates").stop()
+            self.cancel_pending_task("candidates")
