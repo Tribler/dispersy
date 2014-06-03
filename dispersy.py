@@ -952,7 +952,7 @@ class Dispersy(object):
                     last_global_time, last_seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
                                                     (message.authentication.member.database_id, message.database_id)).next()
                     highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
-                    assert last_seq or 0 == count, [last_seq, count]
+                    assert last_seq or 0 == count, [last_seq, count, message.name]
 
             # all messages must follow the sequence_number order
             for message in messages:
@@ -1003,7 +1003,7 @@ class Dispersy(object):
                             last_global_time, last_seq, count = execute(u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
                                                            (message.authentication.member.database_id, message.database_id)).next()
                             highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
-                            assert last_seq or 0 == count, [last_seq, count]
+                            assert last_seq or 0 == count, [last_seq, count, message.name]
                             # we can allow MESSAGE to be processed
 
                 elif seq + 1 != message.distribution.sequence_number:
