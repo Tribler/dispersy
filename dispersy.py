@@ -1417,7 +1417,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert isinstance(packets, (tuple, list)), packets
         assert len(packets) > 0, packets
         assert all(isinstance(packet, tuple) for packet in packets), packets
-        assert all(len(packet) == 2 for packet in packets), packets # tuple(Candidate, datagram)
+        assert all(len(packet) == 2 for packet in packets), packets  # tuple(Candidate, datagram)
         assert all(isinstance(packet[0], Candidate) for packet in packets), packets
         assert all(isinstance(packet[1], str) for packet in packets), packets
         assert isinstance(cache, bool), cache
@@ -1848,8 +1848,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 #            return False
 
         # ending with .255
-        if binary[3] == "\xff":
-            return False
+# Niels: same for this one, if the netmask is /23 a .255 could indicate 011111111 which is allowed
+#        if binary[3] == "\xff":
+#            return False
 
         return True
 
