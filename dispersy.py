@@ -593,7 +593,7 @@ class Dispersy(TaskManager):
             args = ()
             kargs = {}
 
-        return destination(self, master, my_member, *args, **kargs)
+        return destination.init_community(self, master, my_member, *args, **kargs)
 
     def has_community(self, cid):
         """
