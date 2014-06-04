@@ -44,10 +44,11 @@ class TaskManager(object):
         Cancels the named task
         """
         self._maybe_clean_task_list()
-        task = self._pending_tasks.pop(name)
-        is_active, stopfn = self._get_isactive_stopper(task)
+        is_active, stopfn = self._get_isactive_stopper(name)
         if is_active:
             stopfn()
+            self._pending_tasks.pop(name)
+
 
     @blocking_call_on_reactor_thread
     def cancel_all_pending_tasks(self):
@@ -72,10 +73,11 @@ class TaskManager(object):
             return is_active
         return False
 
-    def _get_isactive_stopper(self, task):
+    def _get_isactive_stopper(self, name):
         """
         Return a boolean determining if a task is active and its cancel/stop method.
         """
+        task = self._pending_tasks.get(name, None)
         if isinstance(task, Deferred):
             # Have in mind that any deferred in the pending tasks list should have been constructed with a
             # canceller function.
