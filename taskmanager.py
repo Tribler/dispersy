@@ -86,6 +86,8 @@ class TaskManager(object):
             return task.active(), task.cancel
         elif isinstance(task, LoopingCall):
             return task.running, task.stop
+        else:
+            return None, None
 
     def _maybe_clean_task_list(self):
         """
