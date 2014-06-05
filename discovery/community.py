@@ -147,11 +147,8 @@ class PossibleTasteBuddy(TasteBuddy):
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
-        #needs to be called before super.initialize
+        # needs to be called before super.initialize
         self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
-
-        super(DiscoveryCommunity, self).initialize()
-
         self.max_prefs = max_prefs
         self.max_tbs = max_tbs
         self.taste_buddies = []
@@ -160,6 +157,8 @@ class DiscoveryCommunity(Community):
 
         self.send_packet_size = 0
         self.reply_packet_size = 0
+
+        super(DiscoveryCommunity, self).initialize()
 
         def on_results(success):
             assert isinstance(success, bool), type(success)
