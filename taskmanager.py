@@ -31,7 +31,7 @@ class TaskManager(object):
         """
         Register a task so it can be canceled at shutdown time or by name.
         """
-        assert name not in self._pending_tasks.keys(), name
+        assert not self.is_pending_task_active(name), name
         assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), task
 
         self._maybe_clean_task_list()
