@@ -1,3 +1,4 @@
+from random import shuffle
 from threading import Lock
 
 from twisted.internet import reactor
@@ -104,7 +105,9 @@ class Bootstrap(object):
         Note: this method is thread safe.
         """
         with self._lock:
-            return [candidate for candidate in self._candidates.itervalues() if candidate]
+            candidates = self._candidates.values()
+            shuffle(candidates)
+            return [candidate for candidate in candidates if candidate]
 
     @property
     def candidate_addresses(self):
@@ -141,7 +144,8 @@ class Bootstrap(object):
         if self.are_resolved:
             success = True
         else:
-            addresses = [address for address, candidate in self._candidates.iteritems() if not candidate]
+            addresses = [address for address, candidate in self._candidates.items() if not candidate]
+            shuffle(addresses)
             ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
             for (host, port), ip in zip(addresses, ips):
                 if ip:
