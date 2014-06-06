@@ -375,7 +375,7 @@ class TunnelEndpoint(Endpoint):
     def get_address(self):
         return ("0.0.0.0", self._swift.listenport)
 
-    def send(self, candidates, packets):
+    def send(self, candidates, packets, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
         assert all(isinstance(candidate, Candidate) for candidate in candidates)
@@ -387,12 +387,12 @@ class TunnelEndpoint(Endpoint):
 
         send_packet = False
         for candidate, packet in product(candidates, packets):
-            if self.send_packet(candidate, packet):
+            if self.send_packet(candidate, packet, prefix):
                 send_packet = True
 
         return send_packet
 
-    def send_packet(self, candidate, packet):
+    def send_packet(self, candidate, packet, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidate, Candidate), type(candidate)
         assert isinstance(packet, str), type(packet)
@@ -404,7 +404,7 @@ class TunnelEndpoint(Endpoint):
         self._dispersy.statistics.total_send += 1
 
         with self._swift.splock:
-            self._swift.send_tunnel(self._session, candidate.sock_addr, packet)
+            self._swift.send_tunnel(prefix or self._session, candidate.sock_addr, packet)
 
         if logger.isEnabledFor(logging.DEBUG):
             self.log_packet(candidate.sock_addr, packet)
