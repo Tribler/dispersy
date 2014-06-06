@@ -281,6 +281,7 @@ class DiscoveryCommunity(Community):
                     my_communities[cid].add_discovered_candidate(new_taste_buddy.candidate)
 
         self.taste_buddies.sort(reverse=True)
+        self.taste_buddies = self.taste_buddies[:self.max_tbs * 4]
 
         if DEBUG_VERBOSE:
             logger.debug("DiscoveryCommunity: current tastebuddy list %s %s", len(
