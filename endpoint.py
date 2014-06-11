@@ -201,7 +201,7 @@ class RawserverEndpoint(Endpoint):
             self._socket.sendto(data, candidate.sock_addr)
 
             if logger.isEnabledFor(logging.DEBUG):
-                self.log_packet(candidate.sock_addr, data)
+                self.log_packet(candidate.sock_addr, packet)
 
         except socket.error:
             with self._sendqueue_lock:
