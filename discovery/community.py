@@ -182,6 +182,10 @@ class DiscoveryCommunity(Community):
         if lc:
             self.register_task("bootstrap_resolution", lc)
 
+        self.register_task('create_ping_requests',
+                           LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
+
+
     def periodically_insert_trackers(self):
         communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
         if self not in communities:  # make sure we are in the communities list
@@ -270,10 +274,6 @@ class DiscoveryCommunity(Community):
                     logger.debug("DiscoveryCommunity: new taste buddy? yes, adding to list")
 
                 self.taste_buddies.append(new_taste_buddy)
-
-                if not self.is_pending_task_active('create_ping_requests'):
-                    self.register_task('create_ping_requests',
-                                       LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
 
             # add taste buddy to overlapping communities
             for cid in new_taste_buddy.preferences:
