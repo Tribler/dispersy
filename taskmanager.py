@@ -8,11 +8,12 @@ CLEANUP_FREQUENCY = 100
 
 
 class TaskManager(object):
+
     """
     Provides a set of tools to mantain a list of twisted "tasks" (Deferred, LoopingCall, DelayedCall) that are to be
     executed during the lifetime of an arbitrary object, usually getting killed with it.
-
     """
+
     def __init__(self):
         self._pending_tasks = {}
         self._cleanup_counter = CLEANUP_FREQUENCY
@@ -47,8 +48,8 @@ class TaskManager(object):
         is_active, stopfn = self._get_isactive_stopper(name)
         if is_active:
             stopfn()
+        if stopfn:
             self._pending_tasks.pop(name)
-
 
     @blocking_call_on_reactor_thread
     def cancel_all_pending_tasks(self):
@@ -65,17 +66,13 @@ class TaskManager(object):
     @blocking_call_on_reactor_thread
     def is_pending_task_active(self, name):
         """
-        Returns True if the named task is active.
+        Return a boolean determining if a task is active.
         """
-        task = self._pending_tasks.get(name, None)
-        if task:
-            is_active, _ = self._get_isactive_stopper(task)
-            return is_active
-        return False
+        return self._get_isactive_stopper(name)[0]
 
     def _get_isactive_stopper(self, name):
         """
-        Return a boolean determining if a task is active and its cancel/stop method.
+        Return a boolean determining if a task is active and its cancel/stop method if the task is registered.
         """
         task = self._pending_tasks.get(name, None)
         if isinstance(task, Deferred):
@@ -87,7 +84,7 @@ class TaskManager(object):
         elif isinstance(task, LoopingCall):
             return task.running, task.stop
         else:
-            return None, None
+            return False, None
 
     def _maybe_clean_task_list(self):
         """
