@@ -139,11 +139,6 @@ class TrackerCommunity(Community):
         return True
 
     @property
-    def dispersy_sync_bloom_filter_strategy(self):
-        # disable sync bloom filter
-        return lambda request_cache: None
-
-    @property
     def dispersy_acceptable_global_time_range(self):
         # we will accept the full 64 bit global time range
         return 2 ** 64 - self._global_time
@@ -164,12 +159,22 @@ class TrackerCommunity(Community):
             return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
         except ConversionNotFoundException:
-            # the dispersy version MUST BE available.  Currently we only support \x00: BinaryConversion
-            if packet[0] == "\x00":
-                self.add_conversion(BinaryConversion(self, packet[1]))
+            # did we create a conversion for this community_version?
+            for conversion in self._conversions:
+                if conversion.community_version == packet[1]:
+                    break
 
-            # try again
-            return super(TrackerCommunity, self).get_conversion_for_packet(packet)
+            # no matching conversion, create one and try again
+            else:
+                if packet[0] == "\x00":
+                    self.add_conversion(BinaryConversion(self, packet[1]))
+                    return super(TrackerCommunity, self).get_conversion_for_packet(packet)
+
+            # cannot decode this message, probably not a intro-request, etc.
+            raise
+
+    def take_step(self):
+        raise RuntimeError("a tracker should not walk")
 
     def dispersy_cleanup_community(self, message):
         # since the trackers use in-memory databases, we need to store the destroy-community
@@ -260,7 +265,6 @@ class TrackerDispersy(Dispersy):
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
         self._silent = silent
         self._my_member = None
-        self._batch_cache = {}
 
     def start(self):
         assert isInIOThread()
@@ -320,17 +324,11 @@ class TrackerDispersy(Dispersy):
             if community.update_strikes(now) < 3:
                 return True
 
-            # check 3: does the community have any cached messages waiting to be processed
-            for meta in self._batch_cache.iterkeys():
-                if meta.community == community:
-                    return True
-
-            # the community is inactive
             return False
 
         now = time()
         inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-        logger.debug("cleaning %d/%d communities", len(inactive), len(self._communities))
+        print "#cleaned %d/%d communities" % (len(inactive), len(self._communities))
         for community in inactive:
             community.unload_community()
 
