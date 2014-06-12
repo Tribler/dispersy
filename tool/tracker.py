@@ -209,37 +209,6 @@ class TrackerCommunity(Community):
 
         return TrackerHardKilledCommunity
 
-    def dispersy_get_introduce_candidate(self, exclude_candidate=None):
-        """
-        Get an active candidate that is part of this community in Round Robin (Not random anymore).
-        """
-        first_candidate = None
-        while True:
-            result = self._walked_stumbled_candidates.next()
-            if result == first_candidate:
-                result = None
-
-            if not first_candidate:
-                first_candidate = result
-
-            if result and exclude_candidate:
-                # same candidate as requesting the introduction
-                if result == exclude_candidate:
-                    continue
-
-                # cannot introduce a non-tunnelled candidate to a tunneled candidate (it's swift instance will not
-                # get it)
-                if not exclude_candidate.tunnel and result.tunnel:
-                    continue
-
-                # cannot introduce two nodes that are behind a different symmetric NAT
-                if (exclude_candidate.connection_type == u"symmetric-NAT" and
-                    result.connection_type == u"symmetric-NAT" and
-                    not exclude_candidate.wan_address[0] == result.wan_address[0]):
-                    continue
-
-            return result
-
     def on_introduction_request(self, messages):
         if not self._dispersy._silent:
             hex_cid = self.cid.encode("HEX")
