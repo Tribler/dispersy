@@ -734,10 +734,13 @@ class PeerCache():
         logger.debug('PeerCache: removed %d peers', old_num_candidates - len(self.walkcandidates))
 
         with open(self.filename, 'w') as fp:
-            print >> fp, '# WAN address\t\tLAN address\t\tTunnel\tLast seen\t\tLast checked\tNumber of fails'
+            print >> fp, '# WAN address\tLAN address\tTunnel',
+            print >> fp, "\t".join(self.info_keys)
+
             for wcandidate, info in self.walkcandidates.iteritems():
                 print >> fp, '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,)),
-                print >> fp, '\t\t'.join([str(info[key]) for key in self.info_keys])
+                print >> fp, '\t'.join([str(info[key]) for key in self.info_keys])
+
             logger.debug('PeerCache: saved %d peers to %s', len(self.walkcandidates), self.filename)
 
     def add_or_update_peer(self, wcandidate):
@@ -766,14 +769,24 @@ class PeerCache():
             self.walkcandidates[wcandidate]['last_checked'] = last_checked
 
     def parse_line(self, line):
+        line = line.replace("\t\t", "\t")
         row = line.split('\t')
+
         wan_addr = row[0].split(':')
         wan_addr[1] = int(wan_addr[1])
         wan_addr = tuple(wan_addr)
+
         lan_addr = row[1].split(':')
         lan_addr[1] = int(lan_addr[1])
         lan_addr = tuple(lan_addr)
-        sock_addr = lan_addr if wan_addr[0] == self.community._dispersy._wan_address[0] else wan_addr
+
         tunnel = row[2] == 'True'
+
+        sock_addr = lan_addr if wan_addr[0] == self.community._dispersy._wan_address[0] else wan_addr
         wcandidate = self.community.create_or_update_walkcandidate(sock_addr, lan_addr, wan_addr, tunnel, u'public')
-        return (wcandidate, dict([(key, row[index + 3]) for index, key in enumerate(self.info_keys)]))
+
+        info_dict = {}
+        info_dict["last_seen"] = float(row[3])
+        info_dict["last_checked"] = float(row[4])
+        info_dict["num_fails"] = int(row[5])
+        return (wcandidate, info_dict)
