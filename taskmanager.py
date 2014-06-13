@@ -1,8 +1,11 @@
+from threading import Lock
+
 from twisted.internet.base import DelayedCall
 from twisted.internet.defer import Deferred
 from twisted.internet.task import LoopingCall
 
 from .util import blocking_call_on_reactor_thread
+
 
 CLEANUP_FREQUENCY = 100
 
@@ -17,8 +20,8 @@ class TaskManager(object):
     def __init__(self):
         self._pending_tasks = {}
         self._cleanup_counter = CLEANUP_FREQUENCY
+        self._task_lock = Lock()
 
-    @blocking_call_on_reactor_thread
     def replace_task(self, name, task):
         """
         Replace named task with the new one, cancelling the old one in the process.
@@ -27,7 +30,6 @@ class TaskManager(object):
         self.cancel_pending_task(name)
         self.register_task(name, task)
 
-    @blocking_call_on_reactor_thread
     def register_task(self, name, task):
         """
         Register a task so it can be canceled at shutdown time or by name.
@@ -36,7 +38,8 @@ class TaskManager(object):
         assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), task
 
         self._maybe_clean_task_list()
-        self._pending_tasks[name] = task
+        with self._task_lock:
+            self._pending_tasks[name] = task
         return task
 
     @blocking_call_on_reactor_thread
@@ -51,7 +54,6 @@ class TaskManager(object):
         if stopfn:
             self._pending_tasks.pop(name)
 
-    @blocking_call_on_reactor_thread
     def cancel_all_pending_tasks(self):
         """
         Cancels all the registered tasks.
@@ -63,7 +65,6 @@ class TaskManager(object):
         for name in self._pending_tasks.keys():
             self.cancel_pending_task(name)
 
-    @blocking_call_on_reactor_thread
     def is_pending_task_active(self, name):
         """
         Return a boolean determining if a task is active.
