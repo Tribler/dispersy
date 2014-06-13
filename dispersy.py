@@ -70,7 +70,7 @@ from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
 from .taskmanager import TaskManager
-from .util import attach_runtime_statistics, get_logger, init_instrumentation
+from .util import attach_runtime_statistics, get_logger, init_instrumentation, blocking_call_on_reactor_thread
 
 
 # Set up the instrumentation utilities
@@ -2085,6 +2085,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             logger.exception("%s", exception)
 
     # TODO(emilon): Shouldn't start() just raise an exception if something goes wrong?, that would clean up a lot of cruft
+    @blocking_call_on_reactor_thread
     def start(self, autoload_discovery=True):
         """
         Starts Dispersy.
@@ -2137,6 +2138,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                          ", ".join("{0}:{1}".format(key, value) for key, value in results))
             return False
 
+    @blocking_call_on_reactor_thread
     def stop(self, timeout=10.0):
         """
         Stops Dispersy.
