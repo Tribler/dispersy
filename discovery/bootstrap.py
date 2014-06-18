@@ -146,14 +146,22 @@ class Bootstrap(object):
         else:
             addresses = [address for address, candidate in self._candidates.items() if not candidate]
             shuffle(addresses)
-            ips = yield gatherResults([reactor.resolve(host) for host, port in addresses])
-            for (host, port), ip in zip(addresses, ips):
-                if ip:
-                    logger.info("Resolved %s into %s:%d", host, ip, port)
-                    self._candidates[(host, port)] = Candidate((str(ip), port), False)
-                    success = True
-                else:
-                    logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
+
+            def add_candidate(ip, host, port):
+                logger.info("Resolved %s into %s:%d", host, ip, port)
+                self._candidates[(host, port)] = Candidate((str(ip), port), False)
+
+            def no_candidate(host, port):
+                logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
+
+            deferreds = []
+            for host, port in addresses:
+                deferred = reactor.resolve(host)
+                deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
+                deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
+                deferreds.append(deferred)
+
+            yield gatherResults(deferreds)
         returnValue(success)
 
     def resolve_until_success(self, interval=300, now=False, callback=None):
