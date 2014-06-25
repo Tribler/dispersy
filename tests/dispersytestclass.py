@@ -5,14 +5,14 @@ from unittest import TestCase
 # (nose starts the reactor in a separate thread when importing this)
 from nose.twistedtools import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.threads import blockingCallFromThread
 
+from ..discovery.community import PEERCACHE_FILENAME
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
 from ..logger import get_logger
+from ..util import blockingCallFromThread
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
-from ..discovery.community import PEERCACHE_FILENAME
 
 
 logger = get_logger(__name__)

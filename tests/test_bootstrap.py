@@ -9,13 +9,13 @@ from unittest import skip, skipUnless
 from nose.twistedtools import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
 from twisted.internet.task import deferLater
-from twisted.internet.threads import blockingCallFromThread
 
 from ..candidate import Candidate, WalkCandidate
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..logger import get_logger
 from ..message import Message, DropMessage
+from ..util import blockingCallFromThread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
 
