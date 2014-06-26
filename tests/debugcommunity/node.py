@@ -4,7 +4,6 @@ from time import time, sleep
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.task import deferLater
-from twisted.internet.threads import blockingCallFromThread
 from twisted.python.threadable import isInIOThread
 
 from ...bloomfilter import BloomFilter
@@ -16,7 +15,7 @@ from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 from .community import DebugCommunity
-from ...util import blocking_call_on_reactor_thread
+from ...util import blocking_call_on_reactor_thread, blockingCallFromThread
 
 logger = get_logger(__name__)
 
