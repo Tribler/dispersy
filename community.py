@@ -270,7 +270,10 @@ class Community(TaskManager):
         self._delayed_key = defaultdict(list)
         self._delayed_value = defaultdict(list)
 
-        self.register_task("periodic cleanup", LoopingCall(self._periodically_clean_delayed)).start(PERIODIC_CLEANUP_INTERVAL, now=True)
+        # Do not immediately call the periodic cleanup LC to avoid an infinite recursion problem: init_community ->
+        # initialize -> invoke_func -> _get_latest_channel_message -> convert_packet_to_message -> get_community ->
+        # init_community
+        self.register_task("periodic cleanup", LoopingCall(self._periodically_clean_delayed)).start(PERIODIC_CLEANUP_INTERVAL, now=False)
 
         try:
             self._database_id, my_member_did, self._database_version = self._dispersy.database.execute(
