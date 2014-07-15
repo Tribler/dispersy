@@ -28,7 +28,7 @@ class TaskManager(object):
         """
         self._maybe_clean_task_list()
         self.cancel_pending_task(name)
-        self.register_task(name, task)
+        return self.register_task(name, task)
 
     def register_task(self, name, task):
         """

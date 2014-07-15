@@ -18,6 +18,18 @@ Outputs destroyed communities whenever encountered:
 Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DESTROY_OUT is given
 whenever a introduction request is received for a destroyed overlay.
 """
+
+if __name__ == "__main__":
+    # Concerning the relative imports, from PEP 328:
+    # http://www.python.org/dev/peps/pep-0328/
+    #
+    #    Relative imports use a module's __name__ attribute to determine that module's position in
+    #    the package hierarchy. If the module's name does not contain any package information
+    #    (e.g. it is set to '__main__') then relative imports are resolved as if the module were a
+    #    top level module, regardless of where the module is actually located on the file system.
+    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
+    exit(1)
+
 import errno
 import logging.config
 import optparse  # deprecated since python 2.7
@@ -26,6 +38,7 @@ import signal
 import sys
 from time import time
 
+from twisted.conch import manhole_tap
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 from twisted.python.threadable import isInIOThread
@@ -40,19 +53,7 @@ from ..endpoint import StandaloneEndpoint
 from ..exception import ConversionNotFoundException, CommunityNotFoundException
 from ..logger import get_logger, get_context_filter
 
-
 COMMUNITY_CLEANUP_INTERVAL = 180.0
-
-if __name__ == "__main__":
-    # Concerning the relative imports, from PEP 328:
-    # http://www.python.org/dev/peps/pep-0328/
-    #
-    #    Relative imports use a module's __name__ attribute to determine that module's position in
-    #    the package hierarchy. If the module's name does not contain any package information
-    #    (e.g. it is set to '__main__') then relative imports are resolved as if the module were a
-    #    top level module, regardless of where the module is actually located on the file system.
-    print "Usage: python -c \"from dispersy.tool.tracker import main; main()\" [--statedir DIR] [--ip ADDR] [--port PORT] [--crypto TYPE]"
-    exit(1)
 
 # use logger.conf if it exists
 if os.path.exists("logger.conf"):
@@ -60,7 +61,6 @@ if os.path.exists("logger.conf"):
     logging.config.fileConfig("logger.conf")
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
-
 
 
 logger = get_logger(__name__)
@@ -98,6 +98,7 @@ class TrackerCommunity(Community):
     """
     This community will only use dispersy-candidate-request and dispersy-candidate-response messages.
     """
+
     def __init__(self, *args, **kargs):
         super(TrackerCommunity, self).__init__(*args, **kargs)
         # communities are cleaned based on a 'strike' rule.  periodically, we will check is there
@@ -225,6 +226,7 @@ class TrackerCommunity(Community):
                 print "RES_IN2", hex_cid, message.authentication.member.mid.encode("HEX"), ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
         return super(TrackerCommunity, self).on_introduction_response(messages)
 
+
 class TrackerDispersy(Dispersy):
 
     def __init__(self, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
@@ -324,6 +326,7 @@ def main():
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=6421)
     command_line_parser.add_option("--silent", action="store_true", help="Prevent tracker printing to console", default=False)
     command_line_parser.add_option("--crypto", action="store", type="string", default="ECCrytpo", help="The Crypto object type Dispersy is going to use")
+    command_line_parser.add_option("--manhole", action="store", type="int", help="Enable manhole telnet service listening at the specified port")
 
     context_filter = get_context_filter()
     command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
@@ -341,11 +344,25 @@ def main():
         crypto = NoVerifyCrypto()
 
     container = [None]
+    manhole_namespace = {}
+    if opt.manhole:
+        port = opt.manhole
+        manhole = manhole_tap.makeService({
+            'namespace': manhole_namespace,
+            'telnetPort': 'tcp:%d:interface=127.0.0.1' % port,
+            'sshPort': None,
+            'passwd': os.path.join(os.path.dirname(__file__), 'passwd'),
+        })
+        manhole.startService()
+        container.append(manhole)
+
 
     def run():
         # setup
         dispersy = TrackerDispersy(StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), bool(opt.silent), crypto)
         container[0] = dispersy
+        manhole_namespace['dispersy'] = dispersy
+
         def signal_handler(sig, frame):
             logger.warning("Received signal '%s' in %s (shutting down)", sig, frame)
             dispersy.stop()
