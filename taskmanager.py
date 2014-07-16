@@ -26,7 +26,6 @@ class TaskManager(object):
         """
         Replace named task with the new one, cancelling the old one in the process.
         """
-        self._maybe_clean_task_list()
         self.cancel_pending_task(name)
         return self.register_task(name, task)
 

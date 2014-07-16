@@ -4,6 +4,7 @@ from twisted.internet import reactor
 from twisted.python.threadable import isInIOThread
 
 from .logger import get_logger
+from .taskmanager import TaskManager
 
 
 logger = get_logger(__name__)
@@ -125,15 +126,16 @@ class IntroductionRequestCache(RandomNumberCache):
         self._check_if_both_received()
 
 
-class RequestCache(object):
+class RequestCache(TaskManager):
 
     def __init__(self):
         """
         Creates a new RequestCache instance.
         """
+        super(RequestCache, self).__init__()
+
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         self._identifiers = dict()
-        self._cache_timeout_tasks = dict()
 
     def add(self, cache):
         """
@@ -156,7 +158,7 @@ class RequestCache(object):
         else:
             logger.debug("add %s", cache)
             self._identifiers[identifier] = cache
-            self._cache_timeout_tasks[cache] = reactor.callLater(cache.timeout_delay, self._on_timeout, cache)
+            self.register_task(cache, reactor.callLater(cache.timeout_delay, self._on_timeout, cache))
             return cache
 
     def has(self, prefix, number):
@@ -189,7 +191,7 @@ class RequestCache(object):
         identifier = self._create_identifier(number, prefix)
         cache = self._identifiers.get(identifier)
         if cache:
-            self._cancel_timeout(cache)
+            self.cancel_pending_task(cache)
             del self._identifiers[identifier]
             return cache
 
@@ -221,12 +223,5 @@ class RequestCache(object):
 
         """
         logger.debug("Clearing %s [%s]", self, len(self._identifiers))
-        for cache in self._identifiers.itervalues():
-            self._cancel_timeout(cache)
+        self.cancel_all_pending_tasks()
         self._identifiers.clear()
-
-    def _cancel_timeout(self, cache):
-        logger.debug("canceling timeout for %s", cache)
-        dc = self._cache_timeout_tasks.pop(cache)
-        if dc.active():
-            dc.cancel()
