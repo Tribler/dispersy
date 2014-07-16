@@ -214,6 +214,8 @@ class RequestCache(TaskManager):
         if identifier in self._identifiers:
             del self._identifiers[identifier]
 
+        self.cancel_pending_task(cache)
+
     def _create_identifier(self, number, prefix):
         return u"%s:%d" % (prefix, number)
 
