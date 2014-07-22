@@ -176,6 +176,7 @@ class Bootstrap(object):
                 if callback:
                     deferred.addCallback(callback)
 
+        # TODO(emilon): use taskmanager for this
         if not self._resolution_lc:
             self._resolution_lc = LoopingCall(resolution_lc)
             self._resolution_lc.start(interval, now)
