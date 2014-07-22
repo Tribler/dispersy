@@ -207,10 +207,10 @@ class Community(TaskManager):
 
         # new community instance
         community = cls(dispersy, master, my_member)
-        community.initialize(*args, **kargs)
-
         # add to dispersy
         dispersy.attach_community(community)
+
+        community.initialize(*args, **kargs)
 
         return community
 
