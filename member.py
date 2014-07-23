@@ -1,7 +1,7 @@
-from .logger import get_logger
-logger = get_logger(__name__)
+import logging
 
 from M2Crypto.EC import EC_pub, EC
+
 
 class DummyMember(object):
 
@@ -11,6 +11,8 @@ class DummyMember(object):
         assert isinstance(database_id, int), type(database_id)
         assert isinstance(mid, str), type(mid)
         assert len(mid) == 20, len(mid)
+
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         self._database_id = database_id
         self._mid = mid
@@ -78,6 +80,10 @@ class Member(DummyMember):
         assert isinstance(key, (EC, EC_pub))
         assert isinstance(database_id, int), type(database_id)
 
+        if not mid:
+            mid = dispersy.crypto.key_to_hash(key.pub())
+        super(Member, self).__init__(dispersy, database_id, mid)
+
         public_key = dispersy.crypto.key_to_bin(key.pub())
 
         if key.__class__ is EC:
@@ -85,20 +91,15 @@ class Member(DummyMember):
         else:
             private_key = None
 
-        if not mid:
-            mid = dispersy.crypto.key_to_hash(key.pub())
-
         self._crypto = dispersy.crypto
         self._database = dispersy.database
-        self._database_id = database_id
-        self._mid = mid
         self._public_key = public_key
         self._private_key = private_key
         self._ec = key
         self._signature_length = self._crypto.get_signature_length(self._ec)
         self._has_identity = set()
 
-        logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
+        self._logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
 
     @property
     def public_key(self):
