@@ -564,6 +564,7 @@ class Dispersy(TaskManager):
         """
         assert isinstance(source, (Community, Member))
         assert issubclass(destination, Community)
+        assert type(source) is not type(destination), (type(source), type(destination))
 
         destination_classification = destination.get_classification()
 
