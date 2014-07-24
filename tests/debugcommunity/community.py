@@ -4,10 +4,8 @@ from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
 from ...destination import CommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
-from ...logger import get_logger
 from ...message import Message, DelayMessageByProof, BatchConfiguration
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
-logger = get_logger(__name__)
 
 from .payload import TextPayload
 from .conversion import DebugCommunityConversion
@@ -192,7 +190,7 @@ class DebugCommunity(Community):
 
         Must return either: a. the same message, b. a modified version of message, or c. None.
         """
-        logger.debug("%s \"%s\"", message, message.payload.text)
+        self._logger.debug("%s \"%s\"", message, message.payload.text)
         assert message.payload.text.startswith("Allow=True") or message.payload.text.startswith("Allow=False")
         if message.payload.text.startswith("Allow=True"):
             return message
@@ -213,7 +211,7 @@ class DebugCommunity(Community):
 
         for message in messages:
             if not "Dprint=False" in message.payload.text:
-                logger.debug("%s \"%s\" @%d", message, message.payload.text, message.distribution.global_time)
+                self._logger.debug("%s \"%s\" @%d", message, message.payload.text, message.distribution.global_time)
 
     def undo_text(self, descriptors):
         """
@@ -221,7 +219,7 @@ class DebugCommunity(Community):
         """
         for member, global_time, packet in descriptors:
             message = packet.load_message()
-            logger.debug("undo \"%s\" @%d", message.payload.text, global_time)
+            self._logger.debug("undo \"%s\" @%d", message.payload.text, global_time)
 
     def dispersy_cleanup_community(self, message):
         if message.payload.is_soft_kill:

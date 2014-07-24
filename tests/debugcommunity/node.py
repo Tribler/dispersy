@@ -1,5 +1,6 @@
 import sys
 from time import time, sleep
+import logging
 
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -10,14 +11,12 @@ from ...bloomfilter import BloomFilter
 from ...candidate import Candidate
 from ...endpoint import TUNNEL_PREFIX
 from ...exception import ConversionNotFoundException
-from ...logger import get_logger
 from ...member import Member
 from ...message import Message
 from ...resolution import PublicResolution, LinearResolution
 from .community import DebugCommunity
 from ...util import blocking_call_on_reactor_thread, blockingCallFromThread
 
-logger = get_logger(__name__)
 
 class DebugNode(object):
 
@@ -33,6 +32,7 @@ class DebugNode(object):
 
     def __init__(self, testclass, dispersy, communityclass=DebugCommunity, c_master_member=None):
         super(DebugNode, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         self._testclass = testclass
         self._dispersy = dispersy
@@ -147,7 +147,7 @@ class DebugNode(object):
         assert isinstance(source, DebugNode), type(source)
         assert isinstance(cache, bool), type(cache)
 
-        logger.debug("%s giving %d bytes", self.my_candidate, sum(len(packet) for packet in packets))
+        self._logger.debug("%s giving %d bytes", self.my_candidate, sum(len(packet) for packet in packets))
         self._dispersy.endpoint.process_packets([(source.lan_address, TUNNEL_PREFIX + packet if source.tunnel else packet) for packet in packets], cache=cache)
 
     def give_message(self, message, source, cache=False):
@@ -163,7 +163,7 @@ class DebugNode(object):
         assert isinstance(cache, bool), type(cache)
 
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
-        logger.debug("%s giving %d messages (%d bytes)", self.my_candidate, len(messages), sum(len(packet) for packet in packets))
+        self._logger.debug("%s giving %d messages (%d bytes)", self.my_candidate, len(messages), sum(len(packet) for packet in packets))
         self.give_packets(packets, source, cache=cache)
 
     def send_packet(self, packet, candidate):
@@ -173,7 +173,7 @@ class DebugNode(object):
         """
         assert isinstance(packet, str)
         assert isinstance(candidate, Candidate)
-        logger.debug("%d bytes to %s", len(packet), candidate)
+        self._logger.debug("%d bytes to %s", len(packet), candidate)
         return self._dispersy.endpoint.send([candidate], [packet])
 
     def send_message(self, message, candidate):
@@ -184,7 +184,7 @@ class DebugNode(object):
         assert isinstance(message, Message.Implementation), message
         assert isinstance(candidate, Candidate)
 
-        logger.debug("%s to %s", message.name, candidate)
+        self._logger.debug("%s to %s", message.name, candidate)
         self.encode_message(message)
 
         return self.send_packet(message.packet, candidate)
@@ -206,7 +206,7 @@ class DebugNode(object):
         Discard all packets on the nodes' socket.
         """
         for address, packet in self._dispersy.endpoint.clear_receive_queue():
-            logger.debug("dropped %d bytes from %s:%d", len(packet), address[0], address[1])
+            self._logger.debug("dropped %d bytes from %s:%d", len(packet), address[0], address[1])
 
     def receive_packet(self, addresses=None, timeout=0.5):
         """
@@ -225,7 +225,7 @@ class DebugNode(object):
             if packets:
                 for address, packet in packets:
                     if not (addresses is None or address in addresses or (address[0] == "127.0.0.1" and ("0.0.0.0", address[1]) in addresses)):
-                        logger.debug("Ignored %d bytes from %s:%d", len(packet), address[0], address[1])
+                        self._logger.debug("Ignored %d bytes from %s:%d", len(packet), address[0], address[1])
                         continue
 
                     if packet.startswith("ffffffff".decode("HEX")):
@@ -235,7 +235,7 @@ class DebugNode(object):
                         tunnel = False
 
                     candidate = Candidate(address, tunnel)
-                    logger.debug("%d bytes from %s", len(packet), candidate)
+                    self._logger.debug("%d bytes from %s", len(packet), candidate)
                     yield candidate, packet
             else:
                 sleep(0.001)
@@ -262,14 +262,14 @@ class DebugNode(object):
             try:
                 message = self.decode_message(candidate, packet)
             except ConversionNotFoundException as exception:
-                logger.exception("Ignored %s", exception)
+                self._logger.exception("Ignored %s", exception)
                 continue
 
             if not (names is None or message.name in names):
-                logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
+                self._logger.debug("Ignored %s (%d bytes) from %s", message.name, len(packet), candidate)
                 continue
 
-            logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
+            self._logger.debug("%s (%d bytes) from %s", message.name, len(packet), candidate)
             yield candidate, message
 
     @blocking_call_on_reactor_thread
