@@ -155,10 +155,11 @@ class Bootstrap(object):
             for host, port in addresses:
                 if isIPAddress(host):
                     add_candidate(host, host, port)
-                deferred = reactor.resolve(host)
-                deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
-                deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
-                deferreds.append(deferred)
+                else:
+                    deferred = reactor.resolve(host)
+                    deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
+                    deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
+                    deferreds.append(deferred)
 
             yield gatherResults(deferreds)
         returnValue(success)
