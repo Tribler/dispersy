@@ -1,26 +1,23 @@
-from collections import defaultdict
 from os import environ
 from pprint import pformat
 from time import time
 from unittest import skipUnless
+import logging
 
 from nose.twistedtools import reactor
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import deferLater
 
-from ..community import Community
 from ..conversion import DefaultConversion
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
-from ..logger import get_logger
 from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.conversion import DebugCommunityConversion
 from .dispersytestclass import DispersyTestFunc
 
 
-logger = get_logger(__name__)
-summary = get_logger("test-overlay-summary")
+summary_logger = logging.getLogger("test-overlay-summary")
 
 
 class TestOverlay(DispersyTestFunc):
@@ -83,7 +80,7 @@ class TestOverlay(DispersyTestFunc):
         dispersy.statistics.enable_debug_statistics(True)
         self.dispersy_objects.append(dispersy)
         community = WCommunity.init_community(dispersy, dispersy.get_member(mid=cid), dispersy.get_new_member())
-        summary.info(community.cid.encode("HEX"))
+        summary_logger.info(community.cid.encode("HEX"))
         history = []
         begin = time()
         for _ in xrange(60 * 15):
@@ -101,18 +98,18 @@ class TestOverlay(DispersyTestFunc):
             info.connection_type = dispersy.connection_type
             history.append(info)
 
-            summary.info("after %.1f seconds there are %d verified candidates [e%d:w%d:s%d:i%d:d%d:n%d]",
-                         info.diff,
-                         len([_ for _, category in info.candidates if category in (u"walk", u"stumble")]),
-                         len([_ for candidate,_ in info.candidates if candidate.is_eligible_for_walk(now)]),
-                         len([_ for _, category in info.candidates if category == u"walk"]),
-                         len([_ for _, category in info.candidates if category == u"stumble"]),
-                         len([_ for _, category in info.candidates if category == u"intro"]),
-                         len([_ for _, category in info.candidates if category == u"discovered"]),
-                         len([_ for _, category in info.candidates if category is None]))
+            summary_logger.info("after %.1f seconds there are %d verified candidates [e%d:w%d:s%d:i%d:d%d:n%d]",
+                                info.diff,
+                                len([_ for _, category in info.candidates if category in (u"walk", u"stumble")]),
+                                len([_ for candidate,_ in info.candidates if candidate.is_eligible_for_walk(now)]),
+                                len([_ for _, category in info.candidates if category == u"walk"]),
+                                len([_ for _, category in info.candidates if category == u"stumble"]),
+                                len([_ for _, category in info.candidates if category == u"intro"]),
+                                len([_ for _, category in info.candidates if category == u"discovered"]),
+                                len([_ for _, category in info.candidates if category is None]))
 
         dispersy.statistics.update()
-        summary.debug("\n%s", pformat(dispersy.statistics.get_dict()))
+        summary_logger.debug("\n%s", pformat(dispersy.statistics.get_dict()))
 
         # write graph statistics
         with open("%s_connections.txt" % cid_hex, "w+") as handle:
@@ -160,5 +157,5 @@ class TestOverlay(DispersyTestFunc):
                     info.connection_type))
 
         # determine test success or failure (hard coded for 10.0 or higher being a success)
-        summary.debug("Average verified candidates: %.1f", average_verified_candidates)
+        summary_logger.debug("Average verified candidates: %.1f", average_verified_candidates)
         self.assertGreater(average_verified_candidates, 10.0)
