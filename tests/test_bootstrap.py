@@ -5,26 +5,26 @@ from subprocess import Popen, PIPE, STDOUT
 from threading import Thread
 from time import time, sleep
 from unittest import skip, skipUnless
+import logging
 
 from nose.twistedtools import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
 from twisted.internet.task import deferLater
 
-from ..candidate import Candidate, WalkCandidate
+from ..candidate import Candidate
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
-from ..logger import get_logger
 from ..message import Message, DropMessage
 from ..util import blockingCallFromThread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
 
 
-logger = get_logger(__name__)
-summary = get_logger("test-bootstrap-summary")
+summary_logger = logging.getLogger("test-bootstrap-summary")
 
 PING_COUNT = 10
 MAX_RTT = 0.5
+
 
 class TestBootstrapServers(DispersyTestFunc):
 
@@ -36,19 +36,18 @@ class TestBootstrapServers(DispersyTestFunc):
         tracker_file = "dispersy/tool/tracker.py"
         tracker_path = getcwd()
         while tracker_path:
-            logger.debug("looking for %s in %s", tracker_file, tracker_path)
+            self._logger.debug("looking for %s in %s", tracker_file, tracker_path)
             if path.isfile(path.join(tracker_path, tracker_file)):
                 break
             tracker_path = path.dirname(tracker_path)
-        logger.debug("using tracker cwd \"%s\"", tracker_path)
+        self._logger.debug("using tracker cwd \"%s\"", tracker_path)
 
         tracker_address = (self._dispersy.wan_address[0], 14242)
         args = ["python",
                 "-c", "from dispersy.tool.tracker import main; main()",
                 "--statedir", ".",
-                "--port", str(tracker_address[1]),
-                "--log-identifier", "tracker"]
-        logger.debug("start tracker %s", args)
+                "--port", str(tracker_address[1])]
+        self._logger.debug("start tracker %s", args)
 
         def logstream(stream, loggercb):
             while True:
@@ -58,7 +57,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 else:
                     break
         tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT)
-        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream, args=(tracker.stdout, lambda s: logger.info("tracker is printing: " + s)))
+        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream, args=(tracker.stdout, lambda s: self._logger.info("tracker is printing: " + s)))
         tracker_logging_thread.start()
 
         # can take a few seconds to start on older machines (or when running on a remote file
@@ -79,13 +78,13 @@ class TestBootstrapServers(DispersyTestFunc):
             # node sends introduction request
             destination = Candidate(tracker_address, False)
             node.send_message(node.create_introduction_request(destination=destination,
-                                                                        source_lan=node.lan_address,
-                                                                        source_wan=node.wan_address,
-                                                                        advice=True,
-                                                                        connection_type=u"unknown",
-                                                                        sync=None,
-                                                                        identifier=4242,
-                                                                        global_time=42),
+                                                               source_lan=node.lan_address,
+                                                               source_wan=node.wan_address,
+                                                               advice=True,
+                                                               connection_type=u"unknown",
+                                                               sync=None,
+                                                               identifier=4242,
+                                                               global_time=42),
                               destination)
 
             # node receives missing identity
@@ -100,7 +99,7 @@ class TestBootstrapServers(DispersyTestFunc):
             _, message = node.receive_message(names=[u"dispersy-identity"]).next()
 
         finally:
-            logger.debug("terminate tracker")
+            self._logger.debug("terminate tracker")
 
             tracker.terminate()  # sends SIGTERM
             self.assertEqual(tracker.wait(), 0), tracker.returncode
@@ -156,7 +155,7 @@ class TestBootstrapServers(DispersyTestFunc):
 
             def on_introduction_response(self, messages):
                 now = time()
-                logger.debug("PONG")
+                self._logger.debug("PONG")
                 for message in messages:
                     candidate = message.candidate
                     if candidate.sock_addr in self._request:
@@ -166,7 +165,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 return super(DebugCommunity, self).on_introduction_response(messages)
 
             def ping(self, now):
-                logger.debug("PING")
+                self._logger.debug("PING")
                 self._pings_done += 1
                 for candidate in self._pcandidates:
                     request = self.create_introduction_request(candidate, False)
@@ -177,7 +176,7 @@ class TestBootstrapServers(DispersyTestFunc):
                     sock_addr = candidate.sock_addr
                     rtts = self._summary[sock_addr]
                     if rtts:
-                        summary.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                        summary_logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
                                      self._identifiers[sock_addr].encode("HEX"),
                                      sock_addr[0],
                                      sock_addr[1],
@@ -186,7 +185,7 @@ class TestBootstrapServers(DispersyTestFunc):
                                      sum(rtts) / len(rtts),
                                      ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        summary.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
+                        summary_logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
             def finish(self, request_count, min_response_count, max_rtt):
                 # write graph statistics
@@ -296,7 +295,7 @@ class TestBootstrapServers(DispersyTestFunc):
                             self._summary[candidate.sock_addr].append(now - request_stamp)
                             self._identifiers[candidate.sock_addr] = message.authentication.member.mid
                         else:
-                            logger.warning("identifier clash %s", message.payload.identifier)
+                            self._logger.warning("identifier clash %s", message.payload.identifier)
 
                     yield DropMessage(message, "not doing anything in this script")
 
@@ -328,7 +327,7 @@ class TestBootstrapServers(DispersyTestFunc):
             def summary(self):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
-                        logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                        self._logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
                                     self._identifiers[sock_addr].encode("HEX"),
                                     sock_addr[0],
                                     sock_addr[1],
@@ -337,13 +336,13 @@ class TestBootstrapServers(DispersyTestFunc):
                                     sum(rtts) / len(rtts),
                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
+                        self._logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
         MEMBERS = 10000  # must be a multiple of 100
         COMMUNITIES = 1
         ROUNDS = 10
 
-        logger.info("prepare communities, members, etc")
+        self._logger.info("prepare communities, members, etc")
         with self._dispersy.database:
             candidates = [Candidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates) for _ in xrange(COMMUNITIES)]
@@ -353,7 +352,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 for member in members:
                     community.create_dispersy_identity(member=member)
 
-        logger.info("prepare request messages")
+        self._logger.info("prepare request messages")
         for _ in xrange(ROUNDS):
             for community in communities:
                 for member in members:
@@ -362,7 +361,7 @@ class TestBootstrapServers(DispersyTestFunc):
             sleep(5)
         sleep(15)
 
-        logger.info("ping-ping")
+        self._logger.info("ping-ping")
         BEGIN = time()
         for _ in xrange(ROUNDS):
             for community in communities:
@@ -375,8 +374,8 @@ class TestBootstrapServers(DispersyTestFunc):
         END = time()
 
         sleep(10)
-        logger.info("--- did %d requests per community", ROUNDS * MEMBERS)
-        logger.info("--- spread over %.2f seconds", END - BEGIN)
+        self._logger.info("--- did %d requests per community", ROUNDS * MEMBERS)
+        self._logger.info("--- spread over %.2f seconds", END - BEGIN)
         for community in communities:
             community.summary()
 
