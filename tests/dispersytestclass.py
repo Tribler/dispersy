@@ -15,6 +15,14 @@ from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 
 
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
+
+
 class DispersyTestFunc(TestCase):
 
     def __init__(self, *args, **kwargs):
