@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 from math import ceil
 from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
+import logging
 
 from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
@@ -9,14 +10,10 @@ from .candidate import Candidate
 from .destination import Destination, CommunityDestination, CandidateDestination
 from .distribution import Distribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .exception import MetaNotFoundException
-from .logger import get_logger
 from .message import DelayPacketByMissingMember, DropPacket, Message
 from .payload import Payload
 from .resolution import Resolution, PublicResolution, LinearResolution, DynamicResolution
 from .util import attach_runtime_statistics
-
-
-logger = get_logger(__name__)
 
 
 class Conversion(object):
@@ -45,6 +42,9 @@ class Conversion(object):
         assert len(dispersy_version) == 1, dispersy_version
         assert isinstance(community_version, str), type(community_version)
         assert len(community_version) == 1, community_version
+
+        super(Conversion, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         # the community that this conversion belongs to.
         self._community = community
@@ -129,6 +129,7 @@ class Conversion(object):
 
     def __repr__(self):
         return str(self)
+
 
 class NoDefBinaryConversion(Conversion):
 
@@ -1035,7 +1036,7 @@ class NoDefBinaryConversion(Conversion):
         # sign
         packet = encode_functions.signature(container, message, sign)
 
-        logger.debug("created message %s (%d bytes)", message.name, len(packet))
+        self._logger.debug("created message %s (%d bytes)", message.name, len(packet))
         return packet
 
     #
@@ -1275,7 +1276,7 @@ class NoDefBinaryConversion(Conversion):
         # payload
         placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, placeholder.data[:placeholder.first_signature_offset])
         if placeholder.offset != placeholder.first_signature_offset:
-            logger.warning("invalid packet size for %s data:%d; offset:%d", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
+            self._logger.warning("invalid packet size for %s data:%d; offset:%d", placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
             raise DropPacket("Invalid packet size (there are unconverted bytes)")
 
         assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
@@ -1285,6 +1286,7 @@ class NoDefBinaryConversion(Conversion):
 
     def __str__(self):
         return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
+
 
 class BinaryConversion(NoDefBinaryConversion):
 
@@ -1331,7 +1333,8 @@ class BinaryConversion(NoDefBinaryConversion):
 
         if __debug__:
             if debug_non_available:
-                logger.debug("unable to define non-available messages %s", debug_non_available)
+                self._logger.debug("unable to define non-available messages %s", debug_non_available)
+
 
 class DefaultConversion(BinaryConversion):
 
