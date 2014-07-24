@@ -1,8 +1,5 @@
-from ..logger import get_logger
-from ..message import Message
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
-logger = get_logger(__name__)
+
 
 class TestUndo(DispersyTestFunc):
 
@@ -109,24 +106,24 @@ class TestUndo(DispersyTestFunc):
         undo_packets = []
 
         for candidate, b in node.receive_packets():
-            logger.debug(candidate)
-            logger.debug(type(b))
-            logger.debug("%d", len(b))
-            logger.debug("before %d", len(undo_packets))
+            self._logger.debug(candidate)
+            self._logger.debug(type(b))
+            self._logger.debug("%d", len(b))
+            self._logger.debug("before %d", len(undo_packets))
             undo_packets.append(b)
-            logger.debug("packets amount: %d", len(undo_packets))
-            logger.debug("first undo %d", len(undo_packets[0]))
-            logger.debug("%d", len(b))
+            self._logger.debug("packets amount: %d", len(undo_packets))
+            self._logger.debug("first undo %d", len(undo_packets[0]))
+            self._logger.debug("%d", len(b))
 
             for x in undo_packets:
-                logger.debug("loop%d", len(x))
+                self._logger.debug("loop%d", len(x))
 
         def fetch_all_messages():
             for row in  list(other._dispersy.database.execute(u"SELECT * FROM sync")):
-                logger.debug("_______ %s", row)
+                self._logger.debug("_______ %s", row)
         other.call(fetch_all_messages)
 
-        logger.debug("%d", len(low_message.packet))
+        self._logger.debug("%d", len(low_message.packet))
 
         self.assertEqual(undo_packets, [low_message.packet])
 
