@@ -433,8 +433,6 @@ class TestCandidates(DispersyTestFunc):
         # trackers should not prefer either stumbled or walked candidates, i.e. it should not return
         # candidate 1 more than once/in the wrong position
         now = time()
-        candidates[0].walk(now)
-        candidates[0].walk_response(now)
         expected = [("127.0.0.1", 5), ("127.0.0.1", 1), ("127.0.0.1", 2), ("127.0.0.1", 3), ("127.0.0.1", 4)]
         got = []
         for candidate in candidates:
