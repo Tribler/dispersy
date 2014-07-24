@@ -10,8 +10,7 @@ from itertools import groupby
 
 from .database import Database
 from .distribution import FullSyncDistribution
-from .logger import get_logger
-logger = get_logger(__name__)
+
 
 LATEST_VERSION = 21
 
@@ -250,39 +249,39 @@ UPDATE option SET value = '7' WHERE key = 'database_version';
 
             # upgrade from version 7 to version 8
             if database_version < 8:
-                logger.debug("upgrade database %d -> %d", database_version, 8)
+                self._logger.debug("upgrade database %d -> %d", database_version, 8)
                 self.executescript(u"""
 ALTER TABLE community ADD COLUMN database_version INTEGER DEFAULT 0;
 UPDATE option SET value = '8' WHERE key = 'database_version';
 """)
-                logger.debug("upgrade database %d -> %d (done)", database_version, 8)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 8)
                 self.commit()
 
             # upgrade from version 8 to version 9
             if database_version < 9:
-                logger.debug("upgrade database %d -> %d", database_version, 9)
+                self._logger.debug("upgrade database %d -> %d", database_version, 9)
                 self.executescript(u"""
 DROP INDEX IF EXISTS sync_meta_message_global_time_index;
 CREATE INDEX IF NOT EXISTS sync_global_time_undone_meta_message_index ON sync(global_time, undone, meta_message);
 UPDATE option SET value = '9' WHERE key = 'database_version';
 """)
-                logger.debug("upgrade database %d -> %d (done)", database_version, 9)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 9)
                 self.commit()
 
             # upgrade from version 9 to version 10
             if database_version < 10:
-                logger.debug("upgrade database %d -> %d", database_version, 10)
+                self._logger.debug("upgrade database %d -> %d", database_version, 10)
                 self.executescript(u"""
 DELETE FROM option WHERE key = 'my_wan_ip';
 DELETE FROM option WHERE key = 'my_wan_port';
 UPDATE option SET value = '10' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 10)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 10)
 
             # upgrade from version 10 to version 11
             if database_version < 11:
-                logger.debug("upgrade database %d -> %d", database_version, 11)
+                self._logger.debug("upgrade database %d -> %d", database_version, 11)
                 # unfortunately the default SCHEMA did not contain
                 # sync_global_time_undone_meta_message_index but was still using
                 # sync_meta_message_global_time_index in database version 10
@@ -293,23 +292,23 @@ CREATE INDEX sync_meta_message_undone_global_time_index ON sync(meta_message, un
 UPDATE option SET value = '11' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 11)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 11)
 
             # upgrade from version 11 to version 12
             if database_version < 12:
                 # according to the profiler the dispersy/member.py:201(has_identity) has a
                 # disproportionally long runtime.  this is easily improved using the below index.
-                logger.debug("upgrade database %d -> %d", database_version, 12)
+                self._logger.debug("upgrade database %d -> %d", database_version, 12)
                 self.executescript(u"""
 CREATE INDEX sync_meta_message_member ON sync(meta_message, member);
 UPDATE option SET value = '12' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 12)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 12)
 
             # upgrade from version 12 to version 13
             if database_version < 13:
-                logger.debug("upgrade database %d -> %d", database_version, 13)
+                self._logger.debug("upgrade database %d -> %d", database_version, 13)
                 # reference_member_sync is a very generic but also expensive way to store
                 # multi-sighned messages.  by simplifying the milti-sign into purely double-sign we
                 # can use a less expensive (in terms of query time) table.  note: we simply drop the
@@ -325,15 +324,15 @@ CREATE INDEX double_signed_sync_index_0 ON double_signed_sync(member1, member2);
 UPDATE option SET value = '13' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 13)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 13)
 
             # upgrade from version 13 to version 16
             if database_version < 16:
-                logger.debug("upgrade database %d -> %d", database_version, 16)
+                self._logger.debug("upgrade database %d -> %d", database_version, 16)
                 # only effects check_community_database
                 self.executescript(u"""UPDATE option SET value = '16' WHERE key = 'database_version';""")
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 16)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 16)
 
             # upgrade from version 16 to version 17
             if database_version < 17:
@@ -342,7 +341,7 @@ UPDATE option SET value = '13' WHERE key = 'database_version';
                 # public_key column.  this greatly reduces the bytes written when creating new
                 # Member instances.  unfortunately this requires the removal of the UNIQUE clause,
                 # however, the python code already guarantees that the public_key remains unique.
-                logger.info("upgrade database %d -> %d", database_version, 17)
+                self._logger.info("upgrade database %d -> %d", database_version, 17)
                 self.executescript(u"""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
@@ -362,12 +361,12 @@ DROP TABLE old_member;
 UPDATE option SET value = '17' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.info("upgrade database %d -> %d (done)", database_version, 17)
+                self._logger.info("upgrade database %d -> %d (done)", database_version, 17)
 
             # upgrade from version 17 to version 18
             if database_version < 18:
                 # In version 18, we remove the tags column as we don't have blackisting anymore
-                logger.debug("upgrade database %d -> %d", database_version, 18)
+                self._logger.debug("upgrade database %d -> %d", database_version, 18)
                 self.executescript(u"""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
@@ -388,13 +387,13 @@ DROP TABLE IF EXISTS malicious_proof;
 UPDATE option SET value = '18' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 18)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 18)
 
             # upgrade from version 18 to version 19
             if database_version < 19:
                 # In version 19, we move the private key to member, as it doesn't improve anything and it allows us to
                 # actually simplify the code.
-                logger.debug("upgrade database %d -> %d", database_version, 19)
+                self._logger.debug("upgrade database %d -> %d", database_version, 19)
 
                 self.executescript(u"""
 -- move / remove old member table
@@ -419,12 +418,12 @@ DROP TABLE IF EXISTS private_key;
 UPDATE option SET value = '19' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, 19)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, 19)
 
             new_db_version = 20
             if database_version < new_db_version:
                 # Let's store the sequence numbers in the database instead of quessing
-                logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                self._logger.debug("upgrade database %d -> %d", database_version, new_db_version)
                 self.executescript(u"""
 DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
 DROP INDEX IF EXISTS sync_meta_message_member;
@@ -452,12 +451,12 @@ DROP TABLE IF EXISTS old_sync;
 UPDATE option SET value = '20' WHERE key = 'database_version';
 """)
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
 
             new_db_version = 21
             if database_version < new_db_version:
                 # remove 'cluster' column from meta_message table
-                logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                self._logger.debug("upgrade database %d -> %d", database_version, new_db_version)
                 self.executescript(u"""
 CREATE TABLE meta_message_new(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -475,15 +474,15 @@ ALTER TABLE meta_message_new RENAME TO meta_message;
 
 UPDATE option SET value = '21' WHERE key = 'database_version';""")
                 self.commit()
-                logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
+                self._logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
 
             new_db_version = 22
             if database_version < new_db_version:
                 # there is no version new_db_version yet...
-                # logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+                # self._logger.debug("upgrade database %d -> %d", database_version, new_db_version)
                 # self.executescript(u"""UPDATE option SET value = '22' WHERE key = 'database_version';""")
                 # self.commit()
-                # logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
+                # self._logger.debug("upgrade database %d -> %d (done)", database_version, new_db_version)
                 pass
 
         return LATEST_VERSION
@@ -493,7 +492,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
         assert database_version >= 0
 
         if database_version < 8:
-            logger.debug("upgrade community %d -> %d", database_version, 8)
+            self._logger.debug("upgrade community %d -> %d", database_version, 8)
 
             # patch notes:
             #
@@ -514,7 +513,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
             progress = 0
             count, = self.execute(u"SELECT COUNT(1) FROM sync WHERE meta_message = ? OR meta_message = ?", (undo_own_meta.database_id, undo_other_meta.database_id)).next()
-            logger.debug("upgrading %d undo messages", count)
+            self._logger.debug("upgrading %d undo messages", count)
             if count > 50:
                 progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count) for handler in community.dispersy.get_progress_handlers()]
             else:
@@ -553,7 +552,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
                                 # try to redo the message... this may not always be possible now...
                                 msg.undo_callback([(msg.authentication.member, msg.distribution.global_time, msg)], redo=True)
                             except Exception as exception:
-                                logger.exception("%s", exception)
+                                self._logger.exception("%s", exception)
 
                 progress += 1
                 for handler in progress_handlers:
@@ -575,7 +574,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
                 handler.Destroy()
 
         if database_version < 21:
-            logger.debug("upgrade community %d -> %d", database_version, 20)
+            self._logger.debug("upgrade community %d -> %d", database_version, 20)
 
             # patch 14 -> 15 notes:
             #
@@ -625,7 +624,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             for meta in metas:
                 i, = next(self.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?", (meta.database_id,)))
                 count += i
-            logger.debug("checking %d sequence number enabled messages [%s]", count, community.cid.encode("HEX"))
+            self._logger.debug("checking %d sequence number enabled messages [%s]", count, community.cid.encode("HEX"))
             if count > 50:
                 progress_handlers = [handler("Upgrading database", "Please wait while we upgrade the database", count)
                                      for handler in community.dispersy.get_progress_handlers()]
@@ -653,10 +652,10 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
                             else:
                                 deletes.append((packet_id,))
-                                logger.debug("delete id:%d", packet_id)
+                                self._logger.debug("delete id:%d", packet_id)
                         else:
                             deletes.append((packet_id,))
-                            logger.debug("delete id:%d", packet_id)
+                            self._logger.debug("delete id:%d", packet_id)
 
                         progress += 1
                         if progress % 25 == 0:
@@ -666,7 +665,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             for handler in progress_handlers:
                 handler.Update(progress, "Saving the results...")
 
-            logger.debug("will delete %d packets from the database", len(deletes))
+            self._logger.debug("will delete %d packets from the database", len(deletes))
             if deletes:
                 self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
 
