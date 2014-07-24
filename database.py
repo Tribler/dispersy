@@ -11,15 +11,11 @@ import thread
 from abc import ABCMeta, abstractmethod
 from sqlite3 import Connection
 
-from .logger import get_logger
 from .util import attach_runtime_statistics
 
 
-logger = get_logger(__name__)
-
-
 if "--explain-query-plan" in getattr(sys, "argv", []):
-    _explain_query_plan_logger = get_logger("explain-query-plan")
+    _explain_query_plan_logger = logging.getLogger("explain-query-plan")
     _explain_query_plan = set()
 
     def attach_explain_query_plan(func):
@@ -69,7 +65,11 @@ class Database(object):
         @type file_path: unicode
         """
         assert isinstance(file_path, unicode)
-        logger.debug("loading database [%s]", file_path)
+
+        super(Database, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
+
+        self._logger.debug("loading database [%s]", file_path)
         self._file_path = file_path
 
         # _CONNECTION, _CURSOR, AND _DATABASE_VERSION are set during open(...)
@@ -92,7 +92,7 @@ class Database(object):
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
             self._debug_thread_ident = thread.get_ident()
-        logger.debug("open database [%s]", self._file_path)
+        self._logger.debug("open database [%s]", self._file_path)
         self._connect()
         if initial_statements:
             self._initial_statements()
@@ -105,7 +105,7 @@ class Database(object):
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         if commit:
             self.commit(exiting=True)
-        logger.debug("close database [%s]", self._file_path)
+        self._logger.debug("close database [%s]", self._file_path)
         self._cursor.close()
         self._cursor = None
         self._connection.close()
@@ -133,7 +133,7 @@ class Database(object):
         # database, existing databases must be upgraded.
         #
         if page_size < 8192:
-            logger.debug("PRAGMA page_size = 8192 (previously: %s) [%s]", page_size, self._file_path)
+            self._logger.debug("PRAGMA page_size = 8192 (previously: %s) [%s]", page_size, self._file_path)
 
             # it is not possible to change page_size when WAL is enabled
             if journal_mode == u"WAL":
@@ -144,30 +144,30 @@ class Database(object):
             page_size = 8192
 
         else:
-            logger.debug("PRAGMA page_size = %s (no change) [%s]", page_size, self._file_path)
+            self._logger.debug("PRAGMA page_size = %s (no change) [%s]", page_size, self._file_path)
 
         #
         # PRAGMA journal_mode = DELETE | TRUNCATE | PERSIST | MEMORY | WAL | OFF
         # http://www.sqlite.org/pragma.html#pragma_page_size
         #
         if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
-            logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
+            self._logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
             self._cursor.execute(u"PRAGMA locking_mode = EXCLUSIVE")
             self._cursor.execute(u"PRAGMA journal_mode = WAL")
 
         else:
-            logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
+            self._logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
 
         #
         # PRAGMA synchronous = 0 | OFF | 1 | NORMAL | 2 | FULL;
         # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
         if not synchronous in (u"NORMAL", u"1"):
-            logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
+            self._logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
             self._cursor.execute(u"PRAGMA synchronous = NORMAL")
 
         else:
-            logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
+            self._logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
 
     def _prepare_version(self):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
@@ -215,7 +215,7 @@ class Database(object):
         assert self._debug_thread_ident != 0, "please call database.open() first"
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
 
-        logger.debug("disabling commit [%s]", self._file_path)
+        self._logger.debug("disabling commit [%s]", self._file_path)
         self._pending_commits = max(1, self._pending_commits)
         return self
 
@@ -232,14 +232,14 @@ class Database(object):
         self._pending_commits, pending_commits = 0, self._pending_commits
 
         if exc_type is None:
-            logger.debug("enabling commit [%s]", self._file_path)
+            self._logger.debug("enabling commit [%s]", self._file_path)
             if pending_commits > 1:
-                logger.debug("performing %d pending commits [%s]", pending_commits - 1, self._file_path)
+                self._logger.debug("performing %d pending commits [%s]", pending_commits - 1, self._file_path)
                 self.commit()
             return True
 
         elif isinstance(exc_value, IgnoreCommits):
-            logger.debug("enabling commit without committing now [%s]", self._file_path)
+            self._logger.debug("enabling commit without committing now [%s]", self._file_path)
             return True
 
         else:
@@ -289,7 +289,7 @@ class Database(object):
                 tests = (not isinstance(binding, str) for binding in bindings)
             assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
 
-        logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
+        self._logger.log(logging.NOTSET, "%s <-- %s [%s]", statement, bindings, self._file_path)
         result = self._cursor.execute(statement, bindings)
         if get_lastrowid:
             result = self._cursor.lastrowid
@@ -303,7 +303,7 @@ class Database(object):
         assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
         assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
 
-        logger.log(logging.NOTSET, "%s [%s]", statements, self._file_path)
+        self._logger.log(logging.NOTSET, "%s [%s]", statements, self._file_path)
         return self._cursor.executescript(statements)
 
     @attach_explain_query_plan
@@ -363,7 +363,7 @@ class Database(object):
             if is_iterator:
                 sequenceofbindings = iter(sequenceofbindings)
 
-        logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
+        self._logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
         return self._cursor.executemany(statement, sequenceofbindings)
 
     @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
@@ -375,17 +375,17 @@ class Database(object):
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:
-            logger.debug("defer commit [%s]", self._file_path)
+            self._logger.debug("defer commit [%s]", self._file_path)
             self._pending_commits += 1
             return False
 
         else:
-            logger.debug("commit [%s]", self._file_path)
+            self._logger.debug("commit [%s]", self._file_path)
             for callback in self._commit_callbacks:
                 try:
                     callback(exiting=exiting)
                 except Exception as exception:
-                    logger.exception("%s [%s]", exception, self._file_path)
+                    self._logger.exception("%s [%s]", exception, self._file_path)
 
             return self._connection.commit()
 
