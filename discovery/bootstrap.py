@@ -2,11 +2,12 @@ from random import shuffle
 from threading import Lock
 
 from twisted.internet import reactor
+from twisted.internet.abstract import isIPAddress
 from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
 
-from ..logger import get_logger
 from ..candidate import Candidate
+from ..logger import get_logger
 
 
 logger = get_logger(__name__)
@@ -19,24 +20,20 @@ logger = get_logger(__name__)
 _DEFAULT_ADDRESSES = (
     # DNS entries on tribler.org
     (u"dispersy1.tribler.org", 6421),
+    (u"130.161.211.245"      , 6421),
     (u"dispersy2.tribler.org", 6422),
+    (u"130.161.211.245"      , 6422),
     (u"dispersy3.tribler.org", 6423),
+    (u"95.211.198.141"       , 6423),
     (u"dispersy4.tribler.org", 6424),
-    (u"dispersy5.tribler.org", 6425),
-    (u"dispersy6.tribler.org", 6426),
-    (u"dispersy7.tribler.org", 6427),
-    (u"dispersy8.tribler.org", 6428),
+    (u"95.211.198.143"       , 6424),
 
     # DNS entries on st.tudelft.nl
     (u"dispersy1.st.tudelft.nl", 6421),
     (u"dispersy2.st.tudelft.nl", 6422),
     (u"dispersy3.st.tudelft.nl", 6423),
     (u"dispersy4.st.tudelft.nl", 6424),
-    (u"dispersy5.st.tudelft.nl", 6425),
-    (u"dispersy6.st.tudelft.nl", 6426),
-    (u"dispersy7.st.tudelft.nl", 6427),
-    (u"dispersy8.st.tudelft.nl", 6428))
-
+)
 # 04/12/13 Boudewijn: We are phasing out the dispersy{1-9}b entries.  Note that older clients will
 # still assume these entries exist!
 # (u"dispersy1b.tribler.org", 6421),
@@ -156,6 +153,8 @@ class Bootstrap(object):
 
             deferreds = []
             for host, port in addresses:
+                if isIPAddress(host):
+                    add_candidate(host, host, port)
                 deferred = reactor.resolve(host)
                 deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
                 deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
