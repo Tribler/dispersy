@@ -10,7 +10,7 @@ from ..bloomfilter import BloomFilter
 
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
-        super(DiscoveryConversion, self).__init__(community, "\x01")
+        super(DiscoveryConversion, self).__init__(community, "\x02")
         self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), lambda message: self._encode_decode(
             self._encode_similarity_request, self._decode_similarity_request, message), self._decode_similarity_request)
         self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), lambda message: self._encode_decode(
