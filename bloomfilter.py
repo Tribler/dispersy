@@ -26,9 +26,9 @@ from hashlib import sha1, sha256, sha384, sha512, md5
 from math import ceil, log
 from struct import Struct
 from binascii import hexlify, unhexlify
+import logging
 
-from .logger import get_logger
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class BloomFilter(object):
@@ -117,6 +117,8 @@ class BloomFilter(object):
         return m_size, k_functions, prefix, filter_
 
     def __init__(self, *args, **kargs):
+        self._logger = logging.getLogger(self.__class__.__name__)
+
         # get constructor arguments required to build the bloom filter
         self._m_size, self._k_functions, self._prefix, self._filter = self._overload_constructor_arguments(args, kargs)
 
@@ -131,16 +133,16 @@ class BloomFilter(object):
 
         if __debug__:
             hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
-            logger.debug("m size:      %d    ~%d bytes", self._m_size, self._m_size / 8)
-            logger.debug("k functions: %d", self._k_functions)
-            logger.debug("prefix:      %s", self._prefix.encode("HEX"))
-            logger.debug("filter:      %s", self._filter)
-            logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate
-                                                                   for hypothetical_error_rate
-                                                                   in hypothetical_error_rates))
-            logger.debug("hypothetical capacity:   %s", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate)
-                                                                   for hypothetical_error_rate
-                                                                   in hypothetical_error_rates))
+            self._logger.debug("m size:      %d    ~%d bytes", self._m_size, self._m_size / 8)
+            self._logger.debug("k functions: %d", self._k_functions)
+            self._logger.debug("prefix:      %s", self._prefix.encode("HEX"))
+            self._logger.debug("filter:      %s", self._filter)
+            self._logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate
+                                                                         for hypothetical_error_rate
+                                                                         in hypothetical_error_rates))
+            self._logger.debug("hypothetical capacity:   %s", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate)
+                                                                         for hypothetical_error_rate
+                                                                         in hypothetical_error_rates))
 
         # determine hash function
         if self._m_size >= (1 << 31):
@@ -262,7 +264,7 @@ class BloomFilter(object):
         @rtype: int
         """
         # get_bits_checked does not take any parameters, hence it should be a property like size, functions, etc.
-        logger.warning("get_bits_checked function is deprecated, please use the bits_checked property")
+        self._logger.warning("get_bits_checked function is deprecated, please use the bits_checked property")
         return self.bits_checked
 
     @property
