@@ -1,5 +1,6 @@
 from random import shuffle
 from threading import Lock
+import logging
 
 from twisted.internet import reactor
 from twisted.internet.abstract import isIPAddress
@@ -7,10 +8,6 @@ from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
 
 from ..candidate import Candidate
-from ..logger import get_logger
-
-
-logger = get_logger(__name__)
 
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
@@ -80,6 +77,9 @@ class Bootstrap(object):
         assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
         assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
         assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
+        super(Bootstrap, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
+
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
         self._resolution_lc = None
@@ -145,11 +145,11 @@ class Bootstrap(object):
             shuffle(addresses)
 
             def add_candidate(ip, host, port):
-                logger.info("Resolved %s into %s:%d", host, ip, port)
+                self._logger.info("Resolved %s into %s:%d", host, ip, port)
                 self._candidates[(host, port)] = Candidate((str(ip), port), False)
 
             def no_candidate(host, port):
-                logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
+                self._logger.warning("Could not resolve bootstrap candidate: %s:%s", host, port)
 
             deferreds = []
             for host, port in addresses:
@@ -171,7 +171,7 @@ class Bootstrap(object):
                 self._resolution_lc = None
 
             else:
-                logger.info("Resolving bootstrap addresses")
+                self._logger.info("Resolving bootstrap addresses")
                 deferred = self.resolve()
                 if callback:
                     deferred.addCallback(callback)
