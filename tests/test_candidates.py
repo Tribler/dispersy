@@ -11,14 +11,10 @@ from itertools import combinations, islice
 from time import time
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
-from ..logger import get_logger
 from ..tool.tracker import TrackerCommunity
 from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
-
-
-logger = get_logger(__name__)
 
 
 def print_unittest_combinations():
@@ -59,6 +55,7 @@ class NoBootstrapDebugCommunity(DebugCommunity):
     @property
     def dispersy_enable_candidate_walker(self):
         return False
+
 
 class TestCandidates(DispersyTestFunc):
     """
@@ -358,9 +355,9 @@ class TestCandidates(DispersyTestFunc):
         self.set_timestamps(candidates, all_flags)
         selection = self.select_candidates(candidates, all_flags)
         actual_list = [islice(community.dispersy_yield_candidates(), max_iterations) for _ in xrange(max_calls)]
-        logger.debug("A] candidates:  %s", [str(candidate) for candidate in candidates])
-        logger.debug("A] selection:   %s", [str(candidate) for candidate in selection])
-        logger.debug("A] actual_list: %s", [str(candidate) for candidate in actual_list])
+        self._logger.debug("A] candidates:  %s", [str(candidate) for candidate in candidates])
+        self._logger.debug("A] selection:   %s", [str(candidate) for candidate in selection])
+        self._logger.debug("A] actual_list: %s", [str(candidate) for candidate in actual_list])
         for actual in actual_list:
             compare(selection, actual)
 
@@ -368,9 +365,9 @@ class TestCandidates(DispersyTestFunc):
         self.set_timestamps(candidates, all_flags)
         selection = self.select_verified_candidates(candidates, all_flags)
         actual_list = [islice(community.dispersy_yield_verified_candidates(), max_iterations) for _ in xrange(max_calls)]
-        logger.debug("B] candidates:  %s", [str(candidate) for candidate in candidates])
-        logger.debug("B] selection:   %s", [str(candidate) for candidate in selection])
-        logger.debug("B] actual_list: %s", [str(candidate) for candidate in actual_list])
+        self._logger.debug("B] candidates:  %s", [str(candidate) for candidate in candidates])
+        self._logger.debug("B] selection:   %s", [str(candidate) for candidate in selection])
+        self._logger.debug("B] actual_list: %s", [str(candidate) for candidate in actual_list])
         for actual in actual_list:
             compare(selection, actual)
 
@@ -378,9 +375,9 @@ class TestCandidates(DispersyTestFunc):
         self.set_timestamps(candidates, all_flags)
         selection = self.select_introduce_candidates(candidates, all_flags) or [None]
         actual = [community.dispersy_get_introduce_candidate() for _ in xrange(max_calls)]
-        logger.debug("C] candidates:  %s", [str(candidate) for candidate in candidates])
-        logger.debug("C] selection:   %s", [str(candidate) for candidate in selection])
-        logger.debug("C] actual_list: %s", [str(candidate) for candidate in actual_list])
+        self._logger.debug("C] candidates:  %s", [str(candidate) for candidate in candidates])
+        self._logger.debug("C] selection:   %s", [str(candidate) for candidate in selection])
+        self._logger.debug("C] actual_list: %s", [str(candidate) for candidate in actual_list])
         compare(selection, actual)
 
         # get_introduce_candidate (with exclusion)
@@ -388,10 +385,10 @@ class TestCandidates(DispersyTestFunc):
         for candidate in candidates:
             selection = self.select_introduce_candidates(candidates, all_flags, candidate) or [None]
             actual = [community.dispersy_get_introduce_candidate(candidate) for _ in xrange(max_calls)]
-            logger.debug("D] exclude:     %s", str(candidate))
-            logger.debug("D] candidates:  %s", [str(candidate) for candidate in candidates])
-            logger.debug("D] selection:   %s", [str(candidate) for candidate in selection])
-            logger.debug("D] actual_list: %s", [str(candidate) for candidate in actual])
+            self._logger.debug("D] exclude:     %s", str(candidate))
+            self._logger.debug("D] candidates:  %s", [str(candidate) for candidate in candidates])
+            self._logger.debug("D] selection:   %s", [str(candidate) for candidate in selection])
+            self._logger.debug("D] actual_list: %s", [str(candidate) for candidate in actual])
             compare(selection, actual)
 
         # get_walk_candidate
@@ -399,8 +396,8 @@ class TestCandidates(DispersyTestFunc):
         # this test must be done last.
         self.set_timestamps(candidates, all_flags)
         selection = self.select_walk_candidates(candidates, all_flags)
-        logger.debug("E] candidates:  %s", [str(candidate) for candidate in candidates])
-        logger.debug("E] selection:   %s", [str(candidate) for candidate in selection])
+        self._logger.debug("E] candidates:  %s", [str(candidate) for candidate in candidates])
+        self._logger.debug("E] selection:   %s", [str(candidate) for candidate in selection])
         for _ in xrange(len(selection)):
             candidate = community.dispersy_get_walk_candidate()
             self.assertNotEquals(candidate, None)
