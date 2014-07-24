@@ -16,8 +16,7 @@ from time import time
 import logging
 
 from twisted.internet import reactor
-from twisted.internet.base import DelayedCall
-from twisted.internet.defer import Deferred, inlineCallbacks
+from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import LoopingCall, deferLater
 from twisted.python.threadable import isInIOThread
 

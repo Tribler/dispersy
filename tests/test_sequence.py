@@ -1,9 +1,7 @@
 from collections import defaultdict
-from time import sleep
 
 from .dispersytestclass import DispersyTestFunc
-from ..logger import get_logger
-logger = get_logger(__name__)
+
 
 class TestIncomingMissingSequence(DispersyTestFunc):
 

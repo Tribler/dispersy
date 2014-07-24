@@ -1,11 +1,7 @@
 from ..exception import CommunityNotFoundException
-from ..logger import get_logger
 from ..util import call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
-
-
-logger = get_logger(__name__)
 
 
 class TestClassification(DispersyTestFunc):

@@ -48,8 +48,7 @@ from time import time
 
 import netifaces
 from twisted.internet import reactor
-from twisted.internet.base import DelayedCall
-from twisted.internet.defer import Deferred, maybeDeferred, gatherResults
+from twisted.internet.defer import maybeDeferred, gatherResults
 from twisted.internet.task import LoopingCall
 from twisted.python.failure import Failure
 from twisted.python.threadable import isInIOThread

@@ -1,6 +1,7 @@
 from .candidate import Candidate
 from .meta import MetaObject
 
+
 class Destination(MetaObject):
 
     class Implementation(MetaObject.Implementation):
