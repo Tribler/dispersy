@@ -1,5 +1,4 @@
-from .logger import get_logger
-logger = get_logger(__name__)
+import logging
 
 from .member import Member
 
@@ -39,6 +38,9 @@ class Candidate(object):
     def __init__(self, sock_addr, tunnel):
         assert is_address(sock_addr), sock_addr
         assert isinstance(tunnel, bool), type(tunnel)
+        super(Candidate, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
+
         self._sock_addr = sock_addr
         self._tunnel = tunnel
 
@@ -106,6 +108,7 @@ class Candidate(object):
     def __hash__(self):
         return hash(str(self._sock_addr))
 
+
 class WalkCandidate(Candidate):
 
     """
@@ -149,7 +152,8 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
+                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s",
+                                   self._lan_address, self._wan_address, self.sock_addr)
                 assert False
 
     @property
@@ -182,8 +186,6 @@ class WalkCandidate(Candidate):
     @global_time.setter
     def global_time(self, global_time):
         self._global_time = max(self._global_time, global_time)
-
-
 
     def age(self, now, category=u""):
         """
@@ -312,7 +314,7 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
+                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:

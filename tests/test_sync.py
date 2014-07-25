@@ -1,9 +1,5 @@
-from unittest.case import skip
-
 from .dispersytestclass import DispersyTestFunc
-from ..logger import get_logger
 
-logger = get_logger(__name__)
 
 class TestSync(DispersyTestFunc):
 

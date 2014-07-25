@@ -31,7 +31,7 @@ if __name__ == "__main__":
     exit(1)
 
 import errno
-import logging.config
+import logging
 import optparse  # deprecated since python 2.7
 import os
 import signal
@@ -51,7 +51,6 @@ from ..discovery.community import DiscoveryCommunity
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..exception import ConversionNotFoundException, CommunityNotFoundException
-from ..logger import get_logger, get_context_filter
 
 COMMUNITY_CLEANUP_INTERVAL = 180.0
 
@@ -63,7 +62,7 @@ if os.path.exists("logger.conf"):
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
@@ -283,7 +282,7 @@ class TrackerDispersy(Dispersy):
                 try:
                     self.on_incoming_packets([(candidate, packet)], cache=False, timestamp=time())
                 except:
-                    logger.exception("Error while loading from persistent-destroy-community.data")
+                    self._logger.exception("Error while loading from persistent-destroy-community.data")
 
     def unload_inactive_communities(self):
         def is_active(community, now):
@@ -328,14 +327,8 @@ def main():
     command_line_parser.add_option("--crypto", action="store", type="string", default="ECCrytpo", help="The Crypto object type Dispersy is going to use")
     command_line_parser.add_option("--manhole", action="store", type="int", help="Enable manhole telnet service listening at the specified port")
 
-    context_filter = get_context_filter()
-    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
-
     # parse command-line arguments
     opt, _ = command_line_parser.parse_args()
-
-    # set the log identifier
-    context_filter.identifier = opt.log_identifier
 
     # crypto
     if opt.crypto == 'NoCrypto':

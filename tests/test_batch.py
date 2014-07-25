@@ -1,10 +1,6 @@
 from time import time, sleep
 
-from ..logger import get_logger
 from .dispersytestclass import DispersyTestFunc
-
-
-logger = get_logger(__name__)
 
 
 class TestBatch(DispersyTestFunc):

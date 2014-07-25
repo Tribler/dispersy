@@ -1,9 +1,5 @@
-from ..logger import get_logger
 from ..resolution import PublicResolution, LinearResolution
 from .dispersytestclass import DispersyTestFunc
-
-
-logger = get_logger(__name__)
 
 
 class TestDynamicSettings(DispersyTestFunc):

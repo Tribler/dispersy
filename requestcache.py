@@ -1,13 +1,10 @@
 from random import random
+import logging
 
 from twisted.internet import reactor
 from twisted.python.threadable import isInIOThread
 
-from .logger import get_logger
 from .taskmanager import TaskManager
-
-
-logger = get_logger(__name__)
 
 
 class NumberCache(object):
@@ -15,6 +12,9 @@ class NumberCache(object):
     def __init__(self, request_cache, prefix, number):
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
+
+        super(NumberCache, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         if request_cache.has(prefix, number):
             raise RuntimeError("This number is already in use '%s'" % number)
@@ -61,6 +61,7 @@ class RandomNumberCache(NumberCache):
 
         return number
 
+
 class SignatureRequestCache(RandomNumberCache):
 
     def __init__(self, request_cache, members, response_func, response_args, timeout):
@@ -79,7 +80,7 @@ class SignatureRequestCache(RandomNumberCache):
         return self._timeout_delay
 
     def on_timeout(self):
-        logger.debug("signature timeout")
+        self._logger.debug("signature timeout")
         self.response_func(self, None, True, *self.response_args)
 
 
@@ -105,7 +106,7 @@ class IntroductionRequestCache(RandomNumberCache):
             # community.  The obsolete candidates will be removed by the
             # dispersy_get_walk_candidate() in community.
 
-            logger.debug("walker timeout for %s", self.helper_candidate)
+            self._logger.debug("walker timeout for %s", self.helper_candidate)
 
             self.community.dispersy.statistics.walk_failure_count += 1
             self.community.dispersy.statistics.dict_inc(u"walk_failure_dict", self.helper_candidate.sock_addr)
@@ -135,6 +136,9 @@ class RequestCache(TaskManager):
         super(RequestCache, self).__init__()
 
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
+
+        self._logger = logging.getLogger(self.__class__.__name__)
+
         self._identifiers = dict()
 
     def add(self, cache):
@@ -152,11 +156,11 @@ class RequestCache(TaskManager):
 
         identifier = self._create_identifier(cache.number, cache.prefix)
         if identifier in self._identifiers:
-            logger.error("add with duplicate identifier \"%s\"", identifier)
+            self._logger.error("add with duplicate identifier \"%s\"", identifier)
             return None
 
         else:
-            logger.debug("add %s", cache)
+            self._logger.debug("add %s", cache)
             self._identifiers[identifier] = cache
             self.register_task(cache, reactor.callLater(cache.timeout_delay, self._on_timeout, cache))
             return cache
@@ -206,7 +210,7 @@ class RequestCache(TaskManager):
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
 
-        logger.debug("timeout on %s", cache)
+        self._logger.debug("timeout on %s", cache)
         cache.on_timeout()
 
         # the on_timeout call could have already removed the identifier from the cache using pop
@@ -224,6 +228,6 @@ class RequestCache(TaskManager):
         Clear the cache, canceling all pending tasks.
 
         """
-        logger.debug("Clearing %s [%s]", self, len(self._identifiers))
+        self._logger.debug("Clearing %s [%s]", self, len(self._identifiers))
         self.cancel_all_pending_tasks()
         self._identifiers.clear()

@@ -17,6 +17,7 @@ global_time.
 from abc import ABCMeta, abstractmethod
 from .meta import MetaObject
 
+
 class Pruning(MetaObject):
 
     class Implementation(MetaObject.Implementation):
@@ -239,6 +240,7 @@ class SyncDistribution(Distribution):
         cache = message.community.meta_message_cache[message.name]
         cache["priority"] = self._priority
         cache["direction"] = self.synchronization_direction_value
+
 
 class FullSyncDistribution(SyncDistribution):
 

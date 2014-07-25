@@ -13,6 +13,7 @@ creator of this message.
 from abc import ABCMeta, abstractproperty
 from .meta import MetaObject
 
+
 class Authentication(MetaObject):
 
     """
@@ -166,6 +167,7 @@ class MemberAuthentication(Authentication):
         """
         assert isinstance(encoding, str)
         assert encoding in ("default", "bin", "sha1")
+        super(MemberAuthentication, self).__init__()
         self._encoding = encoding
 
     @property
@@ -334,6 +336,7 @@ class DoubleMemberAuthentication(Authentication):
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
         assert isinstance(encoding, str)
         assert encoding in ("default", "bin", "sha1")
+        super(DoubleMemberAuthentication, self).__init__()
         self._allow_signature_func = allow_signature_func
         self._encoding = encoding
 

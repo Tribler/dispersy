@@ -1,4 +1,5 @@
 import os
+import logging
 from unittest import TestCase
 
 # Do not (re)move the reactor import, even if we aren't using it
@@ -9,16 +10,24 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 from ..discovery.community import PEERCACHE_FILENAME
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
-from ..logger import get_logger
 from ..util import blockingCallFromThread
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 
 
-logger = get_logger(__name__)
+# use logger.conf if it exists
+if os.path.exists("logger.conf"):
+    # will raise an exception when logger.conf is malformed
+    logging.config.fileConfig("logger.conf")
+# fallback to basic configuration when needed
+logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
 
 class DispersyTestFunc(TestCase):
+
+    def __init__(self, *args, **kwargs):
+        super(DispersyTestFunc, self).__init__(*args, **kwargs)
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     def on_callback_exception(self, exception, is_fatal):
         return True
@@ -47,11 +56,11 @@ class DispersyTestFunc(TestCase):
 
         pending = reactor.getDelayedCalls()
         if pending:
-            logger.warning("Found delayed calls in reactor:")
+            self._logger.warning("Found delayed calls in reactor:")
             for dc in pending:
                 fun = dc.func
-                logger.warning("    %s", fun)
-            logger.warning("Failing")
+                self._logger.warning("    %s", fun)
+            self._logger.warning("Failing")
         assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, communityclass=DebugCommunity, autoload_discovery=False):
@@ -71,7 +80,7 @@ class DispersyTestFunc(TestCase):
                 yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
 
                 nodes.append(node)
-            logger.debug("create_nodes, nodes created: %s", nodes)
+            self._logger.debug("create_nodes, nodes created: %s", nodes)
             returnValue(nodes)
 
         return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, communityclass, autoload_discovery)

@@ -1,11 +1,8 @@
 from struct import pack, unpack_from
-from random import choice, sample
-from binascii import hexlify, unhexlify
 from socket import inet_ntoa, inet_aton
 
 from ..message import DropPacket
 from ..conversion import BinaryConversion
-from ..bloomfilter import BloomFilter
 
 
 class DiscoveryConversion(BinaryConversion):

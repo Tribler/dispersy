@@ -12,10 +12,7 @@ from twisted.internet.defer import Deferred, gatherResults, succeed
 from twisted.internet.protocol import DatagramProtocol
 
 from .candidate import Candidate
-from .logger import get_logger
 
-
-logger = get_logger(__name__)
 
 if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
@@ -24,6 +21,7 @@ else:
 
 TUNNEL_PREFIX = "ffffffff".decode("HEX")
 TUNNEL_PREFIX_LENGHT = 4
+
 
 def strip_if_tunnel(datagram):
     """
@@ -38,6 +36,7 @@ class Endpoint(object):
     __metaclass__ = ABCMeta
 
     def __init__(self):
+        self._logger = logging.getLogger(self.__class__.__name__)
         self._dispersy = None
 
     @abstractmethod
@@ -70,7 +69,7 @@ class Endpoint(object):
             name = conversion.decode_meta_message(packet).name
         except:
             name = "???"
-        logger.debug("%30s %s %15s:%-5d %4d bytes", name, '->' if outbound else '<-',
+        self._logger.debug("%30s %s %15s:%-5d %4d bytes", name, '->' if outbound else '<-',
                      sock_addr[0], sock_addr[1], len(packet))
 
         if outbound:
@@ -126,7 +125,7 @@ class RawserverEndpoint(Endpoint):
         while True:
             try:
                 self._socket = self._rawserver.create_udpsocket(self._port, self._ip)
-                logger.debug("Listening at %d", self._port)
+                self._logger.debug("Listening at %d", self._port)
             except socket.error:
                 self._port += 1
                 continue
@@ -151,7 +150,7 @@ class RawserverEndpoint(Endpoint):
         # sometimes called without any packets...
         if packets:
             self._dispersy.statistics.total_down += sum(len(data) for _, data in packets)
-            if logger.isEnabledFor(logging.DEBUG):
+            if self._logger.isEnabledFor(logging.DEBUG):
                 for sock_addr, data in packets:
                     self.log_packet(sock_addr, data, outbound=False)
 
@@ -200,7 +199,7 @@ class RawserverEndpoint(Endpoint):
         try:
             self._socket.sendto(data, candidate.sock_addr)
 
-            if logger.isEnabledFor(logging.DEBUG):
+            if self._logger.isEnabledFor(logging.DEBUG):
                 self.log_packet(candidate.sock_addr, packet)
 
         except socket.error:
@@ -220,7 +219,8 @@ class RawserverEndpoint(Endpoint):
             if self._sendqueue:
                 index = 0
                 NUM_PACKETS = min(max(50, len(self._sendqueue) / 10), len(self._sendqueue))
-                logger.debug("%d left in sendqueue, trying to send %d packets", len(self._sendqueue), NUM_PACKETS)
+                self._logger.debug("%d left in sendqueue, trying to send %d packets",
+                                   len(self._sendqueue), NUM_PACKETS)
 
                 for i in xrange(NUM_PACKETS):
                     sock_addr, data = self._sendqueue[i]
@@ -228,12 +228,13 @@ class RawserverEndpoint(Endpoint):
                         self._socket.sendto(data, sock_addr)
                         index += 1
 
-                        if logger.isEnabledFor(logging.DEBUG):
+                        if self._logger.isEnabledFor(logging.DEBUG):
                             self.log_packet(sock_addr, data)
 
                     except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
-                            logger.warning("could not send %d to %s (%d in sendqueue)", len(data), sock_addr, len(self._sendqueue))
+                            self._logger.warning("could not send %d to %s (%d in sendqueue)",
+                                                 len(data), sock_addr, len(self._sendqueue))
 
                         self._dispersy.statistics.dict_inc(u"endpoint_send", u"socket-error")
                         break
@@ -242,7 +243,7 @@ class RawserverEndpoint(Endpoint):
                 if self._sendqueue:
                     # And schedule a new attempt
                     self._add_task(self._process_sendqueue, 0.1, "process_sendqueue")
-                    logger.debug("%d left in sendqueue", len(self._sendqueue))
+                    self._logger.debug("%d left in sendqueue", len(self._sendqueue))
 
                 self._dispersy.statistics.cur_sendqueue = len(self._sendqueue)
 
@@ -267,7 +268,7 @@ class StandaloneEndpoint(RawserverEndpoint, DatagramProtocol):
         for _ in xrange(10000):
             try:
                 self.listening_port = reactor.listenUDP(self._port, self, self._ip)
-                logger.debug("Listening at %d", self._port)
+                self._logger.debug("Listening at %d", self._port)
             except socket.error:
                 self._port += 1
                 continue
@@ -307,7 +308,7 @@ class StandaloneEndpoint(RawserverEndpoint, DatagramProtocol):
 
         self.transport.write(data, candidate.sock_addr)
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if self._logger.isEnabledFor(logging.DEBUG):
             self.log_packet(candidate.sock_addr, data)
 
         return True
@@ -315,7 +316,7 @@ class StandaloneEndpoint(RawserverEndpoint, DatagramProtocol):
 
     def datagramReceived(self, datagram, address):
         self._dispersy.statistics.total_down += len(datagram)
-        if logger.isEnabledFor(logging.DEBUG):
+        if self._logger.isEnabledFor(logging.DEBUG):
             self.log_packet(address, datagram, outbound=False)
 
         is_tunnel, datagram = strip_if_tunnel(datagram)
@@ -334,7 +335,7 @@ class ManualEnpoint(StandaloneEndpoint):
         self.received_packets = []
 
     def datagramReceived(self, datagram, address):
-        logger.debug('added packet to receivequeue, %d packets are queued in total', len(self.received_packets))
+        self._logger.debug('added packet to receivequeue, %d packets are queued in total', len(self.received_packets))
         with self.receive_lock:
             self.received_packets.append((address, datagram))
 
@@ -343,7 +344,7 @@ class ManualEnpoint(StandaloneEndpoint):
         self.received_packets = []
 
         if packets:
-            logger.debug('returning %d packets, %d bytes in total',
+            self._logger.debug('returning %d packets, %d bytes in total',
                          len(packets), sum(len(packet) for _, packet in packets))
         return packets
 
@@ -353,7 +354,7 @@ class ManualEnpoint(StandaloneEndpoint):
         return packets
 
     def process_packets(self, packets, cache=True):
-        logger.debug('processing %d packets', len(packets))
+        self._logger.debug('processing %d packets', len(packets))
         StandaloneEndpoint.data_came_in(self, packets, cache=cache)
 
 class TunnelEndpoint(Endpoint):
@@ -406,14 +407,14 @@ class TunnelEndpoint(Endpoint):
         with self._swift.splock:
             self._swift.send_tunnel(prefix or self._session, candidate.sock_addr, packet)
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if self._logger.isEnabledFor(logging.DEBUG):
             self.log_packet(candidate.sock_addr, packet)
 
         return True
 
     def i2ithread_data_came_in(self, session, sock_addr, data):
         assert self._dispersy, "Should not be called before open(...)"
-        if logger.isEnabledFor(logging.DEBUG):
+        if self._logger.isEnabledFor(logging.DEBUG):
             self.log_packet(sock_addr, data, outbound=False)
 
         self._dispersy.statistics.total_down += len(data)

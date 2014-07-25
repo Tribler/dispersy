@@ -21,6 +21,7 @@ _CURVES.update({u"very-low": EC.NID_sect163k1,
                 u"medium": EC.NID_sect409k1,
                 u"high": EC.NID_sect571r1})
 
+
 class DispersyCrypto(object):
 
     @property
@@ -76,6 +77,7 @@ class DispersyCrypto(object):
     def get_signature_length(self, key):
         "Get the length of a signature created using this key in bytes."
         raise NotImplementedError()
+
 
 class ECCrypto(DispersyCrypto):
     """
@@ -288,6 +290,7 @@ class NoVerifyCrypto(ECCrypto):
     """
     def is_valid_signature(self, ec, digest, signature):
         return True
+
 
 class NoCrypto(NoVerifyCrypto):
     """

@@ -1,11 +1,8 @@
 from time import time
 
-from ..logger import get_logger
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
 from ..util import call_on_reactor_thread
 
-logger = get_logger(__name__)
 
 class TestNATDetection(DispersyTestFunc):
     """
@@ -15,7 +12,7 @@ class TestNATDetection(DispersyTestFunc):
     """
 
     def _emulate_connection_type__unknown(self, community):
-        logger.debug("Emulating connection type: UNKNOWN")
+        self._logger.debug("Emulating connection type: UNKNOWN")
         address = ("140.0.0.2", 1)
         candidate = community.create_candidate(address, False, address, address, u"unknown")
         community._dispersy.wan_address_vote(("1.1.1.1", 1), candidate)
@@ -28,7 +25,7 @@ class TestNATDetection(DispersyTestFunc):
         self.assertEqual(community._dispersy.connection_type, u"unknown")
 
     def _emulate_connection_type__public(self, community):
-        logger.debug("Emulating connection type: PUBLIC")
+        self._logger.debug("Emulating connection type: PUBLIC")
         for i in range(5):
             address = ("140.0.0.3", i + 1)
             candidate = community.create_candidate(address, False, address, address, u"unknown")
@@ -43,7 +40,7 @@ class TestNATDetection(DispersyTestFunc):
             self.assertEqual(community._dispersy.connection_type, u"public")
 
     def _emulate_connection_type__symmetric_nat(self, community):
-        logger.debug("Emulating connection type: SYMMETRIC-NAT")
+        self._logger.debug("Emulating connection type: SYMMETRIC-NAT")
         for i in range(5):
             address = ("140.0.0.4", i + 1)
             candidate = community.create_candidate(address, False, address, address, u"unknown")
@@ -59,7 +56,7 @@ class TestNATDetection(DispersyTestFunc):
                 self.assertEqual(community._dispersy.connection_type, u"symmetric-NAT")
 
     def _clear_votes(self, community):
-        logger.debug("Cleanup votes")
+        self._logger.debug("Cleanup votes")
         self.assertGreater(community.cleanup_candidates(), 0)
         self.assertEqual(len(community._dispersy._wan_address_votes), 0)
 
@@ -109,6 +106,7 @@ class TestNATDetection(DispersyTestFunc):
             candidate = self._community.create_candidate(address, False, address, address, u"unknown")
             self._dispersy.wan_address_vote(("1.0.0.1", 1), candidate)
         self.assertEqual(self._dispersy.connection_type, u"unknown")
+
 
 class TestAddressEstimation(DispersyTestFunc):
 

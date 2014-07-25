@@ -1,10 +1,6 @@
 from unittest import TestCase
 
 from ..bloomfilter import BloomFilter
-from ..logger import get_logger
-
-
-logger = get_logger(__name__)
 
 
 class TestBloomFilter(TestCase):

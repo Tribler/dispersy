@@ -1,10 +1,7 @@
 from time import sleep
-from unittest.case import skip
 
-from .debugcommunity.node import DebugNode
 from .dispersytestclass import DispersyTestFunc
-from ..logger import get_logger
-logger = get_logger(__name__)
+
 
 class TestSignature(DispersyTestFunc):
 

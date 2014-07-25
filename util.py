@@ -8,16 +8,15 @@ from collections import defaultdict
 from thread import get_ident
 from threading import current_thread
 from time import time
+import logging
 
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
 from twisted.python import failure
 from twisted.python.threadable import isInIOThread
 
-from .logger import get_logger
 
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 MEMORY_DUMP_INTERVAL = float(60 * 60)

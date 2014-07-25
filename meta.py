@@ -1,7 +1,5 @@
 import inspect
-
-from .logger import get_logger
-logger = get_logger(__name__)
+import logging
 
 
 class MetaObject(object):
@@ -19,6 +17,10 @@ class MetaObject(object):
         def __str__(self):
             return "<%s.%s>" % (self._meta.__class__.__name__, self.__class__.__name__)
 
+    def __init__(self):
+        super(MetaObject, self).__init__()
+        self._logger = logging.getLogger(self.__class__.__name__)
+
     def __str__(self):
         return "<%s>" % self.__class__.__name__
 
@@ -28,9 +30,9 @@ class MetaObject(object):
             try:
                 return cls(self, *args, **kargs)
             except TypeError:
-                logger.error("TypeError in %s.%s", self.__class__.__name__, self.Implementation.__name__)
-                logger.error("self.Implementation takes: %s", inspect.getargspec(self.Implementation.__init__))
-                logger.error("self.Implementation got: %s %s", args, kargs)
+                self._logger.error("TypeError in %s.%s", self.__class__.__name__, self.Implementation.__name__)
+                self._logger.error("self.Implementation takes: %s", inspect.getargspec(self.Implementation.__init__))
+                self._logger.error("self.Implementation got: %s %s", args, kargs)
                 raise
 
         else:

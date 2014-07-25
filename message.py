@@ -5,13 +5,10 @@ from .authentication import Authentication
 from .candidate import Candidate
 from .destination import Destination
 from .distribution import Distribution
-from .logger import get_logger
 from .meta import MetaObject
 from .member import Member
 from .payload import Payload
 from .resolution import Resolution, DynamicResolution
-
-logger = get_logger(__name__)
 
 
 class DelayPacket(Exception):
@@ -511,12 +508,12 @@ class Message(MetaObject):
                 destination_impl = self._destination.Implementation(self._destination, *destination)
                 payload_impl = self._payload.Implementation(self._payload, *payload)
             except TypeError:
-                logger.error("message name:   %s", self._name)
-                logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
-                logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
-                logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
-                logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
-                logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
+                self._logger.error("message name:   %s", self._name)
+                self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
+                self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
+                self._logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
+                self._logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
+                self._logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
                 raise
             else:
                 return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)

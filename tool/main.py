@@ -1,7 +1,7 @@
 """
 Run Dispersy in standalone mode.
 """
-import logging.config
+import logging
 import optparse  # deprecated since python 2.7
 import os
 import signal
@@ -11,7 +11,6 @@ from twisted.python.log import addObserver
 
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
-from ..logger import get_logger, get_context_filter
 
 
 # use logger.conf if it exists
@@ -21,7 +20,7 @@ if os.path.exists("logger.conf"):
 # fallback to basic configuration when needed
 logging.basicConfig(format="%(asctime)-15s [%(levelname)s] %(message)s")
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def start_script(dispersy, opt):
@@ -48,7 +47,6 @@ def start_script(dispersy, opt):
 
 def main_real(setup=None):
     assert setup is None or callable(setup)
-    context_filter = get_context_filter()
 
     # define options
     command_line_parser = optparse.OptionParser()
@@ -62,7 +60,6 @@ def main_real(setup=None):
     command_line_parser.add_option("--kargs", action="store", type="string", help="Executes --script with these arguments.  Example 'startingtimestamp=1292333014,endingtimestamp=12923340000'")
     command_line_parser.add_option("--debugstatistics", action="store_true", help="turn on debug statistics", default=False)
     command_line_parser.add_option("--strict", action="store_true", help="Exit on any exception", default=False)
-    command_line_parser.add_option("--log-identifier", type="string", help="this 'identifier' key is included in each log entry (i.e. it can be used in the logger format string)", default=context_filter.identifier)
     # swift
     # command_line_parser.add_option("--swiftproc", action="store_true", help="Use swift to tunnel all traffic", default=False)
     # command_line_parser.add_option("--swiftpath", action="store", type="string", default="./swift")
@@ -76,9 +73,6 @@ def main_real(setup=None):
     if not opt.script:
         command_line_parser.print_help()
         exit(1)
-
-    # set the log identifier
-    context_filter.identifier = opt.log_identifier
 
     if opt.strict:
         from ..util import unhandled_error_observer
