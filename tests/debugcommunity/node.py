@@ -163,7 +163,8 @@ class DebugNode(object):
         assert isinstance(cache, bool), type(cache)
 
         packets = [message.packet if message.packet else self.encode_message(message) for message in messages]
-        self._logger.debug("%s giving %d messages (%d bytes)", self.my_candidate, len(messages), sum(len(packet) for packet in packets))
+        self._logger.debug("%s giving %d messages (%d bytes)",
+                           self.my_candidate, len(messages), sum(len(packet) for packet in packets))
         self.give_packets(packets, source, cache=cache)
 
     def send_packet(self, packet, candidate):

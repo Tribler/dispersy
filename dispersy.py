@@ -257,21 +257,26 @@ class Dispersy(TaskManager):
         This method is called immediately after endpoint.start finishes.
         """
         host, port = self._endpoint.get_address()
-        self._logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
+        self._logger.info("update LAN address %s:%d -> %s:%d",
+                          self._lan_address[0], self._lan_address[1], self._lan_address[0], port)
         self._lan_address = (self._lan_address[0], port)
 
         # at this point we do not yet have a WAN address, set it to the LAN address to ensure we
         # have something
         assert self._wan_address == ("0.0.0.0", 0)
-        self._logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
+        self._logger.info("update WAN address %s:%d -> %s:%d",
+                          self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
         self._wan_address = self._lan_address
 
         if not self.is_valid_address(self._lan_address):
-            self._logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
+            self._logger.info("update LAN address %s:%d -> %s:%d",
+                              self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
             self._lan_address = (host, self._lan_address[1])
 
             if not self.is_valid_address(self._lan_address):
-                self._logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], self._wan_address[0], self._lan_address[1])
+                self._logger.info("update LAN address %s:%d -> %s:%d",
+                                  self._lan_address[0], self._lan_address[1],
+                                  self._wan_address[0], self._lan_address[1])
                 self._lan_address = (self._wan_address[0], self._lan_address[1])
 
         # our address may not be a candidate
@@ -651,7 +656,8 @@ class Dispersy(TaskManager):
                             return community
 
                         else:
-                            self._logger.warning("unable to auto load %s is an undefined classification [%s]", cid.encode("HEX"), classification)
+                            self._logger.warning("unable to auto load %s is an undefined classification [%s]",
+                                                 cid.encode("HEX"), classification)
 
                     else:
                         self._logger.debug("not allowed to load [%s]", classification)
@@ -735,7 +741,8 @@ class Dispersy(TaskManager):
             if self._lan_address == address:
                 return False
             else:
-                self._logger.info("update LAN address %s:%d -> %s:%d", self._lan_address[0], self._lan_address[1], address[0], address[1])
+                self._logger.info("update LAN address %s:%d -> %s:%d",
+                                  self._lan_address[0], self._lan_address[1], address[0], address[1])
                 self._lan_address = address
                 return True
 
@@ -744,7 +751,8 @@ class Dispersy(TaskManager):
             if self._wan_address == address:
                 return False
             else:
-                self._logger.info("update WAN address %s:%d -> %s:%d", self._wan_address[0], self._wan_address[1], address[0], address[1])
+                self._logger.info("update WAN address %s:%d -> %s:%d",
+                                  self._wan_address[0], self._wan_address[1], address[0], address[1])
                 self._wan_address = address
                 return True
 
@@ -900,7 +908,8 @@ class Dispersy(TaskManager):
                         # community.update_sync_range(message.meta, [message.distribution.global_time])
 
                 else:
-                    self._logger.warning("received message with duplicate community/member/global-time triplet from %s.  possibly malicious behaviour", message.candidate)
+                    self._logger.warning("received message with duplicate community/member/global-time triplet from %s."
+                                         "  possibly malicious behaviour", message.candidate)
 
             # this message is a duplicate
             return True
@@ -1015,7 +1024,8 @@ class Dispersy(TaskManager):
 
                 # ensure that MESSAGE.distribution.global_time > LAST_GLOBAL_TIME
                 if last_global_time and message.distribution.global_time <= last_global_time:
-                    self._logger.debug("last_global_time: %d  message @%d", last_global_time, message.distribution.global_time)
+                    self._logger.debug("last_global_time: %d  message @%d",
+                                       last_global_time, message.distribution.global_time)
                     yield DropMessage(message, "higher sequence number with lower global time than most recent message")
                     continue
 
@@ -1147,7 +1157,9 @@ class Dispersy(TaskManager):
 
             key = (message.authentication.member.database_id, message.distribution.global_time)
             if key in unique:
-                self._logger.debug("drop %s %d@%d (in unique)", message.name, message.authentication.member.database_id, message.distribution.global_time)
+                self._logger.debug("drop %s %d@%d (in unique)",
+                                   message.name, message.authentication.member.database_id,
+                                   message.distribution.global_time)
                 return DropMessage(message, "already processed message by member^global_time")
 
             else:
@@ -1156,7 +1168,8 @@ class Dispersy(TaskManager):
                 members = tuple(sorted(member.database_id for member in message.authentication.members))
                 key = members + (message.distribution.global_time,)
                 if key in unique:
-                    self._logger.debug("drop %s %s@%d (in unique)", message.name, members, message.distribution.global_time)
+                    self._logger.debug("drop %s %s@%d (in unique)",
+                                       message.name, members, message.distribution.global_time)
                     return DropMessage(message, "already processed message by members^global_time")
 
                 else:
@@ -1164,7 +1177,8 @@ class Dispersy(TaskManager):
 
                     if self._is_duplicate_sync_message(message):
                         # we have the previous message (drop)
-                        self._logger.debug("drop %s %s@%d (_is_duplicate_sync_message)", message.name, members, message.distribution.global_time)
+                        self._logger.debug("drop %s %s@%d (_is_duplicate_sync_message)",
+                                           message.name, members, message.distribution.global_time)
                         return DropMessage(message, "duplicate message by member^global_time (4)")
 
                     if not members in times:
@@ -1204,7 +1218,10 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                             if (have_packet[:member_authentication_begin] == message.packet[:member_authentication_begin] and
                                     have_packet[member_authentication_end:signature_length] == message.packet[member_authentication_end:signature_length]):
                                 # the message payload is binary unique (only the member order or signatures are different)
-                                self._logger.debug("received identical message with different member-order or signatures %s %s@%d from %s", message.name, members, message.distribution.global_time, message.candidate)
+                                self._logger.debug("received identical message with different member-order"
+                                                   " or signatures %s %s@%d from %s",
+                                                   message.name, members, message.distribution.global_time,
+                                                   message.candidate)
 
                                 if have_packet < message.packet:
                                     # replace our current message with the other one
@@ -1216,7 +1233,9 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                                 return DropMessage(message, "not replacing existing packet with other packet with the same payload")
 
                             else:
-                                self._logger.warning("received message with duplicate community/members/global-time triplet from %s.  possibly malicious behavior", message.candidate)
+                                self._logger.warning("received message with duplicate community/members/global-time"
+                                                     " triplet from %s.  possibly malicious behavior",
+                                                     message.candidate)
                                 return DropMessage(message, "duplicate message by binary packet (2)")
 
                     elif len(tim) >= message.distribution.history_size and min(tim) > message.distribution.global_time:
@@ -1229,7 +1248,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                             self._send_packets([message.candidate], [have_packet],
                                 message.community, "-caused by check_last_sync:check_double_member-")
 
-                        self._logger.debug("drop %s %s@%d (older than %s)", message.name, members, message.distribution.global_time, min(tim))
+                        self._logger.debug("drop %s %s@%d (older than %s)",
+                                           message.name, members, message.distribution.global_time, min(tim))
                         return DropMessage(message, "old message by members^global_time")
 
                     else:
@@ -1438,7 +1458,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 except CommunityNotFoundException:
                     packets = list(iterator)
                     candidates = set([candidate for candidate, _ in packets])
-                    self._logger.warning("drop %d packets (received packet(s) for unknown community): %s", len(packets), map(str, candidates))
+                    self._logger.warning("drop %d packets (received packet(s) for unknown community): %s",
+                                         len(packets), map(str, candidates))
                     self._statistics.msg_statistics.increase_count(
                         u"drop", u"_convert_packets_into_batch:unknown community")
         else:
@@ -1486,7 +1507,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
             # we must have the identity message as well
             assert message.authentication.encoding == "bin" or message.authentication.member.has_identity(message.community), [message.authentication.encoding, message.community, message.authentication.member.database_id, message.name]
 
-            self._logger.debug("%s %d@%d", message.name, message.authentication.member.database_id, message.distribution.global_time)
+            self._logger.debug("%s %d@%d", message.name,
+                               message.authentication.member.database_id, message.distribution.global_time)
 
             # add packet to database
             message.packet_id = self._database.execute(
@@ -1956,7 +1978,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     if not proofs:
                         raise ValueError("found dispersy-undo-other that, according to the timeline, has no proof")
 
-                    self._logger.debug("dispersy-undo-other packet %d@%d referring %s %d@%d is OK", undo_packet_id, undo_packet_global_time, undo_message.payload.packet.name, undo_message.payload.member.database_id, undo_message.payload.global_time)
+                    self._logger.debug("dispersy-undo-other packet %d@%d referring %s %d@%d is OK",
+                                       undo_packet_id, undo_packet_global_time,
+                                       undo_message.payload.packet.name,
+                                       undo_message.payload.member.database_id,
+                                       undo_message.payload.global_time)
 
 
             except MetaNotFoundException:
@@ -2014,7 +2040,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                                 break
 
                         if not counter == message.distribution.sequence_number:
-                            self._logger.error("%s for member %d has sequence number %d expected %d\n%s", meta.name, member_id, message.distribution.sequence_number, counter, packet.encode("HEX"))
+                            self._logger.error("%s for member %d has sequence number %d expected %d\n%s",
+                                               meta.name, member_id,
+                                               message.distribution.sequence_number, counter, packet.encode("HEX"))
                             exception = ValueError("inconsistent sequence numbers in packet ", packet_id)
 
                         counter += 1
@@ -2166,9 +2194,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         def unload_communities(communities):
             for community in communities:
                 if community.cid in self._communities:
-                    self._logger.debug("Unloading %s (the reactor has %s delayed calls scheduled)", community, len(reactor.getDelayedCalls()))
+                    self._logger.debug("Unloading %s (the reactor has %s delayed calls scheduled)",
+                                       community, len(reactor.getDelayedCalls()))
                     community.unload_community()
-                    self._logger.debug("Unloaded  %s (the reactor has %s delayed calls scheduled now)", community, len(reactor.getDelayedCalls()))
+                    self._logger.debug("Unloaded  %s (the reactor has %s delayed calls scheduled now)",
+                                       community, len(reactor.getDelayedCalls()))
                 else:
                     self._logger.warning("Attempting to unload %s which is not loaded", community)
 

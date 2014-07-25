@@ -152,7 +152,8 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
+                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s",
+                                   self._lan_address, self._wan_address, self.sock_addr)
                 assert False
 
     @property
@@ -185,8 +186,6 @@ class WalkCandidate(Candidate):
     @global_time.setter
     def global_time(self, global_time):
         self._global_time = max(self._global_time, global_time)
-
-
 
     def age(self, now, category=u""):
         """

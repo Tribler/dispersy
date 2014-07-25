@@ -25,15 +25,16 @@ from .bloomfilter import BloomFilter
 from .candidate import Candidate, WalkCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
 from .destination import CommunityDestination, CandidateDestination
-from .distribution import SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution, FullSyncDistribution
+from .distribution import (SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution,
+                           FullSyncDistribution)
 from .exception import ConversionNotFoundException, MetaNotFoundException
 from .member import DummyMember, Member
 from .message import (BatchConfiguration, Message, Packet, DropMessage, DelayMessageByProof,
                       DelayMessageByMissingMessage, DropPacket, DelayPacket, DelayMessage)
 from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommunityPayload, DynamicSettingsPayload,
                       IdentityPayload, MissingIdentityPayload, IntroductionRequestPayload, IntroductionResponsePayload,
-                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingSequencePayload, MissingProofPayload,
-                      SignatureRequestPayload, SignatureResponsePayload)
+                      PunctureRequestPayload, PuncturePayload, MissingMessagePayload, MissingSequencePayload,
+                      MissingProofPayload, SignatureRequestPayload, SignatureResponsePayload)
 from .requestcache import RequestCache, SignatureRequestCache, IntroductionRequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
@@ -67,6 +68,7 @@ class DispersyInternalMessage(object):
 
 class DispersyDuplicatedUndo(DispersyInternalMessage):
     name = candidate = u"_DUPLICATED_UNDO_"
+
     def __init__(self, low_message, high_message):
         self.low_message = low_message
         self.high_message = high_message
@@ -130,6 +132,7 @@ class Community(TaskManager):
 
         # authorize MY_MEMBER
         permission_triplets = []
+        message_names = (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other")
         for message in community.get_meta_messages():
             # grant all permissions for messages that use LinearResolution or DynamicResolution
             if isinstance(message.resolution, (LinearResolution, DynamicResolution)):
@@ -140,7 +143,7 @@ class Community(TaskManager):
                 if message.undo_callback:
                     # we do not support undo permissions for authorize, revoke, undo-own, and
                     # undo-other (yet)
-                    if not message.name in (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other"):
+                    if not message.name in message_names:
                         permission_triplets.append((my_member, message, u"undo"))
 
             # grant authorize, revoke, and undo permission for messages that use PublicResolution
@@ -154,7 +157,7 @@ class Community(TaskManager):
                 if message.undo_callback:
                     # we do not support undo permissions for authorize, revoke, undo-own, and
                     # undo-other (yet)
-                    if not message.name in (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other"):
+                    if not message.name in message_names:
                         for allowed in (u"authorize", u"revoke", u"undo"):
                             permission_triplets.append((my_member, message, allowed))
 
@@ -172,7 +175,8 @@ class Community(TaskManager):
         execute = dispersy.database.execute
         return [dispersy.get_member(public_key=str(public_key)) if public_key else dispersy.get_member(mid=str(mid))
                 for mid, public_key,
-                in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master WHERE c.classification = ?",
+                in list(execute(u"SELECT m.mid, m.public_key FROM community AS c JOIN member AS m ON m.id = c.master"
+                                u" WHERE c.classification = ?",
                                 (cls.get_classification(),)))]
 
     @classmethod
@@ -373,7 +377,10 @@ class Community(TaskManager):
         self._sync_cache_skip_count = 0
         if __debug__:
             b = BloomFilter(self.dispersy_sync_bloom_filter_bits, self.dispersy_sync_bloom_filter_error_rate)
-            self._logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f", int(ceil(b.size // 8)), b.get_capacity(self.dispersy_sync_bloom_filter_error_rate), self.dispersy_sync_bloom_filter_error_rate)
+            self._logger.debug("sync bloom:    size: %d;  capacity: %d;  error-rate: %f",
+                               int(ceil(b.size // 8)),
+                               b.get_capacity(self.dispersy_sync_bloom_filter_error_rate),
+                               self.dispersy_sync_bloom_filter_error_rate)
 
         # assigns temporary cache objects to unique identifiers
         self._request_cache = RequestCache()
@@ -478,7 +485,9 @@ class Community(TaskManager):
             sync_interval = 5.0
             for meta_message in self._meta_messages.itervalues():
                 if isinstance(meta_message.distribution, SyncDistribution) and meta_message.batch.max_window >= sync_interval:
-                    self._logger.warning("when sync is enabled the interval should be greater than the walking frequency.  otherwise you are likely to receive duplicate packets [%s]", meta_message.name)
+                    self._logger.warning(
+                        "when sync is enabled the interval should be greater than the walking frequency. "
+                        " otherwise you are likely to receive duplicate packets [%s]", meta_message.name)
 
     def _initialize_timeline(self):
         mapping = {}
@@ -499,7 +508,8 @@ class Community(TaskManager):
                 else:
                     # TODO: when a packet conversion fails we must drop something, and preferably check
                     # all messages in the database again...
-                    self._logger.error("invalid message in database [%s; %s]\n%s", self.get_classification(), self.cid.encode("HEX"), str(packet).encode("HEX"))
+                    self._logger.error("invalid message in database [%s; %s]\n%s",
+                                       self.get_classification(), self.cid.encode("HEX"), str(packet).encode("HEX"))
 
     @property
     def dispersy_auto_load(self):
@@ -668,7 +678,8 @@ class Community(TaskManager):
 
         if __debug__:
             if cached:
-                self._logger.debug("%s] %d out of %d were part of the cached bloomfilter", self._cid.encode("HEX"), cached, len(messages))
+                self._logger.debug("%s] %d out of %d were part of the cached bloomfilter",
+                                   self._cid.encode("HEX"), cached, len(messages))
 
     def dispersy_claim_sync_bloom_filter(self, request_cache):
         """
@@ -688,12 +699,16 @@ class Community(TaskManager):
                     cache.responses_received = 0
                     cache.candidate = request_cache.helper_candidate
 
-                    self._logger.debug("%s reuse #%d (packets received: %d; %s)", self._cid.encode("HEX"), cache.times_used, cache.responses_received, hex(cache.bloom_filter._filter))
+                    self._logger.debug("%s reuse #%d (packets received: %d; %s)",
+                                       self._cid.encode("HEX"), cache.times_used, cache.responses_received,
+                                       hex(cache.bloom_filter._filter))
                     return cache.time_low, cache.time_high, cache.modulo, cache.offset, cache.bloom_filter
 
             elif self._sync_cache.times_used == 0:
                 # Still no updates, gradually increment the skipping probability one notch
-                self._logger.debug("skip:%d -> %d  received:%d", self._sync_cache_skip_count, min(self._sync_cache_skip_count + 1, self._SKIP_STEPS), self._sync_cache.responses_received)
+                self._logger.debug("skip:%d -> %d  received:%d", self._sync_cache_skip_count,
+                                   min(self._sync_cache_skip_count + 1, self._SKIP_STEPS),
+                                   self._sync_cache.responses_received)
                 self._sync_cache_skip_count = min(self._sync_cache_skip_count + 1, self._SKIP_STEPS)
 
         if (self.dispersy_sync_skip_enable and
@@ -711,7 +726,9 @@ class Community(TaskManager):
             self._sync_cache.candidate = request_cache.helper_candidate
             self._statistics.sync_bloom_new += 1
             self._statistics.sync_bloom_send += 1
-            self._logger.debug("%s new sync bloom (%d/%d~%.2f)", self._cid.encode("HEX"), self._statistics.sync_bloom_reuse, self._statistics.sync_bloom_new, round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2))
+            self._logger.debug("%s new sync bloom (%d/%d~%.2f)", self._cid.encode("HEX"),
+                               self._statistics.sync_bloom_reuse, self._statistics.sync_bloom_new,
+                               round(1.0 * self._statistics.sync_bloom_reuse / self._statistics.sync_bloom_new, 2))
 
         return sync
 
@@ -780,7 +797,8 @@ class Community(TaskManager):
 
                 if __debug__:
                     self._logger.debug("%s syncing %d-%d, nr_packets = %d, capacity = %d, packets %d-%d, pivot = %d",
-                                 self.cid.encode("HEX"), bloomfilter_range[0], bloomfilter_range[1], len(data), capacity, data[0][0], data[-1][0], from_gbtime)
+                                 self.cid.encode("HEX"), bloomfilter_range[0], bloomfilter_range[1],
+                                 len(data), capacity, data[0][0], data[-1][0], from_gbtime)
                     self._logger.debug("%s took %f (fakejoin %f, rangeselect %f, dataselect %f, bloomfill, %f",
                                  self.cid.encode("HEX"), time() - t1, t2 - t1, t3 - t2, t4 - t3, time() - t4)
 
@@ -1145,11 +1163,13 @@ class Community(TaskManager):
     # calls in any loop converted to a LoopingCall
     def take_step(self):
         now = time()
-        self._logger.debug("previous sync was %.1f seconds ago", now - self._last_sync_time if self._last_sync_time else -1)
+        self._logger.debug("previous sync was %.1f seconds ago",
+                           now - self._last_sync_time if self._last_sync_time else -1)
 
         candidate = self.dispersy_get_walk_candidate()
         if candidate:
-            self._logger.debug("%s %s taking step towards %s", self.cid.encode("HEX"), self.get_classification(), candidate)
+            self._logger.debug("%s %s taking step towards %s",
+                               self.cid.encode("HEX"), self.get_classification(), candidate)
             self.create_introduction_request(candidate, self.dispersy_enable_bloom_filter_sync)
         else:
             self._logger.debug("%s %s no candidate to take step", self.cid.encode("HEX"), self.get_classification())
@@ -1337,7 +1357,9 @@ class Community(TaskManager):
             # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
             if r <= .475:  # ~50%
                 if walk:
-                    self._logger.debug("returning [%2d:%2d:%2d:%2d walk] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], walk)
+                    self._logger.debug("returning [%2d:%2d:%2d:%2d walk] %s",
+                                       category_sizes[0], category_sizes[1],
+                                       category_sizes[2], category_sizes[3], walk)
                     return walk
 
             elif r <= .95:  # ~50%
@@ -1345,17 +1367,23 @@ class Community(TaskManager):
                     while True:
                         if random() <= .5:
                             if stumble:
-                                self._logger.debug("returning [%2d:%2d:%2d:%2d stumble] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], stumble)
+                                self._logger.debug("returning [%2d:%2d:%2d:%2d stumble] %s",
+                                                   category_sizes[0], category_sizes[1],
+                                                   category_sizes[2], category_sizes[3], stumble)
                                 return stumble
 
                         else:
                             if intro:
-                                self._logger.debug("returning [%2d:%2d:%2d:%2d intro] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], intro)
+                                self._logger.debug("returning [%2d:%2d:%2d:%2d intro] %s",
+                                                   category_sizes[0], category_sizes[1],
+                                                   category_sizes[2], category_sizes[3], intro)
                                 return intro
 
             else:
                 if discovered:
-                    self._logger.debug("returning [%2d:%2d:%2d:%2d discovered] %s", category_sizes[0], category_sizes[1], category_sizes[2], category_sizes[3], discovered)
+                    self._logger.debug("returning [%2d:%2d:%2d:%2d discovered] %s",
+                                       category_sizes[0], category_sizes[1],
+                                       category_sizes[2], category_sizes[3], discovered)
                     return discovered
 
         self._logger.debug("no candidates available")
@@ -1393,7 +1421,8 @@ class Community(TaskManager):
                 if (candidate.connection_type == "symmetric-NAT" and
                     candidate.sock_addr[0] == sock_addr[0] and
                         candidate.lan_address in (("0.0.0.0", 0), lan_address)):
-                    self._logger.debug("using existing candidate %s at different port %s %s", candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
+                    self._logger.debug("using existing candidate %s at different port %s %s",
+                                       candidate, sock_addr[1], "(replace)" if replace else "(no replace)")
 
                     if replace:
                         self.remove_candidate(candidate.sock_addr)
@@ -1955,14 +1984,17 @@ class Community(TaskManager):
                     else:
                         self.register_task(meta, reactor.callLater(meta.batch.max_window, self._process_message_batch, meta))
                         self._batch_cache[meta] = (timestamp, batch)
-                        self._logger.debug("new cache with %d %s messages (batch window: %d)", len(batch), meta.name, meta.batch.max_window)
+                        self._logger.debug("new cache with %d %s messages (batch window: %d)",
+                                           len(batch), meta.name, meta.batch.max_window)
                 else:
                     self._logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
 
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
-                    self._logger.warning("_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s", len(packet), candidate)
+                    self._logger.warning(
+                        "_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s",
+                        len(packet), candidate)
                 self._statistics.increase_msg_count(
                     u"drop", u"convert_packets_into_batch:unknown conversion", len(cur_packets))
 
@@ -2044,7 +2076,8 @@ class Community(TaskManager):
                       self._batch_cache.iteritems() if isinstance(meta.distribution, SyncDistribution)]
 
         for meta, (_, batch) in flush_list:
-            self._logger.debug("flush cached %dx %s messages (dc: %s)", len(batch), meta.name, self._pending_tasks[meta])
+            self._logger.debug("flush cached %dx %s messages (dc: %s)",
+                               len(batch), meta.name, self._pending_tasks[meta])
             self._process_message_batch(meta)
 
     def on_messages(self, messages):
@@ -2112,7 +2145,9 @@ class Community(TaskManager):
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage, DispersyInternalMessage)) for message in possibly_messages), possibly_messages
 
         if len(possibly_messages) == 0:
-            self._logger.warning("%s yielded zero messages, drop, or delays.  This is allowed but likely to be an error.", meta.check_callback)
+            self._logger.warning("%s yielded zero messages, drop, or delays. "
+                                 " This is allowed but likely to be an error.",
+                                 meta.check_callback)
 
         # handle/remove DropMessage and DelayMessage instances
         possibly_messages = [message for message in possibly_messages if _filter_fail(message)]
@@ -2127,8 +2162,11 @@ class Community(TaskManager):
             else:
                 messages.append(thing)
 
-        self._logger.debug("in... %d %s messages from %s", len(messages), meta.name, " ".join(str(candidate) for candidate in
-                                                        set(message.candidate for message in messages if isinstance(message, Message.Implementation))))
+        self._logger.debug("in... %d %s messages from %s",
+                           len(messages), meta.name,
+                           " ".join(str(candidate) for candidate in set(
+                               message.candidate for message in messages
+                               if isinstance(message, Message.Implementation))))
 
         # store to disk and update locally
         if self._dispersy.store_update_forward(possibly_messages, True, True, False):
@@ -2145,10 +2183,13 @@ class Community(TaskManager):
             # tell what happened
             debug_end = time()
             if debug_end - debug_begin > 1.0:
-                self._logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
+                self._logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)",
+                                     len(messages), debug_count, (debug_end - debug_begin),
+                                     meta.name, meta.batch.max_window)
             else:
-                self._logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)", len(messages), debug_count, (debug_end - debug_begin), meta.name, meta.batch.max_window)
-
+                self._logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)",
+                                   len(messages), debug_count, (debug_end - debug_begin),
+                                   meta.name, meta.batch.max_window)
 
             self._resume_delayed(meta, messages)
 
@@ -2466,7 +2507,8 @@ class Community(TaskManager):
                         break
 
                 if packets:
-                    self._logger.debug("syncing %d packets (%d bytes) to %s", len(packets), sum(len(packet) for packet in packets), message.candidate)
+                    self._logger.debug("syncing %d packets (%d bytes) to %s",
+                                       len(packets), sum(len(packet) for packet in packets), message.candidate)
                     self._dispersy._send_packets([message.candidate], packets, self, "-caused by sync-")
 
     def check_introduction_response(self, messages):
@@ -2586,7 +2628,8 @@ class Community(TaskManager):
                         self._logger.error("time_low:  %d", time_low)
                         self._logger.error("time_high: %d", time_high)
                         self._logger.error("2**63 - 1: %d", 2 ** 63 - 1)
-                        self._logger.exception("the sqlite3 python module can not handle values 2**63 or larger.  limit time_low and time_high to 2**63-1")
+                        self._logger.exception("the sqlite3 python module can not handle values 2**63 or larger. "
+                                               " limit time_low and time_high to 2**63-1")
                         assert False
 
                     # BLOOM_FILTER must be the same after transmission
@@ -2600,8 +2643,10 @@ class Community(TaskManager):
                     test_bloom_filter.add_keys(packets)
                     if not bloom_filter.bytes == bloom_filter.bytes:
                         if bloom_filter.bits_checked < test_bloom_filter.bits_checked:
-                            self._logger.error("%d bits in: %s", bloom_filter.bits_checked, bloom_filter.bytes.encode("HEX"))
-                            self._logger.error("%d bits in: %s", test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
+                            self._logger.error("%d bits in: %s",
+                                               bloom_filter.bits_checked, bloom_filter.bytes.encode("HEX"))
+                            self._logger.error("%d bits in: %s",
+                                               test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
         meta_request = self.get_meta_message(u"dispersy-introduction-request")
@@ -2613,9 +2658,12 @@ class Community(TaskManager):
         if forward:
             if sync:
                 time_low, time_high, modulo, offset, _ = sync
-                self._logger.debug("%s %s sending introduction request to %s [%d:%d] %%%d+%d", self.cid.encode("HEX"), type(self), destination, time_low, time_high, modulo, offset)
+                self._logger.debug("%s %s sending introduction request to %s [%d:%d] %%%d+%d",
+                                   self.cid.encode("HEX"), type(self), destination,
+                                   time_low, time_high, modulo, offset)
             else:
-                self._logger.debug("%s %s sending introduction request to %s", self.cid.encode("HEX"), type(self), destination)
+                self._logger.debug("%s %s sending introduction request to %s",
+                                   self.cid.encode("HEX"), type(self), destination)
 
             self._dispersy._forward([request])
 
@@ -2783,7 +2831,8 @@ class Community(TaskManager):
             if responses:
                 self._dispersy._send_packets([candidate], responses, self, "-caused by missing-message-")
             else:
-                self._logger.warning('could not find missing messages for candidate %s, global_times %s', candidate, message.payload.global_times)
+                self._logger.warning('could not find missing messages for candidate %s, global_times %s',
+                                     candidate, message.payload.global_times)
 
     def create_identity(self, sign_with_master=False, store=True, update=True):
         """
@@ -2869,7 +2918,9 @@ class Community(TaskManager):
 
                 else:
                     assert not message.payload.mid == self.my_member.mid, "we should always have our own dispersy-identity"
-                    self._logger.warning("could not find any missing members.  no response is sent [%s, mid:%s, cid:%s]", mid.encode("HEX"), self.my_member.mid.encode("HEX"), self.cid.encode("HEX"))
+                    self._logger.warning("could not find any missing members. "
+                                         " no response is sent [%s, mid:%s, cid:%s]",
+                                         mid.encode("HEX"), self.my_member.mid.encode("HEX"), self.cid.encode("HEX"))
 
     def create_missing_sequence(self, candidate, member, message, missing_low, missing_high):
         meta = self.get_meta_message(u"dispersy-missing-sequence")
@@ -2924,7 +2975,8 @@ class Community(TaskManager):
                     # empty set will fail min(...) and max(...)
                     continue
 
-                self._logger.debug("fetching member:%d message:%d packets from database for %s", member_id, message_id, candidate)
+                self._logger.debug("fetching member:%d message:%d packets from database for %s",
+                                   member_id, message_id, candidate)
                 for range_min, range_max in merge_ranges(sequences):
                     for packet, in self._dispersy._database.execute(
                             u"SELECT packet FROM sync "
@@ -2944,7 +2996,9 @@ class Community(TaskManager):
         for message in messages:
             member_id = message.payload.member.database_id
             message_id = message.payload.message.database_id
-            self._logger.debug("%s requests member:%d message_id:%d range:[%d:%d]", message.candidate, member_id, message_id, message.payload.missing_low, message.payload.missing_high)
+            self._logger.debug("%s requests member:%d message_id:%d range:[%d:%d]",
+                               message.candidate, member_id, message_id,
+                               message.payload.missing_low, message.payload.missing_high)
 
             sources[message.candidate][(member_id, message_id)].append((message.payload.missing_low, message.payload.missing_high))
 
@@ -2988,7 +3042,8 @@ class Community(TaskManager):
                     self._dispersy._send_packets([message.candidate], [proof.packet for proof in proofs], self, "-caused by missing-proof-")
 
                 else:
-                    self._logger.debug("unable to give %s missing proof.  allowed:%s.  proofs:%d packets", message.candidate, allowed, len(proofs))
+                    self._logger.debug("unable to give %s missing proof.  allowed:%s.  proofs:%d packets",
+                                       message.candidate, allowed, len(proofs))
 
     def create_authorize(self, permission_triplets, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3177,7 +3232,8 @@ class Community(TaskManager):
         else:
             if undone:
                 # already undone.  refuse to undo again but return the previous undo message
-                self._logger.error("you are attempting to undo the same message twice. trying to return the previous undo message")
+                self._logger.error("you are attempting to undo the same message twice. "
+                                   "trying to return the previous undo message")
                 undo_own_meta = self.get_meta_message(u"dispersy-undo-own")
                 undo_other_meta = self.get_meta_message(u"dispersy-undo-other")
                 for packet_id, message_id, packet in self._dispersy._database.execute(
@@ -3254,7 +3310,8 @@ class Community(TaskManager):
                 sequence_number, consequence = dependency
                 assert sequence_number < message.distribution.sequence_number, [sequence_number, message.distribution.sequence_number]
                 # MESSAGE gets the same consequence as the previous message
-                self._logger.debug("apply same consequence on later message (%s on #%d applies to #%d)", consequence, sequence_number, message.distribution.sequence_number)
+                self._logger.debug("apply same consequence on later message (%s on #%d applies to #%d)",
+                                   consequence, sequence_number, message.distribution.sequence_number)
                 yield consequence.duplicate(message)
                 continue
 
@@ -3475,15 +3532,18 @@ class Community(TaskManager):
                         message.packet_id = packet_id
                         allowed, _ = timeline.check(message)
                         if allowed and undone:
-                            self._logger.debug("redo message %s at time %d", message.name, message.distribution.global_time)
+                            self._logger.debug("redo message %s at time %d",
+                                               message.name, message.distribution.global_time)
                             redo.append(message)
 
                         elif not (allowed or undone):
-                            self._logger.debug("undo message %s at time %d", message.name, message.distribution.global_time)
+                            self._logger.debug("undo message %s at time %d",
+                                               message.name, message.distribution.global_time)
                             undo.append(message)
 
                         elif __debug__:
-                            self._logger.debug("no change for message %s at time %d", message.name, message.distribution.global_time)
+                            self._logger.debug("no change for message %s at time %d",
+                                               message.name, message.distribution.global_time)
 
                 if undo:
                     executemany(u"UPDATE sync SET undone = 1 WHERE id = ?", ((message.packet_id,) for message in undo))

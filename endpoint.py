@@ -219,7 +219,8 @@ class RawserverEndpoint(Endpoint):
             if self._sendqueue:
                 index = 0
                 NUM_PACKETS = min(max(50, len(self._sendqueue) / 10), len(self._sendqueue))
-                self._logger.debug("%d left in sendqueue, trying to send %d packets", len(self._sendqueue), NUM_PACKETS)
+                self._logger.debug("%d left in sendqueue, trying to send %d packets",
+                                   len(self._sendqueue), NUM_PACKETS)
 
                 for i in xrange(NUM_PACKETS):
                     sock_addr, data = self._sendqueue[i]
@@ -232,7 +233,8 @@ class RawserverEndpoint(Endpoint):
 
                     except socket.error as e:
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
-                            self._logger.warning("could not send %d to %s (%d in sendqueue)", len(data), sock_addr, len(self._sendqueue))
+                            self._logger.warning("could not send %d to %s (%d in sendqueue)",
+                                                 len(data), sock_addr, len(self._sendqueue))
 
                         self._dispersy.statistics.dict_inc(u"endpoint_send", u"socket-error")
                         break

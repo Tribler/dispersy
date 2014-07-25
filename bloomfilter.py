@@ -137,12 +137,14 @@ class BloomFilter(object):
             self._logger.debug("k functions: %d", self._k_functions)
             self._logger.debug("prefix:      %s", self._prefix.encode("HEX"))
             self._logger.debug("filter:      %s", self._filter)
-            self._logger.debug("hypothetical error rate: %s", " | ".join("%.4f" % hypothetical_error_rate
-                                                                         for hypothetical_error_rate
-                                                                         in hypothetical_error_rates))
-            self._logger.debug("hypothetical capacity:   %s", " | ".join("%6d" % self.get_capacity(hypothetical_error_rate)
-                                                                         for hypothetical_error_rate
-                                                                         in hypothetical_error_rates))
+            self._logger.debug("hypothetical error rate: %s", " | ".join(
+                "%.4f" % hypothetical_error_rate
+                for hypothetical_error_rate
+                in hypothetical_error_rates))
+            self._logger.debug("hypothetical capacity:   %s", " | ".join(
+                "%6d" % self.get_capacity(hypothetical_error_rate)
+                for hypothetical_error_rate
+                in hypothetical_error_rates))
 
         # determine hash function
         if self._m_size >= (1 << 31):

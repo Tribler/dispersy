@@ -57,7 +57,8 @@ class TestBootstrapServers(DispersyTestFunc):
                 else:
                     break
         tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT)
-        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream, args=(tracker.stdout, lambda s: self._logger.info("tracker is printing: " + s)))
+        tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream,
+                                        args=(tracker.stdout, lambda s: self._logger.info("tracker is printing: " + s)))
         tracker_logging_thread.start()
 
         # can take a few seconds to start on older machines (or when running on a remote file
@@ -185,7 +186,8 @@ class TestBootstrapServers(DispersyTestFunc):
                                      sum(rtts) / len(rtts),
                                      ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
-                        summary_logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
+                        summary_logger.warning("%s:%d %s missing",
+                                               sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
             def finish(self, request_count, min_response_count, max_rtt):
                 # write graph statistics
