@@ -1,4 +1,5 @@
 from collections import defaultdict
+from copy import copy
 from os import environ, getcwd, path
 from socket import getfqdn
 from subprocess import Popen, PIPE, STDOUT
@@ -33,21 +34,19 @@ class TestBootstrapServers(DispersyTestFunc):
         Runs tracker.py and connects to it.
         """
 
-        tracker_file = "dispersy/tool/tracker.py"
-        tracker_path = getcwd()
-        while tracker_path:
-            self._logger.debug("looking for %s in %s", tracker_file, tracker_path)
-            if path.isfile(path.join(tracker_path, tracker_file)):
-                break
-            tracker_path = path.dirname(tracker_path)
+        # we want to spawn the tracker from the dispersy parent dir to work around the crazy relative import stuff.
+        # .../dispersy/test/test_bootstrap.py
+        # .../dispersy/test/../..
+        # .../ <- there!
+        tracker_path = path.abspath(path.join(path.dirname(path.abspath(__file__)), '..', '..'))
+
         self._logger.debug("using tracker cwd \"%s\"", tracker_path)
 
         tracker_address = (self._dispersy.wan_address[0], 14242)
-        args = ["python",
-                "-c", "from dispersy.tool.tracker import main; main()",
+        args = ["twistd", "-n", "tracker",
                 "--statedir", ".",
                 "--port", str(tracker_address[1])]
-        self._logger.debug("start tracker %s", args)
+        self._logger.debug("starting tracker: %s", args)
 
         def logstream(stream, loggercb):
             while True:
@@ -56,7 +55,16 @@ class TestBootstrapServers(DispersyTestFunc):
                     loggercb(out.rstrip())
                 else:
                     break
-        tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT)
+        # Twistd needs to be able to import from dispersy module
+        env = copy(environ)
+        dispersy_path = path.abspath(path.join(tracker_path, 'dispersy'))
+        if 'PYTHONPATH' in env:
+            env['PYTHONPATH']+=":"+dispersy_path
+        else:
+            env['PYTHONPATH'] = dispersy_path
+
+        self._logger.debug("PYTHONPATH is now: %s", env['PYTHONPATH'])
+        tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT, env=env)
         tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream,
                                         args=(tracker.stdout, lambda s: self._logger.info("tracker is printing: " + s)))
         tracker_logging_thread.start()
