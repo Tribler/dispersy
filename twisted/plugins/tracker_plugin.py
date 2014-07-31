@@ -201,10 +201,16 @@ class TrackerServiceMaker(object):
             container[0] = dispersy
             manhole_namespace['dispersy'] = dispersy
 
+            self._stopping=False
             def signal_handler(sig, frame):
                 msg("Received signal '%s' in %s (shutting down)" % (sig, frame))
-                dispersy.stop()
-                reactor.stop()
+                if not self._stopping:
+                    self._stopping = True
+                    try:
+                        dispersy.stop()
+                    except Exception, e:
+                        msg("Got exception when stopping dispersy: %s" % e)
+                    reactor.stop()
             signal.signal(signal.SIGINT, signal_handler)
             signal.signal(signal.SIGTERM, signal_handler)
 
