@@ -11,7 +11,7 @@ from itertools import combinations, islice
 from time import time
 
 from ..candidate import CANDIDATE_ELIGIBLE_DELAY
-from ..tool.tracker import TrackerCommunity
+from ..tracker.community import TrackerCommunity
 from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
