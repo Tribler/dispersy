@@ -265,12 +265,6 @@ class Community(TaskManager):
 
         self._statistics = CommunityStatistics(self)
 
-    def initialize(self):
-        assert isInIOThread()
-        self._logger.info("initializing:  %s", self.get_classification())
-        self._logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
-            "" if self._master_member.public_key else " (no public key available)")
-
         self._last_sync_time = 0
 
         # batch caching incoming packets
@@ -278,7 +272,36 @@ class Community(TaskManager):
 
         # delayed list for incoming packet/messages which are delayed
         self._delayed_key = defaultdict(list)
+
         self._delayed_value = defaultdict(list)
+
+        self.meta_message_cache = {}
+        self._meta_messages = {}
+
+        self._conversions = []
+
+        self._nrsyncpackets = 0
+
+        self._do_pruning = False
+
+        self._sync_cache_skip_count = 0
+
+        self._acceptable_global_time_deadline = 0.0
+
+        self._request_cache = None
+        self._timeline = None
+        self._random = None
+        self._walked_candidates = None
+        self._stumbled_candidates = None
+        self._introduced_candidates = None
+        self._walk_candidates = None
+        self._sync_cache = None
+
+    def initialize(self):
+        assert isInIOThread()
+        self._logger.info("initializing:  %s", self.get_classification())
+        self._logger.debug("master member: %s %s", self._master_member.mid.encode("HEX"),
+            "" if self._master_member.public_key else " (no public key available)")
 
         # Do not immediately call the periodic cleanup LC to avoid an infinite recursion problem: init_community ->
         # initialize -> invoke_func -> _get_latest_channel_message -> convert_packet_to_message -> get_community ->
@@ -313,10 +336,8 @@ class Community(TaskManager):
             lc = LoopingCall(self._download_master_member_identity)
             reactor.callLater(0, lc.start, DOWNLOAD_MM_PK_INTERVAL, now=True)
             self.register_task("download master member identity", lc)
-        # pre-fetch some values from the database, this allows us to only query the database once
-        self.meta_message_cache = {}
+
         # define all available messages
-        self._meta_messages = {}
         self._initialize_meta_messages()
 
         # we're only interrested in the meta_message, filter the meta_message_cache
@@ -363,7 +384,6 @@ class Community(TaskManager):
             self._global_time = 0
         assert isinstance(self._global_time, (int, long))
         self._acceptable_global_time_cache = self._global_time
-        self._acceptable_global_time_deadline = 0.0
         self._logger.debug("global time:   %d", self._global_time)
 
         # the sequence numbers
@@ -391,7 +411,6 @@ class Community(TaskManager):
 
         # random seed, used for sync range
         self._random = Random()
-        self._nrsyncpackets = 0
 
         # Initialize all the candidate iterators
         self._walked_candidates = self._iter_category(u'walk')
@@ -401,10 +420,6 @@ class Community(TaskManager):
 
         # statistics...
         self._statistics.update()
-
-        # start walker, if needed
-        if self.dispersy_enable_candidate_walker:
-            self.start_walking()
 
         # turn on/off pruning
         self._do_pruning = any(isinstance(meta.distribution, SyncDistribution) and
@@ -429,6 +444,10 @@ class Community(TaskManager):
                 self.dispersy.sanity_check(self)
             except ValueError:
                 self._logger.exception("sanity check fail for %s", self)
+
+        # start walker, if needed
+        if self.dispersy_enable_candidate_walker:
+            self.start_walking()
 
     @property
     def candidates(self):
