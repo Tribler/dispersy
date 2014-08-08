@@ -158,8 +158,6 @@ class DiscoveryCommunity(Community):
         self.send_packet_size = 0
         self.reply_packet_size = 0
 
-        super(DiscoveryCommunity, self).initialize()
-
         def on_results(success):
             assert isinstance(success, bool), type(success)
 
@@ -185,6 +183,7 @@ class DiscoveryCommunity(Community):
         self.register_task('create_ping_requests',
                            LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
 
+        super(DiscoveryCommunity, self).initialize()
 
     def periodically_insert_trackers(self):
         communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
