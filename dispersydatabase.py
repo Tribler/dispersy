@@ -424,12 +424,23 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
             if database_version < new_db_version:
                 # Let's store the sequence numbers in the database instead of quessing
                 self._logger.debug("upgrade database %d -> %d", database_version, new_db_version)
+
                 self.executescript(u"""
 DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
 DROP INDEX IF EXISTS sync_meta_message_member;
+""")
+                old_sync = list(self.execute(u"""
+                    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'old_sync';"""))
+                if old_sync:
+                    # delete the sync table and start copying data again
+                    self.executescript(u"""
+DROP TABLE IF EXISTS sync;
+DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
+DROP INDEX IF EXISTS sync_meta_message_member;
+""")
 
-ALTER TABLE sync RENAME TO old_sync;
-CREATE TABLE sync(
+                self.executescript(u"""
+CREATE TABLE IF NOT EXISTS sync(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     community INTEGER REFERENCES community(id),
     member INTEGER REFERENCES member(id),                  -- the creator of the message
