@@ -1,9 +1,10 @@
 # Written by Niels Zeilemaker, Egbert Bouman
-import os
 import logging
-
+import os
+from random import shuffle, random, choice as random_choice
 from time import time
-from random import shuffle, random
+
+from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 
 from ..authentication import NoAuthentication, MemberAuthentication
@@ -11,15 +12,15 @@ from ..candidate import CANDIDATE_WALK_LIFETIME, WalkCandidate, Candidate
 from ..community import Community
 from ..conversion import DefaultConversion
 from ..destination import CandidateDestination
-from ..requestcache import IntroductionRequestCache, RandomNumberCache
 from ..distribution import DirectDistribution
 from ..member import Member
 from ..message import Message, DelayMessageByProof, DropMessage
+from ..requestcache import IntroductionRequestCache, RandomNumberCache
 from ..resolution import PublicResolution
 from .bootstrap import Bootstrap
-
-from payload import *
 from conversion import DiscoveryConversion
+from payload import *
+
 
 DEBUG_VERBOSE = False
 
@@ -196,8 +197,15 @@ class DiscoveryCommunity(Community):
                 community.add_discovered_candidate(candidate)
 
     def dispersy_get_walk_candidate(self):
-        candidate = super(DiscoveryCommunity, self).dispersy_get_walk_candidate()
-        return candidate or self.peer_cache.get_peer()
+        candidate = super(DiscoveryCommunity, self).dispersy_get_walk_candidate() or self.peer_cache.get_peer()
+        # If we don't get candidates to walk to in a minute, call self.periodically_insert_trackers()
+        if candidate:
+            self.cancel_pending_task("insert_trackers_when_no_candidates")
+        elif not self.is_pending_task_active("insert_trackers_when_no_candidates"):
+            self.register_task("insert_trackers_when_no_candidates",
+                               reactor.callLater(60, self.periodically_insert_trackers))
+
+        return candidate
 
     @classmethod
     def get_master_members(cls, dispersy):
