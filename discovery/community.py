@@ -58,7 +58,7 @@ class TasteBuddy(object):
                        (other.overlap, other.random_sort_value))
 
         elif isinstance(other, int):
-            return cmp(len(self.overlap), other)
+            return cmp(self.overlap, other)
 
     def __str__(self):
         return "TB_%s_%s_%s" % (self.overlap, self.preferences, self.sock_addr)
