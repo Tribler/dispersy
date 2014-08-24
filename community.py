@@ -387,10 +387,9 @@ class Community(TaskManager):
         self._logger.debug("global time:   %d", self._global_time)
 
         # the sequence numbers
-
         for current_sequence_number, name in self._dispersy.database.execute(u"SELECT MAX(sync.sequence), meta_message.name FROM sync, meta_message WHERE sync.meta_message = meta_message.id AND sync.member = ? AND meta_message.community = ? GROUP BY meta_message.name", (self._my_member.database_id, self.database_id)):
             if current_sequence_number:
-                self._meta_messages[name]._current_sequence_number = current_sequence_number
+                self._meta_messages[name].distribution._current_sequence_number = current_sequence_number
 
         # sync range bloom filters
         self._sync_cache = None
