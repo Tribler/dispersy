@@ -438,6 +438,9 @@ DROP TABLE IF EXISTS sync;
 DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
 DROP INDEX IF EXISTS sync_meta_message_member;
 """)
+                else:
+                    # rename sync to old_sync if it is the first time
+                    self.executescript(u"ALTER TABLE sync RENAME TO old_sync;")
 
                 self.executescript(u"""
 CREATE TABLE IF NOT EXISTS sync(
