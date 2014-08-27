@@ -2008,6 +2008,8 @@ class Community(TaskManager):
                     self._logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
 
+                self._statistics.increase_total_received_count(len(cur_packets))
+
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
                     self._logger.warning(

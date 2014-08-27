@@ -57,6 +57,7 @@ class MessageStatistics(object):
         super(MessageStatistics, self).__init__()
         self._lock = RLock()
 
+        self.total_received_count = 0
         self.success_count = 0
         self.drop_count = 0
         self.created_count = 0
@@ -103,6 +104,7 @@ class MessageStatistics(object):
 
     def reset(self):
         with self._lock:
+            self.total_received_count = 0
             self.success_count = 0
             self.drop_count = 0
             self.created_count = 0
@@ -283,6 +285,9 @@ class CommunityStatistics(Statistics):
         self.dispersy_enable_candidate_walker_responses = self._community.dispersy_enable_candidate_walker_responses
 
         self.enable_debug_statistics(self._dispersy.statistics.are_debug_statistics_enabled())
+
+    def increase_total_received_count(self, value):
+        self.msg_statistics.total_received_count += value
 
     def increase_discovered_candidates(self, value=1):
         self.total_candidates_discovered += value
