@@ -5,11 +5,10 @@ import sys
 import threading
 from abc import ABCMeta, abstractmethod
 from itertools import product
+from select import select
 from time import time
 
 from twisted.internet import reactor
-from twisted.internet.defer import Deferred, gatherResults, succeed
-from twisted.internet.protocol import DatagramProtocol
 
 from .candidate import Candidate
 
@@ -247,7 +246,8 @@ class RawserverEndpoint(Endpoint):
 
                 self._dispersy.statistics.cur_sendqueue = len(self._sendqueue)
 
-class StandaloneEndpoint(RawserverEndpoint, DatagramProtocol):
+
+class StandaloneEndpoint(RawserverEndpoint):
 
     def __init__(self, port, ip="0.0.0.0"):
         # do NOT call RawserverEndpoint.__init__!
@@ -256,76 +256,98 @@ class StandaloneEndpoint(RawserverEndpoint, DatagramProtocol):
         self._port = port
         self._ip = ip
         self._running = False
+        self._add_task = lambda task, delay = 0.0, id = "": None
         self._sendqueue_lock = threading.RLock()
         self._sendqueue = []
 
-        self.listening_port = None
-        self.disconnection_lock = None
+        # _THREAD and _THREAD are set during open(...)
+        self._thread = None
+        self._socket = None
 
     def open(self, dispersy):
         # do NOT call RawserverEndpoint.open!
         Endpoint.open(self, dispersy)
         for _ in xrange(10000):
             try:
-                self.listening_port = reactor.listenUDP(self._port, self, self._ip)
                 self._logger.debug("Listening at %d", self._port)
+                self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 870400)
+                self._socket.bind((self._ip, self._port))
+                self._socket.setblocking(0)
+
+                self._port = self._socket.getsockname()[1]
             except socket.error:
                 self._port += 1
                 continue
             break
-        if not self.listening_port:
-            raise IOError("Unable to open a socket")
+
         self._running = True
+        self._thread = threading.Thread(name="StandaloneEndpoint", target=self._loop)
+        self._thread.daemon = True
+        self._thread.start()
         return True
 
     def close(self, timeout=10.0):
-        # do NOT call RawserverEndpoint.close!
-        super_result = Endpoint.close(self, timeout)
         self._running = False
+        result = True
 
-        self.transport.stopListening()
-        d = Deferred()
-        def on_closed(result):
-            d.callback(result)
-            return result
+        if timeout > 0.0:
+            self._thread.join(timeout)
 
-        self.transport.d.addBoth(on_closed)
+            if self._thread.is_alive():
+                self._logger.error("the endpoint thread is still running (after waiting %f seconds)", timeout)
+                result = False
 
-        return gatherResults((d, succeed(super_result)), consumeErrors=True).addCallback(all)
+        else:
+            if self._thread.is_alive():
+                self._logger.debug("the endpoint thread is still running (use timeout > 0.0 to ensure the thread stops)")
+                result = False
 
-    def send_packet(self, candidate, packet):
+        try:
+            self._socket.close()
+        except socket.error as exception:
+            self._logger.exception("%s", exception)
+            result = False
+
+        # do NOT call RawserverEndpoint.open!
+        return Endpoint.close(self, timeout) and result
+
+    def _loop(self):
         assert self._dispersy, "Should not be called before open(...)"
-        assert isinstance(candidate, Candidate), type(candidate)
-        assert isinstance(packet, str), type(packet)
-        assert len(packet) > 0
-        if len(packet) > 2 ** 16 - 60:
-            raise RuntimeError("UDP does not support %d byte packets" % len(packet))
+        recvfrom = self._socket.recvfrom
+        socket_list = [self._socket.fileno()]
 
-        self._dispersy.statistics.total_up += len(packet)
-        self._dispersy.statistics.total_send += 1
+        prev_sendqueue = 0
+        while self._running:
+            # This is a tricky, if we are running on the DAS4 whenever a socket is ready for writing all processes of
+            # this node will try to write. Therefore, we have to limit the frequency of trying to write a bit.
+            if self._sendqueue and (time() - prev_sendqueue) > 0.1:
+                read_list, write_list, _ = select(socket_list, socket_list, [], 0.1)
+            else:
+                read_list, write_list, _ = select(socket_list, [], [], 0.1)
 
-        data = TUNNEL_PREFIX + packet if candidate.tunnel else packet
+            # Furthermore, if we are allowed to send, process sendqueue immediately
+            if write_list:
+                self._process_sendqueue()
+                prev_sendqueue = time()
 
-        self.transport.write(data, candidate.sock_addr)
+            if read_list:
+                packets = []
+                try:
+                    while True:
+                        (data, sock_addr) = recvfrom(65535)
+                        if data:
+                            packets.append((sock_addr, data))
+                        else:
+                            break
 
-        if self._logger.isEnabledFor(logging.DEBUG):
-            self.log_packet(candidate.sock_addr, data)
+                except socket.error as e:
+                    self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % str(e))
 
-        return True
-
-
-    def datagramReceived(self, datagram, address):
-        self._dispersy.statistics.total_down += len(datagram)
-        if self._logger.isEnabledFor(logging.DEBUG):
-            self.log_packet(address, datagram, outbound=False)
-
-        is_tunnel, datagram = strip_if_tunnel(datagram)
-        self._dispersy.on_incoming_packets([(Candidate(address, is_tunnel), datagram)], timestamp=time())
-
-    def get_address(self):
-        assert self._dispersy, "Should not be called before open(...)"
-        address = self.transport.getHost()
-        return address.host, address.port
+                finally:
+                    if packets:
+                        self._logger.debug('%d came in, %d bytes in total', len(packets), sum(len(packet) for _, packet in packets))
+                        self.data_came_in(packets)
 
 class ManualEnpoint(StandaloneEndpoint):
 
@@ -334,14 +356,16 @@ class ManualEnpoint(StandaloneEndpoint):
         self.receive_lock = threading.RLock()
         self.received_packets = []
 
-    def datagramReceived(self, datagram, address):
-        self._logger.debug('added packet to receivequeue, %d packets are queued in total', len(self.received_packets))
+    def data_came_in(self, packets):
+        self._logger.debug('added %d packets to receivequeue, %d packets are queued in total', len(packets), len(packets) + len(self.received_packets))
+
         with self.receive_lock:
-            self.received_packets.append((address, datagram))
+            self.received_packets.extend(packets)
 
     def clear_receive_queue(self):
-        packets = self.received_packets
-        self.received_packets = []
+        with self.receive_lock:
+            packets = self.received_packets
+            self.received_packets = []
 
         if packets:
             self._logger.debug('returning %d packets, %d bytes in total',
