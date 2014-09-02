@@ -409,7 +409,7 @@ CREATE INDEX member_mid_index ON member(mid);
 -- fill new member table with old data
 INSERT INTO member (id, mid, public_key, private_key)
                 SELECT id, mid, public_key, private_key.private_key FROM old_member
-                JOIN private_key ON private_key.member = old_member.id;
+                LEFT JOIN private_key ON private_key.member = old_member.id;
 -- remove old member table
 DROP TABLE old_member;
 -- remove table private_key
