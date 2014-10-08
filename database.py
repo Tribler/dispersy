@@ -248,7 +248,7 @@ class Database(object):
             return False
 
     @attach_explain_query_plan
-    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def execute(self, statement, bindings=(), get_lastrowid=False):
         """
         Execute one SQL statement.
@@ -295,7 +295,7 @@ class Database(object):
             result = self._cursor.lastrowid
         return result
 
-    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
@@ -307,7 +307,7 @@ class Database(object):
         return self._cursor.executescript(statements)
 
     @attach_explain_query_plan
-    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executemany(self, statement, sequenceofbindings):
         """
         Execute one SQL statement several times.
@@ -366,7 +366,7 @@ class Database(object):
         self._logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
         return self._cursor.executemany(statement, sequenceofbindings)
 
-    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
+    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} [{0.file_path}]")
     def commit(self, exiting=False):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
