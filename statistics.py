@@ -312,9 +312,10 @@ class CommunityStatistics(Statistics):
     @property
     def candidates(self):
         now = time()
-        return [(candidate.lan_address, candidate.wan_address, candidate.global_time)
-            for candidate in self._community.candidates.itervalues()
-            if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
+        return [(candidate.lan_address, candidate.wan_address, candidate.global_time,
+                 candidate.get_member().mid if candidate.get_member() else None)
+                for candidate in self._community.candidates.itervalues()
+                if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
 
     def enable_debug_statistics(self, enabled):
         self.msg_statistics.enable(enabled)
