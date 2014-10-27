@@ -117,6 +117,10 @@ class RawserverEndpoint(Endpoint):
 
         # _SOCKET is set during open(...)
         self._socket = None
+        self.packet_handlers = {}
+
+    def listen_to(self, prefix, handler):
+        self.packet_handlers[prefix] = handler
 
     def open(self, dispersy):
         super(RawserverEndpoint, self).open(dispersy)
@@ -145,16 +149,27 @@ class RawserverEndpoint(Endpoint):
         assert isinstance(packets, (list, tuple)), type(packets)
         # called on the Tribler rawserver
 
+        normal_packets = []
+        for packet in packets:
+
+            prefix = next((p for p in self.packet_handlers if
+                           packet[1].startswith(p)), None)
+            if prefix:
+                sock_addr, data = packet
+                self.packet_handlers[prefix](sock_addr, data[len(prefix):])
+            else:
+                normal_packets.append(packet)
+
         # the rawserver SUCKS.  every now and then exceptions are not shown and apparently we are
         # sometimes called without any packets...
-        if packets:
-            self._dispersy.statistics.total_down += sum(len(data) for _, data in packets)
+        if normal_packets:
+            self._dispersy.statistics.total_down += sum(len(data) for _, data in normal_packets)
             if self._logger.isEnabledFor(logging.DEBUG):
-                for sock_addr, data in packets:
+                for sock_addr, data in normal_packets:
                     self.log_packet(sock_addr, data, outbound=False)
 
             # The endpoint runs on it's own thread, so we can't do a callLater here
-            reactor.callFromThread(self.dispersythread_data_came_in, packets, time(), cache)
+            reactor.callFromThread(self.dispersythread_data_came_in, normal_packets, time(), cache)
 
     def dispersythread_data_came_in(self, packets, timestamp, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
@@ -165,13 +180,17 @@ class RawserverEndpoint(Endpoint):
                                            cache,
                                            timestamp)
 
-    def send(self, candidates, packets):
+    def send(self, candidates, packets, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidates, (tuple, list, set)), type(candidates)
         assert all(isinstance(candidate, Candidate) for candidate in candidates), [type(candidate) for candidate in candidates]
         assert isinstance(packets, (tuple, list, set)), type(packets)
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         assert all(len(packet) > 0 for packet in packets), [len(packet) for packet in packets]
+
+        prefix = prefix or ''
+        packets = [prefix + packet for packet in packets]
+
         if any(len(packet) > 2 ** 16 - 60 for packet in packets):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
 
@@ -182,11 +201,14 @@ class RawserverEndpoint(Endpoint):
 
         return send_packet
 
-    def send_packet(self, candidate, packet):
+    def send_packet(self, candidate, packet, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(candidate, Candidate), type(candidate)
         assert isinstance(packet, str), type(packet)
         assert len(packet) > 0
+
+        packet = (prefix or '') + packet
+
         if len(packet) > 2 ** 16 - 60:
             raise RuntimeError("UDP does not support %d byte packets" % len(packet))
 
@@ -263,6 +285,7 @@ class StandaloneEndpoint(RawserverEndpoint):
         # _THREAD and _THREAD are set during open(...)
         self._thread = None
         self._socket = None
+        self.packet_handlers = {}
 
     def open(self, dispersy):
         # do NOT call RawserverEndpoint.open!
@@ -388,9 +411,16 @@ class TunnelEndpoint(Endpoint):
         self._swift = swift_process
         self._session = "ffffffff".decode("HEX")
 
+    def listen_to(self, prefix, handler):
+        def handler_wrapper(session, sock_addr, data):
+            handler(sock_addr, data)
+            self._dispersy.statistics.total_down += len(data)
+
+        self._swift.register_tunnel(prefix, handler_wrapper)
+
     def open(self, dispersy):
         super(TunnelEndpoint, self).open(dispersy)
-        self._swift.register_tunnel(self._session,self.i2ithread_data_came_in)
+        self._swift.register_tunnel(self._session, self.i2ithread_data_came_in)
         return True
 
     def close(self, timeout=0.0):
