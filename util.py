@@ -156,7 +156,7 @@ def attach_runtime_statistics(format_):
     - function_name: is set to the func.__name__, and
     - return_value: is set to the value returned by func
 
-       @attach_runtime_statistics("{function_name} bar={1}, moo={moo} returns={return_value}")
+       @attach_runtime_statistics(u"{function_name} bar={1}, moo={moo} returns={return_value}")
        def foo(self, bar, moo='milk'):
            return bar + 40
 
