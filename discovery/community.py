@@ -726,7 +726,10 @@ class PeerCache(object):
             with open(self.filename, 'r') as fp:
                 for line in fp.readlines():
                     if not line.startswith('#'):
-                        wcandidate, info = self.parse_line(line)
+                        result = self.parse_line(line)
+                        if result is None:
+                            continue
+                        wcandidate, info = result
                         self.walkcandidates[wcandidate] = info
             self._logger.info('PeerCache: loaded %s, got %d peers', self.filename, len(self.walkcandidates))
 
@@ -780,14 +783,25 @@ class PeerCache(object):
             self.walkcandidates[wcandidate]['last_checked'] = last_checked
 
     def parse_line(self, line):
-        line = line.replace("\t\t", "\t")
-        row = line.split('\t')
+        trimmed_line = line.replace("\t\t", "\t")
+        row = trimmed_line.split('\t')
+
+        # check if the line is invalid
+        if len(row) != 6:
+            self._logger.warn("Invalid row number (%d) on line: %s", len(row), line)
+            return
 
         wan_addr = row[0].split(':')
+        if len(wan_addr) != 2:
+            self._logger.warn("Invalid wan_addr (%s) on line: %s", row[0], line)
+            return
         wan_addr[1] = int(wan_addr[1])
         wan_addr = tuple(wan_addr)
 
         lan_addr = row[1].split(':')
+        if len(lan_addr) != 2:
+            self._logger.warn("Invalid lan_addr (%s) on line: %s", row[0], line)
+            return
         lan_addr[1] = int(lan_addr[1])
         lan_addr = tuple(lan_addr)
 
@@ -796,8 +810,8 @@ class PeerCache(object):
         sock_addr = lan_addr if wan_addr[0] == self.community._dispersy._wan_address[0] else wan_addr
         wcandidate = self.community.create_or_update_walkcandidate(sock_addr, lan_addr, wan_addr, tunnel, u'public')
 
-        info_dict = {}
-        info_dict["last_seen"] = float(row[3])
-        info_dict["last_checked"] = float(row[4])
-        info_dict["num_fails"] = int(row[5])
-        return (wcandidate, info_dict)
+        info_dict = {"last_seen": float(row[3]),
+                     "last_checked": float(row[4]),
+                     "num_fails": int(row[5])
+                     }
+        return wcandidate, info_dict
