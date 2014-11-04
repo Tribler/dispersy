@@ -1190,8 +1190,6 @@ class Community(TaskManager):
 
         self.register_task("take step", LoopingCall(self.take_step)).start(TAKE_STEP_INTERVAL, now=True)
 
-    # TODO(emilon): Review all the now = time() lines to see if I missed something using it to compute the time between
-    # calls in any loop converted to a LoopingCall
     def take_step(self):
         now = time()
         self._logger.debug("previous sync was %.1f seconds ago",
