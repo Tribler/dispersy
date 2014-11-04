@@ -43,6 +43,9 @@ from .util import runtime_duration_warning, attach_runtime_statistics, deprecate
 from .taskmanager import TaskManager
 
 DOWNLOAD_MM_PK_INTERVAL = 15.0
+FAST_WALKER_ITERATIONS = 30
+FAST_WALKER_CANDIDATE_TARGET = 20
+FAST_WALKER_MAX_NEW_ELIGIBLE_CANDIDATES = 10
 PERIODIC_CLEANUP_INTERVAL = 5.0
 TAKE_STEP_INTERVAL = 5
 
@@ -1152,24 +1155,34 @@ class Community(TaskManager):
 
     @inlineCallbacks
     def start_walking(self):
+        def get_eligible_candidates(now):
+            return [candidate for candidate in self._candidates.itervalues() if candidate.is_eligible_for_walk(now)]
+
         if self.dispersy_enable_fast_candidate_walker:
-            for _ in xrange(10):
+            # Make the bootstrap process a bit more agressive by keeping the
+            # initial list of trackers and contact them during each iteration.
+            initial_eligible_candidates = get_eligible_candidates(time())
+            for iteration in xrange(FAST_WALKER_ITERATIONS):
                 now = time()
 
                 # count -everyone- that is active (i.e. walk or stumble)
                 active_canidates = list(self.dispersy_yield_verified_candidates())
-                if len(active_canidates) > 20:
+                if len(active_canidates) > FAST_WALKER_CANDIDATE_TARGET:
                     self._logger.debug("there are %d active non-bootstrap candidates available, "
-                                 "prematurely quitting fast walker", len(active_canidates))
+                                       "prematurely quitting fast walker", len(active_canidates))
                     break
-
+                else:
+                    self._logger.debug("%d candidates active, target is %d walking a bit more... (step %d of %d)",
+                                       len(active_canidates),
+                                       FAST_WALKER_CANDIDATE_TARGET, iteration,
+                                       FAST_WALKER_ITERATIONS)
                 # request peers that are eligible
-                eligible_candidates = [candidate
-                                       for candidate
-                                       in self._candidates.itervalues()
-                                       if candidate.is_eligible_for_walk(now)]
-                for count, candidate in enumerate(eligible_candidates[:len(eligible_candidates) / 2], 1):
-                    self._logger.debug("%d/%d extra walk to %s", count, len(eligible_candidates), candidate)
+                eligible_candidates = get_eligible_candidates(now)
+                self._logger.debug("Found %d eligible_candidates", len(eligible_candidates))
+                for count, candidate in enumerate(set(initial_eligible_candidates +
+                                                      eligible_candidates[:FAST_WALKER_MAX_NEW_ELIGIBLE_CANDIDATES]),
+                                                  1):
+                    self._logger.debug("%d of %d extra walk to %s", count, len(eligible_candidates), candidate)
                     self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
                 # wait for NAT hole punching
