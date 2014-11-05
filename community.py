@@ -43,9 +43,10 @@ from .util import runtime_duration_warning, attach_runtime_statistics, deprecate
 from .taskmanager import TaskManager
 
 DOWNLOAD_MM_PK_INTERVAL = 15.0
-FAST_WALKER_ITERATIONS = 30
 FAST_WALKER_CANDIDATE_TARGET = 20
 FAST_WALKER_MAX_NEW_ELIGIBLE_CANDIDATES = 10
+FAST_WALKER_STEPS = 30
+FAST_WALKER_STEP_INTERVAL = 1
 PERIODIC_CLEANUP_INTERVAL = 5.0
 TAKE_STEP_INTERVAL = 5
 
@@ -298,6 +299,7 @@ class Community(TaskManager):
         self._stumbled_candidates = None
         self._introduced_candidates = None
         self._walk_candidates = None
+        self._fast_steps_taken = 0
         self._sync_cache = None
 
     def initialize(self):
@@ -1153,31 +1155,36 @@ class Community(TaskManager):
         assert isinstance(conversion, Conversion)
         self._conversions.append(conversion)
 
-    @inlineCallbacks
     def start_walking(self):
         def get_eligible_candidates(now):
             return [candidate for candidate in self._candidates.itervalues() if candidate.is_eligible_for_walk(now)]
 
-        if self.dispersy_enable_fast_candidate_walker:
-            # Make the bootstrap process a bit more agressive by keeping the
-            # initial list of trackers and contact them during each iteration.
-            initial_eligible_candidates = get_eligible_candidates(time())
-            for iteration in xrange(FAST_WALKER_ITERATIONS):
-                now = time()
+        def switch_to_normal_walking():
+            """
+            Start walking towards eligible candidates regularly, stopping the fast walker if it's still running.
+            """
+            self.cancel_pending_task("take_fast_steps")
+            self.register_task("take step", LoopingCall(self.take_step)).start(TAKE_STEP_INTERVAL, now=True)
 
-                # count -everyone- that is active (i.e. walk or stumble)
-                active_canidates = list(self.dispersy_yield_verified_candidates())
-                if len(active_canidates) > FAST_WALKER_CANDIDATE_TARGET:
-                    self._logger.debug("there are %d active non-bootstrap candidates available, "
-                                       "prematurely quitting fast walker", len(active_canidates))
-                    break
-                else:
-                    self._logger.debug("%d candidates active, target is %d walking a bit more... (step %d of %d)",
-                                       len(active_canidates),
-                                       FAST_WALKER_CANDIDATE_TARGET, iteration,
-                                       FAST_WALKER_ITERATIONS)
+        def take_fast_steps(initial_eligible_candidates):
+            """
+            Walk to all the initial and new eligible candidates.
+            Stop if we got enough active candidates.
+
+            """
+            # count -everyone- that is active (i.e. walk or stumble)
+            active_canidates = list(self.dispersy_yield_verified_candidates())
+            if len(active_canidates) > FAST_WALKER_CANDIDATE_TARGET:
+                self._logger.debug("there are %d active non-bootstrap candidates available, "
+                                   "prematurely quitting fast walker", len(active_canidates))
+                switch_to_normal_walking()
+            else:
+                self._logger.debug("%d candidates active, target is %d walking a bit more... (step %d of %d)",
+                                   len(active_canidates),
+                                   FAST_WALKER_CANDIDATE_TARGET, self._fast_steps_taken,
+                                   FAST_WALKER_STEPS)
                 # request peers that are eligible
-                eligible_candidates = get_eligible_candidates(now)
+                eligible_candidates = get_eligible_candidates(time())
                 self._logger.debug("Found %d eligible_candidates", len(eligible_candidates))
                 for count, candidate in enumerate(set(initial_eligible_candidates +
                                                       eligible_candidates[:FAST_WALKER_MAX_NEW_ELIGIBLE_CANDIDATES]),
@@ -1185,10 +1192,18 @@ class Community(TaskManager):
                     self._logger.debug("%d of %d extra walk to %s", count, len(eligible_candidates), candidate)
                     self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
-                # wait for NAT hole punching
-                yield deferLater(reactor, 1, lambda: None)
+                if self._fast_steps_taken >= FAST_WALKER_STEPS:
+                    switch_to_normal_walking()
 
-        self.register_task("take step", LoopingCall(self.take_step)).start(TAKE_STEP_INTERVAL, now=True)
+        if self.dispersy_enable_fast_candidate_walker:
+            self._fast_steps_taken = 0
+            # Make the bootstrap process a bit more agressive by keeping the
+            # initial list of trackers and contact them during each iteration.
+            self.register_task("take step",
+                               LoopingCall(take_fast_steps, get_eligible_candidates(time()))
+            ).start(FAST_WALKER_STEP_INTERVAL, now=True)
+        else:
+            switch_to_normal_walking()
 
     def take_step(self):
         now = time()
