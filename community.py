@@ -1163,7 +1163,7 @@ class Community(TaskManager):
             """
             Start walking towards eligible candidates regularly, stopping the fast walker if it's still running.
             """
-            self.cancel_pending_task("take_fast_steps")
+            self.cancel_pending_task("take fast steps")
             self.register_task("take step", LoopingCall(self.take_step)).start(TAKE_STEP_INTERVAL, now=True)
 
         def take_fast_steps(initial_eligible_candidates):
@@ -1199,7 +1199,7 @@ class Community(TaskManager):
             self._fast_steps_taken = 0
             # Make the bootstrap process a bit more agressive by keeping the
             # initial list of trackers and contact them during each iteration.
-            self.register_task("take step",
+            self.register_task("take fast steps",
                                LoopingCall(take_fast_steps, get_eligible_candidates(time()))
             ).start(FAST_WALKER_STEP_INTERVAL, now=True)
         else:
