@@ -1192,6 +1192,7 @@ class Community(TaskManager):
                     self._logger.debug("%d of %d extra walk to %s", count, len(eligible_candidates), candidate)
                     self.create_introduction_request(candidate, allow_sync=False, is_fast_walker=True)
 
+                self._fast_steps_taken += 1
                 if self._fast_steps_taken >= FAST_WALKER_STEPS:
                     switch_to_normal_walking()
 
