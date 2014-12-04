@@ -122,6 +122,9 @@ class RawserverEndpoint(Endpoint):
     def listen_to(self, prefix, handler):
         self.packet_handlers[prefix] = handler
 
+    def stop_listen_to(self, prefix):
+        del self.packet_handlers[prefix]
+
     def open(self, dispersy):
         super(RawserverEndpoint, self).open(dispersy)
 
