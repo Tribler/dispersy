@@ -1438,6 +1438,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(len(packet) == 2 for packet in packets), packets  # tuple(Candidate, datagram)
         assert all(isinstance(packet[0], Candidate) for packet in packets), packets
         assert all(isinstance(packet[1], str) for packet in packets), packets
+        assert all(len(packet[1]) > 22 for packet in packets), packets
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
 
