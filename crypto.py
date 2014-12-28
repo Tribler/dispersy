@@ -143,14 +143,14 @@ class ECCrypto(DispersyCrypto):
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_bin(self, ec):
         "Convert the key to a binary format."
-        assert isinstance(ec, (M2CryptoSK, M2CryptoPK, LibNaCLSK, LibNaCLPK)), ec
+        assert isinstance(ec, DispersyKey), ec
         return ec.key_to_bin()
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_hash(self, ec):
         "Get a hash representation from a key."
-        assert isinstance(ec, (EC.EC, EC_pub, LibNaCLSK, LibNaCLPK)), ec
-        return sha1(ec.key_to_bin(ec.pub())).digest()
+        assert isinstance(ec, DispersyKey), ec
+        return sha1(ec.pub().key_to_bin()).digest()
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_private_bin(self, string):
@@ -188,6 +188,7 @@ class ECCrypto(DispersyCrypto):
         """
         Returns the length, in bytes, of each signature made using EC.
         """
+        assert isinstance(ec, DispersyKey), ec
         return ec.get_signature_length()
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
@@ -195,6 +196,7 @@ class ECCrypto(DispersyCrypto):
         """
         Returns the signature of DIGEST made using EC.
         """
+        assert isinstance(ec, DispersyKey), ec
         assert isinstance(data, str), type(data)
         return ec.signature(data)
 
@@ -203,6 +205,7 @@ class ECCrypto(DispersyCrypto):
         """
         Returns True when SIGNATURE matches the DIGEST made using EC.
         """
+        assert isinstance(ec, DispersyKey), ec
         assert isinstance(data, str), type(data)
         assert isinstance(signature, str), type(signature)
         assert len(signature) == self.get_signature_length(ec), [len(signature), self.get_signature_length(ec)]
@@ -231,13 +234,22 @@ class NoCrypto(NoVerifyCrypto):
         return "0" * self.get_signature_length(ec)
 
 
-class M2CryptoPK():
+class DispersyKey(object):
+    pass
+
+class M2CryptoPK(DispersyKey):
 
     def __init__(self, ec_pub=None, keystring=None):
         if ec_pub:
             self.ec = ec_pub
         elif keystring:
             self.ec = self.key_from_pem("-----BEGIN PUBLIC KEY-----\n%s-----END PUBLIC KEY-----\n" % keystring.encode("BASE64"))
+
+    def pub(self):
+        return self
+
+    def has_secret_key(self):
+        return False
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def pem_to_bin(self, pem):
@@ -311,6 +323,9 @@ class M2CryptoSK(M2CryptoPK):
     def pub(self):
         return M2CryptoPK(ec_pub=self.ec.pub())
 
+    def has_secret_key(self):
+        return True
+
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def key_to_pem(self):
         "Convert a key to the PEM format."
@@ -338,7 +353,7 @@ class M2CryptoSK(M2CryptoPK):
         return "".join(("\x00" * (length - len(r)), r, "\x00" * (length - len(s)), s))
 
 
-class LibNaCLPK(object):
+class LibNaCLPK(DispersyKey):
 
     def __init__(self, json={}, hex_pk=None, hex_vk=None):
         if json:
@@ -346,6 +361,12 @@ class LibNaCLPK(object):
 
         self.crypt = libnacl.public.PublicKey(hex_decode(json.get('pk', hex_pk)))
         self.veri = libnacl.sign.Verifier(json.get('vk', hex_vk))
+
+    def pub(self):
+        return self
+
+    def has_secret_key(self):
+        return False
 
     def verify(self, signature, msg):
         return self.veri.verify(signature + msg)
@@ -369,6 +390,9 @@ class LibNaCLSK(LibNaCLPK):
 
     def pub(self):
         return LibNaCLPK(hex_pk=self.key.hex_pk(), hex_vk=self.key.hex_vk())
+
+    def has_secret_key(self):
+        return True
 
     def signature(self, msg):
         return self.key.signature(msg)
