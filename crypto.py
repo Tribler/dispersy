@@ -10,7 +10,7 @@ from M2Crypto.EC import EC_pub
 import libnacl.dual
 
 from .util import attach_runtime_statistics
-from libnacl.encode import hex_decode
+from libnacl.encode import hex_decode, hex_encode
 
 _STRUCT_L = Struct(">L")
 
@@ -355,12 +355,13 @@ class M2CryptoSK(M2CryptoPK):
 
 class LibNaCLPK(DispersyKey):
 
-    def __init__(self, json={}, hex_pk=None, hex_vk=None):
-        if json:
-            json = loads(json)
+    def __init__(self, binarykey="", pk=None, hex_vk=None):
+        if binarykey:
+            pk, vk = binarykey[:libnacl.crypto_box_SECRETKEYBYTES], binarykey[libnacl.crypto_box_SECRETKEYBYTES: libnacl.crypto_box_SECRETKEYBYTES + libnacl.crypto_sign_SEEDBYTES]
+            hex_vk = hex_encode(vk)
 
-        self.crypt = libnacl.public.PublicKey(hex_decode(json.get('pk', hex_pk)))
-        self.veri = libnacl.sign.Verifier(json.get('vk', hex_vk))
+        self.crypt = libnacl.public.PublicKey(pk)
+        self.veri = libnacl.sign.Verifier(hex_vk)
 
     def pub(self):
         return self
@@ -372,7 +373,7 @@ class LibNaCLPK(DispersyKey):
         return self.veri.verify(signature + msg)
 
     def key_to_bin(self):
-        return "LibNaCLPK:" + dumps({'pk': self.crypt.hex_pk(), 'vk': self.veri.hex_vk()})
+        return "LibNaCLPK:" + self.crypt.pk + self.veri.vk
 
     def get_signature_length(self):
         return libnacl.crypto_sign_BYTES
@@ -380,16 +381,16 @@ class LibNaCLPK(DispersyKey):
 
 class LibNaCLSK(LibNaCLPK):
 
-    def __init__(self, json={}):
-        if json:
-            json = loads(json)
-            self.key = libnacl.dual.DualSecret(hex_decode(json['crypt']), hex_decode(json['seed']))
+    def __init__(self, binarykey=""):
+        if binarykey:
+            crypt, seed = binarykey[:libnacl.crypto_box_SECRETKEYBYTES], binarykey[libnacl.crypto_box_SECRETKEYBYTES : libnacl.crypto_box_SECRETKEYBYTES + libnacl.crypto_sign_SEEDBYTES]
+            self.key = libnacl.dual.DualSecret(crypt, seed)
         else:
             self.key = libnacl.dual.DualSecret()
         self.veri = libnacl.sign.Verifier(self.key.hex_vk())
 
     def pub(self):
-        return LibNaCLPK(hex_pk=self.key.hex_pk(), hex_vk=self.key.hex_vk())
+        return LibNaCLPK(pk=self.key.pk, hex_vk=self.veri.hex_vk())
 
     def has_secret_key(self):
         return True
@@ -398,4 +399,4 @@ class LibNaCLSK(LibNaCLPK):
         return self.key.signature(msg)
 
     def key_to_bin(self):
-        return "LibNaCLSK:" + dumps({'crypt': self.key.hex_sk(), 'seed': self.key.hex_seed()})
+        return "LibNaCLSK:" + self.key.sk + self.key.seed

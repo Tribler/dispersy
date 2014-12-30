@@ -57,3 +57,21 @@ class TestLowLevelCrypto(TestCase):
             ec_clone = self.crypto.key_from_private_bin(private)
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
 
+    def test_performance(self):
+        from time import time
+        import sys, os
+
+        ec = self.crypto.generate_key(u"very-low")
+
+        data = [os.urandom(1024) for i in xrange(1000)]
+        for curve in [u"very-low", u"low", u"medium", u"high", u"curve25519"]:
+            t1 = time()
+            ec = self.crypto.generate_key(curve)
+            t2 = time()
+            signatures = [self.crypto.create_signature(ec, msg) for msg in data]
+            t3 = time()
+            verfified = [self.crypto.is_valid_signature(ec, msg, signature) for msg, signature in zip(data, signatures)]
+            print >> sys.stderr, curve, "verify", time() - t3, "sign", t3 - t2, "genkey", t2 - t1
+
+            assert all(verfified)
+
