@@ -1,16 +1,14 @@
 from hashlib import sha1
 from math import ceil
 from struct import Struct
-from json import dumps, loads
 import logging
 
 from M2Crypto import EC, BIO
-from M2Crypto.EC import EC_pub
 
 import libnacl.dual
 
 from .util import attach_runtime_statistics
-from libnacl.encode import hex_decode, hex_encode
+from libnacl.encode import hex_encode
 
 _STRUCT_L = Struct(">L")
 
@@ -90,12 +88,12 @@ class DispersyCrypto(object):
 class ECCrypto(DispersyCrypto):
     """
     A crypto object which provides a layer between Dispersy and low level eccrypographic features.
-    
+
     Most methods are implemented by:
         @author: Boudewijn Schoon
         @organization: Technical University Delft
         @contact: dispersy@frayja.com
-        
+
     However since then, most functionality was completely rewritten by:
         @author: Niels Zeilemaker
     """
@@ -157,7 +155,7 @@ class ECCrypto(DispersyCrypto):
         "Returns True if the input is a valid public/private keypair stored in a binary format"
         try:
             self.key_from_private_bin(string)
-        except Exception as e:
+        except:
             return False
         return True
 
