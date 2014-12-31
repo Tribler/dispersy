@@ -69,7 +69,7 @@ from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics
 from .taskmanager import TaskManager
-from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread
+from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread, _runtime_statistics
 
 
 # Set up the instrumentation utilities
@@ -2208,6 +2208,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if self._logger.isEnabledFor(logging.DEBUG):
             self._statistics.update()
             self._logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
+        _runtime_statistics.clear()
 
         self._logger.info("stopping the Dispersy core...")
         results = {}

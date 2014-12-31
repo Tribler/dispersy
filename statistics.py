@@ -329,3 +329,35 @@ class CommunityStatistics(Statistics):
     def reset(self):
         self.total_candidates_discovered = 0
         self.msg_statistics.reset()
+
+class RuntimeStatistic(object):
+
+    def __init__(self):
+        self._count = 0
+        self._duration = 0.0
+
+    @property
+    def count(self):
+        " Returns the number of times a method was called. "
+        return self._count
+
+    @property
+    def duration(self):
+        " Returns the cumulative time spent in a method. "
+        return self._duration
+
+    @property
+    def average(self):
+        " Returns the average time spent in a method. "
+        return self._duration / self._count
+
+    def increment(self, duration):
+        " Increase self.count with 1 and self.duration with DURATION. "
+        assert isinstance(duration, float), type(duration)
+        self._duration += duration
+        self._count += 1
+
+    def get_dict(self, **kargs):
+        " Returns a dictionary with the statistics. "
+        return dict(count=self.count, duration=self.duration, average=self.average, **kargs)
+
