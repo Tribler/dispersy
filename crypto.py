@@ -7,6 +7,11 @@ import logging
 from M2Crypto import EC, BIO
 from M2Crypto.EC import EC_pub
 
+# Add libnacl submodule to the python path
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'libnacl'))
+
 import libnacl.dual
 
 from .util import attach_runtime_statistics
