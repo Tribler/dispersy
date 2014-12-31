@@ -67,9 +67,9 @@ from .exception import CommunityNotFoundException, ConversionNotFoundException, 
 from .member import DummyMember, Member
 from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
-from .statistics import DispersyStatistics
+from .statistics import DispersyStatistics, _runtime_statistics
 from .taskmanager import TaskManager
-from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread, _runtime_statistics
+from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread
 
 
 # Set up the instrumentation utilities

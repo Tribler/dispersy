@@ -14,8 +14,7 @@ from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
 from twisted.python import failure
 from twisted.python.threadable import isInIOThread
-
-from .statistics import RuntimeStatistic
+from .statistics import _runtime_statistics
 
 
 logger = logging.getLogger(__name__)
@@ -109,9 +108,6 @@ if "--profiler" in getattr(sys, "argv", []):
 else:
     def attach_profiler(func):
         return func
-
-
-_runtime_statistics = defaultdict(RuntimeStatistic)
 
 
 def attach_runtime_statistics(format_):

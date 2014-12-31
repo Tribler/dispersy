@@ -3,9 +3,6 @@ from collections import defaultdict
 from threading import RLock
 from time import time
 
-from .util import _runtime_statistics
-
-
 class Statistics(object):
 
     __metaclass__ = ABCMeta
@@ -360,4 +357,6 @@ class RuntimeStatistic(object):
     def get_dict(self, **kargs):
         " Returns a dictionary with the statistics. "
         return dict(count=self.count, duration=self.duration, average=self.average, **kargs)
+
+_runtime_statistics = defaultdict(RuntimeStatistic)
 
