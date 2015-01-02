@@ -315,13 +315,16 @@ class M2CryptoPK(DispersyKey):
 
 class M2CryptoSK(M2CryptoPK):
 
-    def __init__(self, curve=None, keystring=None):
+    def __init__(self, curve=None, keystring=None, filename=None):
         if curve:
             self.ec = EC.gen_params(curve)
             self.ec.gen_key()
 
         elif keystring:
             self.ec = self.key_from_pem("-----BEGIN EC PRIVATE KEY-----\n%s-----END EC PRIVATE KEY-----\n" % keystring.encode("BASE64"))
+
+        elif filename:
+            self.ec = EC.load_key(filename)
 
     def pub(self):
         return M2CryptoPK(ec_pub=self.ec.pub())
