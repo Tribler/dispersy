@@ -1,6 +1,5 @@
 import logging
 
-from M2Crypto.EC import EC_pub, EC
 
 
 class DummyMember(object):
@@ -76,8 +75,9 @@ class Member(DummyMember):
         Create a new Member instance.
         """
         from .dispersy import Dispersy
+        from .crypto import DispersyKey
         assert isinstance(dispersy, Dispersy), type(dispersy)
-        assert isinstance(key, (EC, EC_pub))
+        assert isinstance(key, DispersyKey), type(key)
         assert isinstance(database_id, int), type(database_id)
 
         if not mid:
@@ -86,7 +86,7 @@ class Member(DummyMember):
 
         public_key = dispersy.crypto.key_to_bin(key.pub())
 
-        if key.__class__ is EC:
+        if key.has_secret_key():
             private_key = key
         else:
             private_key = None
@@ -197,7 +197,7 @@ class Member(DummyMember):
     def __eq__(self, member):
         if member:
             assert isinstance(member, DummyMember)
-            assert (self._database_id == member.database_id) == (self._mid == member.mid),  (self._database_id, member.database_id, self._mid, member.mid)
+            assert (self._database_id == member.database_id) == (self._mid == member.mid), (self._database_id, member.database_id, self._mid, member.mid)
             return self._database_id == member.database_id
         return False
 

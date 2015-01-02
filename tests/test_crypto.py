@@ -2,7 +2,6 @@ from unittest import TestCase
 
 from ..crypto import ECCrypto
 
-
 class TestLowLevelCrypto(TestCase):
 
     @classmethod
@@ -45,16 +44,12 @@ class TestLowLevelCrypto(TestCase):
             self.assertEqual(len(signature), self.crypto.get_signature_length(ec))
             self.assertTrue(self.crypto.is_valid_signature(ec, data, signature))
 
-            #
-            # serialise using BIN
-            #
-
             public = self.crypto.key_to_bin(ec_pub)
-            self.assertTrue(self.crypto.is_valid_public_bin(public))
+            self.assertTrue(self.crypto.is_valid_public_bin(public), public)
             self.assertEqual(public, self.crypto.key_to_bin(ec_pub))
 
             private = self.crypto.key_to_bin(ec)
-            self.assertTrue(self.crypto.is_valid_private_bin(private))
+            self.assertTrue(self.crypto.is_valid_private_bin(private), private)
             self.assertEqual(private, self.crypto.key_to_bin(ec))
 
             ec_clone = self.crypto.key_from_public_bin(public)
@@ -62,18 +57,21 @@ class TestLowLevelCrypto(TestCase):
             ec_clone = self.crypto.key_from_private_bin(private)
             self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
 
-            #
-            # serialise using PEM
-            #
+    def test_performance(self):
+        from time import time
+        import sys, os
 
-            public = self.crypto.key_to_pem(ec_pub)
-            self.assertTrue(self.crypto.is_valid_public_pem(public))
-            self.assertEqual(public, self.crypto.key_to_pem(ec_pub))
-            private = self.crypto.key_to_pem(ec)
-            self.assertTrue(self.crypto.is_valid_private_pem(private))
-            self.assertEqual(private, self.crypto.key_to_pem(ec))
+        ec = self.crypto.generate_key(u"very-low")
 
-            ec_clone = self.crypto.key_from_public_pem(public)
-            self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
-            ec_clone = self.crypto.key_from_private_pem(private)
-            self.assertTrue(self.crypto.is_valid_signature(ec_clone, data, signature))
+        data = [os.urandom(1024) for i in xrange(1000)]
+        for curve in [u"very-low", u"low", u"medium", u"high", u"curve25519"]:
+            t1 = time()
+            ec = self.crypto.generate_key(curve)
+            t2 = time()
+            signatures = [self.crypto.create_signature(ec, msg) for msg in data]
+            t3 = time()
+            verfified = [self.crypto.is_valid_signature(ec, msg, signature) for msg, signature in zip(data, signatures)]
+            print >> sys.stderr, curve, "verify", time() - t3, "sign", t3 - t2, "genkey", t2 - t1
+
+            assert all(verfified)
+
