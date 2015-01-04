@@ -380,7 +380,7 @@ class LibNaCLPK(DispersyKey):
             pk, vk = binarykey[:libnacl.crypto_box_SECRETKEYBYTES], binarykey[libnacl.crypto_box_SECRETKEYBYTES: libnacl.crypto_box_SECRETKEYBYTES + libnacl.crypto_sign_SEEDBYTES]
             hex_vk = hex_encode(vk)
 
-        self.crypt = libnacl.public.PublicKey(pk)
+        self.key = libnacl.public.PublicKey(pk)
         self.veri = libnacl.sign.Verifier(hex_vk)
 
     def pub(self):
@@ -393,7 +393,7 @@ class LibNaCLPK(DispersyKey):
         return self.veri.verify(signature + msg)
 
     def key_to_bin(self):
-        return "LibNaCLPK:" + self.crypt.pk + self.veri.vk
+        return "LibNaCLPK:" + self.key.pk + self.veri.vk
 
     def get_signature_length(self):
         return libnacl.crypto_sign_BYTES
