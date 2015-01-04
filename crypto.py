@@ -153,7 +153,7 @@ class ECCrypto(DispersyCrypto):
     def key_to_hash(self, ec):
         "Get a hash representation from a key."
         assert isinstance(ec, DispersyKey), ec
-        return sha1(ec.pub().key_to_bin()).digest()
+        return ec.key_to_hash()
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_private_bin(self, string):
@@ -238,7 +238,21 @@ class NoCrypto(NoVerifyCrypto):
 
 
 class DispersyKey(object):
-    pass
+
+    def pub(self):
+        raise NotImplementedError()
+
+    def has_secret_key(self):
+        raise NotImplementedError()
+
+    def key_to_bin(self):
+        raise NotImplementedError()
+
+    def key_to_hash(self):
+        if self.has_secret_key():
+            return sha1(self.pub().key_to_bin()).digest()
+        return sha1(self.key_to_bin()).digest()
+
 
 class M2CryptoPK(DispersyKey):
 
