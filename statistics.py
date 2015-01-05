@@ -198,7 +198,7 @@ class DispersyStatistics(Statistics):
             self.endpoint_recv = dict_assigned_value()
             self.endpoint_send = dict_assigned_value()
 
-             # SOURCE:INTRODUCED:COUNT nested dictionary
+            # SOURCE:INTRODUCED:COUNT nested dictionary
             self.received_introductions = defaultdict(lambda: defaultdict(int)) if enable else None
 
             for community in self._dispersy.get_communities():
@@ -216,7 +216,9 @@ class DispersyStatistics(Statistics):
 
         # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
         # represents a key from the attach_runtime_statistics decorator
-        self.runtime = [statistic.get_dict(entry=entry) for entry, statistic in _runtime_statistics.iteritems()]
+        self.runtime = [(statistic.duration, statistic.get_dict(entry=entry)) for entry, statistic in _runtime_statistics.iteritems() if statistic.duration > 1]
+        self.runtime.sort(reverse=True)
+        self.runtime = [statistic[1] for statistic in self.runtime]
 
     def reset(self):
         self.total_down = 0
