@@ -131,21 +131,6 @@ class BloomFilter(object):
         assert 0 <= len(self._prefix) < 256, len(self._prefix)
         assert isinstance(self._filter, (int, long)), type(self._filter)
 
-        if __debug__:
-            hypothetical_error_rates = [0.4, 0.3, 0.2, 0.1, 0.01, 0.001, 0.0001]
-            self._logger.debug("m size:      %d    ~%d bytes", self._m_size, self._m_size / 8)
-            self._logger.debug("k functions: %d", self._k_functions)
-            self._logger.debug("prefix:      %s", self._prefix.encode("HEX"))
-            self._logger.debug("filter:      %s", self._filter)
-            self._logger.debug("hypothetical error rate: %s", " | ".join(
-                "%.4f" % hypothetical_error_rate
-                for hypothetical_error_rate
-                in hypothetical_error_rates))
-            self._logger.debug("hypothetical capacity:   %s", " | ".join(
-                "%6d" % self.get_capacity(hypothetical_error_rate)
-                for hypothetical_error_rate
-                in hypothetical_error_rates))
-
         # determine hash function
         if self._m_size >= (1 << 31):
             fmt_code, chunk_size = "Q", 8
@@ -309,5 +294,5 @@ class BloomFilter(object):
         """
         # hex should be m_size/4, hex is 16 instead of 8 -> hence half the number of "hexes" in m_size
         hex_ = '%x' % self._filter
-        padding = '0' * (self._m_size /4 - len(hex_))
+        padding = '0' * (self._m_size / 4 - len(hex_))
         return unhexlify(padding + hex_)[::-1]

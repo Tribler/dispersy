@@ -1458,8 +1458,6 @@ class Community(TaskManager):
         """
         # use existing (bootstrap) candidate
         candidate = self._candidates.get(sock_addr)
-        self._logger.debug("existing candidate for %s:%d is %s", sock_addr[0], sock_addr[1], candidate)
-
         if candidate is None:
             # find matching candidate with the same host but a different port (symmetric NAT)
             for candidate in self._candidates.itervalues():
@@ -2032,7 +2030,6 @@ class Community(TaskManager):
                         self._logger.debug("new cache with %d %s messages (batch window: %d)",
                                            len(batch), meta.name, meta.batch.max_window)
                 else:
-                    self._logger.debug("not batching, handling %d messages inmediately", len(batch))
                     self._on_batch_cache(meta, batch)
 
                 self._statistics.increase_total_received_count(len(cur_packets))
@@ -2100,7 +2097,6 @@ class Community(TaskManager):
 
         assert all(isinstance(message, Message.Implementation) for message in messages), "convert_batch_into_messages must return only Message.Implementation instances"
         assert all(message.meta == meta for message in messages), "All Message.Implementation instances must be in the same batch"
-        self._logger.debug("%d %s messages after conversion", len(messages), meta.name)
 
         # handle the incoming messages
         if messages:
@@ -2233,10 +2229,6 @@ class Community(TaskManager):
                 self._logger.warning("handled %d/%d %.2fs %s messages (with %fs cache window)",
                                      len(messages), debug_count, (debug_end - debug_begin),
                                      meta.name, meta.batch.max_window)
-            else:
-                self._logger.debug("handled %d/%d %.2fs %s messages (with %fs cache window)",
-                                   len(messages), debug_count, (debug_end - debug_begin),
-                                   meta.name, meta.batch.max_window)
 
             self._resume_delayed(meta, messages)
 
