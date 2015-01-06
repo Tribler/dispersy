@@ -99,8 +99,6 @@ class Member(DummyMember):
         self._signature_length = self._crypto.get_signature_length(self._ec)
         self._has_identity = set()
 
-        self._logger.debug("mid:%s db:%d public:%s private:%s", self._mid.encode("HEX"), self._database_id, bool(self._public_key), bool(self._private_key))
-
     @property
     def public_key(self):
         """

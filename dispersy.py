@@ -707,7 +707,6 @@ class Dispersy(TaskManager):
         assert isinstance(voter, Candidate)
         for vote, voters in self._wan_address_votes.iteritems():
             if voter.sock_addr in voters:
-                self._logger.debug("removing vote for %s made by %s", vote, voter)
                 voters.remove(voter.sock_addr)
                 if len(voters) == 0:
                     del self._wan_address_votes[vote]
@@ -1684,8 +1683,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         assert len(messages) > 0
         assert all(message.community == messages[0].community for message in messages)
         assert all(message.meta == messages[0].meta for message in messages)
-
-        self._logger.debug("%d %s messages (%s %s %s)", len(messages), messages[0].name, store, update, forward)
 
         store = store and isinstance(messages[0].meta.distribution, SyncDistribution)
         if store:
