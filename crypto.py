@@ -153,7 +153,7 @@ class ECCrypto(DispersyCrypto):
     def key_to_hash(self, ec):
         "Get a hash representation from a key."
         assert isinstance(ec, DispersyKey), ec
-        return sha1(ec.pub().key_to_bin()).digest()
+        return ec.key_to_hash()
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name}")
     def is_valid_private_bin(self, string):
@@ -238,7 +238,21 @@ class NoCrypto(NoVerifyCrypto):
 
 
 class DispersyKey(object):
-    pass
+
+    def pub(self):
+        raise NotImplementedError()
+
+    def has_secret_key(self):
+        raise NotImplementedError()
+
+    def key_to_bin(self):
+        raise NotImplementedError()
+
+    def key_to_hash(self):
+        if self.has_secret_key():
+            return sha1(self.pub().key_to_bin()).digest()
+        return sha1(self.key_to_bin()).digest()
+
 
 class M2CryptoPK(DispersyKey):
 
@@ -315,13 +329,16 @@ class M2CryptoPK(DispersyKey):
 
 class M2CryptoSK(M2CryptoPK):
 
-    def __init__(self, curve=None, keystring=None):
+    def __init__(self, curve=None, keystring=None, filename=None):
         if curve:
             self.ec = EC.gen_params(curve)
             self.ec.gen_key()
 
         elif keystring:
             self.ec = self.key_from_pem("-----BEGIN EC PRIVATE KEY-----\n%s-----END EC PRIVATE KEY-----\n" % keystring.encode("BASE64"))
+
+        elif filename:
+            self.ec = EC.load_key(filename)
 
     def pub(self):
         return M2CryptoPK(ec_pub=self.ec.pub())
@@ -363,7 +380,7 @@ class LibNaCLPK(DispersyKey):
             pk, vk = binarykey[:libnacl.crypto_box_SECRETKEYBYTES], binarykey[libnacl.crypto_box_SECRETKEYBYTES: libnacl.crypto_box_SECRETKEYBYTES + libnacl.crypto_sign_SEEDBYTES]
             hex_vk = hex_encode(vk)
 
-        self.crypt = libnacl.public.PublicKey(pk)
+        self.key = libnacl.public.PublicKey(pk)
         self.veri = libnacl.sign.Verifier(hex_vk)
 
     def pub(self):
@@ -376,7 +393,7 @@ class LibNaCLPK(DispersyKey):
         return self.veri.verify(signature + msg)
 
     def key_to_bin(self):
-        return "LibNaCLPK:" + self.crypt.pk + self.veri.vk
+        return "LibNaCLPK:" + self.key.pk + self.veri.vk
 
     def get_signature_length(self):
         return libnacl.crypto_sign_BYTES
