@@ -30,6 +30,8 @@ INSERT_TRACKER_INTERVAL = 300
 PEERCACHE_FILENAME = 'peercache.txt'
 TIME_BETWEEN_CONNECTION_ATTEMPTS = 10.0
 
+BOOTSTRAP_FILE_ENVNAME = 'DISPERSY_BOOTSTRAP_FILE'
+
 
 class TasteBuddy(object):
     def __init__(self, overlap, preferences, sock_addr):
@@ -169,10 +171,12 @@ class DiscoveryCommunity(Community):
             if success:
                 self._logger.debug("Resolved all bootstrap addresses")
 
-        bootstrap_file = os.path.join(self._dispersy._working_directory, "bootstraptribler.txt")
-        self._logger.debug("Expecting bootstrapfile at %s %s", os.path.abspath(
-            bootstrap_file), os.path.exists(bootstrap_file))
-        alternate_addresses = Bootstrap.load_addresses_from_file(bootstrap_file)
+        bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME)
+        alternate_addresses = None
+        if bootstrap_file:
+            self._logger.debug("Expecting bootstrapfile at %s %s", os.path.abspath(
+                bootstrap_file), os.path.exists(bootstrap_file))
+            alternate_addresses = Bootstrap.load_addresses_from_file(bootstrap_file)
 
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
