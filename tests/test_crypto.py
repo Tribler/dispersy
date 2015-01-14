@@ -71,7 +71,6 @@ class TestLowLevelCrypto(TestCase):
             signatures = [self.crypto.create_signature(ec, msg) for msg in data]
             t3 = time()
             verfified = [self.crypto.is_valid_signature(ec, msg, signature) for msg, signature in zip(data, signatures)]
-            print >> sys.stderr, curve, "verify", time() - t3, "sign", t3 - t2, "genkey", t2 - t1
+            # print >> sys.stderr, curve, "verify", time() - t3, "sign", t3 - t2, "genkey", t2 - t1
 
             assert all(verfified)
-
