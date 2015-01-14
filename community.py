@@ -2186,6 +2186,8 @@ class Community(TaskManager):
         # TODO(emilon): fixh _disp_check_modification in channel/community.py (tribler) so we can make a proper assert out of this.
         assert len(possibly_messages) >= 0  # may return zero messages
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage, DispersyInternalMessage)) for message in possibly_messages), possibly_messages
+        assert all(message.dropped not in possibly_messages for message in possibly_messages if isinstance(message, DropMessage)), possibly_messages  # dropped messages cannot be accepted
+        assert all(message.delayed not in possibly_messages for message in possibly_messages if isinstance(message, DelayMessage)), possibly_messages  # delayed messages cannot be accepted
 
         if len(possibly_messages) == 0:
             self._logger.warning("%s yielded zero messages, drop, or delays. "
@@ -2378,10 +2380,16 @@ class Community(TaskManager):
             self.dispersy._forward(responses)
 
     def check_signature_response(self, messages):
+        identifiers_seen = {}
         for message in messages:
             cache = self.request_cache.get(u"signature-request", message.payload.identifier)
             if not cache:
                 yield DropMessage(message, "invalid response identifier")
+                continue
+
+            if message.payload.identifier in identifiers_seen:
+                self._logger.error("already seen this indentifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
+                yield DropMessage(message, "invalid puncture identifier")
                 continue
 
             old_submsg = cache.request.payload.message
@@ -2390,6 +2398,7 @@ class Community(TaskManager):
             if any(signature == "" and member != self._my_member for signature, member in
                    new_submsg.authentication.signed_members):
                 yield DropMessage(message, "message isn't signed by the other party")
+                continue
 
             if not old_submsg.meta == new_submsg.meta:
                 yield DropMessage(message, "meta message may not change")
@@ -2403,6 +2412,7 @@ class Community(TaskManager):
                 yield DropMessage(message, "global time may not change")
                 continue
 
+            identifiers_seen[message.payload.identifier] = message.candidate
             yield message
 
     def on_signature_response(self, messages):
@@ -2551,8 +2561,15 @@ class Community(TaskManager):
                     self._dispersy._send_packets([message.candidate], packets, self, "-caused by sync-")
 
     def check_introduction_response(self, messages):
+        identifiers_seen = {}
         for message in messages:
             if not self.request_cache.has(u"introduction-request", message.payload.identifier):
+                self._dispersy._statistics.invalid_response_identifier_count += 1
+                yield DropMessage(message, "invalid response identifier")
+                continue
+
+            if message.payload.identifier in identifiers_seen:
+                self._logger.error("already seen this indentifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
                 self._dispersy._statistics.invalid_response_identifier_count += 1
                 yield DropMessage(message, "invalid response identifier")
                 continue
@@ -2584,6 +2601,7 @@ class Community(TaskManager):
                     yield DropMessage(message, "invalid LAN introduction address [introduced to myself]")
                     continue
 
+            identifiers_seen[message.payload.identifier] = message.candidate
             yield message
 
     def on_introduction_response(self, messages):
@@ -2827,11 +2845,18 @@ class Community(TaskManager):
         self._dispersy._forward(punctures)
 
     def check_puncture(self, messages):
+        identifiers_seen = {}
         for message in messages:
             if not self.request_cache.has(u"introduction-request", message.payload.identifier):
-                yield DropMessage(message, "invalid response identifier")
+                yield DropMessage(message, "invalid puncture identifier")
                 continue
 
+            if message.payload.identifier in identifiers_seen:
+                self._logger.error("already seen this indentifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
+                yield DropMessage(message, "invalid puncture identifier")
+                continue
+
+            identifiers_seen[message.payload.identifer] = message.candidate
             yield message
 
     def on_puncture(self, messages):
