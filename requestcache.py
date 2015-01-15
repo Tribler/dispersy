@@ -228,6 +228,8 @@ class RequestCache(TaskManager):
         Clear the cache, canceling all pending tasks.
 
         """
+        assert isInIOThread(), "RequestCache must be used on the reactor's thread"
+
         self._logger.debug("Clearing %s [%s]", self, len(self._identifiers))
         self.cancel_all_pending_tasks()
         self._identifiers.clear()
