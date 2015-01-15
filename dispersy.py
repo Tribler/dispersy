@@ -69,7 +69,7 @@ from .message import (Message, DropMessage, DelayMessageBySequence,
                       DropPacket, DelayPacket)
 from .statistics import DispersyStatistics, _runtime_statistics
 from .taskmanager import TaskManager
-from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread
+from .util import attach_runtime_statistics, init_instrumentation, blocking_call_on_reactor_thread, is_valid_address
 
 
 # Set up the instrumentation utilities
@@ -268,12 +268,12 @@ class Dispersy(TaskManager):
                           self._wan_address[0], self._wan_address[1], self._lan_address[0], self._lan_address[1])
         self._wan_address = self._lan_address
 
-        if not self.is_valid_address(self._lan_address):
+        if not is_valid_address(self._lan_address):
             self._logger.info("update LAN address %s:%d -> %s:%d",
                               self._lan_address[0], self._lan_address[1], host, self._lan_address[1])
             self._lan_address = (host, self._lan_address[1])
 
-            if not self.is_valid_address(self._lan_address):
+            if not is_valid_address(self._lan_address):
                 self._logger.info("update LAN address %s:%d -> %s:%d",
                                   self._lan_address[0], self._lan_address[1],
                                   self._wan_address[0], self._lan_address[1])
@@ -768,7 +768,7 @@ class Dispersy(TaskManager):
         self.wan_address_unvote(voter)
 
         # ensure ADDRESS is valid
-        if not self.is_valid_address(address):
+        if not is_valid_address(address):
             self._logger.debug("ignore vote for %s from %s (address is invalid)", address, voter.sock_addr)
             return
 
@@ -794,7 +794,7 @@ class Dispersy(TaskManager):
                 self._local_interfaces = list(self._get_interface_addresses())
                 interface = self._guess_lan_address(self._local_interfaces)
                 lan_address = ((interface.address if interface else "0.0.0.0"), self._lan_address[1])
-                if not self.is_valid_address(lan_address):
+                if not is_valid_address(lan_address):
                     lan_address = (self._wan_address[0], self._lan_address[1])
                 set_lan_address(lan_address)
                 # remove our lan/wan addresses from all communities candidate lists
@@ -1436,6 +1436,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(isinstance(packet, tuple) for packet in packets), packets
         assert all(len(packet) == 2 for packet in packets), packets  # tuple(Candidate, datagram)
         assert all(isinstance(packet[0], Candidate) for packet in packets), packets
+        assert all((is_valid_address(packet[0].sock_addr) for packet in packets)), packets
         assert all(isinstance(packet[1], str) for packet in packets), packets
         assert all(len(packet[1]) > 22 for packet in packets), packets
         assert isinstance(cache, bool), cache
@@ -1613,7 +1614,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         on the reported sock_addr) or they remain unchanged.  Hence the returned addresses may be
         ("0.0.0.0", 0).
         """
-        assert self.is_valid_address(sock_addr), sock_addr
+        assert is_valid_address(sock_addr), sock_addr
 
         if any(sock_addr[0] in interface for interface in self._local_interfaces):
             # is SOCK_ADDR is on our local LAN, hence LAN_ADDRESS should be SOCK_ADDR
@@ -1827,50 +1828,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """
         self._endpoint.send(candidates, packets)
         community.statistics.increase_msg_count(u"outgoing", msg_type, len(candidates) * len(packets))
-
-    def is_valid_address(self, address):
-        """
-        Returns True when ADDRESS is valid.
-
-        ADDRESS must be supplied as a (HOST string, PORT integer) tuple.
-
-        An address is valid when it meets the following criteria:
-        - HOST must be non empty
-        - HOST must be non '0.0.0.0'
-        - PORT must be > 0
-        - HOST must be 'A.B.C.D' where A, B, and C are numbers higher or equal to 0 and lower or
-          equal to 255.  And where D is higher than 0 and lower than 255
-        """
-        assert isinstance(address, tuple), type(address)
-        assert len(address) == 2, len(address)
-        assert isinstance(address[0], str), type(address[0])
-        assert isinstance(address[1], int), type(address[1])
-
-        if address[0] == "":
-            return False
-
-        if address[0] == "0.0.0.0":
-            return False
-
-        if address[1] <= 0:
-            return False
-
-        try:
-            binary = inet_aton(address[0])
-        except socket_error:
-            return False
-
-        # ending with .0
-# Niels: is now allowed, subnet mask magic call actually allow for this
-#        if binary[3] == "\x00":
-#            return False
-
-        # ending with .255
-# Niels: same for this one, if the netmask is /23 a .255 could indicate 011111111 which is allowed
-#        if binary[3] == "\xff":
-#            return False
-
-        return True
 
     def sanity_check(self, community, test_identity=True, test_undo_other=True, test_binary=False, test_sequence_number=True, test_last_sync=True):
         """

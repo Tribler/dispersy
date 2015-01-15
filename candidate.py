@@ -1,16 +1,7 @@
 import logging
 
 from .member import Member
-
-if __debug__:
-    def is_address(address):
-        assert isinstance(address, tuple), type(address)
-        assert len(address) == 2, len(address)
-        assert isinstance(address[0], str), type(address[0])
-        assert address[0], address[0]
-        assert isinstance(address[1], int), type(address[1])
-        assert address[1] >= 0, address[1]
-        return True
+from .util import is_valid_address
 
 
 # delay and lifetime values are chosen to ensure that a candidate will not exceed 60.0 or 30.0
@@ -36,7 +27,7 @@ assert isinstance(CANDIDATE_LIFETIME, float)
 class Candidate(object):
 
     def __init__(self, sock_addr, tunnel):
-        assert is_address(sock_addr), sock_addr
+        assert self.is_valid_address(sock_addr), sock_addr
         assert isinstance(tunnel, bool), type(tunnel)
         super(Candidate, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -46,6 +37,9 @@ class Candidate(object):
 
         # Member instances that this Candidate is associated with
         self._association = None
+
+    def is_valid_address(self, address):
+        return is_valid_address(address)
 
     @property
     def sock_addr(self):
@@ -129,10 +123,10 @@ class WalkCandidate(Candidate):
     """
 
     def __init__(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
-        assert is_address(sock_addr), sock_addr
+        assert is_valid_address(sock_addr), sock_addr
         assert isinstance(tunnel, bool), type(tunnel)
-        assert is_address(lan_address)
-        assert is_address(wan_address)
+        assert is_valid_address(lan_address), lan_address
+        assert is_valid_address(wan_address) or wan_address == ('0.0.0.0', 0), wan_address
         assert isinstance(connection_type, unicode) and connection_type in (u"unknown", u"public", u"symmetric-NAT")
 
         super(WalkCandidate, self).__init__(sock_addr, tunnel)
@@ -299,8 +293,8 @@ class WalkCandidate(Candidate):
 
     def update(self, tunnel, lan_address, wan_address, connection_type):
         assert isinstance(tunnel, bool)
-        assert lan_address == ("0.0.0.0", 0) or is_address(lan_address), lan_address
-        assert wan_address == ("0.0.0.0", 0) or is_address(wan_address), wan_address
+        assert lan_address == ("0.0.0.0", 0) or is_valid_address(lan_address), lan_address
+        assert wan_address == ("0.0.0.0", 0) or is_valid_address(wan_address), wan_address
         assert isinstance(connection_type, unicode), type(connection_type)
         assert connection_type in (u"unknown", u"public", "symmetric-NAT"), connection_type
         self._tunnel = tunnel
@@ -327,6 +321,9 @@ class WalkCandidate(Candidate):
 
 
 class LoopbackCandidate(Candidate):
-
+    __loopback_sock_addr = ("localhost", 0)
     def __init__(self):
-        super(LoopbackCandidate, self).__init__(("localhost", 0), False)
+        super(LoopbackCandidate, self).__init__(self.__loopback_sock_addr, False)
+
+    def is_valid_address(self, address):
+        return address == self.__loopback_sock_addr

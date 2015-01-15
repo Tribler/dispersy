@@ -1,19 +1,20 @@
 import Queue
 import functools
+import logging
 import sys
 import traceback
 import warnings
 from cProfile import Profile
-from collections import defaultdict
+from socket import inet_aton, error as socket_error
 from thread import get_ident
 from threading import current_thread
 from time import time
-import logging
 
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
 from twisted.python import failure
 from twisted.python.threadable import isInIOThread
+
 from .statistics import _runtime_statistics
 
 
@@ -236,3 +237,51 @@ def blockingCallFromThread(reactor, f, *a, **kw):
                      ''.join(traceback.format_list(this_thread_tb)), ''.join(traceback.format_list(other_thread_tb)))
         result.raiseException()
     return result
+
+#
+# Misc general validation functions
+#
+
+def is_valid_address(address):
+        """
+        Returns True when ADDRESS is valid.
+
+        ADDRESS must be supplied as a (HOST string, PORT integer) tuple.
+
+        An address is valid when it meets the following criteria:
+        - HOST must be non empty
+        - HOST must be non '0.0.0.0'
+        - PORT must be > 0
+        - HOST must be 'A.B.C.D' where A, B, and C are numbers higher or equal to 0 and lower or
+          equal to 255.  And where D is higher than 0 and lower than 255
+        """
+        assert isinstance(address, tuple), type(address)
+        assert len(address) == 2, len(address)
+        assert isinstance(address[0], str), type(address[0])
+        assert isinstance(address[1], int), type(address[1])
+
+        if address[0] == "":
+            return False
+
+        if address[0] == "0.0.0.0":
+            return False
+
+        if address[1] <= 0:
+            return False
+
+        try:
+            binary = inet_aton(address[0])
+        except socket_error:
+            return False
+
+        # ending with .0
+        # Niels: is now allowed, subnet mask magic call actually allow for this
+        #        if binary[3] == "\x00":
+        #            return False
+
+        # ending with .255
+        # Niels: same for this one, if the netmask is /23 a .255 could indicate 011111111 which is allowed
+        #        if binary[3] == "\xff":
+        #            return False
+
+        return True
