@@ -1174,7 +1174,7 @@ class Community(TaskManager):
             """
             # count -everyone- that is active (i.e. walk or stumble)
             active_canidates = list(self.dispersy_yield_verified_candidates())
-            if len(active_canidates) > FAST_WALKER_CANDIDATE_TARGET:
+            if len(active_canidates) >= FAST_WALKER_CANDIDATE_TARGET:
                 self._logger.debug("there are %d active non-bootstrap candidates available, "
                                    "prematurely quitting fast walker", len(active_canidates))
                 switch_to_normal_walking()
