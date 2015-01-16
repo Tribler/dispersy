@@ -171,7 +171,7 @@ class DiscoveryCommunity(Community):
             if success:
                 self._logger.debug("Resolved all bootstrap addresses")
 
-        bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME)
+        bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME, os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
         alternate_addresses = None
         if bootstrap_file:
             self._logger.debug("Expecting bootstrapfile at %s %s", os.path.abspath(
