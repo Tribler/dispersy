@@ -186,18 +186,16 @@ class RequestCache(TaskManager):
     def pop(self, prefix, number):
         """
         Returns the Cache associated with IDENTIFIER, and removes it from this RequestCache, when it exists, otherwise
-        returns None.
+        raises a KeyError exception.
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(number, (int, long)), type(number)
         assert isinstance(prefix, unicode), type(prefix)
 
         identifier = self._create_identifier(number, prefix)
-        cache = self._identifiers.get(identifier)
-        if cache:
-            self.cancel_pending_task(cache)
-            del self._identifiers[identifier]
-            return cache
+        cache = self._identifiers.pop(identifier)
+        self.cancel_pending_task(cache)
+        return cache
 
     def _on_timeout(self, cache):
         """
