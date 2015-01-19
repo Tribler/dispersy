@@ -39,7 +39,7 @@ from .requestcache import RequestCache, SignatureRequestCache, IntroductionReque
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
 from .timeline import Timeline
-from .util import runtime_duration_warning, attach_runtime_statistics, deprecated
+from .util import runtime_duration_warning, attach_runtime_statistics, deprecated, is_valid_address
 from .taskmanager import TaskManager
 
 DOWNLOAD_MM_PK_INTERVAL = 15.0
@@ -2579,13 +2579,13 @@ class Community(TaskManager):
 
             # check introduced LAN address, if given
             if not message.payload.lan_introduction_address == ("0.0.0.0", 0):
-                if not self._dispersy.is_valid_address(message.payload.lan_introduction_address):
+                if not is_valid_address(message.payload.lan_introduction_address):
                     yield DropMessage(message, "invalid LAN introduction address [is_valid_address]")
                     continue
 
             # check introduced WAN address, if given
             if not message.payload.wan_introduction_address == ("0.0.0.0", 0):
-                if not self._dispersy.is_valid_address(message.payload.wan_introduction_address):
+                if not is_valid_address(message.payload.wan_introduction_address):
                     yield DropMessage(message, "invalid WAN introduction address [is_valid_address]")
                     continue
 
@@ -2809,11 +2809,11 @@ class Community(TaskManager):
                 yield DropMessage(message, "invalid WAN walker address [puncture herself]")
                 continue
 
-            if not self._dispersy.is_valid_address(message.payload.lan_walker_address):
+            if not is_valid_address(message.payload.lan_walker_address):
                 yield DropMessage(message, "invalid LAN walker address [is_valid_address]")
                 continue
 
-            if not self._dispersy.is_valid_address(message.payload.wan_walker_address):
+            if not is_valid_address(message.payload.wan_walker_address):
                 yield DropMessage(message, "invalid WAN walker address [is_valid_address]")
                 continue
 
@@ -2833,8 +2833,8 @@ class Community(TaskManager):
         for message in messages:
             lan_walker_address = message.payload.lan_walker_address
             wan_walker_address = message.payload.wan_walker_address
-            assert self._dispersy.is_valid_address(lan_walker_address), lan_walker_address
-            assert self._dispersy.is_valid_address(wan_walker_address), wan_walker_address
+            assert is_valid_address(lan_walker_address), lan_walker_address
+            assert is_valid_address(wan_walker_address), wan_walker_address
 
             # we are asked to send a message to a -possibly- unknown peer get the actual candidate
             # or create a dummy candidate
