@@ -54,21 +54,21 @@ class Candidate(object):
         Once it is confirmed that the candidate is represented by a member,
         the member can be associated with the candidate.
         """
-        assert isinstance(member, Member)
+        assert isinstance(member, Member), member
         self._association = member
 
     def is_associated(self, member):
         """
         Check if the member is associated with this candidate.
         """
-        assert isinstance(member, Member)
+        assert isinstance(member, Member), member
         return self._association == member
 
     def disassociate(self, member):
         """
         Remove the association with a member.
         """
-        assert isinstance(member, Member)
+        assert isinstance(member, Member), member
         if self._association == member:
             self._association = None
 
@@ -292,7 +292,7 @@ class WalkCandidate(Candidate):
         self._last_discovered = now
 
     def update(self, tunnel, lan_address, wan_address, connection_type):
-        assert isinstance(tunnel, bool)
+        assert isinstance(tunnel, bool), tunnel
         assert lan_address == ("0.0.0.0", 0) or is_valid_address(lan_address), lan_address
         assert wan_address == ("0.0.0.0", 0) or is_valid_address(wan_address), wan_address
         assert isinstance(connection_type, unicode), type(connection_type)
