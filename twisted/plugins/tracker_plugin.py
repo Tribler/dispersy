@@ -37,7 +37,8 @@ from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 from twisted.plugin import IPlugin
 from twisted.python import usage
-from twisted.python.log import msg
+from twisted.python.log import msg, ILogObserver, PythonLoggingObserver, FileLogObserver
+from twisted.python.logfile import DailyLogFile
 from twisted.python.threadable import isInIOThread
 from zope.interface import implements
 
@@ -151,12 +152,28 @@ class Options(usage.Options):
         ["silent"     , "s", "Prevent tracker printing to console"],
     ]
     optParameters = [
-        ["statedir", "s", "."       , "Use an alternate statedir"                                    , str],
-        ["ip"      , "i", "0.0.0.0" , "Dispersy uses this ip"                                        , str],
-        ["port"    , "p", 6421      , "Dispersy uses this UDL port"                                  , int],
-        ["crypto"  , "c", "ECCrypto", "The Crypto object type Dispersy is going to use"              , str],
-        ["manhole" , "m", 0         , "Enable manhole telnet service listening at the specified port", int],
+        ["statedir", "s", "."       ,     "Use an alternate statedir"                                    , str],
+        ["ip"      , "i", "0.0.0.0" ,     "Dispersy uses this ip"                                        , str],
+        ["port"    , "p", 6421      ,     "Dispersy uses this UDL port"                                  , int],
+        ["crypto"  , "c", "ECCrypto",     "The Crypto object type Dispersy is going to use"              , str],
+        ["manhole" , "m", 0         ,     "Enable manhole telnet service listening at the specified port", int],
+        ["logfile" , "l", "dispersy.log", "Use an alternate dispersy log file name",                       str],
     ]
+
+
+class TrackerMultiService(MultiService):
+
+    def __init__(self, log_file, log_dir):
+        MultiService.__init__(self)
+        self.log_file = log_file
+        self.log_dir = log_dir
+
+    def setServiceParent(self, parent):
+        MultiService.setServiceParent(self, parent)
+        # user daily logging
+        log_file = DailyLogFile(self.log_file, self.log_dir)
+        logger = FileLogObserver(log_file)
+        parent.setComponent(ILogObserver, logger.emit)
 
 
 class TrackerServiceMaker(object):
@@ -169,9 +186,9 @@ class TrackerServiceMaker(object):
         """
         Construct a dispersy service.
         """
-
-        tracker_service = MultiService()
+        tracker_service = TrackerMultiService(options["logfile"], options["statedir"])
         tracker_service.setName("Dispersy Tracker")
+
         # crypto
         if options["crypto"] == 'NoCrypto':
             crypto = NoCrypto()
