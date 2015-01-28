@@ -317,7 +317,7 @@ class Message(MetaObject):
 
     class Implementation(Packet):
 
-        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, packet="", packet_id=0, sign=True):
+        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, source=u"unknown", packet="", packet_id=0, sign=True):
             from .conversion import Conversion
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
             assert isinstance(authentication, meta.authentication.Implementation), "AUTHENTICATION has invalid type '%s'" % type(authentication)
@@ -336,6 +336,7 @@ class Message(MetaObject):
             self._destination = destination
             self._payload = payload
             self._candidate = candidate
+            self._source = source
 
             # _RESUME contains the message that caused SELF to be processed after it was delayed
             self._resume = None
@@ -385,6 +386,10 @@ class Message(MetaObject):
         @property
         def candidate(self):
             return self._candidate
+
+        @property
+        def source(self):
+            return self._source
 
         @property
         def resume(self):

@@ -1976,7 +1976,7 @@ class Community(TaskManager):
 
         if new_packets:
             self._logger.debug("resuming %d packets", len(new_packets))
-            self.on_incoming_packets(list(new_packets), timestamp=time())
+            self.on_incoming_packets(list(new_packets), timestamp=time(), source=u"resumed")
 
     def _remove_delayed(self, delayed):
         for key in self._delayed_value[delayed]:
@@ -1995,7 +1995,7 @@ class Community(TaskManager):
                 self._statistics.increase_delay_msg_count(u"timeout")
                 self._statistics.increase_msg_count(u"drop", u"delay_timeout:%s" % delayed)
 
-    def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
+    def on_incoming_packets(self, packets, cache=True, timestamp=0.0, source=u"unknown"):
         """
         Process incoming packets for this community.
         """
@@ -2017,7 +2017,7 @@ class Community(TaskManager):
                 # TODO(emilon): just have a function that gets a packet type byte
                 conversion = self.get_conversion_for_packet(cur_packets[0][1])
                 meta = conversion.decode_meta_message(cur_packets[0][1])
-                batch = [(self.get_candidate(candidate.sock_addr) or candidate, packet, conversion)
+                batch = [(self.get_candidate(candidate.sock_addr) or candidate, packet, conversion, source)
                          for candidate, packet in cur_packets]
                 if meta.batch.enabled and cache:
                     if meta in self._batch_cache:
@@ -2079,15 +2079,15 @@ class Community(TaskManager):
         assert isinstance(batch, (list, set))
         assert len(batch) > 0
         assert all(isinstance(x, tuple) for x in batch)
-        assert all(len(x) == 3 for x in batch)
+        assert all(len(x) == 4 for x in batch)
 
-        for candidate, packet, conversion in batch:
+        for candidate, packet, conversion, source in batch:
             assert isinstance(candidate, Candidate)
             assert isinstance(packet, str)
             assert isinstance(conversion, Conversion)
             try:
                 # convert binary data to internal Message
-                messages.append(conversion.decode_message(candidate, packet))
+                messages.append(conversion.decode_message(candidate, packet, source=source))
 
             except DropPacket as drop:
                 self._drop(drop, packet, candidate)

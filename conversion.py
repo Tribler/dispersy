@@ -95,7 +95,7 @@ class Conversion(object):
         assert self.can_decode_message(data)
 
     @abstractmethod
-    def decode_message(self, address, data, verify=True):
+    def decode_message(self, address, data, verify=True, source=u"unknown"):
         """
         DATA is a string, where the first byte is the on-the-wire Dispersy version, the second byte
         is the on-the-wire Community version and the following 20 bytes is the Community Identifier.
@@ -1231,7 +1231,7 @@ class NoDefBinaryConversion(Conversion):
         return self._decode_message_map[data[22]].meta
 
     @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
-    def decode_message(self, candidate, data, verify=True, allow_empty_signature=False):
+    def decode_message(self, candidate, data, verify=True, allow_empty_signature=False, source="unknown"):
         """
         Decode a binary string into a Message structure, with some
         Dispersy specific parameters.
@@ -1281,7 +1281,7 @@ class NoDefBinaryConversion(Conversion):
         assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
         assert isinstance(placeholder.offset, (int, long))
 
-        return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, packet=placeholder.data)
+        return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, source=source, packet=placeholder.data)
 
     def __str__(self):
         return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))

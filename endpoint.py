@@ -181,7 +181,8 @@ class RawserverEndpoint(Endpoint):
                                             for tunnel, sock_addr, data
                                             in iterator],
                                            cache,
-                                           timestamp)
+                                           timestamp,
+                                           u"rawserver")
 
     def send(self, candidates, packets, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
@@ -480,4 +481,4 @@ class TunnelEndpoint(Endpoint):
 
     def dispersythread_data_came_in(self, sock_addr, data, timestamp):
         assert self._dispersy, "Should not be called before open(...)"
-        self._dispersy.on_incoming_packets([(Candidate(sock_addr, True), data)], True, timestamp)
+        self._dispersy.on_incoming_packets([(Candidate(sock_addr, True), data)], True, timestamp, u"swift")
