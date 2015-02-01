@@ -1,3 +1,4 @@
+import logging
 from abc import ABCMeta, abstractmethod, abstractproperty
 from time import time
 
@@ -513,6 +514,7 @@ class Message(MetaObject):
                 destination_impl = self._destination.Implementation(self._destination, *destination)
                 payload_impl = self._payload.Implementation(self._payload, *payload)
             except TypeError:
+                self._logger = logging.getLogger(self.__class__.__name__)
                 self._logger.error("message name:   %s", self._name)
                 self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
                 self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
