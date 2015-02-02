@@ -1414,7 +1414,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
-    def on_incoming_packets(self, packets, cache=True, timestamp=0.0):
+    def on_incoming_packets(self, packets, cache=True, timestamp=0.0, source=u"unknown"):
         """
         Process incoming UDP packets.
 
@@ -1441,6 +1441,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(len(packet[1]) > 22 for packet in packets), packets
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
+        assert isinstance(source, unicode), source
 
         if self.running:
             self._statistics.total_received += len(packets)
@@ -1454,7 +1455,7 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
                 # find associated community
                 try:
                     community = self.get_community(community_id)
-                    community.on_incoming_packets(list(iterator), cache, timestamp)
+                    community.on_incoming_packets(list(iterator), cache, timestamp, source)
 
                 except CommunityNotFoundException:
                     packets = list(iterator)
