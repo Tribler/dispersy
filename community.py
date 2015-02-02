@@ -2862,7 +2862,7 @@ class Community(TaskManager):
                 yield DropMessage(message, "invalid puncture identifier")
                 continue
 
-            identifiers_seen[message.payload.identifer] = message.candidate
+            identifiers_seen[message.payload.identifier] = message.candidate
             yield message
 
     def on_puncture(self, messages):
