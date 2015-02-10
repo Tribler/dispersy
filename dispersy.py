@@ -2159,10 +2159,11 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     self._logger.warning("Attempting to unload %s which is not loaded", community)
 
         self._logger.info('Stopping Dispersy Core..')
-        # output statistics before we stop
-        if self._logger.isEnabledFor(logging.DEBUG):
-            self._statistics.update()
-            self._logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
+        if os.environ.get("DISPERSY_PRINT_STATISTICS", "False").lower() == "true":
+            # output statistics before we stop
+            if self._logger.isEnabledFor(logging.DEBUG):
+                self._statistics.update()
+                self._logger.debug("\n%s", pformat(self._statistics.get_dict(), width=120))
         _runtime_statistics.clear()
 
         self._logger.info("stopping the Dispersy core...")
