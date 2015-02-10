@@ -35,14 +35,20 @@ def create_key(eccrypto, curves):
         if index > 0:
             print
 
+        private_pem = ""
+        public_pem = ""
+
         ec = eccrypto.generate_key(curve)
-        private_pem = eccrypto.key_to_pem(ec)
-        public_pem = eccrypto.key_to_pem(ec.pub())
+        if getattr(ec, 'key_to_pem'):
+            print "KEP"
+            private_pem = ec.key_to_pem()
+            public_pem = ec.pub().key_to_pem()
+
         private_bin = eccrypto.key_to_bin(ec)
         public_bin = eccrypto.key_to_bin(ec.pub())
         print "generated:", time.ctime()
         print "curve:", ec_name(eccrypto, curve)
-        print "len:", len(ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
+        print "len:", len(ec.ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
         print "pub:", len(public_bin), public_bin.encode("HEX")
         print "prv:", len(private_bin), private_bin.encode("HEX")
         print "pub-sha1", sha1(public_bin).digest().encode("HEX")
