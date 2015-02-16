@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from time import time
 
 from .authentication import Authentication
-from .candidate import Candidate
+from .candidate import Candidate, LoopbackCandidate
 from .destination import Destination
 from .distribution import Distribution
 from .meta import MetaObject
@@ -359,6 +359,9 @@ class Message(MetaObject):
 
             if not packet:
                 self._packet = self._conversion.encode_message(self, sign=sign)
+
+                if __debug__:  # attempt to decode the message when running in debug
+                    self._conversion.decode_message(LoopbackCandidate(), self._packet, verify=sign, allow_empty_signature=True)
 
         @property
         def conversion(self):
