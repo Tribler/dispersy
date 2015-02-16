@@ -3266,8 +3266,18 @@ class Community(TaskManager):
         @todo: We should raise a DelayMessageByProof to ensure that we request the proof for this
          message immediately.
         """
+        changes = defaultdict(lambda : [self.global_time, self.global_time])
+
         for message in messages:
+            for _, pmeta, _ in message.payload.permission_triplets:
+                changes[pmeta][0] = min(changes[pmeta][0], message.distribution.global_time)
+
+            # apply new policy setting
             self.timeline.revoke(message.authentication.member, message.distribution.global_time, message.payload.permission_triplets, message)
+
+        if not initializing:
+            for meta, globaltime_range in changes.iteritems():
+                self._update_timerange(meta, globaltime_range[0], globaltime_range[1])
 
     def create_undo(self, message, sign_with_master=False, store=True, update=True, forward=True):
         """
@@ -3571,63 +3581,58 @@ class Community(TaskManager):
 
     def on_dynamic_settings(self, messages, initializing=False):
         assert isinstance(initializing, bool)
-        timeline = self.timeline
-        global_time = self.global_time
-        changes = {}
 
+        changes = defaultdict(lambda : [self.global_time, self.global_time])
         for message in messages:
             self._logger.debug("received %s policy changes", len(message.payload.policies))
             for meta, policy in message.payload.policies:
-                # TODO: currently choosing the range that changed in a naive way, only using the lowest global time value
-                if meta in changes:
-                    range_ = changes[meta]
-                else:
-                    range_ = [global_time, global_time]
-                    changes[meta] = range_
-                range_[0] = min(message.distribution.global_time + 1, range_[0])
+                changes[meta][0] = min(changes[meta][0], message.distribution.global_time)
 
                 # apply new policy setting
-                timeline.change_resolution_policy(meta, message.distribution.global_time, policy, message)
+                self.timeline.change_resolution_policy(meta, message.distribution.global_time, policy, message)
 
         if not initializing:
-            self._logger.debug("updating %d ranges", len(changes))
-            execute = self._dispersy._database.execute
-            executemany = self._dispersy._database.executemany
-            for meta, range_ in changes.iteritems():
-                self._logger.debug("%s [%d:]", meta.name, range_[0])
-                undo = []
-                redo = []
+            for meta, globaltime_range in changes.iteritems():
+                self._update_timerange(meta, globaltime_range[0], globaltime_range[1])
 
-                for packet_id, packet, undone in list(execute(u"SELECT id, packet, undone FROM sync WHERE meta_message = ? AND global_time BETWEEN ? AND ?",
-                                                              (meta.database_id, range_[0], range_[1]))):
-                    message = self._dispersy.convert_packet_to_message(str(packet), self)
-                    if message:
-                        message.packet_id = packet_id
-                        allowed, _ = timeline.check(message)
-                        if allowed and undone:
-                            self._logger.debug("redo message %s at time %d",
-                                               message.name, message.distribution.global_time)
-                            redo.append(message)
+    def _update_timerange(self, meta, time_low, time_high):
+        execute = self._dispersy._database.execute
+        executemany = self._dispersy._database.executemany
 
-                        elif not (allowed or undone):
-                            self._logger.debug("undo message %s at time %d",
-                                               message.name, message.distribution.global_time)
-                            undo.append(message)
+        self._logger.debug("updating %s [%d:%d]", meta.name, time_low, time_high)
+        undo = []
+        redo = []
 
-                        elif __debug__:
-                            self._logger.debug("no change for message %s at time %d",
-                                               message.name, message.distribution.global_time)
+        for packet_id, packet, undone in list(execute(u"SELECT id, packet, undone FROM sync WHERE meta_message = ? AND global_time BETWEEN ? AND ?",
+                                                      (meta.database_id, time_low, time_high))):
+            message = self._dispersy.convert_packet_to_message(str(packet), self)
+            if message:
+                message.packet_id = packet_id
+                allowed, _ = self.timeline.check(message)
+                if allowed and undone:
+                    self._logger.debug("redo message %s at time %d",
+                                       message.name, message.distribution.global_time)
+                    redo.append(message)
 
-                if undo:
-                    executemany(u"UPDATE sync SET undone = 1 WHERE id = ?", ((message.packet_id,) for message in undo))
-                    meta.undo_callback([(message.authentication.member, message.distribution.global_time, message) for message in undo])
+                elif not (allowed or undone):
+                    self._logger.debug("undo message %s at time %d",
+                                       message.name, message.distribution.global_time)
+                    undo.append(message)
 
-                    # notify that global times have changed
-                    # meta.self.update_sync_range(meta, [message.distribution.global_time for message in undo])
+                elif __debug__:
+                    self._logger.debug("no change for message %s at time %d",
+                                       message.name, message.distribution.global_time)
 
-                if redo:
-                    executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", ((message.packet_id,) for message in redo))
-                    meta.handle_callback(redo)
+        if undo:
+            executemany(u"UPDATE sync SET undone = 1 WHERE id = ?", ((message.packet_id,) for message in undo))
+            meta.undo_callback([(message.authentication.member, message.distribution.global_time, message) for message in undo])
+
+            # notify that global times have changed
+            # meta.self.update_sync_range(meta, [message.distribution.global_time for message in undo])
+
+        if redo:
+            executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", ((message.packet_id,) for message in redo))
+            meta.handle_callback(redo)
 
     def _claim_master_member_sequence_number(self, meta):
         """

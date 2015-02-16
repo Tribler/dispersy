@@ -232,8 +232,8 @@ def blockingCallFromThread(reactor, f, *a, **kw):
     if isinstance(result, failure.Failure):
         other_thread_tb = traceback.extract_tb(result.getTracebackObject())
         this_thread_tb = traceback.extract_stack()
-        logger.error("Exception raised on the reactor's thread.\n Traceback from this thread:\n%s\n"
-                     " Traceback from the reactor's thread:\n %s",
+        logger.error("Exception raised on the reactor's thread '%s'.\n Traceback from this thread:\n%s\n"
+                     " Traceback from the reactor's thread:\n %s", result.getErrorMessage(),
                      ''.join(traceback.format_list(this_thread_tb)), ''.join(traceback.format_list(other_thread_tb)))
         result.raiseException()
     return result
