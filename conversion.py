@@ -488,11 +488,8 @@ class NoDefBinaryConversion(Conversion):
                     raise DropPacket("Unknown sub-message id [%d]" % ord(message_id))
                 message = decode_functions.meta
 
-                if not isinstance(message.resolution, (PublicResolution, LinearResolution, DynamicResolution)):
-                    raise DropPacket("Invalid resolution policy")
-
                 if not isinstance(message.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
-                    # it makes no sence to authorize a message that does not use the
+                    # it makes no sense to authorize a message that does not use the
                     # MemberAuthentication or DoubleMemberAuthentication policy because without this
                     # policy it is impossible to verify WHO created the message.
                     raise DropPacket("Invalid authentication policy")
@@ -502,6 +499,9 @@ class NoDefBinaryConversion(Conversion):
 
                 for permission, permission_bit in permission_map.iteritems():
                     if permission_bit & permission_bits:
+                        if permission == u"undo" and not message.undo_callback:
+                            raise DropPacket("Undo permission without a undo callback")
+
                         permission_triplets.append((member, message, permission))
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, permission_triplets)
@@ -584,15 +584,8 @@ class NoDefBinaryConversion(Conversion):
                     raise DropPacket("Unknown message id [%d]" % ord(message_id))
                 message = decode_functions.meta
 
-                if not isinstance(message.resolution, LinearResolution):
-                    # it makes no sence to authorize a message that does not use the
-                    # LinearResolution policy.  currently we have two policies, PublicResolution
-                    # (where all messages are allowed regardless of authorization) and
-                    # LinearResolution.
-                    raise DropPacket("Invalid resolution policy")
-
-                if not isinstance(message.authentication, MemberAuthentication):
-                    # it makes no sence to authorize a message that does not use the
+                if not isinstance(message.authentication, (MemberAuthentication, DoubleMemberAuthentication)):
+                    # it makes no sense to authorize a message that does not use the
                     # MemberAuthentication policy because without this policy it is impossible to
                     # verify WHO created the message.
                     raise DropPacket("Invalid authentication policy")
