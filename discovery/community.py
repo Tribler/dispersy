@@ -230,19 +230,24 @@ class DiscoveryCommunity(Community):
 
         for i, mm in enumerate(meta_messages):
             if mm.name == u"dispersy-introduction-request":
-                self._disp_intro_handler = mm.handle_callback
                 meta_messages[i] = Message(self, mm.name, mm.authentication, mm.resolution, mm.distribution,
-                                           mm.destination, ExtendedIntroPayload(), mm.check_callback, self.on_intro_request)
+                                           mm.destination, ExtendedIntroPayload(), mm.check_callback, mm.handle_callback)
 
-        return meta_messages + [Message(self, u"similarity-request", MemberAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(), SimilarityRequestPayload(), self.check_similarity_request, self.on_similarity_request),
-                                Message(self, u"similarity-response", MemberAuthentication(), PublicResolution(), DirectDistribution(
-                                    ), CandidateDestination(), SimilarityResponsePayload(), self.check_similarity_response, self.on_similarity_response),
-                                Message(self, u"ping", NoAuthentication(), PublicResolution(), DirectDistribution(),
-                                        CandidateDestination(), PingPayload(), self._generic_timeline_check, self.on_ping),
-                                Message(self, u"pong", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(), PongPayload(), self.check_pong, self.on_pong)]
+        return meta_messages + [Message(self, u"similarity-request", MemberAuthentication(), PublicResolution(), DirectDistribution(),
+                                        CandidateDestination(), SimilarityRequestPayload(), self.check_similarity_request, self.on_similarity_request),
+                                Message(self, u"similarity-response", MemberAuthentication(), PublicResolution(), DirectDistribution(),
+                                        CandidateDestination(), SimilarityResponsePayload(), self.check_similarity_response, self.on_similarity_response),
+                                Message(self, u"ping", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
+                                        PingPayload(), self._generic_timeline_check, self.on_ping),
+                                Message(self, u"pong", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
+                                        PongPayload(), self.check_pong, self.on_pong)]
 
     def initiate_conversions(self):
         return [DefaultConversion(self), DiscoveryConversion(self)]
+
+    @property
+    def dispersy_enable_bloom_filter_sync(self):
+        return False
 
     def my_preferences(self):
         my_prefs = [community.cid for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
@@ -436,6 +441,7 @@ class DiscoveryCommunity(Community):
         payload = self.my_preferences()[:self.max_prefs]
         if payload:
             cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload))
+            destination.walk(time())
 
             if DEBUG_VERBOSE:
                 self._logger.debug("DiscoveryCommunity: create similarity request for %s with identifier %s %s",
@@ -591,7 +597,7 @@ class DiscoveryCommunity(Community):
         self._logger.debug("DiscoveryCommunity: sending introduction-request to %s (%s,%s,%s)", destination,
                            introduce_me_to.encode("HEX") if introduce_me_to else '', allow_sync, advice)
 
-    def on_intro_request(self, messages):
+    def on_introduction_request(self, messages):
         for message in messages:
             introduce_me_to = ''
             if message.payload.introduce_me_to:
@@ -604,7 +610,8 @@ class DiscoveryCommunity(Community):
                                message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-',
                                introduce_me_to, self.requested_introductions)
 
-        self._disp_intro_handler(messages)
+
+        super(DiscoveryCommunity, self).on_introduction_request(messages)
 
     def get_tb_or_candidate_mid(self, mid):
         tb = self.is_taste_buddy_mid(mid)
@@ -621,7 +628,7 @@ class DiscoveryCommunity(Community):
                 del self.requested_introductions[exclude_candidate_mid]
                 return intro_me_candidate
 
-        return Community.dispersy_get_introduce_candidate(self, exclude_candidate)
+        return super(DiscoveryCommunity, self).dispersy_get_introduce_candidate(self, exclude_candidate)
 
     class PingRequestCache(RandomNumberCache):
 
