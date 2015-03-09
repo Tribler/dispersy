@@ -500,7 +500,7 @@ class DiscoveryCommunity(Community):
             # Determine overlap for top taste buddies
             bitfields = []
             sorted_tbs = sorted([(self.compute_overlap(his_preferences, tb.preferences), random(), tb)
-                                for tb in self.taste_buddies if tb != message.candidate], reverse=True)
+                                for tb in self.taste_buddies if tb != message.candidate and tb.time_remaining() > 5.0], reverse=True)
 
             for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
@@ -603,8 +603,10 @@ class DiscoveryCommunity(Community):
             if message.payload.introduce_me_to:
                 ctb = self.is_taste_buddy(message.candidate)
                 self._logger.debug("Got intro request from %s %s", ctb, ctb.overlap if ctb else 0)
-                self.requested_introductions[message.candidate.get_member().mid] = introduce_me_to = self.get_tb_or_candidate_mid(
-                    message.payload.introduce_me_to)
+
+                rtb = self.get_tb_or_candidate_mid(message.payload.introduce_me_to)
+                if rtb:
+                    self.requested_introductions[message.candidate.get_member().mid] = introduce_me_to = rtb
 
             self._logger.debug("DiscoveryCommunity: got introduction request %s %s %s",
                                message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-',

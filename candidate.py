@@ -1,6 +1,6 @@
 import logging
 
-from .member import Member
+from .member import Member, DummyMember
 from .util import is_valid_address
 
 
@@ -61,7 +61,7 @@ class Candidate(object):
         """
         Check if the member is associated with this candidate.
         """
-        assert isinstance(member, Member), member
+        assert isinstance(member, DummyMember), member
         return self._association == member
 
     def disassociate(self, member):
