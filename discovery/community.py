@@ -568,7 +568,7 @@ class DiscoveryCommunity(Community):
                 self.add_possible_taste_buddies(possibles)
 
                 destination, introduce_me_to = self.get_most_similar(w_candidate)
-                self.send_introduction_request(destination, introduce_me_to)
+                self.send_introduction_request(destination, introduce_me_to, request.allow_sync)
 
                 self.reply_packet_size += len(message.packet)
             else:
