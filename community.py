@@ -451,7 +451,8 @@ class Community(TaskManager):
 
         # start walker, if needed
         if self.dispersy_enable_candidate_walker:
-            self.start_walking()
+            self.register_task("start_walking",
+                               reactor.callLater(self.database_id % 3, self.start_walking))
 
     @property
     def candidates(self):
