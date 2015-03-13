@@ -1269,7 +1269,7 @@ class NoDefBinaryConversion(Conversion):
         if placeholder.offset != placeholder.first_signature_offset:
             self._logger.warning("invalid packet size for %s data:%d; offset:%d",
                                  placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
-            raise DropPacket("Invalid packet size (there are unconverted bytes)")
+            raise DropPacket("Invalid packet size (there are unconverted bytes %d-%d)" % (placeholder.offset, placeholder.first_signature_offset))
 
         assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
         assert isinstance(placeholder.offset, (int, long))

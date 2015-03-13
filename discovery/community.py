@@ -408,20 +408,21 @@ class DiscoveryCommunity(Community):
         return 0
 
     class SimilarityAttempt(RandomNumberCache):
-        def __init__(self, community, requested_candidate, preference_list):
+        def __init__(self, community, requested_candidate, preference_list, allow_sync):
             RandomNumberCache.__init__(self, community.request_cache, u"similarity")
             assert isinstance(requested_candidate, WalkCandidate), type(requested_candidate)
             assert isinstance(preference_list, list), type(preference_list)
             self.community = community
             self.requested_candidate = requested_candidate
             self.preference_list = preference_list
+            self.allow_sync = allow_sync
 
         @property
         def timeout_delay(self):
             return 10.5
 
         def on_timeout(self):
-            self.community.send_introduction_request(self.requested_candidate)
+            self.community.send_introduction_request(self.requested_candidate, allow_sync=self.allow_sync)
             self.community.peer_cache.inc_num_fails(self.requested_candidate)
 
     def create_introduction_request(self, destination, allow_sync):
@@ -432,15 +433,15 @@ class DiscoveryCommunity(Community):
 
         send = False
         if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination):
-            send = self.create_similarity_request(destination)
+            send = self.create_similarity_request(destination, allow_sync=allow_sync)
 
         if not send:
             self.send_introduction_request(destination, allow_sync=allow_sync)
 
-    def create_similarity_request(self, destination):
+    def create_similarity_request(self, destination, allow_sync=True):
         payload = self.my_preferences()[:self.max_prefs]
         if payload:
-            cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload))
+            cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload, allow_sync))
             destination.walk(time())
 
             if DEBUG_VERBOSE:
@@ -630,7 +631,7 @@ class DiscoveryCommunity(Community):
                 del self.requested_introductions[exclude_candidate_mid]
                 return intro_me_candidate
 
-        return super(DiscoveryCommunity, self).dispersy_get_introduce_candidate(self, exclude_candidate)
+        return super(DiscoveryCommunity, self).dispersy_get_introduce_candidate(exclude_candidate)
 
     class PingRequestCache(RandomNumberCache):
 
