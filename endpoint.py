@@ -85,7 +85,7 @@ class NullEndpoint(Endpoint):
     This Endpoint can be used during unit tests that should not communicate with other peers.
     """
 
-    def __init__(self, address=("0.0.0.0", -1)):
+    def __init__(self, address=("0.0.0.0", 42)):
         super(NullEndpoint, self).__init__()
         self._address = address
 
