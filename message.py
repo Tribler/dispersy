@@ -338,6 +338,7 @@ class Message(MetaObject):
             self._payload = payload
             self._candidate = candidate
             self._source = source
+            self._logger = logging.getLogger(self.__class__.__name__)
 
             # _RESUME contains the message that caused SELF to be processed after it was delayed
             self._resume = None
@@ -361,7 +362,12 @@ class Message(MetaObject):
                 self._packet = self._conversion.encode_message(self, sign=sign)
 
                 if __debug__:  # attempt to decode the message when running in debug
-                    self._conversion.decode_message(LoopbackCandidate(), self._packet, verify=sign, allow_empty_signature=True)
+                    try:
+                        self._conversion.decode_message(LoopbackCandidate(), self._packet, verify=sign, allow_empty_signature=True)
+                    except DropPacket:
+                        from binascii import hexlify
+                        self._logger.error("Could not decode message created by me, hex '%s'", hexlify(self._packet))
+                        raise
 
         @property
         def conversion(self):
@@ -443,6 +449,7 @@ class Message(MetaObject):
         self._handle_callback = handle_callback
         self._undo_callback = undo_callback
         self._batch = BatchConfiguration() if batch is None else batch
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         community.meta_message_cache[name] = {"priority": 128, "direction": 1}
 
@@ -504,37 +511,27 @@ class Message(MetaObject):
         return self._batch
 
     def impl(self, authentication=(), resolution=(), distribution=(), destination=(), payload=(), *args, **kargs):
-        if __debug__:
-            assert isinstance(authentication, tuple), type(authentication)
-            assert isinstance(resolution, tuple), type(resolution)
-            assert isinstance(distribution, tuple), type(distribution)
-            assert isinstance(destination, tuple), type(destination)
-            assert isinstance(payload, tuple), type(payload)
-            try:
-                authentication_impl = self._authentication.Implementation(self._authentication, *authentication)
-                resolution_impl = self._resolution.Implementation(self._resolution, *resolution)
-                distribution_impl = self._distribution.Implementation(self._distribution, *distribution)
-                destination_impl = self._destination.Implementation(self._destination, *destination)
-                payload_impl = self._payload.Implementation(self._payload, *payload)
-            except TypeError:
-                self._logger = logging.getLogger(self.__class__.__name__)
-                self._logger.error("message name:   %s", self._name)
-                self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
-                self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
-                self._logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
-                self._logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
-                self._logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
-                raise
-            else:
-                return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)
+        assert isinstance(authentication, tuple), type(authentication)
+        assert isinstance(resolution, tuple), type(resolution)
+        assert isinstance(distribution, tuple), type(distribution)
+        assert isinstance(destination, tuple), type(destination)
+        assert isinstance(payload, tuple), type(payload)
+        try:
+            authentication_impl = self._authentication.Implementation(self._authentication, *authentication)
+            resolution_impl = self._resolution.Implementation(self._resolution, *resolution)
+            distribution_impl = self._distribution.Implementation(self._distribution, *distribution)
+            destination_impl = self._destination.Implementation(self._destination, *destination)
+            payload_impl = self._payload.Implementation(self._payload, *payload)
+            return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)
 
-        return self.Implementation(self,
-                                   self._authentication.Implementation(self._authentication, *authentication),
-                                   self._resolution.Implementation(self._resolution, *resolution),
-                                   self._distribution.Implementation(self._distribution, *distribution),
-                                   self._destination.Implementation(self._destination, *destination),
-                                   self._payload.Implementation(self._payload, *payload),
-                                   *args, **kargs)
+        except (TypeError, DropPacket):
+            self._logger.error("message name:   %s", self._name)
+            self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
+            self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
+            self._logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
+            self._logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
+            self._logger.error("payload:        %s.Implementation, contents '%s'", self._payload.__class__.__name__, payload)
+            raise
 
     def __str__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
