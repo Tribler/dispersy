@@ -102,7 +102,7 @@ class DiscoveryConversion(BinaryConversion):
         return self._decode_ping(placeholder, offset, data)
 
     def _encode_introduction_request(self, message):
-        data = BinaryConversion._encode_introduction_request(self, message)
+        data = super(DiscoveryConversion, self)._encode_introduction_request(message)
 
         if message.payload.introduce_me_to:
             data.insert(0, pack('!c20s', 'Y', message.payload.introduce_me_to))
@@ -118,7 +118,7 @@ class DiscoveryConversion(BinaryConversion):
 
             try:
                 # no exception, hence a valid mid
-                offset, payload = BinaryConversion._decode_introduction_request(self, placeholder, offset, data)
+                offset, payload = super(DiscoveryConversion, self)._decode_introduction_request(placeholder, offset, data)
                 payload.set_introduce_me_to(candidate_mid)
                 return offset, payload
 
@@ -126,4 +126,4 @@ class DiscoveryConversion(BinaryConversion):
                 # could not decode, reset offset parse as normal introduction request
                 offset -= 21
 
-        return BinaryConversion._decode_introduction_request(self, placeholder, offset, data)
+        return super(DiscoveryConversion, self)._decode_introduction_request(placeholder, offset, data)
