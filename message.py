@@ -22,7 +22,7 @@ class DelayPacket(Exception):
 
     def __init__(self, community, msg):
         from .community import Community
-        assert isinstance(community, Community)
+        assert isinstance(community, Community), type(community)
 
         super(DelayPacket, self).__init__(msg)
         self._delayed = None
@@ -72,8 +72,8 @@ class DelayPacket(Exception):
 class DelayPacketByMissingMember(DelayPacket):
 
     def __init__(self, community, missing_member_id):
-        assert isinstance(missing_member_id, str)
-        assert len(missing_member_id) == 20
+        assert isinstance(missing_member_id, str), type(missing_member_id)
+        assert len(missing_member_id) == 20, len(missing_member_id)
 
         super(DelayPacketByMissingMember, self).__init__(community, "Missing member")
         self._missing_member_id = missing_member_id
@@ -90,8 +90,8 @@ class DelayPacketByMissingMember(DelayPacket):
 class DelayPacketByMissingMessage(DelayPacket):
 
     def __init__(self, community, member, global_time):
-        assert isinstance(member, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(member, Member), type(member)
+        assert isinstance(global_time, (int, long)), type(global_time)
         super(DelayPacketByMissingMessage, self).__init__(community, "Missing message")
         self._member = member
         self._global_time = global_time
@@ -147,9 +147,9 @@ class DelayMessageByProof(DelayMessage):
 class DelayMessageBySequence(DelayMessage):
 
     def __init__(self, delayed, missing_low, missing_high):
-        assert isinstance(missing_low, (int, long))
-        assert isinstance(missing_high, (int, long))
-        assert 0 < missing_low <= missing_high
+        assert isinstance(missing_low, (int, long)), type(missing_low)
+        assert isinstance(missing_high, (int, long)), type(missing_high)
+        assert 0 < missing_low <= missing_high, (missing_low, missing_high)
         super(DelayMessageBySequence, self).__init__(delayed)
         self._missing_low = missing_low
         self._missing_high = missing_high
@@ -169,8 +169,8 @@ class DelayMessageBySequence(DelayMessage):
 class DelayMessageByMissingMessage(DelayMessage):
 
     def __init__(self, delayed, member, global_time):
-        assert isinstance(member, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(member, Member), type(member)
+        assert isinstance(global_time, (int, long)), type(global_time)
         super(DelayMessageByMissingMessage, self).__init__(delayed)
         self._member = member
         self._global_time = global_time
@@ -195,8 +195,8 @@ class DropMessage(Exception):
     reasons can be given with by raising a spectific subclass.
     """
     def __init__(self, dropped, msg):
-        assert isinstance(dropped, Message.Implementation)
-        assert isinstance(msg, (str, unicode))
+        assert isinstance(dropped, Message.Implementation), type(dropped)
+        assert isinstance(msg, (str, unicode)), type(msg)
         self._dropped = dropped
         super(DropMessage, self).__init__(msg)
 
@@ -227,7 +227,7 @@ class BatchConfiguration(object):
         larger batches and a longer average delay for incoming messages.  Setting MAX_WINDOW to zero
         disables batching, in this case all other parameters are ignored.
         """
-        assert isinstance(max_window, float)
+        assert isinstance(max_window, float), type(max_window)
         assert 0.0 <= max_window, max_window
         self._max_window = max_window
 
@@ -247,8 +247,8 @@ class BatchConfiguration(object):
 class Packet(MetaObject.Implementation):
 
     def __init__(self, meta, packet, packet_id):
-        assert isinstance(packet, str)
-        assert isinstance(packet_id, (int, long))
+        assert isinstance(packet, str), type(packet)
+        assert isinstance(packet_id, (int, long)), type(packet_id)
         super(Packet, self).__init__(meta)
         self._packet = packet
         self._packet_id = packet_id
@@ -327,9 +327,9 @@ class Message(MetaObject):
             assert isinstance(destination, meta.destination.Implementation), "DESTINATION has invalid type '%s'" % type(destination)
             assert isinstance(payload, meta.payload.Implementation), "PAYLOAD has invalid type '%s'" % type(payload)
             assert conversion is None or isinstance(conversion, Conversion), "CONVERSION has invalid type '%s'" % type(conversion)
-            assert candidate is None or isinstance(candidate, Candidate)
-            assert isinstance(packet, str)
-            assert isinstance(packet_id, (int, long))
+            assert candidate is None or isinstance(candidate, Candidate), type(candidate)
+            assert isinstance(packet, str), type(packet)
+            assert isinstance(packet_id, (int, long)), type(packet_id)
             super(Message.Implementation, self).__init__(meta, packet, packet_id)
             self._authentication = authentication
             self._resolution = resolution
@@ -338,6 +338,7 @@ class Message(MetaObject):
             self._payload = payload
             self._candidate = candidate
             self._source = source
+            self._logger = logging.getLogger(self.__class__.__name__)
 
             # _RESUME contains the message that caused SELF to be processed after it was delayed
             self._resume = None
@@ -361,7 +362,12 @@ class Message(MetaObject):
                 self._packet = self._conversion.encode_message(self, sign=sign)
 
                 if __debug__:  # attempt to decode the message when running in debug
-                    self._conversion.decode_message(LoopbackCandidate(), self._packet, verify=sign, allow_empty_signature=True)
+                    try:
+                        self._conversion.decode_message(LoopbackCandidate(), self._packet, verify=sign, allow_empty_signature=True)
+                    except DropPacket:
+                        from binascii import hexlify
+                        self._logger.error("Could not decode message created by me, hex '%s'", hexlify(self._packet))
+                        raise
 
         @property
         def conversion(self):
@@ -425,12 +431,12 @@ class Message(MetaObject):
         assert isinstance(distribution, Distribution), "DISTRIBUTION has invalid type '%s'" % type(distribution)
         assert isinstance(destination, Destination), "DESTINATION has invalid type '%s'" % type(destination)
         assert isinstance(payload, Payload), "PAYLOAD has invalid type '%s'" % type(payload)
-        assert callable(check_callback)
-        assert callable(handle_callback)
+        assert callable(check_callback), type(check_callback)
+        assert callable(handle_callback), type(handle_callback)
         assert undo_callback is None or callable(undo_callback), undo_callback
         if isinstance(resolution, DynamicResolution):
             assert callable(undo_callback), "UNDO_CALLBACK must be specified when using the DynamicResolution policy"
-        assert batch is None or isinstance(batch, BatchConfiguration)
+        assert batch is None or isinstance(batch, BatchConfiguration), type(batch)
         assert self.check_policy_combination(authentication, resolution, distribution, destination)
         self._community = community
         self._name = name
@@ -443,6 +449,7 @@ class Message(MetaObject):
         self._handle_callback = handle_callback
         self._undo_callback = undo_callback
         self._batch = BatchConfiguration() if batch is None else batch
+        self._logger = logging.getLogger(self.__class__.__name__)
 
         community.meta_message_cache[name] = {"priority": 128, "direction": 1}
 
@@ -504,37 +511,27 @@ class Message(MetaObject):
         return self._batch
 
     def impl(self, authentication=(), resolution=(), distribution=(), destination=(), payload=(), *args, **kargs):
-        if __debug__:
-            assert isinstance(authentication, tuple), type(authentication)
-            assert isinstance(resolution, tuple), type(resolution)
-            assert isinstance(distribution, tuple), type(distribution)
-            assert isinstance(destination, tuple), type(destination)
-            assert isinstance(payload, tuple), type(payload)
-            try:
-                authentication_impl = self._authentication.Implementation(self._authentication, *authentication)
-                resolution_impl = self._resolution.Implementation(self._resolution, *resolution)
-                distribution_impl = self._distribution.Implementation(self._distribution, *distribution)
-                destination_impl = self._destination.Implementation(self._destination, *destination)
-                payload_impl = self._payload.Implementation(self._payload, *payload)
-            except TypeError:
-                self._logger = logging.getLogger(self.__class__.__name__)
-                self._logger.error("message name:   %s", self._name)
-                self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
-                self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
-                self._logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
-                self._logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
-                self._logger.error("payload:        %s.Implementation", self._payload.__class__.__name__)
-                raise
-            else:
-                return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)
+        assert isinstance(authentication, tuple), type(authentication)
+        assert isinstance(resolution, tuple), type(resolution)
+        assert isinstance(distribution, tuple), type(distribution)
+        assert isinstance(destination, tuple), type(destination)
+        assert isinstance(payload, tuple), type(payload)
+        try:
+            authentication_impl = self._authentication.Implementation(self._authentication, *authentication)
+            resolution_impl = self._resolution.Implementation(self._resolution, *resolution)
+            distribution_impl = self._distribution.Implementation(self._distribution, *distribution)
+            destination_impl = self._destination.Implementation(self._destination, *destination)
+            payload_impl = self._payload.Implementation(self._payload, *payload)
+            return self.Implementation(self, authentication_impl, resolution_impl, distribution_impl, destination_impl, payload_impl, *args, **kargs)
 
-        return self.Implementation(self,
-                                   self._authentication.Implementation(self._authentication, *authentication),
-                                   self._resolution.Implementation(self._resolution, *resolution),
-                                   self._distribution.Implementation(self._distribution, *distribution),
-                                   self._destination.Implementation(self._destination, *destination),
-                                   self._payload.Implementation(self._payload, *payload),
-                                   *args, **kargs)
+        except (TypeError, DropPacket):
+            self._logger.error("message name:   %s", self._name)
+            self._logger.error("authentication: %s.Implementation", self._authentication.__class__.__name__)
+            self._logger.error("resolution:     %s.Implementation", self._resolution.__class__.__name__)
+            self._logger.error("distribution:   %s.Implementation", self._distribution.__class__.__name__)
+            self._logger.error("destination:    %s.Implementation", self._destination.__class__.__name__)
+            self._logger.error("payload:        %s.Implementation, contents '%s'", self._payload.__class__.__name__, payload)
+            raise
 
     def __str__(self):
         return "<%s %s>" % (self.__class__.__name__, self._name)
@@ -546,10 +543,10 @@ class Message(MetaObject):
         from .distribution import Distribution, RelayDistribution, DirectDistribution, FullSyncDistribution, LastSyncDistribution
         from .destination import Destination, CandidateDestination, CommunityDestination
 
-        assert isinstance(authentication, Authentication)
-        assert isinstance(resolution, Resolution)
-        assert isinstance(distribution, Distribution)
-        assert isinstance(destination, Destination)
+        assert isinstance(authentication, Authentication), type(authentication)
+        assert isinstance(resolution, Resolution), type(resolution)
+        assert isinstance(distribution, Distribution), type(distribution)
+        assert isinstance(destination, Destination), type(destination)
 
         def require(a, b, c):
             if not isinstance(b, c):

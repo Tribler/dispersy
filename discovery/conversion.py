@@ -8,14 +8,10 @@ from ..conversion import BinaryConversion
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
         super(DiscoveryConversion, self).__init__(community, "\x02")
-        self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), lambda message: self._encode_decode(
-            self._encode_similarity_request, self._decode_similarity_request, message), self._decode_similarity_request)
-        self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), lambda message: self._encode_decode(
-            self._encode_similarity_response, self._decode_similarity_response, message), self._decode_similarity_response)
-        self.define_meta_message(chr(3), community.get_meta_message(u"ping"), lambda message: self._encode_decode(
-            self._encode_ping, self._decode_ping, message), self._decode_ping)
-        self.define_meta_message(chr(4), community.get_meta_message(u"pong"), lambda message: self._encode_decode(
-            self._encode_pong, self._decode_pong, message), self._decode_pong)
+        self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), self._encode_similarity_request, self._decode_similarity_request)
+        self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), self._encode_similarity_response, self._decode_similarity_response)
+        self.define_meta_message(chr(3), community.get_meta_message(u"ping"), self._encode_ping, self._decode_ping)
+        self.define_meta_message(chr(4), community.get_meta_message(u"pong"), self._encode_pong, self._decode_pong)
 
     def _encode_similarity_request(self, message):
         preference_list = message.payload.preference_list
@@ -106,7 +102,7 @@ class DiscoveryConversion(BinaryConversion):
         return self._decode_ping(placeholder, offset, data)
 
     def _encode_introduction_request(self, message):
-        data = BinaryConversion._encode_introduction_request(self, message)
+        data = super(DiscoveryConversion, self)._encode_introduction_request(message)
 
         if message.payload.introduce_me_to:
             data.insert(0, pack('!c20s', 'Y', message.payload.introduce_me_to))
@@ -122,7 +118,7 @@ class DiscoveryConversion(BinaryConversion):
 
             try:
                 # no exception, hence a valid mid
-                offset, payload = BinaryConversion._decode_introduction_request(self, placeholder, offset, data)
+                offset, payload = super(DiscoveryConversion, self)._decode_introduction_request(placeholder, offset, data)
                 payload.set_introduce_me_to(candidate_mid)
                 return offset, payload
 
@@ -130,17 +126,4 @@ class DiscoveryConversion(BinaryConversion):
                 # could not decode, reset offset parse as normal introduction request
                 offset -= 21
 
-        return BinaryConversion._decode_introduction_request(self, placeholder, offset, data)
-
-    def _encode_decode(self, encode, decode, message):
-        result = encode(message)
-        try:
-            decode(None, 0, result[0])
-
-        except DropPacket:
-            from traceback import print_exc
-            print_exc()
-            raise
-        except:
-            pass
-        return result
+        return super(DiscoveryConversion, self)._decode_introduction_request(placeholder, offset, data)
