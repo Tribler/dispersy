@@ -2462,7 +2462,7 @@ class Community(TaskManager):
 
             yield message
 
-    def on_introduction_request(self, messages):
+    def on_introduction_request(self, messages, extra_payload = None):
         meta_introduction_response = self.get_meta_message(u"dispersy-introduction-response")
         meta_puncture_request = self.get_meta_message(u"dispersy-puncture-request")
         responses = []
@@ -2502,8 +2502,14 @@ class Community(TaskManager):
             if introduced:
                 self._logger.debug("telling %s that %s exists %s", candidate, introduced, type(self))
 
+                introduction_args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier]
+                if extra_payload is not None:
+                    assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
+                    introduction_args_list += extra_payload
+                introduction_args_list = tuple(introduction_args_list)
+                
                 # create introduction response
-                responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier)))
+                responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=introduction_args_list))
 
                 # create puncture request
                 requests.append(meta_puncture_request.impl(distribution=(self.global_time,), destination=(introduced,), payload=(payload.source_lan_address, payload.source_wan_address, payload.identifier)))
@@ -2512,7 +2518,14 @@ class Community(TaskManager):
                 self._logger.debug("responding to %s without an introduction %s", candidate, type(self))
 
                 none = ("0.0.0.0", 0)
-                responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=(candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, none, none, self._dispersy._connection_type, False, payload.identifier)))
+                
+                introduction_args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, none, none, self._dispersy._connection_type, False, payload.identifier]
+                if extra_payload is not None:
+                    assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
+                    introduction_args_list += extra_payload
+                introduction_args_list = tuple(introduction_args_list)
+
+                responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=introduction_args_list))
 
         if responses:
             self._dispersy._forward(responses)
@@ -2651,7 +2664,7 @@ class Community(TaskManager):
             else:
                 self._logger.warning("Ignoring unexpected introduction response: %s", message)
 
-    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
+    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False, extra_payload = None):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
@@ -2711,11 +2724,17 @@ class Community(TaskManager):
                                                test_bloom_filter.bits_checked, test_bloom_filter.bytes.encode("HEX"))
                             assert False, "does not match the given range [%d:%d] %%%d+%d packets:%d" % (time_low, time_high, modulo, offset, len(packets))
 
+        args_list = [destination.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, advice, self._dispersy._connection_type, sync, cache.number]
+        if extra_payload is not None:
+            assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
+            args_list += extra_payload
+        args_list = tuple(args_list)
+
         meta_request = self.get_meta_message(u"dispersy-introduction-request")
         request = meta_request.impl(authentication=(self.my_member,),
                                     distribution=(self.global_time,),
                                     destination=(destination,),
-                                    payload=(destination.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, advice, self._dispersy._connection_type, sync, cache.number))
+                                    payload=args_list)
 
         if forward:
             if sync:
