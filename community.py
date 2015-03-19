@@ -2428,27 +2428,24 @@ class Community(TaskManager):
         """
         for message in messages:
             # get cache object linked to this request and stop timeout from occurring
-            if self.request_cache.has(u"signature-request", message.payload.identifier):
-                cache = self.request_cache.pop(u"signature-request", message.payload.identifier)
+            cache = self.request_cache.pop(u"signature-request", message.payload.identifier)
 
-                old_submsg = cache.request.payload.message
-                new_submsg = message.payload.message
+            old_submsg = cache.request.payload.message
+            new_submsg = message.payload.message
 
-                old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
-                new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
+            old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
+            new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-                result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
-                assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s" % (type(cache), str(cache.response_func))
-                if result:
-                    # add our own signatures and we can handle the message
-                    for signature, member in new_submsg.authentication.signed_members:
-                        if not signature and member == self._my_member:
-                            new_submsg.authentication.set_signature(member, member.sign(new_body))
+            result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
+            assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s" % (type(cache), str(cache.response_func))
+            if result:
+                # add our own signatures and we can handle the message
+                for signature, member in new_submsg.authentication.signed_members:
+                    if not signature and member == self._my_member:
+                        new_submsg.authentication.set_signature(member, member.sign(new_body))
 
-                    assert new_submsg.authentication.is_signed
-                    self._dispersy.store_update_forward([new_submsg], True, True, True)
-            else:
-                self._logger("Ignoring unexpected signature response: %s", message)
+                assert new_submsg.authentication.is_signed
+                self.store_update_forward([new_submsg], True, True, True)
 
     def check_introduction_request(self, messages):
         """
@@ -2622,34 +2619,31 @@ class Community(TaskManager):
 
             # get cache object linked to this request and stop timeout from occurring
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
-            if cache:
-                cache.on_introduction_response()
+            cache.on_introduction_response()
 
-                # handle the introduction
-                lan_introduction_address = payload.lan_introduction_address
-                wan_introduction_address = payload.wan_introduction_address
-                if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0)):
-                    # we need to choose either the lan or wan address to be used as the sock_addr
-                    # currently we base this decision on the wan ip, if its the same as ours we're probably behind the same NAT and hence must use the lan address
-                    sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._dispersy._wan_address[0] else wan_introduction_address
-                    introduced = self.create_or_update_walkcandidate(sock_introduction_addr, lan_introduction_address, wan_introduction_address, payload.tunnel, u"unknown")
-                    introduced.intro(now)
+            # handle the introduction
+            lan_introduction_address = payload.lan_introduction_address
+            wan_introduction_address = payload.wan_introduction_address
+            if not (lan_introduction_address == ("0.0.0.0", 0) or wan_introduction_address == ("0.0.0.0", 0)):
+                # we need to choose either the lan or wan address to be used as the sock_addr
+                # currently we base this decision on the wan ip, if its the same as ours we're probably behind the same NAT and hence must use the lan address
+                sock_introduction_addr = lan_introduction_address if wan_introduction_address[0] == self._dispersy._wan_address[0] else wan_introduction_address
+                introduced = self.create_or_update_walkcandidate(sock_introduction_addr, lan_introduction_address, wan_introduction_address, payload.tunnel, u"unknown")
+                introduced.intro(now)
 
-                    self.filter_duplicate_candidate(introduced)
-                    self._logger.debug("received introduction to %s from %s", introduced, candidate)
+                self.filter_duplicate_candidate(introduced)
+                self._logger.debug("received introduction to %s from %s", introduced, candidate)
 
-                    cache.response_candidate = introduced
+                cache.response_candidate = introduced
 
-                    # update statistics
-                    if self._dispersy._statistics.received_introductions is not None:
-                        self._dispersy._statistics.received_introductions[candidate.sock_addr][introduced.sock_addr] += 1
+                # update statistics
+                if self._dispersy._statistics.received_introductions is not None:
+                    self._dispersy._statistics.received_introductions[candidate.sock_addr][introduced.sock_addr] += 1
 
-                else:
-                    # update statistics
-                    if self._dispersy._statistics.received_introductions is not None:
-                        self._dispersy._statistics.received_introductions[candidate.sock_addr]['-ignored-'] += 1
             else:
-                self._logger.warning("Ignoring unexpected introduction response: %s", message)
+                # update statistics
+                if self._dispersy._statistics.received_introductions is not None:
+                    self._dispersy._statistics.received_introductions[candidate.sock_addr]['-ignored-'] += 1
 
     def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
@@ -2869,17 +2863,14 @@ class Community(TaskManager):
 
         for message in messages:
             cache = self.request_cache.get(u"introduction-request", message.payload.identifier)
-            if cache:
-                cache.on_puncture()
+            cache.on_puncture()
 
-                if not (message.payload.source_lan_address == ("0.0.0.0", 0) or message.payload.source_wan_address == ("0.0.0.0", 0)):
-                    candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, u"unknown", message.candidate)
-                    candidate.intro(now)
+            if not (message.payload.source_lan_address == ("0.0.0.0", 0) or message.payload.source_wan_address == ("0.0.0.0", 0)):
+                candidate = self.create_or_update_walkcandidate(message.candidate.sock_addr, message.payload.source_lan_address, message.payload.source_wan_address, message.candidate.tunnel, u"unknown", message.candidate)
+                candidate.intro(now)
 
-                    self._logger.debug("received punture from %s", candidate)
-                    cache.puncture_candidate = candidate
-            else:
-                self._logger.warning("Ignoring unexpected puncture message: %s", message)
+                self._logger.debug("received punture from %s", candidate)
+                cache.puncture_candidate = candidate
 
     def create_missing_message(self, candidate, member, global_time):
         meta = self.get_meta_message(u"dispersy-missing-message")

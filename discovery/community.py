@@ -698,15 +698,12 @@ class DiscoveryCommunity(Community):
     def on_pong(self, messages):
         for message in messages:
             request = self._request_cache.get(u"ping", message.payload.identifier)
-            if request:
-                if request.on_success(message.candidate):
-                    self._request_cache.pop(u"ping", message.payload.identifier)
+            if request.on_success(message.candidate):
+                self._request_cache.pop(u"ping", message.payload.identifier)
 
-                self._logger.debug("DiscoveryCommunity: got pong from %s", message.candidate)
+            self._logger.debug("DiscoveryCommunity: got pong from %s", message.candidate)
 
-                self.reset_taste_buddy(message.candidate)
-            else:
-                self._logger.warning("Ignoring unexpected pong message: %s", message)
+            self.reset_taste_buddy(message.candidate)
 
     def _create_pingpong(self, meta_name, candidates, identifier):
         meta = self.get_meta_message(meta_name)
