@@ -221,6 +221,10 @@ class WalkCandidate(Candidate):
         return self._last_walk
 
     @property
+    def last_walk_reply(self):
+        return self._last_walk_reply
+
+    @property
     def last_stumble(self):
         return self._last_stumble
 
