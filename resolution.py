@@ -51,7 +51,7 @@ class DynamicResolution(Resolution):
             must use one of the available policies defined in the associated meta_message object.
             """
             assert isinstance(policy, (PublicResolution.Implementation, LinearResolution.Implementation))
-            assert policy.meta in meta._policies
+            assert policy.meta in meta._policies, (policy.meta, meta._policies)
             super(DynamicResolution.Implementation, self).__init__(meta)
             self._policy = policy
 
