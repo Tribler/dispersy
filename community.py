@@ -1880,9 +1880,7 @@ class Community(TaskManager):
                 else:
                     # reply with all proofs when message is rejected and has dynamicresolution
                     # in order to "fix" differences in dynamic resolution policy between us and the candidate
-                    self._logger.error(meta.resolution)
                     if isinstance(meta.resolution, DynamicResolution):
-                        self._logger.error(proofs)
                         self._dispersy._send_packets([message.candidate], [proof.packet for proof in proofs], self, "-caused by dynamic resolution-")
 
                     yield DelayMessageByProof(message)
