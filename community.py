@@ -1336,7 +1336,7 @@ class Community(TaskManager):
 
                 return result
 
-            r = random()
+            r = self._random.random()
             result = get_walked() if r <= .5 else get_stumbled()
             if not result:
                 result = get_stumbled() if r <= .5 else get_walked()
@@ -1395,43 +1395,27 @@ class Community(TaskManager):
                     category_sizes[3] += 1
 
         walk, stumble, intro, discovered = [candidate for _, candidate in categories]
-        while walk or stumble or intro or discovered:
-            r = random()
 
-            # 13/02/12 Boudewijn: we decrease the 1% chance to contact a bootstrap peer to .5%
-            if r <= .475:  # ~50%
-                if walk:
-                    self._logger.debug("returning [%2d:%2d:%2d:%2d walk] %s",
-                                       category_sizes[0], category_sizes[1],
-                                       category_sizes[2], category_sizes[3], walk)
-                    return walk
+        candidate = None
+        while (walk or stumble or intro or discovered) and not candidate:
+            r1 = self._random.random()
+            r2 = self._random.random()
 
-            elif r <= .95:  # ~50%
-                if stumble or intro:
-                    while True:
-                        if random() <= .5:
-                            if stumble:
-                                self._logger.debug("returning [%2d:%2d:%2d:%2d stumble] %s",
-                                                   category_sizes[0], category_sizes[1],
-                                                   category_sizes[2], category_sizes[3], stumble)
-                                return stumble
+            if r1 <= .475:
+                candidate = walk or ((stumble or intro) if r2 < .5 else (intro or stumble)) or discovered
+                assert candidate, walk or stumble or intro or discovered
 
-                        else:
-                            if intro:
-                                self._logger.debug("returning [%2d:%2d:%2d:%2d intro] %s",
-                                                   category_sizes[0], category_sizes[1],
-                                                   category_sizes[2], category_sizes[3], intro)
-                                return intro
+            elif r1 <= .95:
+                candidate = ((stumble or intro) if r2 < .5 else (intro or stumble)) or walk or discovered
+                assert candidate, walk or stumble or intro or discovered
 
             else:
-                if discovered:
-                    self._logger.debug("returning [%2d:%2d:%2d:%2d discovered] %s",
-                                       category_sizes[0], category_sizes[1],
-                                       category_sizes[2], category_sizes[3], discovered)
-                    return discovered
+                candidate = discovered
 
-        self._logger.debug("no candidates available")
-        return None
+        self._logger.debug("returning [%2d:%2d:%2d:%2d] %s",
+                           category_sizes[0], category_sizes[1],
+                           category_sizes[2], category_sizes[3], candidate)
+        return candidate
 
     def create_candidate(self, sock_addr, tunnel, lan_address, wan_address, connection_type):
         """
