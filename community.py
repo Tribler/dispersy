@@ -1909,7 +1909,8 @@ class Community(TaskManager):
             unwrapped_key = (match_info[0], match_info[1], match_info[2], seq)
 
             # if we find a new key, then we need to send a request
-            if unwrapped_key not in self._delayed_key:
+            # if we did send a delay for this message that is
+            if (unwrapped_key not in self._delayed_key) and (delay not in self._delayed_value):
                 send_request = True
 
             self._delayed_key[unwrapped_key].append(delay)
