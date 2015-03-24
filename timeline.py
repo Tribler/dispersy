@@ -183,24 +183,20 @@ class Timeline(object):
 
             else:
                 # dynamically set the resolution policy
-                if isinstance(resolution, DynamicResolution):
-                    resolution, proofs = self.get_resolution_policy(message, global_time)
-                    assert isinstance(resolution, (PublicResolution, LinearResolution))
-                    all_proofs.extend(proofs)
-
-                elif isinstance(resolution, DynamicResolution.Implementation):
+                if isinstance(resolution, (DynamicResolution, DynamicResolution.Implementation)):
                     local_resolution, proofs = self.get_resolution_policy(message, global_time)
                     assert isinstance(local_resolution, (PublicResolution, LinearResolution))
                     all_proofs.extend(proofs)
 
-                    if not resolution.policy.meta == local_resolution:
-                        self._logger.debug("FAIL time:%d user:%d (conflicting resolution policy %s %s)",
-                                           global_time, member.database_id, resolution.policy.meta, local_resolution)
-                        return (False, all_proofs)
-
-                    resolution = resolution.policy
-                    self._logger.debug("APPLY time:%d resolution^%s -> %s",
-                                       global_time, message.name, resolution.__class__.__name__)
+                    # if not resolution.policy.meta == local_resolution:
+                    # either we didn't receive an update to the dynamic policy, or the peer creating the message did not
+                    # however, we cannot tell the difference -> hence we continue with our local knowledge
+                    # this will result in the following:
+                    #    local policy == public -> we accept the message and might be told differently lateron
+                    #    local policy == linear -> we accept/reject this message and request the peer for proofs
+                    # however, we might have already received those proofs, as the peer is actually behind
+                    # hence we also reply with all proofs
+                    resolution = local_resolution
 
                 # everyone is allowed PublicResolution
                 if isinstance(resolution, (PublicResolution, PublicResolution.Implementation)):
@@ -246,11 +242,11 @@ class Timeline(object):
                         except StopIteration:
                             self._logger.warning("FAIL time:%d user:%d -> %s (not authorized)",
                                                  global_time, member.database_id, key)
-                            return (False, [])
+                            return (False, all_proofs)
                     else:
                         self._logger.warning("FAIL time:%d user:%d -> %s (no authorization)",
                                              global_time, member.database_id, key)
-                        return (False, [])
+                        return (False, all_proofs)
 
                     # accept with proof
                     assert len(all_proofs) > 0
@@ -280,9 +276,9 @@ class Timeline(object):
         assert isinstance(proof, Message.Implementation)
         assert proof.name in (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other")
 
-        # TODO: we must remove duplicates in the below permission_pairs list
-        # check that AUTHOR is allowed to perform these authorizations
-        authorize_allowed, authorize_proofs = self._check(author, global_time, LinearResolution(), [(message, u"authorize") for _, message, __ in permission_triplets])
+        # check that AUTHOR is allowed to perform authorizations for these messages
+        messages = set(message for _, message, _ in permission_triplets)
+        authorize_allowed, authorize_proofs = self._check(author, global_time, LinearResolution(), [(message, u"authorize") for message in messages])
         if not authorize_allowed:
             self._logger.debug("the author is NOT allowed to perform authorisations"
                                " for one or more of the given permission triplets")
