@@ -23,9 +23,12 @@ class TestTimeline(DispersyTestFunc):
         other.assert_not_stored(tmessage)
 
         # OTHER sends dispersy-missing-proof to NODE
-        _, message = node.receive_message(names=[u"dispersy-missing-proof"]).next()
-        self.assertEqual(message.payload.member.public_key, node.my_member.public_key)
-        self.assertEqual(message.payload.global_time, 42)
+        responses = node.receive_messages()
+        self.assertEqual(len(responses), 1)
+        for _, message in responses:
+            self.assertEqual(message.name, u"dispersy-missing-proof")
+            self.assertEqual(message.payload.member.public_key, node.my_member.public_key)
+            self.assertEqual(message.payload.global_time, 42)
 
         # NODE provides proof
         other.give_message(proof_msg, node)
