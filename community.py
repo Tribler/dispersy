@@ -2463,6 +2463,8 @@ class Community(TaskManager):
             yield message
 
     def on_introduction_request(self, messages, extra_payload = None):
+        assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
+        
         meta_introduction_response = self.get_meta_message(u"dispersy-introduction-response")
         meta_puncture_request = self.get_meta_message(u"dispersy-puncture-request")
         responses = []
@@ -2504,7 +2506,6 @@ class Community(TaskManager):
 
                 introduction_args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, introduced.lan_address, introduced.wan_address, self._dispersy._connection_type, introduced.tunnel, payload.identifier]
                 if extra_payload is not None:
-                    assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
                     introduction_args_list += extra_payload
                 introduction_args_list = tuple(introduction_args_list)
                 
@@ -2521,7 +2522,6 @@ class Community(TaskManager):
                 
                 introduction_args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, none, none, self._dispersy._connection_type, False, payload.identifier]
                 if extra_payload is not None:
-                    assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
                     introduction_args_list += extra_payload
                 introduction_args_list = tuple(introduction_args_list)
 
@@ -2666,7 +2666,8 @@ class Community(TaskManager):
 
     def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False, extra_payload = None):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
-
+        assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
+        
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
         destination.walk(time())
 
@@ -2726,7 +2727,6 @@ class Community(TaskManager):
 
         args_list = [destination.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, advice, self._dispersy._connection_type, sync, cache.number]
         if extra_payload is not None:
-            assert isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
             args_list += extra_payload
         args_list = tuple(args_list)
 
