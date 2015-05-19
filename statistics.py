@@ -3,6 +3,7 @@ from collections import defaultdict
 from threading import RLock
 from time import time
 
+
 class Statistics(object):
 
     __metaclass__ = ABCMeta
@@ -71,6 +72,17 @@ class MessageStatistics(object):
         self.delay_dict = None
         self.outgoing_dict = None
 
+        self.walk_attempt_count = 0
+        self.walk_success_count = 0
+        self.walk_failure_count = 0
+        self.walk_failure_dict = None
+        self.invalid_response_identifier_count = 0
+
+        self.incoming_intro_count = 0
+        self.incoming_intro_dict = None
+        self.outgoing_intro_count = 0
+        self.outgoing_intro_dict = None
+
         self._enabled = None
 
     def increase_count(self, category, name, value=1):
@@ -99,6 +111,10 @@ class MessageStatistics(object):
                 self.drop_dict = assigned_value()
                 self.delay_dict = assigned_value()
 
+                self.walk_failure_dict = assigned_value()
+                self.incoming_intro_dict = assigned_value()
+                self.outgoing_intro_dict = assigned_value()
+
     def reset(self):
         with self._lock:
             self.total_received_count = 0
@@ -112,12 +128,25 @@ class MessageStatistics(object):
             self.delay_timeout_count = 0
             self.delay_success_count = 0
 
+            self.walk_attempt_count = 0
+            self.walk_success_count = 0
+            self.walk_failure_count = 0
+
+            self.invalid_response_identifier_count = 0
+
+            self.incoming_intro_count = 0
+            self.outgoing_intro_count = 0
+
             if self._enabled:
                 self.success_dict.clear()
                 self.drop_dict.clear()
                 self.created_dict.clear()
                 self.delay_dict.clear()
                 self.outgoing_dict.clear()
+
+                self.walk_failure_dict.clear()
+                self.incoming_intro_dict.clear()
+                self.outgoing_intro_dict.clear()
 
 
 class DispersyStatistics(Statistics):
@@ -329,6 +358,7 @@ class CommunityStatistics(Statistics):
         self.total_candidates_discovered = 0
         self.msg_statistics.reset()
 
+
 class RuntimeStatistic(object):
 
     def __init__(self):
@@ -361,4 +391,3 @@ class RuntimeStatistic(object):
         return dict(count=self.count, duration=self.duration, average=self.average, **kargs)
 
 _runtime_statistics = defaultdict(RuntimeStatistic)
-
