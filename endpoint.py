@@ -260,8 +260,7 @@ class RawserverEndpoint(Endpoint):
                         if e[0] != SOCKET_BLOCK_ERRORCODE:
                             self._logger.warning("could not send %d to %s (%d in sendqueue)",
                                                  len(data), sock_addr, len(self._sendqueue))
-
-                        self._dispersy.statistics.dict_inc(u"endpoint_send", u"socket-error")
+                            self._dispersy.statistics.dict_inc(u"endpoint_send", u"socket-error")
                         break
 
                 self._sendqueue = self._sendqueue[index:]
@@ -369,7 +368,8 @@ class StandaloneEndpoint(RawserverEndpoint):
                             break
 
                 except socket.error as e:
-                    self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % str(e))
+                    if e.errno != errno.EAGAIN:
+                        self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % str(e))
 
                 finally:
                     if packets:
