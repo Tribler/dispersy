@@ -1815,6 +1815,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             for message in messages:
                 if message.meta.name == u"dispersy-introduction-request":
                     for candidate in candidates:
+                        message.community.statistics.msg_statistics.walk_attempt_count += 1
+                        message.community.statistics.increase_msg_count(u"outgoing_intro", candidate.sock_addr)
+
                         self.statistics.walk_attempt_count += 1
                         self.statistics.outgoing_intro_count += 1
                         self.statistics.dict_inc(u"outgoing_intro_dict", candidate.sock_addr)

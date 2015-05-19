@@ -2207,11 +2207,13 @@ class Community(TaskManager):
             self._statistics.increase_msg_count(u"success", meta.name, len(messages))
 
             if meta.name == u"dispersy-introduction-response":
+                self._statistics.msg_statistics.walk_success_count += len(messages)
                 self._dispersy._statistics.walk_success_count += len(messages)
 
             elif meta.name == u"dispersy-introduction-request":
                 self._dispersy._statistics.incoming_intro_count += len(messages)
                 for message in messages:
+                    self._statistics.increase_msg_count(u"incoming_intro", message.candidate.sock_addr)
                     self._dispersy._statistics.dict_inc(u"incoming_intro_dict", message.candidate.sock_addr)
 
             # tell what happened
@@ -2451,7 +2453,7 @@ class Community(TaskManager):
 
     def on_introduction_request(self, messages, extra_payload = None):
         assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
-        
+
         meta_introduction_response = self.get_meta_message(u"dispersy-introduction-response")
         meta_puncture_request = self.get_meta_message(u"dispersy-puncture-request")
         responses = []
@@ -2495,7 +2497,7 @@ class Community(TaskManager):
                 if extra_payload is not None:
                     introduction_args_list += extra_payload
                 introduction_args_list = tuple(introduction_args_list)
-                
+
                 # create introduction response
                 responses.append(meta_introduction_response.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(candidate,), payload=introduction_args_list))
 
@@ -2506,7 +2508,7 @@ class Community(TaskManager):
                 self._logger.debug("responding to %s without an introduction %s", candidate, type(self))
 
                 none = ("0.0.0.0", 0)
-                
+
                 introduction_args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, none, none, self._dispersy._connection_type, False, payload.identifier]
                 if extra_payload is not None:
                     introduction_args_list += extra_payload
@@ -2651,7 +2653,7 @@ class Community(TaskManager):
     def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False, extra_payload = None):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
         assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
-        
+
         cache = self.request_cache.add(IntroductionRequestCache(self, destination))
         destination.walk(time())
 

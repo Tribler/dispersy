@@ -108,6 +108,7 @@ class IntroductionRequestCache(RandomNumberCache):
 
             self._logger.debug("walker timeout for %s", self.helper_candidate)
 
+            self.community.statistics.increase_msg_count(u"walk_failure", self.helper_candidate.sock_addr)
             self.community.dispersy.statistics.walk_failure_count += 1
             self.community.dispersy.statistics.dict_inc(u"walk_failure_dict", self.helper_candidate.sock_addr)
 
