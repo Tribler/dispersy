@@ -1,5 +1,5 @@
 """
-Each Privilege can be distributed, usualy through the transfer of a message, in different ways.
+Each Privilege can be distributed, usually through the transfer of a message, in different ways.
 These ways are defined by DistributionMeta object that is associated to the Privilege.
 
 The DistributionMeta associated to the Privilege is used to create a Distribution object that is
@@ -142,7 +142,7 @@ class Distribution(MetaObject):
 class SyncDistribution(Distribution):
 
     """
-    Allows gossiping and synchronization of messages thoughout the community.
+    Allows gossiping and synchronization of messages throughout the community.
 
     The PRIORITY value ranges [0:255] where the 0 is the lowest priority and 255 the highest.  Any
     messages that have a priority below 32 will not be synced.  These messages require a mechanism
@@ -245,11 +245,11 @@ class SyncDistribution(Distribution):
 class FullSyncDistribution(SyncDistribution):
 
     """
-    Allows gossiping and synchronization of messages thoughout the community.
+    Allows gossiping and synchronization of messages throughout the community.
 
     Sequence numbers can be enabled or disabled per meta-message.  When disabled the sequence number
     is always zero.  When enabled the claim_sequence_number method can be called to obtain the next
-    requence number in sequence.
+    sequence number in sequence.
 
     Currently there is one situation where disabling sequence numbers is required.  This is when the
     message will be signed by multiple members.  In this case the sequence number is claimed but may
