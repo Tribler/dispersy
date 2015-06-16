@@ -209,7 +209,6 @@ class StandaloneEndpoint(Endpoint):
     def data_came_in(self, packets, cache=True):
         assert self._dispersy, "Should not be called before open(...)"
         assert isinstance(packets, (list, tuple)), type(packets)
-        # called on the Tribler rawserver
 
         normal_packets = []
         for packet in packets:
@@ -240,7 +239,7 @@ class StandaloneEndpoint(Endpoint):
                 else:
                     yield False, sock_addr, data
 
-        self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data[4:] if tunnel else data)
+        self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data)
                                             for tunnel, sock_addr, data
                                             in strip_if_tunnel(packets)],
                                            cache,
