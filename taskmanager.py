@@ -48,9 +48,8 @@ class TaskManager(object):
         """
         self._maybe_clean_task_list()
         is_active, stopfn = self._get_isactive_stopper(name)
-        if is_active:
+        if is_active and stopfn:
             stopfn()
-        if stopfn:
             self._pending_tasks.pop(name)
 
     def cancel_all_pending_tasks(self):
@@ -78,7 +77,7 @@ class TaskManager(object):
         if isinstance(task, Deferred):
             # Have in mind that any deferred in the pending tasks list should have been constructed with a
             # canceller function.
-            return not task.called, task.cancel
+            return not task.called, getattr(task, 'cancel', None)
         elif isinstance(task, DelayedCall):
             return task.active(), task.cancel
         elif isinstance(task, LoopingCall):
