@@ -192,9 +192,16 @@ class DebugCommunity(Community):
         Must return either: a. the same message, b. a modified version of message, or c. None.
         """
         self._logger.debug("%s \"%s\"", message, message.payload.text)
-        assert message.payload.text.startswith("Allow=True") or message.payload.text.startswith("Allow=False")
-        if message.payload.text.startswith("Allow=True"):
+        allow_text = message.payload.text
+        assert allow_text in ["Allow=True", "Allow=False", "Allow=Modify"]  
+        if allow_text == "Allow=True":
             return message
+        
+        if allow_text == "Allow=Modify":
+            meta = message.meta
+            return meta.impl(authentication=(message.authentication.members,),
+                         distribution=(message.distribution.global_time,),
+                         payload=("MODIFIED",))
 
     def on_text(self, messages):
         """
