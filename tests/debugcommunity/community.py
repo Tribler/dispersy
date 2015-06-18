@@ -193,11 +193,11 @@ class DebugCommunity(Community):
         """
         self._logger.debug("%s \"%s\"", message, message.payload.text)
         allow_text = message.payload.text
-        assert allow_text in ["Allow=True", "Allow=False", "Allow=Modify"]  
-        if allow_text == "Allow=True":
+        assert allow_text.startswith("Allow=True") or allow_text.startswith("Allow=False") or allow_text.startswith("Allow=Modify")  
+        if allow_text.startswith("Allow=True"):
             return message
         
-        if allow_text == "Allow=Modify":
+        if allow_text.startswith("Allow=Modify"):
             meta = message.meta
             return meta.impl(authentication=(message.authentication.members,),
                          distribution=(message.distribution.global_time,),
