@@ -10,10 +10,10 @@ Community instance.
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, OrderedDict
 from itertools import islice, groupby
+import logging
 from math import ceil
 from random import random, Random, randint, shuffle, uniform
 from time import time
-import logging
 
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks
@@ -38,9 +38,10 @@ from .payload import (AuthorizePayload, RevokePayload, UndoPayload, DestroyCommu
 from .requestcache import RequestCache, SignatureRequestCache, IntroductionRequestCache
 from .resolution import PublicResolution, LinearResolution, DynamicResolution
 from .statistics import CommunityStatistics
+from .taskmanager import TaskManager
 from .timeline import Timeline
 from .util import runtime_duration_warning, attach_runtime_statistics, deprecated, is_valid_address
-from .taskmanager import TaskManager
+
 
 DOWNLOAD_MM_PK_INTERVAL = 15.0
 FAST_WALKER_CANDIDATE_TARGET = 15
@@ -2360,12 +2361,12 @@ class Community(TaskManager):
             assert isinstance(message.payload.message.authentication, DoubleMemberAuthentication.Implementation), type(message.payload.message.authentication)
 
             # the community must allow this signature
-            submsg = message.payload.message.authentication.allow_signature_func(message.payload.message)
-            assert submsg is None or isinstance(submsg, Message.Implementation), type(submsg)
-            if submsg:
+            new_submsg = message.payload.message.authentication.allow_signature_func(message.payload.message)
+            assert new_submsg is None or isinstance(new_submsg, Message.Implementation), type(new_submsg)
+            if new_submsg:
                 responses.append(meta.impl(distribution=(self.global_time,),
                                            destination=(message.candidate,),
-                                           payload=(message.payload.identifier, submsg)))
+                                           payload=(message.payload.identifier, new_submsg)))
 
         if responses:
             self.dispersy._forward(responses)
@@ -2428,7 +2429,7 @@ class Community(TaskManager):
             old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-            result = cache.response_func(cache, new_submsg, old_body != new_body, *cache.response_args)
+            result = cache.response_func(old_submsg, new_submsg, old_body != new_body, *cache.response_args)
             assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s" % (type(cache), str(cache.response_func))
             if result:
                 # add our own signatures and we can handle the message

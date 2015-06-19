@@ -249,7 +249,7 @@ class TestSync(DispersyTestFunc):
             destination_mid_pre = destination._community.my_member.mid
             assert origin_mid_pre != destination_mid_pre
 
-            submsg = origin.create_last_1_doublemember_text(destination.my_member, message, True, global_time)
+            submsg = origin.create_last_1_doublemember_text(destination.my_member, message, global_time)
 
             assert origin_mid_pre == origin._community.my_member.mid
             assert destination_mid_pre == destination._community.my_member.mid

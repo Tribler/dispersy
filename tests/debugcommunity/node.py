@@ -677,7 +677,7 @@ class DebugNode(object):
                          payload=(text,))
 
     @blocking_call_on_reactor_thread
-    def _create_doublemember_text(self, message_name, other, text, sign, global_time=None):
+    def _create_doublemember_text(self, message_name, other, text, global_time=None):
         assert isinstance(message_name, unicode)
         assert isinstance(other, Member)
         assert isinstance(text, str)
@@ -694,8 +694,7 @@ class DebugNode(object):
 
         return meta.impl(authentication=([self._my_member, my_other],),
                          distribution=(global_time,),
-                         payload=(text,),
-                         sign=sign)
+                         payload=(text,))
 
     def create_last_1_test(self, text, global_time=None):
         """
@@ -709,17 +708,17 @@ class DebugNode(object):
         """
         return self._create_text(u"last-9-test", text, global_time)
 
-    def create_last_1_doublemember_text(self, other, text, sign, global_time=None):
+    def create_last_1_doublemember_text(self, other, text, global_time=None):
         """
         Returns a new last-1-doublemember-text message.
         """
-        return self._create_doublemember_text(u"last-1-doublemember-text", other, text, sign, global_time)
+        return self._create_doublemember_text(u"last-1-doublemember-text", other, text, global_time)
 
-    def create_double_signed_text(self, other, text, sign, global_time=None):
+    def create_double_signed_text(self, other, text, global_time=None):
         """
         Returns a new double-signed-text message.
         """
-        return self._create_doublemember_text(u"double-signed-text", other, text, sign, global_time)
+        return self._create_doublemember_text(u"double-signed-text", other, text, global_time)
 
     def create_full_sync_text(self, text, global_time=None):
         """
