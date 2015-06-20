@@ -97,9 +97,7 @@ class ActualTasteBuddy(TasteBuddy):
             return self.candidate_mid == other.mid
 
         elif isinstance(other, Candidate):
-            if other.get_member():
-                return self.candidate_mid == other.get_member().mid
-            return self.candidate.sock_addr == other.sock_addr
+            return self.candidate == other
 
         elif isinstance(other, tuple):
             return self.candidate.sock_addr == other
@@ -150,6 +148,9 @@ class PossibleTasteBuddy(TasteBuddy):
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
+        self._logger.setLevel(logging.DEBUG)
+        self._logger.debug('initializing DiscoveryComunity, max_prefs = %d, max_tbs = %d', max_prefs, max_tbs)
+        
         # needs to be called before super.initialize
         self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
         self.max_prefs = max_prefs
@@ -202,9 +203,11 @@ class DiscoveryCommunity(Community):
 
     def dispersy_get_walk_candidate(self):
         candidate = super(DiscoveryCommunity, self).dispersy_get_walk_candidate() or self.peer_cache.get_peer()
-        # If we don't get candidates to walk to in a minute, call self.periodically_insert_trackers()
+        
+        # If we don't have a candidate to walk to, call self.periodically_insert_trackers() in a minute
         if candidate:
             self.cancel_pending_task("insert_trackers_when_no_candidates")
+            
         elif not self.is_pending_task_active("insert_trackers_when_no_candidates"):
             self.register_task("insert_trackers_when_no_candidates",
                                reactor.callLater(60, self.periodically_insert_trackers))
@@ -268,17 +271,15 @@ class DiscoveryCommunity(Community):
         my_communities = dict((community.cid, community)
                               for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
         for new_taste_buddy in new_taste_buddies:
-            if DEBUG_VERBOSE:
-                self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
+            self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
 
             if new_taste_buddy.should_cache():
                 self.peer_cache.add_or_update_peer(new_taste_buddy.candidate)
 
             for taste_buddy in self.taste_buddies:
                 if new_taste_buddy == taste_buddy:
-                    if DEBUG_VERBOSE:
-                        self._logger.debug(
-                            "DiscoveryCommunity: new taste buddy? no, equal to %s %s", new_taste_buddy, taste_buddy)
+                    self._logger.debug(
+                        "DiscoveryCommunity: new taste buddy? no, equal to %s %s", new_taste_buddy, taste_buddy)
 
                     taste_buddy.update_overlap(new_taste_buddy, self.compute_overlap)
                     new_taste_buddies.remove(new_taste_buddy)
@@ -286,9 +287,7 @@ class DiscoveryCommunity(Community):
 
             # new peer
             else:
-                if DEBUG_VERBOSE:
-                    self._logger.debug("DiscoveryCommunity: new taste buddy? yes, adding to list")
-
+                self._logger.debug("DiscoveryCommunity: new taste buddy? yes, adding to list")
                 self.taste_buddies.append(new_taste_buddy)
 
             # add taste buddy to overlapping communities
@@ -353,7 +352,7 @@ class DiscoveryCommunity(Community):
 
         low_sim = self.get_least_similar_tb()
         for new_possible in possibles:
-            if new_possible <= low_sim or self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
+            if new_possible < low_sim or self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
                 possibles.remove(new_possible)
                 continue
 
@@ -370,17 +369,18 @@ class DiscoveryCommunity(Community):
                 self.possible_taste_buddies.append(new_possible)
 
         self.possible_taste_buddies.sort(reverse=True)
-        if DEBUG_VERBOSE and possibles:
-            self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s %s", len(
-                self.possible_taste_buddies), map(str, self.possible_taste_buddies))
-        elif possibles:
-            self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s",
-                               len(self.possible_taste_buddies))
+        if possibles:
+            if DEBUG_VERBOSE:
+                self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s %s", 
+                                   len(self.possible_taste_buddies), map(str, self.possible_taste_buddies))
+            else:
+                self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s",
+                                   len(self.possible_taste_buddies))
 
     def clean_possible_taste_buddies(self):
         low_sim = self.get_least_similar_tb()
         for i in range(len(self.possible_taste_buddies) - 1, -1, -1):
-            to_low_sim = self.possible_taste_buddies[i] <= low_sim
+            to_low_sim = self.possible_taste_buddies[i] < low_sim
             too_old = self.possible_taste_buddies[i].time_remaining() == 0
             is_tb = self.is_taste_buddy_mid(self.possible_taste_buddies[i].candidate_mid)
 
@@ -421,15 +421,11 @@ class DiscoveryCommunity(Community):
             self.preference_list = preference_list
             self.allow_sync = allow_sync
 
-        @property
-        def timeout_delay(self):
-            return 10.5
-
         def on_timeout(self):
             self.community.send_introduction_request(self.requested_candidate, allow_sync=self.allow_sync)
             self.community.peer_cache.inc_num_fails(self.requested_candidate)
 
-    def create_introduction_request(self, destination, allow_sync):
+    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
         self._logger.debug("DiscoveryCommunity: creating intro request %s %s %s", self.is_taste_buddy(
@@ -437,6 +433,10 @@ class DiscoveryCommunity(Community):
 
         send = False
         if not self.is_taste_buddy(destination) and not self.has_possible_taste_buddies(destination):
+            for tb in self.yield_taste_buddies():
+                self._logger.debug(tb)
+            self._logger.debug(destination)
+            
             send = self.create_similarity_request(destination, allow_sync=allow_sync)
 
         if not send:
@@ -448,9 +448,8 @@ class DiscoveryCommunity(Community):
             cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload, allow_sync))
             destination.walk(time())
 
-            if DEBUG_VERBOSE:
-                self._logger.debug("DiscoveryCommunity: create similarity request for %s with identifier %s %s",
-                                   destination, cache.number, len(payload))
+            self._logger.debug("DiscoveryCommunity: create similarity request for %s with identifier %s %s",
+                               destination, cache.number, len(payload))
 
             meta_request = self.get_meta_message(u"similarity-request")
             request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(
@@ -459,8 +458,8 @@ class DiscoveryCommunity(Community):
             if self._dispersy._forward([request]):
                 self.send_packet_size += len(request.packet)
 
-                self._logger.debug("DiscoveryCommunity: sending similarity request to %s containing %s",
-                                   destination, [preference.encode('HEX') for preference in payload])
+                self._logger.debug("DiscoveryCommunity: sending similarity request to %s containing %d preferences: %s",
+                                   destination, len(payload), [preference.encode('HEX') for preference in payload])
             return True
 
         return False
@@ -517,9 +516,8 @@ class DiscoveryCommunity(Community):
             response_message = meta.impl(
                 authentication=(self.my_member,), distribution=(self.global_time,), payload=payload)
 
-            if DEBUG_VERBOSE:
-                self._logger.debug("DiscoveryCommunity: sending similarity response to %s containing %s",
-                                   message.candidate, payload)
+            self._logger.debug("DiscoveryCommunity: sending similarity response to %s containing %s",
+                               message.candidate, [preference.encode('HEX') for preference in payload[1]])
 
             self._dispersy._send([message.candidate], [response_message])
 
@@ -544,63 +542,47 @@ class DiscoveryCommunity(Community):
         for message in messages:
             # Update possible taste buddies.
             request = self._request_cache.pop(u"similarity", message.payload.identifier)
-            if request:
-                # use walkcandidate stored in request_cache
-                w_candidate = request.requested_candidate
-                self._logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
-                self.peer_cache.set_last_checked(w_candidate, time())
 
-                # Update actual taste buddies.
-                payload = message.payload
-                his_preferences = set(payload.preference_list)
+            # use walkcandidate stored in request_cache
+            w_candidate = request.requested_candidate
+            self._logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
+            self.peer_cache.set_last_checked(w_candidate, time())
 
-                assert all(isinstance(his_preference, str) for his_preference in his_preferences)
+            # Update actual taste buddies.
+            payload = message.payload
+            his_preferences = set(payload.preference_list)
 
-                overlap_count = self.compute_overlap(his_preferences)
-                self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
-                                                         message.authentication.member.mid, w_candidate)])
+            assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
-                now = time()
-                possibles = []
-                original_list = request.preference_list
-                for candidate_mid, bitfield in message.payload.tb_overlap:
-                    tb_preferences = set([original_list[index] for index in
-                                          range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
-                    possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences,
-                                                        now, candidate_mid, w_candidate))
+            overlap_count = self.compute_overlap(his_preferences)
+            self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
+                                                     message.authentication.member.mid, w_candidate)])
 
-                self.add_possible_taste_buddies(possibles)
+            now = time()
+            possibles = []
+            original_list = request.preference_list
+            for candidate_mid, bitfield in message.payload.tb_overlap:
+                tb_preferences = set([original_list[index] for index in
+                                      range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
+                possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences,
+                                                    now, candidate_mid, w_candidate))
 
-                destination, introduce_me_to = self.get_most_similar(w_candidate)
-                self.send_introduction_request(destination, introduce_me_to, request.allow_sync)
+            self.add_possible_taste_buddies(possibles)
 
-                self.reply_packet_size += len(message.packet)
-            else:
-                self._logger.debug("DiscoveryCommunity: could not get similarity requestcache for %s",
-                                   message.payload.identifier)
+            destination, introduce_me_to = self.get_most_similar(w_candidate)
+            self.send_introduction_request(destination, introduce_me_to, request.allow_sync)
 
-    def send_introduction_request(self, destination, introduce_me_to=None, allow_sync=True, advice=True):
+            self.reply_packet_size += len(message.packet)
+
+    def send_introduction_request(self, destination, introduce_me_to=None, allow_sync=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
         assert not introduce_me_to or isinstance(introduce_me_to, str), type(introduce_me_to)
-
-        cache = self._request_cache.add(IntroductionRequestCache(self, destination))
-        destination.walk(time())
-
-        if allow_sync:
-            sync = self.dispersy_claim_sync_bloom_filter(cache)
-        else:
-            sync = None
-        payload = (destination.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address,
-                   advice, self._dispersy._connection_type, sync, cache.number, introduce_me_to)
-
-        meta_request = self.get_meta_message(u"dispersy-introduction-request")
-        request = meta_request.impl(authentication=(self.my_member,), distribution=(
-            self.global_time,), destination=(destination,), payload=payload)
-
-        self._dispersy._forward([request])
-
-        self._logger.debug("DiscoveryCommunity: sending introduction-request to %s (%s,%s,%s)", destination,
-                           introduce_me_to.encode("HEX") if introduce_me_to else '', allow_sync, advice)
+        
+        extra_payload = [introduce_me_to]
+        super(DiscoveryCommunity, self).create_introduction_request(destination, allow_sync, extra_payload = extra_payload)
+        
+        self._logger.debug("DiscoveryCommunity: sending introduction-request to %s (%s,%s)", destination,
+                           introduce_me_to.encode("HEX") if introduce_me_to else '', allow_sync)
 
     def on_introduction_request(self, messages):
         for message in messages:
@@ -644,11 +626,6 @@ class DiscoveryCommunity(Community):
             self.community = community
             self.requested_candidates = requested_candidates
             self.received_candidates = set()
-
-        @property
-        def timeout_delay(self):
-            # we will accept the response at most 10.5 seconds after our request
-            return 10.5
 
         def on_success(self, candidate):
             if self.did_request(candidate):
