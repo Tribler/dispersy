@@ -283,7 +283,7 @@ class DiscoveryCommunity(Community):
                               for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
         for new_taste_buddy in new_taste_buddies:
             self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
-            self.recent_taste_buddies[new_taste_buddie.candidate_mid] = new_taste_buddy.overlap
+            self.recent_taste_buddies[new_taste_buddy.candidate_mid] = new_taste_buddy.overlap
 
             if new_taste_buddy.should_cache():
                 self.peer_cache.add_or_update_peer(new_taste_buddy.candidate)
@@ -358,7 +358,10 @@ class DiscoveryCommunity(Community):
                 break
             
     def is_recent_taste_buddy(self, candidate):
-        return self.is_recent_taste_buddy_mid(candidate.get_member().mid)
+        member = candidate.get_member()
+        if member:
+            return self.is_recent_taste_buddy_mid(member.mid)
+        return False
         
     def is_recent_taste_buddy_mid(self, mid):
         return mid in self.recent_taste_buddies
@@ -503,7 +506,7 @@ class DiscoveryCommunity(Community):
             wcandidate.associate(message.authentication.member)
 
             # Update actual taste buddies.
-            his_preferences = message.payload.preference_list
+            his_preferences = message.payload.preference_list[:self.max_prefs]
             assert all(isinstance(his_preference, str) for his_preference in his_preferences)
 
             overlap_count = self.compute_overlap(his_preferences)
@@ -514,7 +517,7 @@ class DiscoveryCommunity(Community):
         for message in messages:
             self._logger.debug("DiscoveryCommunity: got similarity request from %s %s", message.candidate, overlap_count)
 
-            his_preferences = message.payload.preference_list
+            his_preferences = message.payload.preference_list[:self.max_prefs]
 
             # Determine overlap for top taste buddies
             bitfields = []
