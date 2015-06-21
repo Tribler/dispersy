@@ -22,7 +22,7 @@ from .bootstrap import Bootstrap
 from .conversion import DiscoveryConversion
 from .payload import *
 
-DEBUG_VERBOSE = True
+DEBUG_VERBOSE = False
 
 PING_INTERVAL = CANDIDATE_WALK_LIFETIME / 5
 PING_TIMEOUT = CANDIDATE_WALK_LIFETIME / 2
@@ -135,7 +135,7 @@ class PossibleTasteBuddy(TasteBuddy):
         diff = self.timestamp - too_old
         return diff if diff > 0 else 0
     
-    def received_from(self, candidate):
+    def did_received_from(self, candidate):
         return candidate == self.received_from
 
     def __cmp__(self, other):
@@ -169,7 +169,6 @@ class PossibleTasteBuddy(TasteBuddy):
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
-        self._logger.setLevel(logging.DEBUG)
         self._logger.debug('initializing DiscoveryComunity, max_prefs = %d, max_tbs = %d', max_prefs, max_tbs)
         
         # needs to be called before super.initialize
@@ -433,7 +432,7 @@ class DiscoveryCommunity(Community):
 
     def has_possible_taste_buddies(self, candidate):
         for possible in self.possible_taste_buddies:
-            if possible.received_from(candidate):
+            if possible.did_received_from(candidate):
                 return True
         return False
     
