@@ -146,7 +146,6 @@ class PossibleTasteBuddy(TasteBuddy):
 
         return TasteBuddy.__cmp__(self, other)
 
-    #TODO: Niels, the __eq__ seems to be broken
     def __eq__(self, other):
         if isinstance(other, Member):
             return self.candidate_mid == other.mid
@@ -157,7 +156,7 @@ class PossibleTasteBuddy(TasteBuddy):
         if isinstance(other, PossibleTasteBuddy):
             return self.candidate_mid == other.candidate_mid
         
-        return self.candidate_mid == other.candidate_mid
+        return False
 
     def __str__(self):
         return "PTB_%d_%d_%s_%s" % (self.timestamp, self.overlap, self.candidate_mid.encode("HEX"), self.received_from)
