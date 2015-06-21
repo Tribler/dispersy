@@ -22,8 +22,7 @@ from .bootstrap import Bootstrap
 from .conversion import DiscoveryConversion
 from .payload import *
 
-
-DEBUG_VERBOSE = False
+DEBUG_VERBOSE = True
 
 PING_INTERVAL = CANDIDATE_WALK_LIFETIME / 5
 PING_TIMEOUT = CANDIDATE_WALK_LIFETIME / 2
@@ -111,6 +110,9 @@ class ActualTasteBuddy(TasteBuddy):
 
         elif isinstance(other, tuple):
             return self.candidate.sock_addr == other
+    
+    def __ne__(self, other):
+        return not self == other
 
     def __str__(self):
         return "ATB_%d_%s_%s_%s" % (self.timestamp, self.overlap, self.candidate_mid.encode('HEX'), self.candidate)
@@ -132,6 +134,9 @@ class PossibleTasteBuddy(TasteBuddy):
         too_old = time() - PING_TIMEOUT
         diff = self.timestamp - too_old
         return diff if diff > 0 else 0
+    
+    def received_from(self, candidate):
+        return candidate == self.received_from
 
     def __cmp__(self, other):
         if isinstance(other, PossibleTasteBuddy):
@@ -141,11 +146,17 @@ class PossibleTasteBuddy(TasteBuddy):
 
         return TasteBuddy.__cmp__(self, other)
 
+    #TODO: Niels, the __eq__ seems to be broken
     def __eq__(self, other):
         if isinstance(other, Member):
             return self.candidate_mid == other.mid
+        
         if isinstance(other, Candidate):
-            return self.received_from == other
+            return self.candidate_mid == other.get_member().mid
+        
+        if isinstance(other, PossibleTasteBuddy):
+            return self.candidate_mid == other.candidate_mid
+        
         return self.candidate_mid == other.candidate_mid
 
     def __str__(self):
@@ -182,7 +193,7 @@ class DiscoveryCommunity(Community):
 
             if success:
                 self._logger.debug("Resolved all bootstrap addresses")
-
+        
         bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME, os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
         alternate_addresses = None
         if bootstrap_file:
@@ -281,9 +292,10 @@ class DiscoveryCommunity(Community):
     def add_taste_buddies(self, new_taste_buddies):
         my_communities = dict((community.cid, community)
                               for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
-        for new_taste_buddy in new_taste_buddies:
+        
+        for i in xrange(len(new_taste_buddies)-1,-1,-1):
+            new_taste_buddy = new_taste_buddies[i]
             self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
-            self.recent_taste_buddies[new_taste_buddy.candidate_mid] = new_taste_buddy.overlap
 
             if new_taste_buddy.should_cache():
                 self.peer_cache.add_or_update_peer(new_taste_buddy.candidate)
@@ -294,7 +306,7 @@ class DiscoveryCommunity(Community):
                         "DiscoveryCommunity: new taste buddy? no, equal to %s %s", new_taste_buddy, taste_buddy)
 
                     taste_buddy.update_overlap(new_taste_buddy, self.compute_overlap)
-                    new_taste_buddies.remove(new_taste_buddy)
+                    new_taste_buddies.pop(i)
                     break
 
             # new peer
@@ -364,6 +376,9 @@ class DiscoveryCommunity(Community):
         return False
         
     def is_recent_taste_buddy_mid(self, mid):
+        assert isinstance(mid, str)
+        assert len(mid) == 20
+        
         return mid in self.recent_taste_buddies
 
     def add_possible_taste_buddies(self, possibles):
@@ -372,9 +387,14 @@ class DiscoveryCommunity(Community):
                 assert isinstance(possible, PossibleTasteBuddy), type(possible)
 
         low_sim = self.get_least_similar_tb()
-        for new_possible in possibles:
+        for i in xrange(len(possibles)-1, -1, -1):
+            new_possible = possibles[i]
+            
+            self._logger.debug("DiscoveryCommunity: new possible taste buddy? %s", new_possible)
+            
             if new_possible < low_sim or self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
-                possibles.remove(new_possible)
+                self._logger.debug("DiscoveryCommunity: new possible taste buddy? no, %s %s %s", new_possible < low_sim, self.is_taste_buddy_mid(new_possible.candidate_mid), new_possible == self.my_member)
+                possibles.pop(i)
                 continue
 
             for i, possible in enumerate(self.possible_taste_buddies):
@@ -387,6 +407,7 @@ class DiscoveryCommunity(Community):
 
             # new peer
             else:
+                self._logger.debug("DiscoveryCommunity: new possible taste buddy? yes, adding to list")
                 self.possible_taste_buddies.append(new_possible)
 
         self.possible_taste_buddies.sort(reverse=True)
@@ -412,9 +433,17 @@ class DiscoveryCommunity(Community):
 
     def has_possible_taste_buddies(self, candidate):
         for possible in self.possible_taste_buddies:
-            if possible == candidate:
+            if possible.received_from(candidate):
                 return True
         return False
+    
+    def is_possible_taste_buddy_mid(self, mid):
+        assert isinstance(mid, str)
+        assert len(mid) == 20
+
+        for ptb in self.possible_taste_buddies:
+            if mid == ptb.candidate_mid:
+                return ptb
 
     def get_most_similar(self, candidate):
         assert isinstance(candidate, WalkCandidate), [type(candidate), candidate]
@@ -521,9 +550,13 @@ class DiscoveryCommunity(Community):
 
             # Determine overlap for top taste buddies
             bitfields = []
-            sorted_tbs = sorted([(self.compute_overlap(his_preferences, tb.preferences), random(), tb)
-                                for tb in self.taste_buddies if tb != message.candidate and tb.time_remaining() > 5.0], reverse=True)
-
+            tbs = []
+            for tb in self.taste_buddies:
+                if tb.time_remaining() > 5.0:
+                    if tb != message.candidate or True:
+                        tbs.append((self.compute_overlap(his_preferences, tb.preferences), random(), tb))
+                        
+            sorted_tbs = sorted(tbs, reverse=True)
             for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
                 bitfield = sum([2 ** index for index in range(min(len(his_preferences), 4 * 8))
@@ -575,6 +608,8 @@ class DiscoveryCommunity(Community):
             overlap_count = self.compute_overlap(his_preferences)
             self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
                                                      w_candidate)])
+            
+            self.recent_taste_buddies[message.authentication.member.mid] = overlap_count
 
             now = time()
             possibles = []
@@ -584,6 +619,8 @@ class DiscoveryCommunity(Community):
                                       range(min(len(original_list), 4 * 8)) if bool(bitfield & 2 ** index)])
                 possibles.append(PossibleTasteBuddy(len(tb_preferences), tb_preferences,
                                                     now, candidate_mid, w_candidate))
+
+            self._logger.debug("DiscoveryCommunity: got possibles %s %s", message.payload.tb_overlap, [str(possible) for possible in possibles])
 
             self.add_possible_taste_buddies(possibles)
 
