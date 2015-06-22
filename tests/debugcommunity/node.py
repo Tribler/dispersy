@@ -90,6 +90,13 @@ class DebugNode(object):
         The member for this node.
         """
         return self._my_member
+    
+    @property
+    def my_mid(self):
+        """
+        The mid for this node.
+        """
+        return self._my_member.mid
 
     @property
     def my_pub_member(self):
@@ -376,6 +383,10 @@ class DebugNode(object):
 
         packets = other.fetch_packets([u"dispersy-identity", ], other.my_member.mid)
         self.give_packets(packets, other)
+        
+    @blocking_call_on_reactor_thread
+    def take_step(self):
+        self._community.take_step()
 
     @blocking_call_on_reactor_thread
     def claim_global_time(self):

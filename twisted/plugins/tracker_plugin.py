@@ -130,15 +130,14 @@ class TrackerDispersy(Dispersy):
             community.unload_community()
 
     def _report_statistics(self):
-        mapping = {TrackerCommunity: 0, TrackerHardKilledCommunity: 0, DiscoveryCommunity: 0}
+        mapping = {TrackerCommunity: [0,0], TrackerHardKilledCommunity: [0,0], DiscoveryCommunity: [0,0]}
         for community in self._communities.itervalues():
-            mapping[type(community)] += 1
+            mapping[type(community)][0] += 1
+            mapping[type(community)][1] += len(list(community.dispersy_yield_verified_candidates())) 
 
         print "BANDWIDTH", self._statistics.total_up, self._statistics.total_down
-        print "COMMUNITY", mapping[TrackerCommunity], mapping[TrackerHardKilledCommunity], mapping[DiscoveryCommunity]
-        print "CANDIDATE2",
-        sum(len(list(community.dispersy_yield_verified_candidates())) for community
-            in self._communities.itervalues())
+        print "COMMUNITY", mapping[TrackerCommunity][0], mapping[TrackerHardKilledCommunity][0], mapping[DiscoveryCommunity][0]
+        print "CANDIDATE2", mapping[TrackerCommunity][1], mapping[TrackerHardKilledCommunity][1], mapping[DiscoveryCommunity][1]
 
         if self._statistics.msg_statistics.outgoing_dict:
             for key, value in self._statistics.msg_statistics.outgoing_dict.iteritems():

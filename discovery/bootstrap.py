@@ -14,7 +14,7 @@ from ..candidate import Candidate
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
 # DNS entries are resolved only a single Candidate is made.  This requires a potential
 # attacker to disrupt the DNS servers for both domains at the same time.
-_DEFAULT_ADDRESSES = (
+_DEFAULT_ADDRESSES = [
     # DNS entries on tribler.org
     (u"dispersy1.tribler.org", 6421),
     (u"130.161.211.245"      , 6421),
@@ -30,7 +30,7 @@ _DEFAULT_ADDRESSES = (
     (u"dispersy2.st.tudelft.nl", 6422),
     (u"dispersy3.st.tudelft.nl", 6423),
     (u"dispersy4.st.tudelft.nl", 6424),
-)
+]
 # 04/12/13 Boudewijn: We are phasing out the dispersy{1-9}b entries.  Note that older clients will
 # still assume these entries exist!
 # (u"dispersy1b.tribler.org", 6421),
