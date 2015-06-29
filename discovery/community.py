@@ -1,26 +1,28 @@
 # Written by Niels Zeilemaker, Egbert Bouman
 import logging
 import os
-from random import shuffle, random, choice as random_choice
-from time import time
 from collections import OrderedDict
+from random import random, shuffle
+from time import time
 
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 
-from ..authentication import NoAuthentication, MemberAuthentication
-from ..candidate import CANDIDATE_WALK_LIFETIME, WalkCandidate, Candidate
+from ..authentication import MemberAuthentication, NoAuthentication
+from ..candidate import CANDIDATE_WALK_LIFETIME, Candidate, WalkCandidate
 from ..community import Community
 from ..conversion import DefaultConversion
 from ..destination import CandidateDestination
 from ..distribution import DirectDistribution
 from ..member import Member
-from ..message import Message, DelayMessageByProof, DropMessage
-from ..requestcache import IntroductionRequestCache, RandomNumberCache
+from ..message import DelayMessageByProof, DropMessage, Message
+from ..requestcache import RandomNumberCache
 from ..resolution import PublicResolution
 from .bootstrap import Bootstrap
 from .conversion import DiscoveryConversion
-from .payload import *
+from .payload import (ExtendedIntroPayload, PingPayload, PongPayload, SimilarityRequestPayload,
+                      SimilarityResponsePayload)
+
 
 DEBUG_VERBOSE = False
 
@@ -31,6 +33,7 @@ PEERCACHE_FILENAME = 'peercache.txt'
 TIME_BETWEEN_CONNECTION_ATTEMPTS = 10.0
 
 BOOTSTRAP_FILE_ENVNAME = 'DISPERSY_BOOTSTRAP_FILE'
+
 
 class LimitedOrderedDict(OrderedDict):
 
@@ -43,7 +46,9 @@ class LimitedOrderedDict(OrderedDict):
         if len(self) > self._limit:
             self.popitem(last=False)
 
+
 class TasteBuddy(object):
+
     def __init__(self, overlap, preferences, sock_addr):
         assert isinstance(overlap, int), type(overlap)
         assert isinstance(preferences, set), type(preferences)
@@ -80,6 +85,7 @@ class TasteBuddy(object):
 
 
 class ActualTasteBuddy(TasteBuddy):
+
     def __init__(self, overlap, preferences, timestamp, candidate):
         TasteBuddy.__init__(self, overlap, preferences, candidate.sock_addr)
         assert isinstance(timestamp, (long, float)), type(timestamp)
@@ -110,7 +116,7 @@ class ActualTasteBuddy(TasteBuddy):
 
         elif isinstance(other, tuple):
             return self.candidate.sock_addr == other
-    
+
     def __ne__(self, other):
         return not self == other
 
@@ -119,6 +125,7 @@ class ActualTasteBuddy(TasteBuddy):
 
 
 class PossibleTasteBuddy(TasteBuddy):
+
     def __init__(self, overlap, preferences, timestamp, candidate_mid, received_from):
         assert isinstance(timestamp, (long, float)), type(timestamp)
         assert isinstance(candidate_mid, str), type(candidate_mid)
@@ -134,7 +141,7 @@ class PossibleTasteBuddy(TasteBuddy):
         too_old = time() - PING_TIMEOUT
         diff = self.timestamp - too_old
         return diff if diff > 0 else 0
-    
+
     def did_received_from(self, candidate):
         return candidate == self.received_from
 
@@ -149,13 +156,13 @@ class PossibleTasteBuddy(TasteBuddy):
     def __eq__(self, other):
         if isinstance(other, Member):
             return self.candidate_mid == other.mid
-        
+
         if isinstance(other, Candidate):
             return self.candidate_mid == other.get_member().mid
-        
+
         if isinstance(other, PossibleTasteBuddy):
             return self.candidate_mid == other.candidate_mid
-        
+
         return False
 
     def __str__(self):
@@ -169,7 +176,7 @@ class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
         self._logger.debug('initializing DiscoveryComunity, max_prefs = %d, max_tbs = %d', max_prefs, max_tbs)
-        
+
         # needs to be called before super.initialize
         self.peer_cache = PeerCache(os.path.join(self._dispersy._working_directory, PEERCACHE_FILENAME), self)
         self.max_prefs = max_prefs
@@ -187,11 +194,11 @@ class DiscoveryCommunity(Community):
 
             if not self.is_pending_task_active("insert_trackers"):
                 self.register_task("insert_trackers",
-                                LoopingCall(self.periodically_insert_trackers)).start(INSERT_TRACKER_INTERVAL, now=True)
+                                   LoopingCall(self.periodically_insert_trackers)).start(INSERT_TRACKER_INTERVAL, now=True)
 
             if success:
                 self._logger.debug("Resolved all bootstrap addresses")
-        
+
         bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME, os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
         alternate_addresses = None
         if bootstrap_file:
@@ -223,11 +230,11 @@ class DiscoveryCommunity(Community):
 
     def dispersy_get_walk_candidate(self):
         candidate = super(DiscoveryCommunity, self).dispersy_get_walk_candidate() or self.peer_cache.get_peer()
-        
+
         # If we don't have a candidate to walk to, call self.periodically_insert_trackers() in a minute
         if candidate:
             self.cancel_pending_task("insert_trackers_when_no_candidates")
-            
+
         elif not self.is_pending_task_active("insert_trackers_when_no_candidates"):
             self.register_task("insert_trackers_when_no_candidates",
                                reactor.callLater(60, self.periodically_insert_trackers))
@@ -290,8 +297,8 @@ class DiscoveryCommunity(Community):
     def add_taste_buddies(self, new_taste_buddies):
         my_communities = dict((community.cid, community)
                               for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
-        
-        for i in xrange(len(new_taste_buddies)-1,-1,-1):
+
+        for i in xrange(len(new_taste_buddies) - 1, -1, -1):
             new_taste_buddy = new_taste_buddies[i]
             self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
 
@@ -366,17 +373,17 @@ class DiscoveryCommunity(Community):
             if tb == candidate:
                 self.taste_buddies.remove(tb)
                 break
-            
+
     def is_recent_taste_buddy(self, candidate):
         member = candidate.get_member()
         if member:
             return self.is_recent_taste_buddy_mid(member.mid)
         return False
-        
+
     def is_recent_taste_buddy_mid(self, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
-        
+
         return mid in self.recent_taste_buddies
 
     def add_possible_taste_buddies(self, possibles):
@@ -385,11 +392,11 @@ class DiscoveryCommunity(Community):
                 assert isinstance(possible, PossibleTasteBuddy), type(possible)
 
         low_sim = self.get_least_similar_tb()
-        for i in xrange(len(possibles)-1, -1, -1):
+        for i in xrange(len(possibles) - 1, -1, -1):
             new_possible = possibles[i]
-            
+
             self._logger.debug("DiscoveryCommunity: new possible taste buddy? %s", new_possible)
-            
+
             if new_possible < low_sim or self.is_taste_buddy_mid(new_possible.candidate_mid) or new_possible == self.my_member:
                 self._logger.debug("DiscoveryCommunity: new possible taste buddy? no, %s %s %s", new_possible < low_sim, self.is_taste_buddy_mid(new_possible.candidate_mid), new_possible == self.my_member)
                 possibles.pop(i)
@@ -411,7 +418,7 @@ class DiscoveryCommunity(Community):
         self.possible_taste_buddies.sort(reverse=True)
         if possibles:
             if DEBUG_VERBOSE:
-                self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s %s", 
+                self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s %s",
                                    len(self.possible_taste_buddies), map(str, self.possible_taste_buddies))
             else:
                 self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s",
@@ -434,7 +441,7 @@ class DiscoveryCommunity(Community):
             if possible.did_received_from(candidate):
                 return True
         return False
-    
+
     def is_possible_taste_buddy_mid(self, mid):
         assert isinstance(mid, str)
         assert len(mid) == 20
@@ -460,6 +467,7 @@ class DiscoveryCommunity(Community):
         return 0
 
     class SimilarityAttempt(RandomNumberCache):
+
         def __init__(self, community, requested_candidate, preference_list, allow_sync):
             RandomNumberCache.__init__(self, community.request_cache, u"similarity")
             assert isinstance(requested_candidate, WalkCandidate), type(requested_candidate)
@@ -540,7 +548,6 @@ class DiscoveryCommunity(Community):
             self.add_taste_buddies([ActualTasteBuddy(overlap_count, set(his_preferences),
                                                      time(), wcandidate)])
 
-
         for message in messages:
             self._logger.debug("DiscoveryCommunity: got similarity request from %s %s", message.candidate, overlap_count)
 
@@ -553,7 +560,7 @@ class DiscoveryCommunity(Community):
                 if tb.time_remaining() > 5.0:
                     if tb != message.candidate or True:
                         tbs.append((self.compute_overlap(his_preferences, tb.preferences), random(), tb))
-                        
+
             sorted_tbs = sorted(tbs, reverse=True)
             for _, _, tb in sorted_tbs[:self.max_tbs]:
                 # Size of the bitfield is fixed and set to 4 bytes.
@@ -606,7 +613,7 @@ class DiscoveryCommunity(Community):
             overlap_count = self.compute_overlap(his_preferences)
             self.add_taste_buddies([ActualTasteBuddy(overlap_count, his_preferences, time(),
                                                      w_candidate)])
-            
+
             self.recent_taste_buddies[message.authentication.member.mid] = overlap_count
 
             now = time()
@@ -630,10 +637,10 @@ class DiscoveryCommunity(Community):
     def send_introduction_request(self, destination, introduce_me_to=None, allow_sync=True):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
         assert not introduce_me_to or isinstance(introduce_me_to, str), type(introduce_me_to)
-        
+
         extra_payload = [introduce_me_to]
-        super(DiscoveryCommunity, self).create_introduction_request(destination, allow_sync, extra_payload = extra_payload)
-        
+        super(DiscoveryCommunity, self).create_introduction_request(destination, allow_sync, extra_payload=extra_payload)
+
         self._logger.debug("DiscoveryCommunity: sending introduction-request to %s (%s,%s)", destination,
                            introduce_me_to.encode("HEX") if introduce_me_to else '', allow_sync)
 
@@ -651,7 +658,6 @@ class DiscoveryCommunity(Community):
             self._logger.debug("DiscoveryCommunity: got introduction request %s %s %s",
                                message.payload.introduce_me_to.encode("HEX") if message.payload.introduce_me_to else '-',
                                introduce_me_to, self.requested_introductions)
-
 
         super(DiscoveryCommunity, self).on_introduction_request(messages)
 
@@ -804,7 +810,7 @@ class PeerCache(object):
     def add_or_update_peer(self, wcandidate):
         assert isinstance(wcandidate, WalkCandidate), type(wcandidate)
 
-        if self.walkcandidates.has_key(wcandidate):
+        if wcandidate in self.walkcandidates:
             self.walkcandidates[wcandidate]['last_seen'] = time()
         else:
             self.walkcandidates[wcandidate] = {'last_seen': time(), 'last_checked': 0, 'num_fails': 0}
@@ -819,11 +825,11 @@ class PeerCache(object):
         return self.walkcandidates.get(wcandidate, None)
 
     def inc_num_fails(self, wcandidate):
-        if self.walkcandidates.has_key(wcandidate):
+        if wcandidate in self.walkcandidates:
             self.walkcandidates[wcandidate]['num_fails'] += 1
 
     def set_last_checked(self, wcandidate, last_checked):
-        if self.walkcandidates.has_key(wcandidate):
+        if wcandidate in self.walkcandidates:
             self.walkcandidates[wcandidate]['last_checked'] = last_checked
 
     def parse_line(self, line):
