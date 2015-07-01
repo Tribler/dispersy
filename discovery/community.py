@@ -594,6 +594,7 @@ class DiscoveryCommunity(Community):
 
             # use walkcandidate stored in request_cache
             w_candidate = request.requested_candidate
+            w_candidate.associate(message.authentication.member)
             self._logger.debug("DiscoveryCommunity: got similarity response from %s", w_candidate)
             self.peer_cache.set_last_checked(w_candidate, time())
 
