@@ -97,6 +97,9 @@ class NullEndpoint(Endpoint):
             raise RuntimeError("UDP does not support %d byte packets" % max(len(packet) for packet in packets))
         self._dispersy.statistics.total_up += sum(len(packet) for packet in packets) * len(candidates)
 
+    def listen_to(self, prefix, handler):
+        pass
+
     def send_packet(self, candidate, packet):
         if len(packet) > 2 ** 16 - 60:
             raise RuntimeError("UDP does not support %d byte packets" % len(packet))
