@@ -739,6 +739,10 @@ class DiscoveryCommunity(Community):
     def on_pong(self, messages):
         for message in messages:
             request = self._request_cache.get(u"ping", message.payload.identifier)
+            if not request:
+                self._logger.error("Unexpected pong from %s receieved: '%s', dropping it.", message.candidate, message)
+                continue
+
             if request.on_success(message.candidate):
                 self._request_cache.pop(u"ping", message.payload.identifier)
 
