@@ -29,7 +29,8 @@ class TestClassification(DispersyTestFunc):
         self.assertIsInstance(community, ClassTestB)
         self.assertEqual(community.cid, master.mid)
         try:
-            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?", (master.database_id,)).next()
+            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?",
+                                                              (master.database_id,)).next()
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestB.get_classification())
@@ -47,7 +48,8 @@ class TestClassification(DispersyTestFunc):
 
         # create community
         community_c = ClassTestC.create_community(self._dispersy, self._mm._my_member)
-        self.assertEqual(len(list(self._dispersy.database.execute(u"SELECT * FROM community WHERE classification = ?", (ClassTestC.get_classification(),)))), 1)
+        self.assertEqual(len(list(self._dispersy.database.execute(u"SELECT * FROM community WHERE classification = ?",
+                                                                  (ClassTestC.get_classification(),)))), 1)
 
         # reclassify
         community_d = self._dispersy.reclassify_community(community_c, ClassTestD)
@@ -55,7 +57,8 @@ class TestClassification(DispersyTestFunc):
         self.assertEqual(community_c.cid, community_d.cid)
 
         try:
-            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?", (community_c.master_member.database_id,)).next()
+            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?",
+                                                              (community_c.master_member.database_id,)).next()
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestD.get_classification())
@@ -77,7 +80,8 @@ class TestClassification(DispersyTestFunc):
                                         (master.database_id, self._mm._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
 
         # load one community
-        communities = [ClassificationLoadOneCommunities(self._dispersy, master, self._mm._my_member) for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
+        communities = [ClassificationLoadOneCommunities(self._dispersy, master, self._mm._my_member)
+                       for master in ClassificationLoadOneCommunities.get_master_members(self._dispersy)]
         self.assertEqual(len(communities), 1)
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
 
@@ -101,8 +105,10 @@ class TestClassification(DispersyTestFunc):
         community.unload_community()
 
         # load two communities
-        self.assertEqual(sorted(masters), sorted(master.public_key for master in LoadTwoCommunities.get_master_members(self._dispersy)))
-        communities = [LoadTwoCommunities(self._dispersy, master, self._mm._my_member) for master in LoadTwoCommunities.get_master_members(self._dispersy)]
+        self.assertEqual(sorted(masters), sorted(master.public_key
+                                                 for master in LoadTwoCommunities.get_master_members(self._dispersy)))
+        communities = [LoadTwoCommunities(self._dispersy, master, self._mm._my_member)
+                       for master in LoadTwoCommunities.get_master_members(self._dispersy)]
 
         self.assertEqual(sorted(masters), sorted(community.master_member.public_key for community in communities))
         self.assertEqual(len(communities), 2)

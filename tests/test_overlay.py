@@ -27,7 +27,6 @@ class TestOverlay(DispersyTestFunc):
 
         self.dispersy_objects = []
 
-
     @skipUnless(environ.get("TEST_OVERLAY_ALL_CHANNEL") == "yes", "This 'unittest' tests the health of a live overlay, as such, this is not part of the code review process")
     def test_all_channel_community(self):
         return self.check_live_overlay(cid_hex="8164f55c2f828738fa779570e4605a81fec95c9d",
@@ -46,11 +45,13 @@ class TestOverlay(DispersyTestFunc):
         class Conversion(DebugCommunityConversion):
             # there are overlays that modify the introduction request, ensure that the returned offset 'consumed' all
             # bytes in the packet
+
             def _decode_introduction_request(self, placeholder, offset, data):
                 _, payload = super(Conversion, self)._decode_introduction_request(placeholder, offset, data)
                 return len(data), payload
 
         class WCommunity(DebugCommunity):
+
             def initiate_conversions(self):
                 return [DefaultConversion(self), Conversion(self, version)]
 

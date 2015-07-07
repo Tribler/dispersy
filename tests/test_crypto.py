@@ -2,6 +2,7 @@ from unittest import TestCase
 
 from ..crypto import ECCrypto
 
+
 class TestLowLevelCrypto(TestCase):
 
     @classmethod
@@ -59,7 +60,8 @@ class TestLowLevelCrypto(TestCase):
 
     def test_performance(self):
         from time import time
-        import sys, os
+        import sys
+        import os
 
         ec = self.crypto.generate_key(u"very-low")
 
