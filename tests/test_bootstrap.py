@@ -59,7 +59,7 @@ class TestBootstrapServers(DispersyTestFunc):
         env = copy(environ)
         dispersy_path = path.abspath(path.join(tracker_path, 'dispersy'))
         if 'PYTHONPATH' in env:
-            env['PYTHONPATH']+=":"+dispersy_path
+            env['PYTHONPATH'] += ":" + dispersy_path
         else:
             env['PYTHONPATH'] = dispersy_path
 
@@ -75,9 +75,11 @@ class TestBootstrapServers(DispersyTestFunc):
 
         try:
             class Community(DebugCommunity):
+
                 @property
                 def dispersy_enable_candidate_walker(self):
                     return False
+
                 @property
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
@@ -133,7 +135,6 @@ class TestBootstrapServers(DispersyTestFunc):
 
                 self.test_d = Deferred()
 
-
             @property
             def dispersy_enable_candidate_walker(self):
                 # disable candidate walker
@@ -154,7 +155,7 @@ class TestBootstrapServers(DispersyTestFunc):
                     for (host, port), b_candidate in self._dispersy._discovery_community.bootstrap._candidates.iteritems():
                         if candidate == b_candidate:
                             self._hostname[candidate.sock_addr] = host
-                self._pcandidates.sort(cmp=lambda a,b: cmp(a.sock_addr, b.sock_addr))
+                self._pcandidates.sort(cmp=lambda a, b: cmp(a.sock_addr, b.sock_addr))
 
                 for _ in xrange(PING_COUNT):
                     self.ping(time())
@@ -186,13 +187,13 @@ class TestBootstrapServers(DispersyTestFunc):
                     rtts = self._summary[sock_addr]
                     if rtts:
                         summary_logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                     self._identifiers[sock_addr].encode("HEX"),
-                                     sock_addr[0],
-                                     sock_addr[1],
-                                     self._hostname[sock_addr],
-                                     len(rtts),
-                                     sum(rtts) / len(rtts),
-                                     ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+                                            self._identifiers[sock_addr].encode("HEX"),
+                                            sock_addr[0],
+                                            sock_addr[1],
+                                            self._hostname[sock_addr],
+                                            len(rtts),
+                                            sum(rtts) / len(rtts),
+                                            ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
                         summary_logger.warning("%s:%d %s missing",
                                                sock_addr[0], sock_addr[1], self._hostname[sock_addr])
@@ -205,7 +206,8 @@ class TestBootstrapServers(DispersyTestFunc):
                     sock_addr = candidate.sock_addr
                     rtts = self._summary[sock_addr]
 
-                    handle.write("%s %s:%d %d %d\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
+                    handle.write("%s %s:%d %d %d\n" %
+                                 (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
                 handle.close()
 
                 handle = open("walk_rtts.txt", "w+")
@@ -222,8 +224,10 @@ class TestBootstrapServers(DispersyTestFunc):
                     sock_addr = candidate.sock_addr
                     rtts = self._summary[sock_addr]
 
-                    test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" % (len(rtts), request_count, sock_addr[0], sock_addr[1]))
-                    test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" % (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
+                    test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" %
+                                         (len(rtts), request_count, sock_addr[0], sock_addr[1]))
+                    test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" %
+                                         (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
 
         test = self
 
@@ -275,7 +279,17 @@ class TestBootstrapServers(DispersyTestFunc):
 
                 # replace the callbacks for the dispersy-introduction-response message
                 meta = self._meta_messages[u"dispersy-introduction-response"]
-                self._meta_messages[meta.name] = Message(meta.community, meta.name, meta.authentication, meta.resolution, meta.distribution, meta.destination, meta.payload, self.check_introduction_response, meta.handle_callback, meta.undo_callback, meta.batch)
+                self._meta_messages[meta.name] = Message(meta.community,
+                                                         meta.name,
+                                                         meta.authentication,
+                                                         meta.resolution,
+                                                         meta.distribution,
+                                                         meta.destination,
+                                                         meta.payload,
+                                                         self.check_introduction_response,
+                                                         meta.handle_callback,
+                                                         meta.undo_callback,
+                                                         meta.batch)
 
             @property
             def dispersy_enable_candidate_walker(self):
@@ -338,13 +352,13 @@ class TestBootstrapServers(DispersyTestFunc):
                 for sock_addr, rtts in sorted(self._summary.iteritems()):
                     if rtts:
                         self._logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                    self._identifiers[sock_addr].encode("HEX"),
-                                    sock_addr[0],
-                                    sock_addr[1],
-                                    self._hostname[sock_addr],
-                                    len(rtts),
-                                    sum(rtts) / len(rtts),
-                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+                                          self._identifiers[sock_addr].encode("HEX"),
+                                          sock_addr[0],
+                                          sock_addr[1],
+                                          self._hostname[sock_addr],
+                                          len(rtts),
+                                          sum(rtts) / len(rtts),
+                                          ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
                     else:
                         self._logger.warning("%s:%d %s missing", sock_addr[0], sock_addr[1], self._hostname[sock_addr])
 
@@ -355,7 +369,8 @@ class TestBootstrapServers(DispersyTestFunc):
         self._logger.info("prepare communities, members, etc")
         with self._dispersy.database:
             candidates = [Candidate(("130.161.211.245", 6429), False)]
-            communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates) for _ in xrange(COMMUNITIES)]
+            communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates)
+                           for _ in xrange(COMMUNITIES)]
             members = [self._dispersy.get_new_member(u"low") for _ in xrange(MEMBERS)]
 
             for community in communities:

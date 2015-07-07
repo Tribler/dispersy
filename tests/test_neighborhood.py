@@ -63,13 +63,13 @@ class TestNeighborhood(DispersyTestFunc):
 
         # SELF creates a message
         candidates = tuple((node.my_candidate for node in nodes[:targeted_node_count]))
-        message = self._mm.create_targeted_full_sync_text("Hello World!", destination = candidates,  global_time = 42)
+        message = self._mm.create_targeted_full_sync_text("Hello World!", destination=candidates,  global_time=42)
         self._dispersy._forward([message])
 
         # check if sufficient NODES received the message (at least the first `target_count` ones)
         forwarded_node_count = 0
         for node in nodes:
-            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"], timeout = 0.1)]
+            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"], timeout=0.1)]
             if node in nodes[:targeted_node_count]:
                 # They MUST have received the message
                 self.assertEqual(len(forwarded), 1)

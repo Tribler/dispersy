@@ -61,6 +61,7 @@ class NoBootstrapDebugCommunity(DebugCommunity):
 
 
 class TestCandidates(DispersyTestFunc):
+
     """
     Tests candidate interface.
 
@@ -359,6 +360,7 @@ class TestCandidates(DispersyTestFunc):
         now = time()
         for flags, candidate in zip(all_flags, candidates):
             member = [None]
+
             def get_member():
                 if not member[0]:
                     member[0] = self._dispersy.get_new_member(u"very-low")
@@ -513,7 +515,8 @@ class TestCandidates(DispersyTestFunc):
         # yield_verified_candidates
         self.set_timestamps(candidates, all_flags)
         selection = self.select_verified_candidates(candidates, all_flags)
-        actual_list = [islice(community.dispersy_yield_verified_candidates(), max_iterations) for _ in xrange(max_calls)]
+        actual_list = [islice(community.dispersy_yield_verified_candidates(), max_iterations)
+                       for _ in xrange(max_calls)]
         for actual in actual_list:
             compare(selection, actual)
 
@@ -615,19 +618,27 @@ class TestCandidates(DispersyTestFunc):
             returned_intro_candidate += 1 if candidate.sock_addr[1] == 3 else 0
             returned_discovered_candidate += 1 if candidate.sock_addr[1] == 4 else 0
 
-        assert returned_walked_candidate in range(int(expected_walked_range * 9000), int(expected_walked_range * 11000)), returned_walked_candidate
-        assert returned_stumble_candidate in range(int(expected_stumble_range * 9000), int(expected_stumble_range * 11000)), returned_stumble_candidate
-        assert returned_intro_candidate in range(int(expected_intro_range * 9000), int(expected_intro_range * 11000)), returned_intro_candidate
-        assert returned_discovered_candidate in range(int(expected_discovered_range * 9000), int(expected_discovered_range * 11000)), returned_discovered_candidate
+        assert returned_walked_candidate in range(int(expected_walked_range * 9000),
+                                                  int(expected_walked_range * 11000)), returned_walked_candidate
+        assert returned_stumble_candidate in range(int(expected_stumble_range * 9000),
+                                                   int(expected_stumble_range * 11000)), returned_stumble_candidate
+        assert returned_intro_candidate in range(int(expected_intro_range * 9000),
+                                                 int(expected_intro_range * 11000)), returned_intro_candidate
+        assert returned_discovered_candidate in range(int(expected_discovered_range * 9000),
+                                                      int(expected_discovered_range * 11000)), returned_discovered_candidate
 
     @blocking_call_on_reactor_thread
     def test_merge_candidates(self):
         # let's make a list of all possible combinations which should be merged into one candidate
         candidates = []
-        candidates.append(self._community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1), ("1.1.1.1", 1), u"unknown"))
-        candidates.append(self._community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1), ("1.1.1.1", 2), u"symmetric-NAT"))
-        candidates.append(self._community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1), ("1.1.1.1", 3), u"symmetric-NAT"))
-        candidates.append(self._community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1), ("1.1.1.1", 4), u"unknown"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1),
+                                                           ("1.1.1.1", 1), u"unknown"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1),
+                                                           ("1.1.1.1", 2), u"symmetric-NAT"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1),
+                                                           ("1.1.1.1", 3), u"symmetric-NAT"))
+        candidates.append(self._community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1),
+                                                           ("1.1.1.1", 4), u"unknown"))
 
         self._community.filter_duplicate_candidate(candidates[0])
 

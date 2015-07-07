@@ -51,7 +51,8 @@ class TestBatch(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
+        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time)
+                    for global_time in xrange(10, 10 + length)]
 
         begin = time()
         other.give_messages(messages, node)
@@ -73,7 +74,8 @@ class TestBatch(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time) for global_time in xrange(10, 10 + length)]
+        messages = [node.create_full_sync_text("Dprint=False, big batch #%d" % global_time, global_time)
+                    for global_time in xrange(10, 10 + length)]
 
         begin = time()
         for message in messages:

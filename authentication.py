@@ -325,8 +325,8 @@ class DoubleMemberAuthentication(Authentication):
         have not yet signed and will wait until replies are received, or a timeout occurs.
 
         When a member receives a request to add her signature to a message, the allow_signature_func
-        function is called.  We will only add our signature if the allow_signature_func method returns 
-        the same, or a modified sub-message.  If so, a dispersy-signature-response message is send to 
+        function is called.  We will only add our signature if the allow_signature_func method returns
+        the same, or a modified sub-message.  If so, a dispersy-signature-response message is send to
         the creator  of the message, the first one in the authentication list.
 
         @param allow_signature_func: The function that is called when a signature request is

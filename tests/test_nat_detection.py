@@ -5,6 +5,7 @@ from ..util import call_on_reactor_thread
 
 
 class TestNATDetection(DispersyTestFunc):
+
     """
     Tests NAT detection.
 

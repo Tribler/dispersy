@@ -312,7 +312,8 @@ class WalkCandidate(Candidate):
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):
-                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s", self._lan_address, self._wan_address, self.sock_addr)
+                self._logger.error("Either LAN %s or the WAN %s should be SOCK_ADDR %s",
+                                   self._lan_address, self._wan_address, self.sock_addr)
 
     def __str__(self):
         if self._sock_addr == self._lan_address == self._wan_address:
@@ -326,6 +327,7 @@ class WalkCandidate(Candidate):
 
 class LoopbackCandidate(Candidate):
     __loopback_sock_addr = ("localhost", 0)
+
     def __init__(self):
         super(LoopbackCandidate, self).__init__(self.__loopback_sock_addr, False)
 

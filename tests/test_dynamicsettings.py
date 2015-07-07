@@ -190,4 +190,3 @@ class TestDynamicSettings(DispersyTestFunc):
 
         _, message = node.receive_message(names=[u"dispersy-dynamic-settings"]).next()
         assert message
-
