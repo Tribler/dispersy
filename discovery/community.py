@@ -681,82 +681,60 @@ class DiscoveryCommunity(Community):
 
     class PingRequestCache(RandomNumberCache):
 
-        def __init__(self, community, requested_candidates):
+        def __init__(self, community, requested_candidate):
             RandomNumberCache.__init__(self, community.request_cache, u"ping")
             self.community = community
-            self.requested_candidates = requested_candidates
-            self.received_candidates = set()
-
-        def on_success(self, candidate):
-            if self.did_request(candidate):
-                self.received_candidates.add(candidate)
-
-            return self.is_complete()
-
-        def is_complete(self):
-            return len(self.received_candidates) == len(self.requested_candidates)
-
-        def did_request(self, candidate):
-            return candidate in self.requested_candidates
+            self.requested_candidate = requested_candidate
 
         def on_timeout(self):
-            for candidate in self.requested_candidates:
-                if candidate not in self.received_candidates:
-                    self._logger.debug("DiscoveryCommunity: no response on ping, removing from taste_buddies %s", candidate)
-                    self.community.remove_taste_buddy(candidate)
+            self._logger.debug("DiscoveryCommunity: no response on ping, removing from taste_buddies %s", self.requested_candidate)
+            self.community.remove_taste_buddy(self.requested_candidate)
 
     def create_ping_requests(self):
         tbs = list(self.yield_taste_buddies())[:self.max_tbs]
-        tbs = [tb.candidate for tb in tbs if tb.time_remaining() < PING_INTERVAL]
-
-        if tbs:
-            cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tbs))
-            self._create_pingpong(u"ping", tbs, cache.number)
+        for tb in tbs:
+            if tb.time_remaining() < PING_INTERVAL:
+                cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tb.candidate))
+                self._create_pingpong(u"ping", tb.candidate, cache.number)
 
     def on_ping(self, messages):
         for message in messages:
-            self._create_pingpong(u"pong", [message.candidate], message.payload.identifier)
+            self._create_pingpong(u"pong", message.candidate, message.payload.identifier)
 
             self._logger.debug("DiscoveryCommunity: got ping from %s", message.candidate)
-
             self.reset_taste_buddy(message.candidate)
 
     def check_pong(self, messages):
+        identifiers_seen = {}
         for message in messages:
             request = self._request_cache.get(u"ping", message.payload.identifier)
             if not request:
-                yield DropMessage(message, "invalid response identifier")
+                yield DropMessage(message, "invalid ping identifier")
                 continue
 
-            if not request.did_request(message.candidate):
-                self._logger.debug("did not send request to %s %s", message.candidate.sock_addr,
-                                   [rcandidate.sock_addr for rcandidate in request.requested_candidates])
-                yield DropMessage(message, "did not send ping to this candidate")
+            if message.payload.identifier in identifiers_seen:
+                self._logger.error("already seen this indentifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
+                yield DropMessage(message, "invalid ping identifier")
                 continue
 
+            identifiers_seen[message.payload.identifier] = message.candidate
             yield message
 
     def on_pong(self, messages):
         for message in messages:
-            request = self._request_cache.get(u"ping", message.payload.identifier)
-            if not request:
-                self._logger.error("Unexpected pong from %s receieved: '%s', dropping it.", message.candidate, message)
-                continue
-
-            if request.on_success(message.candidate):
-                self._request_cache.pop(u"ping", message.payload.identifier)
+            self._request_cache.pop(u"ping", message.payload.identifier)
 
             self._logger.debug("DiscoveryCommunity: got pong from %s", message.candidate)
 
             self.reset_taste_buddy(message.candidate)
 
-    def _create_pingpong(self, meta_name, candidates, identifier):
+    def _create_pingpong(self, meta_name, candidate, identifier):
         meta = self.get_meta_message(meta_name)
         message = meta.impl(distribution=(self.global_time,), payload=(identifier,))
-        self._dispersy._send(candidates, [message])
+        self._dispersy._send([candidate, ], [message])
 
-        self._logger.debug("DiscoveryCommunity: send %s to %s candidates: %s",
-                           meta_name, len(candidates), map(str, candidates))
+        self._logger.debug("DiscoveryCommunity: send %s to %s",
+                           meta_name, str(candidate))
 
 
 class PeerCache(object):
