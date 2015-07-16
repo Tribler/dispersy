@@ -2438,7 +2438,7 @@ class Community(TaskManager):
                         new_submsg.authentication.set_signature(member, member.sign(new_body))
 
                 assert new_submsg.authentication.is_signed
-                self.store_update_forward([new_submsg], True, True, True)
+                self.dispersy.store_update_forward([new_submsg], True, True, True)
 
     def check_introduction_request(self, messages):
         """
