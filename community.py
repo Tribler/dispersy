@@ -2243,7 +2243,7 @@ class Community(TaskManager):
                 if self.is_pending_task_active("download master member identity"):
                     self.cancel_pending_task("download master member identity")
 
-    def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10, forward=True):
+    def create_signature_request(self, candidate, message, response_func, response_args=(), timeout=10.0, forward=True):
         """
         Create a dispersy-signature-request message.
 
@@ -2292,7 +2292,7 @@ class Community(TaskManager):
         assert isinstance(message.authentication, DoubleMemberAuthentication.Implementation)
         assert hasattr(response_func, "__call__")
         assert isinstance(response_args, tuple)
-        assert isinstance(timeout, (int, float))
+        assert isinstance(timeout, float)
         assert isinstance(forward, bool)
 
         # the members that need to sign
