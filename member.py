@@ -164,9 +164,8 @@ class Member(DummyMember):
             # DATA is to small, we expect len(DATA[OFFSET:OFFSET+LENGTH]) to be LENGTH
             return False
 
-        return self._public_key and \
-            self._signature_length == len(signature) \
-            and self._crypto.is_valid_signature(self._ec, data[offset:offset + length], signature)
+        if self._public_key and self._signature_length == len(signature):
+            return self._crypto.is_valid_signature(self._ec, data[offset:offset + length], signature)
 
     def sign(self, data, offset=0, length=0):
         """

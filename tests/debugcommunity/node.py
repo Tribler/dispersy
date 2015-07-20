@@ -90,7 +90,7 @@ class DebugNode(object):
         The member for this node.
         """
         return self._my_member
-    
+
     @property
     def my_mid(self):
         """
@@ -383,7 +383,7 @@ class DebugNode(object):
 
         packets = other.fetch_packets([u"dispersy-identity", ], other.my_member.mid)
         self.give_packets(packets, other)
-        
+
     @blocking_call_on_reactor_thread
     def take_step(self):
         self._community.take_step()
@@ -730,6 +730,12 @@ class DebugNode(object):
         Returns a new double-signed-text message.
         """
         return self._create_doublemember_text(u"double-signed-text", other, text, global_time)
+
+    def create_double_signed_split_payload_text(self, other, text, global_time=None):
+        """
+        Returns a new double-signed-text-split message.
+        """
+        return self._create_doublemember_text(u"double-signed-text-split", other, text, global_time)
 
     def create_full_sync_text(self, text, global_time=None):
         """
