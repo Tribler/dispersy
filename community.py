@@ -2435,7 +2435,7 @@ class Community(TaskManager):
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
                     if not signature and member == self._my_member:
-                        new_submsg.authentication.set_signature(member, member.sign(new_body))
+                        new_submsg.authentication.sign(new_body)
 
                 assert new_submsg.authentication.is_signed
                 self.dispersy.store_update_forward([new_submsg], True, True, True)
