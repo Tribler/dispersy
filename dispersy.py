@@ -191,23 +191,26 @@ class Dispersy(TaskManager):
             def __repr__(self):
                 return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
 
-        for interface in netifaces.interfaces():
-            try:
-                addresses = netifaces.ifaddresses(interface)
+        try:
+            for interface in netifaces.interfaces():
+                try:
+                    addresses = netifaces.ifaddresses(interface)
 
-            except ValueError:
-                # some interfaces are given that are invalid, we encountered one called ppp0
-                pass
+                except ValueError:
+                    # some interfaces are given that are invalid, we encountered one called ppp0
+                    pass
 
-            else:
-                for option in addresses.get(netifaces.AF_INET, []):
-                    try:
-                        yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+                else:
+                    for option in addresses.get(netifaces.AF_INET, []):
+                        try:
+                            yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
 
-                    except TypeError:
-                        # some interfaces have no netmask configured, causing a TypeError when
-                        # trying to unpack _l_netmask
-                        pass
+                        except TypeError:
+                            # some interfaces have no netmask configured, causing a TypeError when
+                            # trying to unpack _l_netmask
+                            pass
+        except OSError:
+            self._logger.exception("failed to check network interfaces.")
 
     def _guess_lan_address(self, interfaces, default=None):
         """
