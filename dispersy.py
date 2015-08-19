@@ -210,7 +210,8 @@ class Dispersy(TaskManager):
                             # trying to unpack _l_netmask
                             pass
         except OSError:
-            self._logger.exception("failed to check network interfaces.")
+            logger = logging.getLogger("dispersy")
+            logger.exception("failed to check network interfaces.")
 
     def _guess_lan_address(self, interfaces, default=None):
         """
