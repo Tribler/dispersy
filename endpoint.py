@@ -202,7 +202,7 @@ class StandaloneEndpoint(Endpoint):
 
                 except socket.error as e:
                     if e.errno != errno.EAGAIN:
-                        self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % str(e))
+                        self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % repr(e))
 
                 finally:
                     if packets:
