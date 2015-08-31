@@ -2209,14 +2209,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         return gatherResults(results.values(), consumeErrors=True).addBoth(check_stop_status)
 
-        # log and return the result
-        if all(result for result in results.itervalues()):
-            self._logger.info("Dispersy core properly stopped")
-            return True
-        else:
-            self._logger.error("Dispersy core unable to stop all components [%s]", results)
-            return False
-
     def _stats_detailed_candidates(self):
         """
         Periodically logs a detailed list of all candidates (walk, stumble, intro, none) for all
