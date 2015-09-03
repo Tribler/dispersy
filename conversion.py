@@ -158,13 +158,11 @@ class NoDefBinaryConversion(Conversion):
             self.payload = None
 
     class EncodeFunctions(object):
-        __slots__ = ["byte", "authentication", "signature", "resolution", "distribution", "payload"]
+        __slots__ = ["byte", "authentication", "resolution", "distribution", "payload"]
 
-        def __init__(self, byte, xxx_todo_changeme, resolution, distribution, payload):
-            (authentication, signature) = xxx_todo_changeme
+        def __init__(self, byte, authentication, resolution, distribution, payload):
             self.byte = byte
             self.authentication = authentication
-            self.signature = signature
             self.resolution = resolution
             self.distribution = distribution
             self.payload = payload
@@ -225,9 +223,9 @@ class NoDefBinaryConversion(Conversion):
         assert callable(encode_payload_func)
         assert callable(decode_payload_func)
 
-        mapping = {MemberAuthentication: (self._encode_member_authentication, self._encode_member_authentication_signature),
-                   DoubleMemberAuthentication: (self._encode_double_member_authentication, self._encode_double_member_authentication_signature),
-                   NoAuthentication: (self._encode_no_authentication, self._encode_no_authentication_signature),
+        mapping = {MemberAuthentication: self._encode_member_authentication,
+                   DoubleMemberAuthentication: self._encode_double_member_authentication,
+                   NoAuthentication: self._encode_no_authentication,
 
                    PublicResolution: self._encode_public_resolution,
                    LinearResolution: self._encode_linear_resolution,
@@ -967,34 +965,6 @@ class NoDefBinaryConversion(Conversion):
         container.append(chr(index))
         # both the public and the linear resolution do not require any storage
 
-    def _encode_no_authentication_signature(self, container, message, sign):
-        return "".join(container)
-
-    def _encode_member_authentication_signature(self, container, message, sign):
-        assert message.authentication.member.private_key, (message.authentication.member.database_id, message.authentication.member.mid.encode("HEX"), id(message.authentication.member))
-        data = "".join(container)
-        if sign:
-            signature = message.authentication.member.sign(data)
-            message.authentication.set_signature(signature)
-            return data + signature
-
-        else:
-            return data + "\x00" * message.authentication.member.signature_length
-
-    def _encode_double_member_authentication_signature(self, container, message, sign):
-        data = "".join(container)
-        signatures = []
-        for signature, member in message.authentication.signed_members:
-            if signature:
-                signatures.append(signature)
-            elif sign and member == self._community._my_member:
-                signature = member.sign(data)
-                message.authentication.set_signature(member, signature)
-                signatures.append(signature)
-            else:
-                signatures.append("\x00" * member.signature_length)
-        return data + "".join(signatures)
-
     def can_encode_message(self, message):
         """
         Returns True when MESSAGE can be encoded using this conversion.
@@ -1027,8 +997,8 @@ class NoDefBinaryConversion(Conversion):
         container.extend(payload)
 
         # sign
-        packet = encode_functions.signature(container, message, sign)
-        return packet
+        packet = "".join(container)
+        return packet + message.authentication.sign(packet)
 
     #
     # Decoding
@@ -1106,14 +1076,9 @@ class NoDefBinaryConversion(Conversion):
             member = self._community.get_member(mid=member_id)
             # If signatures and verification are enabled, verify that the signature matches the member sha1 identifier
             if member:
-                first_signature_offset = len(data) - member.signature_length
-                if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
-                    placeholder.offset = offset
-                    placeholder.first_signature_offset = first_signature_offset
-                    placeholder.authentication = MemberAuthentication.Implementation(authentication, member, is_signed=True)
-                    return
-                else:
-                    raise DropPacket("Verification failed (_decode_member_authentication sha1)")
+                placeholder.offset = offset
+                placeholder.first_signature_offset = len(data) - member.signature_length
+                placeholder.authentication = MemberAuthentication.Implementation(authentication, member, data[-member.signature_length:])
             else:
                 raise DelayPacketByMissingMember(self._community, member_id)
 
@@ -1133,17 +1098,11 @@ class NoDefBinaryConversion(Conversion):
                 raise DropPacket("Invalid cryptographic key (_decode_member_authentication)")
 
             if member:
-                first_signature_offset = len(data) - member.signature_length
-
-                # signatures are enabled, verify that the signature matches the member sha1 identifier
-                if not placeholder.verify or member.verify(data, data[first_signature_offset:], length=first_signature_offset):
-                    placeholder.offset = offset
-                    placeholder.first_signature_offset = first_signature_offset
-                    placeholder.authentication = MemberAuthentication.Implementation(authentication, member, is_signed=True)
-                    return
-
-            raise DropPacket("Invalid signature")
-
+                placeholder.offset = offset
+                placeholder.first_signature_offset = len(data) - member.signature_length
+                placeholder.authentication = MemberAuthentication.Implementation(authentication, member, data[-member.signature_length:])
+            else:
+                raise DropPacket("Invalid cryptographic key (_decode_member_authentication)")
         else:
             raise NotImplementedError(encoding)
 
@@ -1185,16 +1144,7 @@ class NoDefBinaryConversion(Conversion):
         second_signature_offset = len(data) - members[1].signature_length
         first_signature_offset = second_signature_offset - members[0].signature_length
 
-        signatures = []
-        for member, signature in zip(members, (data[first_signature_offset:second_signature_offset], data[second_signature_offset:])):
-            if placeholder.allow_empty_signature and signature == "\x00" * member.signature_length:
-                signatures.append("")
-            elif ((not placeholder.verify and len(members) == 1) or
-                  member.verify(data, signature, length=first_signature_offset)):
-                signatures.append(signature)
-            else:
-                raise DropPacket("Invalid double signature in position %d (_decode_double_member_authentication %s[%s])" %
-                                 (len(signatures), authentication.encoding, encoding))
+        signatures = [data[first_signature_offset:second_signature_offset], data[second_signature_offset:]]
 
         placeholder.offset = offset
         placeholder.first_signature_offset = first_signature_offset
@@ -1265,7 +1215,8 @@ class NoDefBinaryConversion(Conversion):
         assert isinstance(placeholder.distribution, Distribution.Implementation)
 
         # payload
-        placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, placeholder.data[:placeholder.first_signature_offset])
+        payload = placeholder.data[:placeholder.first_signature_offset]
+        placeholder.offset, placeholder.payload = decode_functions.payload(placeholder, placeholder.offset, payload)
         if placeholder.offset != placeholder.first_signature_offset:
             self._logger.warning("invalid packet size for %s data:%d; offset:%d",
                                  placeholder.meta.name, placeholder.first_signature_offset, placeholder.offset)
@@ -1273,6 +1224,10 @@ class NoDefBinaryConversion(Conversion):
 
         assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
         assert isinstance(placeholder.offset, (int, long))
+
+        # verify payload
+        if placeholder.verify and not placeholder.authentication.has_valid_signature_for(placeholder, payload):
+            raise DropPacket("Invalid signature")
 
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, source=source, packet=placeholder.data)
 

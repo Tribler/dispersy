@@ -68,6 +68,14 @@ class DebugCommunity(Community):
                         TextPayload(),
                         self._generic_timeline_check,
                         self.on_text),
+                Message(self, u"double-signed-text-split",
+                        DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text, split_payload_func=self.split_double_payload),
+                        PublicResolution(),
+                        DirectDistribution(),
+                        CommunityDestination(node_count=10),
+                        TextPayload(),
+                        self._generic_timeline_check,
+                        self.on_text),
                 Message(self, u"full-sync-text",
                         MemberAuthentication(),
                         PublicResolution(),
@@ -193,15 +201,26 @@ class DebugCommunity(Community):
         """
         self._logger.debug("%s \"%s\"", message, message.payload.text)
         allow_text = message.payload.text
-        assert allow_text.startswith("Allow=True") or allow_text.startswith("Allow=False") or allow_text.startswith("Allow=Modify")  
+        assert allow_text.startswith("Allow=True") or allow_text.startswith("Allow=False") or allow_text.startswith("Allow=Modify") or allow_text.startswith("Allow=Append")
         if allow_text.startswith("Allow=True"):
             return message
-        
+
         if allow_text.startswith("Allow=Modify"):
             meta = message.meta
             return meta.impl(authentication=(message.authentication.members,),
                          distribution=(message.distribution.global_time,),
                          payload=("MODIFIED",))
+
+        if allow_text.startswith("Allow=Append"):
+            meta = message.meta
+            return meta.impl(authentication=(message.authentication.members, message.authentication._signatures),
+                         distribution=(message.distribution.global_time,),
+                         payload=(allow_text + "MODIFIED",))
+
+    def split_double_payload(self, payload):
+        # alice signs until the ","
+        # bob signs the complete payload
+        return payload.rsplit(",", 1)[0], payload
 
     def on_text(self, messages):
         """

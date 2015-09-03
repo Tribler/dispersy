@@ -73,6 +73,12 @@ class NoAuthentication(Authentication):
         def is_signed(self):
             return True
 
+        def sign(self, payload):
+            return ""
+
+        def has_valid_signature_for(self, placeholder, payload):
+            return True
+
 
 class MemberAuthentication(Authentication):
 
@@ -97,7 +103,7 @@ class MemberAuthentication(Authentication):
     """
     class Implementation(Authentication.Implementation):
 
-        def __init__(self, meta, member, is_signed=False):
+        def __init__(self, meta, member, signature=""):
             """
             Initialize a new MemberAuthentication.Implementation instance.
 
@@ -109,17 +115,16 @@ class MemberAuthentication(Authentication):
 
             @param member: The member that will own, i.e. sign, this message.
             @type member: Member
-
-            @param is_signed: Indicates if the message is signed or not.  Should only be given when
-             decoding a message.
-            @type is_signed: bool
+            
+            @param signature: The signature used to sign this message
+            @type signature: string
             """
             from .member import Member
             assert isinstance(member, Member)
-            assert isinstance(is_signed, bool)
+            assert isinstance(signature, str)
             super(MemberAuthentication.Implementation, self).__init__(meta)
             self._member = member
-            self._is_signed = is_signed
+            self._signature = signature
 
         @property
         def encoding(self):
@@ -138,12 +143,22 @@ class MemberAuthentication(Authentication):
             """
             return self._member
 
-        @property
         def is_signed(self):
-            return self._is_signed
+            return bool(self._signature)
 
-        def set_signature(self, signature):
-            self._is_signed = True
+        def sign(self, payload):
+            if self._is_sig_empty():
+                self._signature = self._member.sign(payload)
+            return self._signature
+
+        def has_valid_signature_for(self, placeholder, payload):
+            if placeholder.allow_empty_signature and self._is_sig_empty():
+                return True
+            return self._member.verify(payload, self._signature)
+
+        def _is_sig_empty(self):
+            return self._signature == "" or self._signature == "\x00" * self._member.signature_length
+
 
     def __init__(self, encoding="default"):
         """
@@ -231,7 +246,6 @@ class DoubleMemberAuthentication(Authentication):
             assert len(signatures) == 0 or len(signatures) == 2
             super(DoubleMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
-            self._regenerate_packet_func = None
 
             # will contain the list of signatures as they are received
             # from dispersy-signature-response messages
@@ -247,7 +261,7 @@ class DoubleMemberAuthentication(Authentication):
             @rtype: callable function
             @note: This property is obtained from the meta object.
             """
-            return self._meta._allow_signature_func
+            return self._meta.allow_signature_func
 
         @property
         def encoding(self):
@@ -286,37 +300,37 @@ class DoubleMemberAuthentication(Authentication):
 
             @rtype: list containing (string, Member) tuples
             """
-            return zip(self._signatures, self._members)
+            return [(signature if not self._is_sig_empty(signature, member) else '', member) for signature, member in zip(self._signatures, self._members)]
 
         @property
         def is_signed(self):
-            return all(self._signatures)
+            return all(not self._is_sig_empty(signature, member) for signature, member in zip(self._signatures, self._members))
 
-        def set_signature(self, member, signature):
-            """
-            Set a verified signature for a specific member.
+        def sign(self, payload):
+            payloads = self._meta.split_payload_func(payload)
+            for i, signature in enumerate(self._signatures):
+                if self._is_sig_empty(signature, self._members[i]):
+                    if self._members[i].private_key:
+                        self._signatures[i] = self._members[i].sign(payloads[i])
+                    else:
+                        self._signatures[i] = "\x00" * self._members[i].signature_length
+            return "".join(self._signatures)
 
-            This method adds a new signature.  Note that the signature is assumed to be valid at
-            this point.  When the message is encoded the new signature will be included.
+        def has_valid_signature_for(self, placeholder, payload):
+            payloads = self._meta.split_payload_func(payload)
+            for signature, member, payload in zip(self._signatures, self._members, payloads):
+                if self._is_sig_empty(signature, member):
+                    if not placeholder.allow_empty_signature:
+                        return False
+                elif not member.verify(payload, signature):
+                    return False
+            return True
 
-            @param member: The Member that made the signature.
-            @type member: Member
+        def _is_sig_empty(self, signature, member):
+            return signature == "" or signature == "\x00" * member.signature_length
 
-            @param signature: The signature for this message.
-            @type signature: string
-            """
-            # todo: verify the signature
-            assert member in self._members
-            assert member.signature_length == len(signature)
-            self._signatures[self._members.index(member)] = signature
-            self._regenerate_packet_func()
 
-        def setup(self, message_impl):
-            from .message import Message
-            assert isinstance(message_impl, Message.Implementation)
-            self._regenerate_packet_func = message_impl.regenerate_packet
-
-    def __init__(self, allow_signature_func, encoding="default"):
+    def __init__(self, allow_signature_func, split_payload_func=None, encoding="default"):
         """
         Initialize a new DoubleMemberAuthentication instance.
 
@@ -332,21 +346,39 @@ class DoubleMemberAuthentication(Authentication):
         @param allow_signature_func: The function that is called when a signature request is
          received. Must return a Message to add a signature, or None to ignore the request.
         @type allow_signature_func: callable function
+        
+        @param split_payload_func: The function that is called when a payload needs to be split
+        in order to verify the signature on parts of the payload.
+        @type split_payload_func: callable function
         """
         assert hasattr(allow_signature_func, "__call__"), "ALLOW_SIGNATURE_FUNC must be callable"
+        assert split_payload_func is None or hasattr(allow_signature_func, "__call__"), "SPLIT_PAYLOAD_FUNC must be callable"
         assert isinstance(encoding, str)
         assert encoding in ("default", "bin", "sha1")
         super(DoubleMemberAuthentication, self).__init__()
         self._allow_signature_func = allow_signature_func
+
+        if split_payload_func is None:
+            split_payload_func = lambda payload: payload
+        self._split_payload_func = split_payload_func
         self._encoding = encoding
 
     @property
     def allow_signature_func(self):
         """
-        The function that is called whenever a dispersy-signature-request is received.
+        The function that is called when a dispersy-signature-request is received.
         @rtype: callable function
         """
         return self._allow_signature_func
+
+    @property
+    def split_payload_func(self):
+        """
+        The function that is called when a payload needs to be split in order to verify the 
+        signature on parts of the payload
+        @rtype: callable function
+        """
+        return self._split_payload_func
 
     @property
     def encoding(self):

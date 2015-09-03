@@ -2435,7 +2435,9 @@ class Community(TaskManager):
                 # add our own signatures and we can handle the message
                 for signature, member in new_submsg.authentication.signed_members:
                     if not signature and member == self._my_member:
-                        new_submsg.authentication.set_signature(member, member.sign(new_body))
+                        new_submsg.authentication.sign(new_body)
+                        new_submsg.regenerate_packet()
+                        break
 
                 assert new_submsg.authentication.is_signed
                 self.dispersy.store_update_forward([new_submsg], True, True, True)
@@ -2452,7 +2454,7 @@ class Community(TaskManager):
 
             yield message
 
-    def on_introduction_request(self, messages, extra_payload = None):
+    def on_introduction_request(self, messages, extra_payload=None):
         assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
 
         meta_introduction_response = self.get_meta_message(u"dispersy-introduction-response")
@@ -2651,7 +2653,7 @@ class Community(TaskManager):
                 if self._dispersy._statistics.received_introductions is not None:
                     self._dispersy._statistics.received_introductions[candidate.sock_addr]['-ignored-'] += 1
 
-    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False, extra_payload = None):
+    def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False, extra_payload=None):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
         assert not extra_payload or isinstance(extra_payload, list), 'extra_payload is not a list %s' % type(extra_payload)
 
