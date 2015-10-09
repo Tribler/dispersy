@@ -290,6 +290,14 @@ class DoubleMemberAuthentication(Authentication):
             return self._members
 
         @property
+        def signatures(self):
+            """
+            The signatures of the message that have been signed, or if missing "".
+            @rtype: list or tuple containing String instances
+            """
+            return self._signatures
+
+        @property
         def signed_members(self):
             """
             The members and their signatures.
