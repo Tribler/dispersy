@@ -84,7 +84,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            node, = self.create_nodes(1, communityclass=Community, autoload_discovery=True)
+            node, = self.create_nodes(1, community_class=Community, autoload_discovery=True)
 
             # node sends introduction request
             destination = Candidate(tracker_address, False)

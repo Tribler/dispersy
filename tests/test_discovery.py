@@ -69,4 +69,4 @@ class TestDiscovery(DispersyTestFunc):
         assert most_similar[-1][1] == node.my_mid
 
     def create_nodes(self, *args, **kwargs):
-        return super(TestDiscovery, self).create_nodes(*args, communityclass=DiscoveryCommunity, **kwargs)
+        return super(TestDiscovery, self).create_nodes(*args, community_class=DiscoveryCommunity, **kwargs)
