@@ -339,9 +339,9 @@ class Community(TaskManager):
         assert self._my_member.public_key, [self._database_id, self._my_member.database_id, self._my_member.public_key]
         assert self._my_member.private_key, [self._database_id, self._my_member.database_id, self._my_member.private_key]
         if not self._master_member.public_key and self.dispersy_enable_candidate_walker and self.dispersy_auto_download_master_member:
-            lc = LoopingCall(self._download_master_member_identity)
-            reactor.callLater(0, lc.start, DOWNLOAD_MM_PK_INTERVAL, now=True)
-            self.register_task("download master member identity", lc)
+            self.register_task("download master member identity",
+                               LoopingCall(self._download_master_member_identity),
+                               delay=0, interval=DOWNLOAD_MM_PK_INTERVAL)
 
         # define all available messages
         self._initialize_meta_messages()
