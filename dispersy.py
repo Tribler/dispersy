@@ -191,23 +191,27 @@ class Dispersy(TaskManager):
             def __repr__(self):
                 return "<{self.__class__.__name__} \"{self.name}\" addr:{self.address} mask:{self.netmask}>".format(self=self)
 
-        for interface in netifaces.interfaces():
-            try:
-                addresses = netifaces.ifaddresses(interface)
+        try:
+            for interface in netifaces.interfaces():
+                try:
+                    addresses = netifaces.ifaddresses(interface)
 
-            except ValueError:
-                # some interfaces are given that are invalid, we encountered one called ppp0
-                pass
+                except ValueError:
+                    # some interfaces are given that are invalid, we encountered one called ppp0
+                    pass
 
-            else:
-                for option in addresses.get(netifaces.AF_INET, []):
-                    try:
-                        yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+                else:
+                    for option in addresses.get(netifaces.AF_INET, []):
+                        try:
+                            yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
 
-                    except TypeError:
-                        # some interfaces have no netmask configured, causing a TypeError when
-                        # trying to unpack _l_netmask
-                        pass
+                        except TypeError:
+                            # some interfaces have no netmask configured, causing a TypeError when
+                            # trying to unpack _l_netmask
+                            pass
+        except OSError:
+            logger = logging.getLogger("dispersy")
+            logger.exception("failed to check network interfaces.")
 
     def _guess_lan_address(self, interfaces, default=None):
         """
@@ -2204,14 +2208,6 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             return True
 
         return gatherResults(results.values(), consumeErrors=True).addBoth(check_stop_status)
-
-        # log and return the result
-        if all(result for result in results.itervalues()):
-            self._logger.info("Dispersy core properly stopped")
-            return True
-        else:
-            self._logger.error("Dispersy core unable to stop all components [%s]", results)
-            return False
 
     def _stats_detailed_candidates(self):
         """

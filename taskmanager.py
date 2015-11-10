@@ -1,10 +1,10 @@
 from threading import Lock
 
+from .util import blocking_call_on_reactor_thread
+from twisted.internet import reactor
 from twisted.internet.base import DelayedCall
 from twisted.internet.defer import Deferred
 from twisted.internet.task import LoopingCall
-
-from .util import blocking_call_on_reactor_thread
 
 
 CLEANUP_FREQUENCY = 100
@@ -16,6 +16,7 @@ class TaskManager(object):
     Provides a set of tools to mantain a list of twisted "tasks" (Deferred, LoopingCall, DelayedCall) that are to be
     executed during the lifetime of an arbitrary object, usually getting killed with it.
     """
+    _reactor = reactor
 
     def __init__(self):
         self._pending_tasks = {}
@@ -29,12 +30,26 @@ class TaskManager(object):
         self.cancel_pending_task(name)
         return self.register_task(name, task)
 
-    def register_task(self, name, task):
+    def register_task(self, name, task, delay=None, value=None, interval=None):
         """
         Register a task so it can be canceled at shutdown time or by name.
         """
         assert not self.is_pending_task_active(name), name
-        assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), task
+        assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), (task, type(task) == type(Deferred))
+
+        if delay is not None:
+            if isinstance(task, Deferred):
+                if value is None:
+                    raise ValueError("Expecting value to fire the Deferred with")
+                dc = self._reactor.callLater(delay, task.callback, value)
+            elif isinstance(task, LoopingCall):
+                if interval is None:
+                    raise ValueError("Expecting interval for delayed LoopingCall")
+                dc = self._reactor.callLater(delay, task.start, interval)
+            else:
+                raise ValueError("Expecting Deferred or LoopingCall if task is delayed")
+
+            task = (dc, task)
 
         self._maybe_clean_task_list()
         with self._task_lock:
@@ -57,7 +72,7 @@ class TaskManager(object):
         Cancels all the registered tasks.
         This usually should be called when stopping or destroying the object so no tasks are left floating around.
         """
-        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall))
+        assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall, tuple))
                     for task in self._pending_tasks.itervalues()]), self._pending_tasks
 
         for name in self._pending_tasks.keys():
@@ -74,16 +89,25 @@ class TaskManager(object):
         Return a boolean determining if a task is active and its cancel/stop method if the task is registered.
         """
         task = self._pending_tasks.get(name, None)
-        if isinstance(task, Deferred):
-            # Have in mind that any deferred in the pending tasks list should have been constructed with a
-            # canceller function.
-            return not task.called, getattr(task, 'cancel', None)
-        elif isinstance(task, DelayedCall):
-            return task.active(), task.cancel
-        elif isinstance(task, LoopingCall):
-            return task.running, task.stop
-        else:
-            return False, None
+
+        def do_get(task):
+            if isinstance(task, Deferred):
+                # Have in mind that any deferred in the pending tasks list should have been constructed with a
+                # canceller function.
+                return not task.called, getattr(task, 'cancel', None)
+            elif isinstance(task, DelayedCall):
+                return task.active(), task.cancel
+            elif isinstance(task, LoopingCall):
+                return task.running, task.stop
+            elif isinstance(task, tuple):
+                if task[0].active():
+                    return task[0].active(), task[0].cancel
+                else:
+                    return do_get(task[1])
+            else:
+                return False, None
+
+        return do_get(task)
 
     def _maybe_clean_task_list(self):
         """

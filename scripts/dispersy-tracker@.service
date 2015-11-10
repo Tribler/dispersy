@@ -1,0 +1,24 @@
+[Unit]
+Description=Dispersy tracker listenin at port %i
+
+[Service]
+ProtectSystem=yes
+
+Environment="PYTHONPATH=/home/tracker/dispersy"
+
+ExecStartPre=/bin/mkdir -p /home/tracker/%i
+
+ExecStart=/usr/bin/twistd \
+    --nodaemon \
+    --pidfile= \
+    tracker --port=%i --statedir=/home/tracker/%i
+
+WorkingDirectory=/home/tracker/
+
+User=tracker
+Group=tracker
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

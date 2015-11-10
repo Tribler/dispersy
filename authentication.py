@@ -246,7 +246,6 @@ class DoubleMemberAuthentication(Authentication):
             assert len(signatures) == 0 or len(signatures) == 2
             super(DoubleMemberAuthentication.Implementation, self).__init__(meta)
             self._members = members
-            self._regenerate_packet_func = None
 
             # will contain the list of signatures as they are received
             # from dispersy-signature-response messages
@@ -337,11 +336,6 @@ class DoubleMemberAuthentication(Authentication):
 
         def _is_sig_empty(self, signature, member):
             return signature == "" or signature == "\x00" * member.signature_length
-
-        def setup(self, message_impl):
-            from .message import Message
-            assert isinstance(message_impl, Message.Implementation)
-            self._regenerate_packet_func = message_impl.regenerate_packet
 
 
     def __init__(self, allow_signature_func, split_payload_func=None, encoding="default"):
