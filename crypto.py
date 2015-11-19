@@ -334,7 +334,10 @@ class M2CryptoSK(M2CryptoPK):
             self.ec = self.key_from_pem("-----BEGIN EC PRIVATE KEY-----\n%s-----END EC PRIVATE KEY-----\n" % keystring.encode("BASE64"))
 
         elif filename:
-            self.ec = EC.load_key(filename)
+            # this workaround is needed to run Tribler on Windows 64 bit
+            membuf = BIO.MemoryBuffer(open(filename, 'rb').read())
+            self.ec = EC.load_key_bio(membuf)
+            membuf.close()
 
     def pub(self):
         return M2CryptoPK(ec_pub=self.ec.pub())
