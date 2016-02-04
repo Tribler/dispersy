@@ -4,19 +4,15 @@ Description=Dispersy tracker listenin at port %i
 [Service]
 ProtectSystem=yes
 
-Environment="PYTHONPATH=/home/tracker/dispersy"
+Environment="PYTHONPATH=/opt/dispersy"
 
-ExecStartPre=/bin/mkdir -p /home/tracker/%i
+WorkingDirectory=/opt
 
-ExecStart=/usr/bin/twistd \
-    --nodaemon \
-    --pidfile= \
-    tracker --port=%i --statedir=/home/tracker/%i
+ExecStartPre=/bin/mkdir -p ${HOME}/%i
+ExecStart=/usr/bin/twistd --nodaemon --pidfile= tracker --port=%i --statedir=${HOME}/%i
 
-WorkingDirectory=/home/tracker/
-
-User=tracker
-Group=tracker
+User=dispersy_tracker
+Group=dispersy_tracker
 
 Restart=always
 
