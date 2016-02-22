@@ -21,9 +21,13 @@ _DEFAULT_ADDRESSES = [
     (u"dispersy2.tribler.org", 6422),
     (u"130.161.211.245"      , 6422),
     (u"dispersy3.tribler.org", 6423),
-    (u"95.211.198.141"       , 6423),
+    (u"131.180.27.155"       , 6423),
     (u"dispersy4.tribler.org", 6424),
-    (u"95.211.198.143"       , 6424),
+    (u"83.149.70.6"          , 6424),
+    (u"dispersy7.tribler.org", 6427),
+    (u"95.211.155.142"       , 6427),
+    (u"dispersy8.tribler.org", 6428),
+    (u"95.211.155.131"       , 6428),
 
     # DNS entries on st.tudelft.nl
     (u"dispersy1.st.tudelft.nl", 6421),
