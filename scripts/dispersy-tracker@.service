@@ -1,5 +1,5 @@
 [Unit]
-Description=Dispersy tracker listenin at port %i
+Description=Dispersy tracker listening at port %i
 
 [Service]
 ProtectSystem=yes
