@@ -11,3 +11,4 @@ Contents:
    installation
    system_overview
    contributing
+   API <api/modules>
