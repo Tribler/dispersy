@@ -13,3 +13,4 @@
 /skip_nosetests.xml
 /tests/.noseids
 \#*\#
+/docs/_build/
