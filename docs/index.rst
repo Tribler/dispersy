@@ -10,3 +10,4 @@ Contents:
    Introduction <introduction>
    installation
    system_overview
+   contributing
