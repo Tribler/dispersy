@@ -10,5 +10,6 @@ Contents:
    Introduction <introduction>
    installation
    system_overview
+   usage
    contributing
    API <api/modules>
