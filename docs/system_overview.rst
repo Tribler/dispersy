@@ -130,7 +130,7 @@ Using the computed time differences a peer assigns all other peers in one of the
    previously mentioned categories.
 
 We set both the walk lifetime and the stumble lifetime equal to 57.5 seconds because most NAT boxes close a punctured
-`hole' 60 seconds after receiving the last packet. Moreover, we set the intro lifetime equal to 27.5 seconds because
+'hole' 60 seconds after receiving the last packet. Moreover, we set the intro lifetime equal to 27.5 seconds because
 most NAT boxes close a punctured `hole' after 30 seconds when no packets are received through it.
 
 (Un)verified candidates
