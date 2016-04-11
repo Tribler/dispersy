@@ -35,6 +35,7 @@ from twisted.application.service import IServiceMaker, MultiService
 from twisted.conch import manhole_tap
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
+from twisted.logger import globalLogPublisher
 from twisted.plugin import IPlugin
 from twisted.python import usage
 from twisted.python.log import msg, ILogObserver, PythonLoggingObserver, FileLogObserver
@@ -42,6 +43,7 @@ from twisted.python.logfile import DailyLogFile
 from twisted.python.threadable import isInIOThread
 from zope.interface import implements
 
+from tool.clean_observers import clean_twisted_observers
 
 COMMUNITY_CLEANUP_INTERVAL = 180.0
 
@@ -49,6 +51,9 @@ if sys.platform == 'win32':
     SOCKET_BLOCK_ERRORCODE = 10035  # WSAEWOULDBLOCK
 else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
+
+
+clean_twisted_observers(globalLogPublisher)
 
 
 class TrackerDispersy(Dispersy):
