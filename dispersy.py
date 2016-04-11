@@ -209,9 +209,9 @@ class Dispersy(TaskManager):
                             # some interfaces have no netmask configured, causing a TypeError when
                             # trying to unpack _l_netmask
                             pass
-        except OSError:
+        except OSError, e:
             logger = logging.getLogger("dispersy")
-            logger.exception("failed to check network interfaces.")
+            logger.exception("failed to check network interfaces, error was: %r", e)
 
     def _guess_lan_address(self, interfaces, default=None):
         """
