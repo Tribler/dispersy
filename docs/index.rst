@@ -10,6 +10,7 @@ Contents:
    Introduction <introduction>
    installation
    system_overview
+   wire_protocol
    usage
    contributing
    API <api/modules>
