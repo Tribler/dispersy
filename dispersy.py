@@ -1442,7 +1442,8 @@ WHERE sync.meta_message = ? AND double_signed_sync.member1 = ? AND double_signed
         assert all(isinstance(packet[0], Candidate) for packet in packets), packets
         assert all((is_valid_address(packet[0].sock_addr) for packet in packets)), packets
         assert all(isinstance(packet[1], str) for packet in packets), packets
-        assert all(len(packet[1]) > 22 for packet in packets), packets
+        assert all(len(packet[1]) > 22 for packet in packets), [
+            (str(packet[0]), repr(packet[1])) for packet in packets]
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
         assert isinstance(source, unicode), source

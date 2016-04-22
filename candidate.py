@@ -79,7 +79,7 @@ class Candidate(object):
         return self._association
 
     def __str__(self):
-        return "{%s:%d}" % self._sock_addr
+        return "<Candidate %s:%d>" % self._sock_addr
 
     def __eq__(self, other):
         """
