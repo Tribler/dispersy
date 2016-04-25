@@ -18,12 +18,6 @@ Dispersy stores global time values using, at most, 64 bits.  Therefore there is 
 
 Persistent messages that are not within the acceptable global time range are ignored.
 
-Semi-random walker
-==================
-
-Permission system
-=================
-
 Dispersy message types
 ======================
 

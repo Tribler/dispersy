@@ -389,7 +389,7 @@ message should be handled.
 To ensure that every node handles a messages in the same way, i.e. has the same policies associated
 to each message, a message exists in two stages.  The meta-message and the implemented-message
 stage.  Each message has one meta-message associated to it and tells us how the message is supposed
-to be handled.  When a message is send or received an implementation is made from the meta-message
+to be handled.  When a message is sent or received an implementation is made from the meta-message
 that contains information specifically for that message.  For example: a meta-message could have the
 member-authentication-policy that tells us that the message must be signed by a member but only the
 an implemented-message will have data and this signature.
@@ -397,20 +397,164 @@ an implemented-message will have data and this signature.
 Authentication
 ^^^^^^^^^^^^^^
 
+Each Dispersy message that is send has an Authentication policy associated to it.  This policy
+dictates how the message is authenticated, i.e. how the message is associated to the sender or
+creator of this message.
+
+NoAuthentication
+""""""""""""""""
+
+The NoAuthentication policy can be used when a message is not owned, i.e. signed, by anyone.
+
+A message that uses the no-authentication policy does not contain any identity information nor a
+signature.  This makes the message smaller --from a storage and bandwidth point of view-- and
+cheaper --from a CPU point of view-- to generate.  However, the message becomes less secure as
+everyone can generate and modify it as they please.  This makes this policy ill suited for
+gossiping purposes.
+
+MemberAuthentication
+""""""""""""""""""""
+
+The MemberAuthentication policy can be used when a message is owned, i.e. signed, by one member.
+
+A message that uses the member-authentication policy will add an identifier to the message that
+indicates the creator of the message.  This identifier can be either the public key or the sha1
+digest of the public key.  The former is relatively large but uniquely identifies the member,
+while the latter is relatively small but might not uniquely identify the member, although, this
+will uniquely identify the member when combined with the signature.
+
+Furthermore, a signature over the entire message is appended to ensure that no one else can
+modify the message or impersonate the creator.  Using the default curve, NID-sect233k1, each
+signature will be 58 bytes long.
+
+The member-authentication policy is used to sign a message, associating it to a specific member.
+This lies at the foundation of Dispersy where specific members are permitted specific actions.
+Furthermore, permissions can only be obtained by having another member, who is allowed to do so,
+give you this permission in the form of a signed message.
+
+DoubleMemberAuthentication
+""""""""""""""""""""""""""
+
+A message that uses the double-member-authentication policy is signed by two member.  Similar to
+the member-authentication policy the message contains two identifiers where the first indicates
+the creator and the second indicates the members that added her signature.
+
+Dispersy is responsible for obtaining the signatures of the different members and handles this
+using the messages dispersy-signature-request and dispersy-signature-response, defined below.
+Creating a double signed message is performed using the following steps: first Alice creates a
+message (M) where M uses the double-member-authentication policy.  At this point M consists of
+the community identifier, the conversion identifier, the message identifier, the member
+identifier for both Alice and Bob, optional resolution information, optional distribution
+information, optional destination information, the message payload, and \0 bytes for the two
+signatures.
+
+Message M is then wrapped inside a dispersy-signature-request message (R) and send to Bob.  When
+Bob receives this request he can optionally apply changes to M2 and add his signature.  Assuming
+that he does the new message M2, which now includes Bob's signature while Alice's is still \0,
+is wrapped in a dispersy-signature-response message (E) and sent back to Alice.  If Alice agrees
+with the (possible) changes in M2 she can add her own signature and M2 is stored, updated, and
+forwarded to other nodes in the community.
+
 Resolution
 ^^^^^^^^^^
+
+Resolution is used for determining who can create the message. This is part of the permission system
+in Dispersy. There are three types of resolutions:
+
+PublicResolution
+""""""""""""""""
+
+Public resolution allows any member to create a message. This is the most common type used.
+
+LinearResolution
+""""""""""""""""
+
+Linear resolution allows only members that have a specific permission to create a message. This resolution type
+checks the public identifier against the permission list to see if that user is allowed to create that message.
+
+DynamicResolution
+"""""""""""""""""
+
+Dynamic resolution allows the resolution policy to change. A special dispersy-dynamic-settings message
+needs to be created and distributed to change the resolution policy.  Currently the policy can dynamically
+switch between either PublicResolution and LinearResolution.
 
 Distribution
 ^^^^^^^^^^^^
 
+Distibution determines how a message gets distributed across the network. There are five types of distibutions
+packaged in Dispersy:
+
+SyncDistribution
+""""""""""""""""
+
+Sync distribution allows gossiping and synchronization of messages throughout the community.
+
+The PRIORITY value ranges [0:255] where the 0 is the lowest priority and 255 the highest.  Any
+messages that have a priority below 32 will not be synced.  These messages require a mechanism
+to request missing messages whenever they are needed.
+
+The PRIORITY was introduced when we found that the dispersy-identity messages are the majority
+of gossiped messages while very few are actually required.  The dispersy-missing-identity
+message is used to retrieve an identity whenever it is needed.
+
+FullSyncDistibution
+"""""""""""""""""""
+
+Full-sync distribution allows gossiping and synchronization of messages throughout the community.
+
+Sequence numbers can be enabled or disabled per meta-message.  When disabled the sequence number
+is always zero.  When enabled the claim_sequence_number method can be called to obtain the next
+sequence number in sequence.
+
+Currently there is one situation where disabling sequence numbers is required.  This is when the
+message will be signed by multiple members.  In this case the sequence number is claimed but may
+not be used (if the other members refuse to add their signature).  This causes a missing
+sequence message.  This in turn could be solved by creating a placeholder message, however, this
+is not currently, and my never be, implemented.
+
+LastSyncDistribution
+""""""""""""""""""""
+
+Last-sync distribution does the same as SyncDistribution but only for the last n messages. This number is determined
+by a input parameter.
+
+DirectDistribution
+""""""""""""""""""
+
+Direct distibution is used to send a message to a node directly, without syncing the information. The information is
+processed and then thrown away.
+
+RelayDistribution
+"""""""""""""""""
+
+Relay distribution does the same as DirectDistribution
+
 Destination
 ^^^^^^^^^^^
+
+The destination determines where or who the message is going to. There are two types of destination policies:
+
+CandidateDestination
+""""""""""""""""""""
+
+A destination policy where the message is sent to one or more specified candidates.
+
+CommunityDestination
+""""""""""""""""""""
+
+A destination policy where the message is sent to one or more community members selected from
+the current candidate list.
+
+At the time of sending at most NODE_COUNT addresses are obtained using
+community.yield_random_candidates(...) to receive the message.
 
 Running Dispersy
 ================
 
-Dispersy uses Twisted for all low level network communications. Twisted can be run in the main thread, but if you want
-to have a GUI or a CLI you need to run twisted in another thread.
+Dispersy uses Twisted for all low level network communications. It is not recommended to run twisted on a separate
+thread. A Dispersy based program should be async and use twisted, even better if it's a twisted plugin. That saves
+having to take care of the reactor lifetime, log rotation, pid file and suchlike.
 
 Run Twisted in the main thread
 ------------------------------
@@ -419,26 +563,24 @@ To run Twisted in the main thread, just start Dispersy in your main thread
 
 .. code-block:: python
 
-    import signal
     from twisted.internet import reactor
 
     def main():
         reactor.exitCode = 0
         reactor.run()
 
-        dispersy = Dispersy(StandaloneEndpoint(port, '0.0.0.0'), unicode(data_dir), u'dispersy.db')
+        dispersy = Dispersy(StandaloneEndpoint(port, '0.0.0.0'), unicode(<data_dir>), u'dispersy.db')
         dispersy.statistics.enable_debug_statistics(True)
         dispersy.start(autoload_discovery=True)
 
         my_member = self.get_new_member()
-        master_memeber = self.get_member(public_key=master_key)
+        master_memeber = self.get_member(public_key=<master_key>)
 
-        community = Community.init_community(self, master_member, my_member)
+        community = <Community>.init_community(self, master_member, my_member)
 
         exit(reactor.exitCode)
 
     if __name__ == "__main__":
         main()
 
-Run Twisted in a separate thread
---------------------------------
+The variables between <> have to be replaced with values/objects belonging to your own project.

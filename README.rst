@@ -6,12 +6,11 @@ The **Dis**\ tributed **Per**\ mission **Sy**\ stem, or Dispersy, is a platform 
 communities. At the heart of Dispersy lies a simple identity and message handling system where each community
 and each user is uniquely and securely identified using elliptic curve cryptography.
 
-Challenging Networks
-====================
+Integrated NAT Puncturing
+=========================
 
 Nowadays almost all devices have a network connection, with a lot of them running in challenged network environments.
-Challenging conditions can be found in a wide range of networks, i.e. vehicular ad-hoc networks (VANETs),
-Peer-to-Peer networks (P2P), Deep Space Network (DSN), and delay tolerant networks (DTNs). These networks have several
+Challenging conditions can be found in a wide range of networks, i.e. Peer-to-Peer networks (P2P), and delay tolerant networks (DTNs). These networks have several
 limitations, like having long communication delays, very low data rates, and unstable links.
 
 P2P networks are particularly challenging due to nodes not always being online, NAT-firewall constrained Internet
@@ -21,11 +20,11 @@ their limited processing capability and battery lifetime.
 Dispersy was designed to be capable of running in challenged network environments. It does this by minimizing
 the needed resources by using optimized algorithms and protocols.
 
-Decentralized & Anonymous
-=========================
+Decentralized
+=============
 
 Dispersy is fully decentralized. It does not require any server infrastructure and can run on systems consisting of
-a large lumber of nodes. Each node runs the same algorithm and performs the same tasks. All nodes are equally important,
+a large number of nodes. Each node runs the same algorithm and performs the same tasks. All nodes are equally important,
 resulting in increased robustness. Dispersy offers distributed system developers both one-to-many and many-to-many data
 dissemination capabilities. Data is forwarded between nodes. All injected data will eventually reach all nodes,
 overcoming challenging network conditions.
@@ -43,6 +42,7 @@ Key Features
 ============
 
 Key features of Dispersy are:
+
 * stateless synchronization using Bloomfilters
 * decentralized NAT traversal
 * performance that can scale to over 100,000 bundles
@@ -53,4 +53,4 @@ it is performing very well in various real-time challenged network scenario’s 
 Documentation
 =============
 
-The documentation for this project can be found at `ReadTheDocs <https://dispersy.rtfd.org/>`_
+The documentation for this project can be found at `ReadTheDocs <https://dispersy.readthedocs.io/>`_
