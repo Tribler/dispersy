@@ -143,7 +143,7 @@ class TestBootstrapServers(DispersyTestFunc):
             @inlineCallbacks
             def start_walking(self):
                 for _ in xrange(10):
-                    if self._dispersy._discovery_community and self._dispersy._discovery_community.bootstrap.are_resolved:
+                    if self._dispersy._discovery_community and self._dispersy._discovery_community.bootstrap.all_resolved:
                         self._pcandidates = [self.get_candidate(address) for address in
                                              set(self._dispersy._discovery_community.bootstrap.candidate_addresses)]
                         break

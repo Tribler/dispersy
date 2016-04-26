@@ -1,14 +1,14 @@
+import logging
 from random import shuffle
 from threading import Lock
-import logging
 
 from twisted.internet import reactor
 from twisted.internet.abstract import isIPAddress
-from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue
+from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue, succeed
 from twisted.internet.task import LoopingCall
 
 from ..candidate import Candidate
-
+from ..taskmanager import TaskManager
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
@@ -49,7 +49,7 @@ _DEFAULT_ADDRESSES = [
 # _DEFAULT_ADDRESSES = _DEFAULT_ADDRESSES + tuple((u"rotten.dns.entry%d.org" % i, 1234) for i in xrange(8))
 
 
-class Bootstrap(object):
+class Bootstrap(TaskManager):
 
     @staticmethod
     def load_addresses_from_file(filename):
@@ -86,10 +86,9 @@ class Bootstrap(object):
 
         self._lock = Lock()
         self._candidates = dict((address, None) for address in addresses)
-        self._resolution_lc = None
 
     @property
-    def are_resolved(self):
+    def all_resolved(self):
         """
         Returns True when all addresses are resolved.
 
@@ -142,8 +141,9 @@ class Bootstrap(object):
 
         """
         success = False
-        if self.are_resolved:
+        if self.all_resolved:
             success = True
+            self._logger.debug("Resolved all bootstrap addresses")
         else:
             addresses = [address for address, candidate in self._candidates.items() if not candidate]
             shuffle(addresses)
@@ -168,24 +168,32 @@ class Bootstrap(object):
             yield gatherResults(deferreds)
         returnValue(success)
 
-    def resolve_until_success(self, interval=300, now=False, callback=None):
-        def resolution_lc():
-            if self.are_resolved:
-                self._resolution_lc.stop()
-                self._resolution_lc = None
-
+    def start(self, interval=300):
+        """
+        Resolves a bootstrap address by scheduling a LoopingCall and
+        calls a callback with the result of the resolve if passed.
+        :param interval: The interval of the LoopingCall
+        :param now: A boolean indicating if the LoopingCall should start immediately.
+        :param callback: The callback that should be called with the result of the resolve function.
+        :return: A deferred which fires once the resolving of the bootstrap servers has been started.
+        """
+        def resolve_bootstrap_servers():
+            if self.all_resolved:
+                self.cancel_pending_task(u'task_resolving_bootstrap_address')
+                return succeed(True)
             else:
                 self._logger.info("Resolving bootstrap addresses")
-                deferred = self.resolve()
-                if callback:
-                    deferred.addCallback(callback)
+                return self.resolve()
 
-        # TODO(emilon): use taskmanager for this
-        if not self._resolution_lc:
-            self._resolution_lc = LoopingCall(resolution_lc)
-            self._resolution_lc.start(interval, now)
-        return self._resolution_lc
+        if not self.is_pending_task_active(u'task_resolving_bootstrap_address'):
+             self.register_task(u'task_resolving_bootstrap_address',
+                           LoopingCall(resolve_bootstrap_servers)).start(interval, now=False)
+
+        return resolve_bootstrap_servers()
+
 
     def stop(self):
-        if self._resolution_lc and self._resolution_lc.running:
-            self._resolution_lc.stop()
+        """
+        Clears all pending tasks scheduled on the TaskManager
+        """
+        self.cancel_all_pending_tasks()
