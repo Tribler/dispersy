@@ -41,10 +41,7 @@ def call_on_reactor_thread(func):
 
 def blocking_call_on_reactor_thread(func):
     def helper(*args, **kargs):
-        if isInIOThread():
-            return func(*args, **kargs)
-        else:
-            return blockingCallFromThread(reactor, func, *args, **kargs)
+        return blockingCallFromThread(reactor, func, *args, **kargs)
     helper.__name__ = func.__name__
     return helper
 
@@ -216,27 +213,30 @@ def unhandled_error_observer(event):
             reactor.stop()
 
 
-def blockingCallFromThread(reactor, f, *a, **kw):
+def blockingCallFromThread(reactor, f, *args, **kwargs):
     """
     Improved version of twisted's blockingCallFromThread that shows the complete
     stacktrace when an exception is raised on the reactor's thread.
-
+    If being called from the reactor thread already, just return the result of execution of the callable.
     """
-    queue = Queue.Queue()
+    if isInIOThread():
+            return f(*args, **kwargs)
+    else:
+        queue = Queue.Queue()
 
-    def _callFromThread():
-        result = defer.maybeDeferred(f, *a, **kw)
-        result.addBoth(queue.put)
-    reactor.callFromThread(_callFromThread)
-    result = queue.get()
-    if isinstance(result, failure.Failure):
-        other_thread_tb = traceback.extract_tb(result.getTracebackObject())
-        this_thread_tb = traceback.extract_stack()
-        logger.error("Exception raised on the reactor's thread '%s'.\n Traceback from this thread:\n%s\n"
-                     " Traceback from the reactor's thread:\n %s", result.getErrorMessage(),
-                     ''.join(traceback.format_list(this_thread_tb)), ''.join(traceback.format_list(other_thread_tb)))
-        result.raiseException()
-    return result
+        def _callFromThread():
+            result = defer.maybeDeferred(f, *args, **kwargs)
+            result.addBoth(queue.put)
+        reactor.callFromThread(_callFromThread)
+        result = queue.get()
+        if isinstance(result, failure.Failure):
+            other_thread_tb = traceback.extract_tb(result.getTracebackObject())
+            this_thread_tb = traceback.extract_stack()
+            logger.error("Exception raised on the reactor's thread '%s'.\n Traceback from this thread:\n%s\n"
+                         " Traceback from the reactor's thread:\n %s", result.getErrorMessage(),
+                         ''.join(traceback.format_list(this_thread_tb)), ''.join(traceback.format_list(other_thread_tb)))
+            result.raiseException()
+        return result
 
 #
 # Misc general validation functions
