@@ -1,8 +1,7 @@
 from time import time
 
 from .dispersytestclass import DispersyTestFunc
-from ..util import call_on_reactor_thread
-
+from ..util import call_on_reactor_thread, address_is_lan_without_netifaces
 
 class TestNATDetection(DispersyTestFunc):
 
@@ -110,6 +109,19 @@ class TestNATDetection(DispersyTestFunc):
 
 
 class TestAddressEstimation(DispersyTestFunc):
+    def test_address_in_lan_function(self):
+        # Positive cases:
+        assert address_is_lan_without_netifaces("192.168.1.5")
+        assert address_is_lan_without_netifaces("10.42.42.42")
+        assert address_is_lan_without_netifaces("192.168.0.7")
+        assert address_is_lan_without_netifaces("172.31.255.255")
+        #Negative cases:
+        self.assertFalse(address_is_lan_without_netifaces("192.169.1.5"))
+        self.assertFalse(address_is_lan_without_netifaces("11.42.42.42"))
+        self.assertFalse(address_is_lan_without_netifaces("192.0.0.7"))
+        self.assertFalse(address_is_lan_without_netifaces("172.32.0.0"))
+        self.assertFalse(address_is_lan_without_netifaces("123.123.123.123"))
+        self.assertFalse(address_is_lan_without_netifaces("42.42.42.42"))
 
     def test_estimate_addresses_within_LAN(self):
         """
@@ -155,3 +167,5 @@ class TestAddressEstimation(DispersyTestFunc):
             self.assertEqual(candidate.sock_addr, node.lan_address)
             self.assertEqual(candidate.lan_address, node.lan_address)
             self.assertEqual(candidate.wan_address, incorrect_WAN)
+
+

@@ -9,6 +9,8 @@ from socket import inet_aton, error as socket_error
 from thread import get_ident
 from threading import current_thread
 from time import time
+from socket import inet_aton, socket, AF_INET, SOCK_DGRAM
+from struct import unpack_from
 
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
@@ -239,7 +241,7 @@ def blockingCallFromThread(reactor, f, *args, **kwargs):
         return result
 
 #
-# Misc general validation functions
+# IP address validation functions
 #
 
 def is_valid_address(address):
@@ -285,3 +287,49 @@ def is_valid_address(address):
         #            return False
 
         return True
+
+
+def get_lan_address_without_netifaces():
+    """
+    # Get the local ip address by creating a socket for a (random) internet ip
+    :return: the local ip address
+    """
+    s = socket(AF_INET, SOCK_DGRAM)
+    s.connect(("192.0.2.0", 80)) # TEST-NET-1, guaranteed to not be connected => no callbacks
+    local_ip = s.getsockname()[0]
+    s.close()
+    return local_ip
+
+
+def address_is_lan_without_netifaces(address):
+    """
+    Checks if the given ip address is either our own address or in one of the subnet defined for local network usage
+    :param address: ip v4 address to be checked
+    :return: True if the adrress is a lan address, False otherwise
+    """
+    if address == get_lan_address_without_netifaces():
+        return True
+    else:
+        lan_subnets = (("192.168.0.0", 16),
+                  ("172.16.0.0", 12),
+                  ("10.0.0.0", 8))
+        return any(address_in_subnet(address, subnet) for subnet in lan_subnets)
+
+
+def address_in_subnet(address, subnet):
+    """
+    Checks whether a given address is in a given subnet
+    :param address: an ip v4 address as a string formatted as four pairs of decimals separated by dots
+    :param subnet: a tuple consisting of the main address of the subnet formatted as above, and the subnet formatted as
+    an int with the number of significant bits in the address.
+    :return: True if the address is in the subnet, False otherwise
+    """
+    address = unpack_from(">L", inet_aton(address))[0]
+    (subnet_main, netmask) = subnet
+    subnet_main = unpack_from(">L", inet_aton(subnet_main))[0]
+    address >>= 32-netmask
+    subnet_main >>= 32-netmask
+    return address == subnet_main
+
+
+
