@@ -224,7 +224,7 @@ class Dispersy(TaskManager):
         :return: lan address
         """
         if self._netifaces_failed:
-            return get_lan_address_without_netifaces()
+            return (get_lan_address_without_netifaces(), self._lan_address[1])
         else:
             self._local_interfaces = list(self._get_interface_addresses())
             interface = self._guess_lan_address(self._local_interfaces)
