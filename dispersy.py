@@ -135,7 +135,7 @@ class Dispersy(TaskManager):
 
         # our LAN and WAN addresses
         self._netifaces_failed = False
-        self._lan_address = self._get_lan_address()
+        self._lan_address = self._get_lan_address(True)
         self._wan_address = ("0.0.0.0", 0)
         self._wan_address_votes = defaultdict(set)
         self._logger.debug("my LAN address is %s:%d", self._lan_address[0], self._lan_address[1])
@@ -218,17 +218,18 @@ class Dispersy(TaskManager):
         else:
             return any(address in interface for interface in self._local_interfaces)
 
-    def _get_lan_address(self):
+    def _get_lan_address(self, bootstrap=False):
         """
         Attempt to get the newest lan ip of this machine, preferably with netifaces, but use the fallback if it fails
         :return: lan address
         """
         if self._netifaces_failed:
-            return get_lan_address_without_netifaces()
+            return (get_lan_address_without_netifaces(), self._lan_address[1])
         else:
             self._local_interfaces = list(self._get_interface_addresses())
             interface = self._guess_lan_address(self._local_interfaces)
-            return (interface.address if interface else get_lan_address_without_netifaces()), 0
+            return (interface.address if interface else get_lan_address_without_netifaces()), \
+                   (0 if bootstrap else self._lan_address[1])
 
     def _guess_lan_address(self, interfaces, default=None):
         """
