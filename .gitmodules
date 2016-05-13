@@ -1,3 +1,3 @@
 [submodule "libnacl"]
 	path = libnacl
-	url = https://github.com/whirm/libnacl
+	url = https://github.com/saltstack/libnacl
