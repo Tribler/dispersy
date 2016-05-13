@@ -210,7 +210,7 @@ class Dispersy(TaskManager):
                             pass
         except OSError, e:
             logger = logging.getLogger("dispersy")
-            logger.exception("failed to check network interfaces, error was: %r", e)
+            logger.warning("failed to check network interfaces, error was: %r", e)
 
     def _address_is_lan(self, address):
         if self._netifaces_failed:
@@ -253,7 +253,7 @@ class Dispersy(TaskManager):
                 self._logger.debug("%s", interface)
                 return interface
 
-        self._logger.error("Unable to find our public interface!")
+        self._logger.warning("Unable to find our public interface!")
         self._netifaces_failed = True
         return default
 
