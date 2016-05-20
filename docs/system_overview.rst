@@ -108,7 +108,7 @@ Candidate categories
 
 Each candidate holds a list of timestamps to compare to other candidates and place them into different categories.
 
-We define *walk difference*, *stuble difference*, and *intro difference* as follows according to the peer discovery diagram:
+We define *walk difference*, *stumble difference*, and *intro difference* as follows according to the peer discovery diagram:
 
     * Peer A computes the walk difference of peer B by taking the difference between the current time and receiving an
       introduction-response to an introduction-request from peer B.
@@ -122,7 +122,7 @@ We define *walk difference*, *stuble difference*, and *intro difference* as foll
 Using the computed time differences a peer assigns all other peers in one of the four categories:
 
 1. **walk** when its walk difference is less or equal to the walk lifetime,
-2. **stumble** when it is not a walk-Candidate and its stuble difference is less or
+2. **stumble** when it is not a walk-Candidate and its stumble difference is less or
    equal to the stumble lifetime,
 3. **intro** when it is neither a walk or a stumble-Candidate, and its intro difference
    is less or equal to the intro lifetime, and
@@ -175,7 +175,7 @@ chooses with probability:
 * 49.75% to revisit the oldest eligible walk-Candidate
 * 24.825% to visit the oldest eligible stumble-Candidate
 * 24.825% to visit the oldest eligible intro-Candidate
-* 0.5% to visit a random eligible Candidate from the predened list of bootstrap candidates
+* 0.5% to visit a random eligible Candidate from the predefined list of bootstrap candidates
 
 If one category is empty, the probabilities of choosing a peer from this category becomes 0.
 

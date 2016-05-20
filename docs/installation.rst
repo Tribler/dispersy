@@ -77,8 +77,11 @@ Check if you have the 32 bits version of python or the 64 bits version. You can 
    pip install netifaces
    pip install --egg M2CryptoWin32
 
+   Microsoft Visual C++ Compiler for Python 2.7
+http://aka.ms/vcpython27
+
    Download the latest msvc version of libsodium from https://download.libsodium.org/libsodium/releases/
-   Extract libsodium.dll from LIBSODIUM_ROOT\x64\Release\v140\dynamic\ on your harddrive and add that directory to your path
+   Extract libsodium.dll from LIBSODIUM_ROOT\x32\Release\v140\dynamic\ on your harddrive and add that directory to your path
    Test if it works with: python -c "import ctypes; ctypes.cdll.LoadLibrary('libsodium')"
 
    pip install pycrypto
@@ -93,7 +96,7 @@ Check if you have the 32 bits version of python or the 64 bits version. You can 
    pip install --egg M2CryptoWin64
 
    Download the latest msvc version of libsodium from https://download.libsodium.org/libsodium/releases/
-   Extract libsodium.dll from LIBSODIUM_ROOT\x32\Release\v140\dynamic\ on your harddrive and add that directory to your path
+   Extract libsodium.dll from LIBSODIUM_ROOT\x64\Release\v140\dynamic\ on your harddrive and add that directory to your path
    Test if it works with: python -c "import ctypes; ctypes.cdll.LoadLibrary('libsodium')"
 
    pip install pycrypto
@@ -103,7 +106,11 @@ Mac
 
 .. code-block:: python
 
+   pip install twisted
+   pip install netifaces
+   pip install M2Crypto
    brew install libsodium
+   pip install pycrypto
 
 Documentation
 =============
@@ -115,4 +122,4 @@ To compile the documentation on your own you need:
    pip install sphinx
    pip install sphinx-rtd-theme
 
-You can read a precompiled version on readthedocs.org
+You can read a precompiled version on `ReadTheDocs <https://dispersy.readthedocs.io/>`_
