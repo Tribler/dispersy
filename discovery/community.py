@@ -189,15 +189,16 @@ class DiscoveryCommunity(Community):
         self.send_packet_size = 0
         self.reply_packet_size = 0
 
-        def on_results(success):
-            assert isinstance(success, bool), type(success)
-
+        def on_bootstrap_started(_):
+            """
+            Get's called when the resolving of the bootstrap servers
+            has been initiated. Starts the periodically_insert_trackers
+            looping call.
+            :param _: ignored success parameter of the bootstrap resolve function.
+            """
             if not self.is_pending_task_active("insert_trackers"):
                 self.register_task("insert_trackers",
                                    LoopingCall(self.periodically_insert_trackers)).start(INSERT_TRACKER_INTERVAL, now=True)
-
-            if success:
-                self._logger.debug("Resolved all bootstrap addresses")
 
         bootstrap_file = os.environ.get(BOOTSTRAP_FILE_ENVNAME, os.path.join(self._dispersy._working_directory, "bootstraptribler.txt"))
         alternate_addresses = None
@@ -208,15 +209,17 @@ class DiscoveryCommunity(Community):
 
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
-
-        lc = self.bootstrap.resolve_until_success(now=True, callback=on_results)
-        if lc:
-            self.register_task("bootstrap_resolution", lc)
+        self.bootstrap.start().addCallback(on_bootstrap_started)
 
         self.register_task('create_ping_requests',
                            LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
 
         super(DiscoveryCommunity, self).initialize()
+
+    def unload_community(self):
+        super(DiscoveryCommunity, self).unload_community()
+        if self.bootstrap:
+            self.bootstrap.stop()
 
     def periodically_insert_trackers(self):
         communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]
