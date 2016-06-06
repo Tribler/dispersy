@@ -1,6 +1,5 @@
 import logging
 
-from twisted.logger import LogPublisher, LimitedHistoryLogObserver
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +8,15 @@ logger = logging.getLogger(__name__)
 # See http://twistedmatrix.com/trac/ticket/7841 for more information about this issue
 
 
-def clean_twisted_observers(publisher):
+def clean_twisted_observers(publisher=None):
+    try:
+        from twisted.logger import LogPublisher, LimitedHistoryLogObserver, globalLogPublisher
+        if not publisher:
+            publisher = globalLogPublisher
+    except ImportError:
+        logger.debug("Running an older version of twisted, no need to clean the observers")
+        return
+
     logger.debug("Looking for rogue observers in %r", publisher._observers)
 
     for observer in publisher._observers:
