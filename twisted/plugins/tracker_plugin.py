@@ -53,7 +53,7 @@ else:
     SOCKET_BLOCK_ERRORCODE = errno.EWOULDBLOCK
 
 
-clean_twisted_observers(globalLogPublisher)
+clean_twisted_observers()
 
 
 class TrackerDispersy(Dispersy):
