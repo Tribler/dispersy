@@ -6,6 +6,7 @@ from twisted.internet.base import DelayedCall
 from twisted.internet.defer import Deferred
 from twisted.internet.task import LoopingCall
 
+from twisted.python.threadable import isInIOThread
 
 CLEANUP_FREQUENCY = 100
 
@@ -34,6 +35,7 @@ class TaskManager(object):
         """
         Register a task so it can be canceled at shutdown time or by name.
         """
+        assert isInIOThread()
         assert not self.is_pending_task_active(name), name
         assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), (task, type(task) == type(Deferred))
 
