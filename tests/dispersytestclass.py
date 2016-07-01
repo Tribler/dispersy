@@ -1,17 +1,9 @@
 import os
 import logging
-import sys
 from unittest import TestCase
 from tempfile import mkdtemp
 
-# Do not (re)move the reactor import, even if we aren't using it
-# (nose starts the reactor in a separate thread when importing this)\
-if "twisted.internet.reactor" in sys.modules.keys():
-    """ Tribler already imported the reactor. """
-    from twisted.internet import reactor
-else:
-    from nose.twistedtools import reactor
-
+from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from ..discovery.community import PEERCACHE_FILENAME
