@@ -294,11 +294,15 @@ def get_lan_address_without_netifaces():
     # Get the local ip address by creating a socket for a (random) internet ip
     :return: the local ip address
     """
-    s = socket(AF_INET, SOCK_DGRAM)
-    s.connect(("192.0.2.0", 80)) # TEST-NET-1, guaranteed to not be connected => no callbacks
-    local_ip = s.getsockname()[0]
-    s.close()
-    return local_ip
+    try:
+        s = socket(AF_INET, SOCK_DGRAM)
+        s.connect(("192.0.2.0", 80)) # TEST-NET-1, guaranteed to not be connected => no callbacks
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except socket_error as exception:
+        logger.error(exception)
+        return "0.0.0.0"
 
 
 def address_is_lan_without_netifaces(address):
