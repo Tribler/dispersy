@@ -45,6 +45,9 @@ from zope.interface import implements
 
 from tool.clean_observers import clean_twisted_observers
 
+# Register yappi profiler
+from utils import twistd_yappi
+
 COMMUNITY_CLEANUP_INTERVAL = 180.0
 
 if sys.platform == 'win32':
@@ -151,7 +154,6 @@ class TrackerDispersy(Dispersy):
 
 class Options(usage.Options):
     optFlags = [
-        ["profiler"   , "P", "use cProfile on the Dispersy thread"],
         ["memory-dump", "d", "use meliae to dump the memory periodically"],
         ["silent"     , "s", "Prevent tracker printing to console"],
     ]
