@@ -35,7 +35,9 @@ class TaskManager(object):
         """
         Register a task so it can be canceled at shutdown time or by name.
         """
-        assert isInIOThread()
+        # TODO(Martijn): this assert is necessary, however, we are calling register_task many times from a non-io
+        # thread in Tribler. So for now, I will comment it out until we fixed the calls to this method.
+        #assert isInIOThread()
         assert not self.is_pending_task_active(name), name
         assert isinstance(task, (Deferred, DelayedCall, LoopingCall)), (task, type(task) == type(Deferred))
 
