@@ -9,7 +9,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 from ..discovery.community import PEERCACHE_FILENAME
 from ..dispersy import Dispersy
 from ..endpoint import ManualEnpoint
-from ..util import blockingCallFromThread
+from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .debugcommunity.node import DebugNode
 
@@ -31,6 +31,8 @@ class DispersyTestFunc(TestCase):
     def on_callback_exception(self, exception, is_fatal):
         return True
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def setUp(self):
         super(DispersyTestFunc, self).setUp()
 
@@ -39,7 +41,7 @@ class DispersyTestFunc(TestCase):
         self.assertFalse(reactor.getDelayedCalls())
         """" Central node that is also used for master member. """
         self._mm = None
-        self._mm, = self.create_nodes()
+        self._mm, = yield self.create_nodes()
 
         self._dispersy = self._mm._dispersy
         self._community = self._mm._community
@@ -63,6 +65,8 @@ class DispersyTestFunc(TestCase):
             self._logger.warning("Failing")
         assert not pending, "The reactor was not clean after shutting down all dispersy instances."
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def create_nodes(self, amount=1, store_identity=True, tunnel=False, community_class=DebugCommunity,
                      autoload_discovery=False, memory_database=True):
         """
@@ -77,29 +81,25 @@ class DispersyTestFunc(TestCase):
         """
 
         """ Override this method in a subclass with a different community class to test communities. """
-        @inlineCallbacks
-        def _create_nodes(amount, store_identity, tunnel, communityclass, autoload_discovery, memory_database):
-            nodes = []
-            for _ in range(amount):
-                # TODO(emilon): do the log observer stuff instead
-                # callback.attach_exception_handler(self.on_callback_exception)
-                memory_database_argument = {'database_filename': u":memory:"} if memory_database else {}
-                working_directory = unicode(mkdtemp(suffix="_dispersy_test_session"))
+        nodes = []
+        for _ in range(amount):
+            # TODO(emilon): do the log observer stuff instead
+            # callback.attach_exception_handler(self.on_callback_exception)
+            memory_database_argument = {'database_filename': u":memory:"} if memory_database else {}
+            working_directory = unicode(mkdtemp(suffix="_dispersy_test_session"))
 
-                dispersy = Dispersy(ManualEnpoint(0), working_directory, **memory_database_argument)
-                dispersy.start(autoload_discovery=autoload_discovery)
+            dispersy = Dispersy(ManualEnpoint(0), working_directory, **memory_database_argument)
+            dispersy.start(autoload_discovery=autoload_discovery)
 
-                self.dispersy_objects.append(dispersy)
+            self.dispersy_objects.append(dispersy)
 
-                node = self._create_node(dispersy, communityclass, self._mm)
-                yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
+            node = self._create_node(dispersy, community_class, self._mm)
+            yield node.init_my_member(tunnel=tunnel, store_identity=store_identity)
 
-                nodes.append(node)
-            self._logger.debug("create_nodes, nodes created: %s", nodes)
-            returnValue(nodes)
+            nodes.append(node)
 
-        return blockingCallFromThread(reactor, _create_nodes, amount, store_identity, tunnel, community_class,
-                                      autoload_discovery, memory_database)
+        self._logger.debug("create_nodes, nodes created: %s", nodes)
+        returnValue(nodes)
 
     def _create_node(self, dispersy, community_class, c_master_member):
         return DebugNode(self, dispersy, community_class, c_master_member)

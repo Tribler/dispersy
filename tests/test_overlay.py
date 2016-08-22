@@ -22,8 +22,10 @@ summary_logger = logging.getLogger("test-overlay-summary")
 
 class TestOverlay(DispersyTestFunc):
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def setUp(self):
-        super(DispersyTestFunc, self).setUp()
+        yield super(DispersyTestFunc, self).setUp()
 
         self.dispersy_objects = []
 

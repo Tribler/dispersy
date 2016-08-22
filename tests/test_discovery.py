@@ -1,16 +1,20 @@
+from twisted.internet.defer import inlineCallbacks
 from .dispersytestclass import DispersyTestFunc
 from ..discovery.community import DiscoveryCommunity, BOOTSTRAP_FILE_ENVNAME
 from ..discovery.bootstrap import _DEFAULT_ADDRESSES
 import os
 import time
+from ..util import blocking_call_on_reactor_thread
 
 
 class TestDiscovery(DispersyTestFunc):
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def setUp(self):
         while _DEFAULT_ADDRESSES:
             _DEFAULT_ADDRESSES.pop()
-        super(TestDiscovery, self).setUp()
+        yield super(TestDiscovery, self).setUp()
 
     def test_overlap(self):
         def get_preferences():
