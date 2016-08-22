@@ -249,7 +249,6 @@ class Community(TaskManager):
         assert isinstance(my_member, Member), type(my_member)
         assert my_member.public_key, my_member.database_id
         assert my_member.private_key, my_member.database_id
-        assert isInIOThread()
 
         super(Community, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
