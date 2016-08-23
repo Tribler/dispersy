@@ -1,12 +1,12 @@
 from threading import Lock
 
-from .util import blocking_call_on_reactor_thread
 from twisted.internet import reactor
 from twisted.internet.base import DelayedCall
-from twisted.internet.defer import Deferred
+from twisted.internet.defer import Deferred, DeferredList
 from twisted.internet.task import LoopingCall
-
 from twisted.python.threadable import isInIOThread
+
+from .util import blocking_call_on_reactor_thread
 
 CLEANUP_FREQUENCY = 100
 
@@ -87,6 +87,19 @@ class TaskManager(object):
         Return a boolean determining if a task is active.
         """
         return self._get_isactive_stopper(name)[0]
+
+    def wait_for_deferred_tasks(self):
+        """
+        Returns a deferred that will fire when all registered Deferreds are done.
+        """
+        assert isInIOThread()
+        self._maybe_clean_task_list()
+        return DeferredList(self._iter_deferreds())
+
+    def _iter_deferreds(self):
+        for task in self._pending_tasks.itervalues():
+            if isinstance(task, Deferred):
+                yield task
 
     def _get_isactive_stopper(self, name):
         """
