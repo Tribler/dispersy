@@ -238,7 +238,6 @@ class TestBootstrapServers(DispersyTestFunc):
             self.dispersy_objects.append(dispersy)
             community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
             yield community.test_d
-            dispersy.stop()
             returnValue(community)
 
         assert_margin = 0.9
