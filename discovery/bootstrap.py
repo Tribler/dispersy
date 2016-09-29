@@ -4,7 +4,7 @@ from threading import Lock
 
 from twisted.internet import reactor
 from twisted.internet.abstract import isIPAddress
-from twisted.internet.defer import gatherResults, inlineCallbacks, returnValue, succeed
+from twisted.internet.defer import gatherResults, succeed
 from twisted.internet.task import LoopingCall
 
 from ..candidate import Candidate
@@ -134,17 +134,18 @@ class Bootstrap(TaskManager):
         with self._lock:
             self._candidates = dict((address, None) for address in self._candidates.iterkeys())
 
-    @inlineCallbacks
     def resolve(self):
         """
         Resolve all unresolved trackers asynchronously.
 
         """
-        success = False
         if self.all_resolved:
-            success = True
+            self.cancel_pending_task(u'task_resolving_bootstrap_address')
             self._logger.debug("Resolved all bootstrap addresses")
+            return succeed(None)
         else:
+            self._logger.info("Resolving bootstrap addresses")
+
             addresses = [address for address, candidate in self._candidates.items() if not candidate]
             shuffle(addresses)
 
@@ -165,8 +166,7 @@ class Bootstrap(TaskManager):
                     deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
                     deferreds.append(deferred)
 
-            yield gatherResults(deferreds)
-        returnValue(success)
+            return gatherResults(deferreds)
 
     def start(self, interval=300):
         """
@@ -177,20 +177,12 @@ class Bootstrap(TaskManager):
         :param callback: The callback that should be called with the result of the resolve function.
         :return: A deferred which fires once the resolving of the bootstrap servers has been started.
         """
-        def resolve_bootstrap_servers():
-            if self.all_resolved:
-                self.cancel_pending_task(u'task_resolving_bootstrap_address')
-                return succeed(True)
-            else:
-                self._logger.info("Resolving bootstrap addresses")
-                return self.resolve()
 
         if not self.is_pending_task_active(u'task_resolving_bootstrap_address'):
-             self.register_task(u'task_resolving_bootstrap_address',
-                           LoopingCall(resolve_bootstrap_servers)).start(interval, now=False)
+            self.register_task(u'task_resolving_bootstrap_address',
+                               LoopingCall(self.resolve)).start(interval, now=False)
 
-        return resolve_bootstrap_servers()
-
+        return self.resolve()
 
     def stop(self):
         """
