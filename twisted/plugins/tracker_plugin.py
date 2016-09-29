@@ -35,10 +35,9 @@ from twisted.application.service import IServiceMaker, MultiService
 from twisted.conch import manhole_tap
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
-from twisted.logger import globalLogPublisher
 from twisted.plugin import IPlugin
 from twisted.python import usage
-from twisted.python.log import msg, ILogObserver, PythonLoggingObserver, FileLogObserver
+from twisted.python.log import msg, ILogObserver, FileLogObserver
 from twisted.python.logfile import DailyLogFile
 from twisted.python.threadable import isInIOThread
 from zope.interface import implements
