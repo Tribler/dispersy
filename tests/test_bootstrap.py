@@ -24,7 +24,7 @@ from .dispersytestclass import DispersyTestFunc
 summary_logger = logging.getLogger("test-bootstrap-summary")
 
 PING_COUNT = 10
-MAX_RTT = 0.5
+MAX_RTT = 1.0
 
 
 class TestBootstrapServers(DispersyTestFunc):
@@ -238,7 +238,6 @@ class TestBootstrapServers(DispersyTestFunc):
             self.dispersy_objects.append(dispersy)
             community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
             yield community.test_d
-            dispersy.stop()
             returnValue(community)
 
         assert_margin = 0.9
