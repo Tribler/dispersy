@@ -24,7 +24,7 @@ from .dispersytestclass import DispersyTestFunc
 summary_logger = logging.getLogger("test-bootstrap-summary")
 
 PING_COUNT = 10
-MAX_RTT = 0.5
+MAX_RTT = 1.0
 
 
 class TestBootstrapServers(DispersyTestFunc):
