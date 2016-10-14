@@ -209,7 +209,10 @@ class DiscoveryCommunity(Community):
 
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
-        self.bootstrap.start().addCallback(on_bootstrap_started)
+
+        bootstrap_deferred = self.bootstrap.start()
+        self.register_task("bootstrap_task", bootstrap_deferred)
+        bootstrap_deferred.addCallback(on_bootstrap_started)
 
         self.register_task('create_ping_requests',
                            LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
