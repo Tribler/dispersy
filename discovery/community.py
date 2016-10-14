@@ -196,7 +196,11 @@ class DiscoveryCommunity(Community):
             looping call.
             :param _: ignored success parameter of the bootstrap resolve function.
             """
-            if not self.is_pending_task_active("insert_trackers"):
+
+            # TODO(Martijn): second condition is a workaround for the fact that bootstrapping can be completed
+            # after shutdown. This prevents the lc from being registered, leaving a dirty reactor.
+            # When Dispersy becomes asynchronous, we should wait for the dns resolution to be completed on shutdown.
+            if not self.is_pending_task_active("insert_trackers") and self._dispersy.running:
                 self.register_task("insert_trackers",
                                    LoopingCall(self.periodically_insert_trackers)).start(INSERT_TRACKER_INTERVAL, now=True)
 
