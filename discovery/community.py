@@ -6,6 +6,7 @@ from random import random, shuffle
 from time import time
 
 from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks
 from twisted.internet.task import LoopingCall
 
 from ..authentication import MemberAuthentication, NoAuthentication
@@ -216,8 +217,9 @@ class DiscoveryCommunity(Community):
 
         super(DiscoveryCommunity, self).initialize()
 
+    @inlineCallbacks
     def unload_community(self):
-        super(DiscoveryCommunity, self).unload_community()
+        yield super(DiscoveryCommunity, self).unload_community()
         if self.bootstrap:
             self.bootstrap.stop()
 

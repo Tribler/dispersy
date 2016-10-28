@@ -34,6 +34,7 @@ from dispersy.tracker.community import TrackerCommunity, TrackerHardKilledCommun
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.conch import manhole_tap
 from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks, maybeDeferred, DeferredList
 from twisted.internet.task import LoopingCall
 from twisted.plugin import IPlugin
 from twisted.python import usage
@@ -133,8 +134,11 @@ class TrackerDispersy(Dispersy):
         now = time()
         inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
         print "#cleaned %d/%d communities" % (len(inactive), len(self._communities))
+
+        deferred_list = []
         for community in inactive:
-            community.unload_community()
+            deferred_list.append(maybeDeferred(community.unload_community))
+        return DeferredList(deferred_list)
 
     def _report_statistics(self):
         mapping = {TrackerCommunity: [0,0], TrackerHardKilledCommunity: [0,0], DiscoveryCommunity: [0,0]}
