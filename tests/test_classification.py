@@ -1,3 +1,4 @@
+from twisted.internet.defer import inlineCallbacks
 from ..exception import CommunityNotFoundException
 from ..util import call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
@@ -7,6 +8,7 @@ from .dispersytestclass import DispersyTestFunc
 class TestClassification(DispersyTestFunc):
 
     @call_on_reactor_thread
+    @inlineCallbacks
     def test_reclassify_unloaded_community(self):
         """
         Load a community, reclassify it, load all communities of that classification to check.
@@ -25,7 +27,7 @@ class TestClassification(DispersyTestFunc):
                                         (master.database_id, self._mm.my_member.database_id, ClassTestA.get_classification()))
 
         # reclassify
-        community = self._dispersy.reclassify_community(master, ClassTestB)
+        community = yield self._dispersy.reclassify_community(master, ClassTestB)
         self.assertIsInstance(community, ClassTestB)
         self.assertEqual(community.cid, master.mid)
         try:
@@ -36,6 +38,7 @@ class TestClassification(DispersyTestFunc):
         self.assertEqual(classification, ClassTestB.get_classification())
 
     @call_on_reactor_thread
+    @inlineCallbacks
     def test_reclassify_loaded_community(self):
         """
         Load a community, reclassify it, load all communities of that classification to check.
@@ -52,7 +55,7 @@ class TestClassification(DispersyTestFunc):
                                                                   (ClassTestC.get_classification(),)))), 1)
 
         # reclassify
-        community_d = self._dispersy.reclassify_community(community_c, ClassTestD)
+        community_d = yield self._dispersy.reclassify_community(community_c, ClassTestD)
         self.assertIsInstance(community_d, ClassTestD)
         self.assertEqual(community_c.cid, community_d.cid)
 
@@ -86,6 +89,7 @@ class TestClassification(DispersyTestFunc):
         self.assertIsInstance(communities[0], ClassificationLoadOneCommunities)
 
     @call_on_reactor_thread
+    @inlineCallbacks
     def test_load_two_communities(self):
         """
         Try to load communities of a certain classification while there is exactly two such
@@ -98,11 +102,11 @@ class TestClassification(DispersyTestFunc):
         # create two communities
         community = LoadTwoCommunities.create_community(self._dispersy, self._mm.my_member)
         masters.append(community.master_member.public_key)
-        community.unload_community()
+        yield community.unload_community()
 
         community = LoadTwoCommunities.create_community(self._dispersy, self._mm.my_member)
         masters.append(community.master_member.public_key)
-        community.unload_community()
+        yield community.unload_community()
 
         # load two communities
         self.assertEqual(sorted(masters), sorted(master.public_key
@@ -143,7 +147,7 @@ class TestClassification(DispersyTestFunc):
         wakeup = self._mm.create_full_sync_text("Should auto-load", 42)
 
         # unload community
-        self._community.unload_community()
+        yield self._community.unload_community()
 
         try:
             self._dispersy.get_community(cid, auto_load=False)

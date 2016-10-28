@@ -405,4 +405,4 @@ class TestBootstrapServers(DispersyTestFunc):
 
         # cleanup
         community.create_destroy_community(u"hard-kill")
-        self._dispersy.get_community(community.cid).unload_community()
+        yield self._dispersy.get_community(community.cid).unload_community()
