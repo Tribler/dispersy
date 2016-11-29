@@ -214,10 +214,7 @@ class DiscoveryCommunity(Community):
 
         default_addresses = Bootstrap.get_default_addresses()
         self.bootstrap = Bootstrap(alternate_addresses or default_addresses)
-
-        bootstrap_deferred = self.bootstrap.start()
-        self.register_task("bootstrap_task", bootstrap_deferred)
-        bootstrap_deferred.addCallback(on_bootstrap_started)
+        self.bootstrap.start().addCallback(on_bootstrap_started)
 
         self.register_task('create_ping_requests',
                            LoopingCall(self.create_ping_requests)).start(PING_INTERVAL)
@@ -228,7 +225,7 @@ class DiscoveryCommunity(Community):
     def unload_community(self):
         yield super(DiscoveryCommunity, self).unload_community()
         if self.bootstrap:
-            self.bootstrap.stop()
+            yield self.bootstrap.stop()
 
     def periodically_insert_trackers(self):
         communities = [community for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker]

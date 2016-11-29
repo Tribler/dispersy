@@ -4,11 +4,12 @@ from threading import Lock
 
 from twisted.internet import reactor
 from twisted.internet.abstract import isIPAddress
-from twisted.internet.defer import gatherResults, succeed
+from twisted.internet.defer import gatherResults, succeed, inlineCallbacks
 from twisted.internet.task import LoopingCall
 
 from ..candidate import Candidate
 from ..taskmanager import TaskManager
+from ..util import blocking_call_on_reactor_thread
 
 # Note that some the following DNS entries point to the same IP addresses.  For example, currently
 # both DISPERSY1.TRIBLER.ORG and DISPERSY1.ST.TUDELFT.NL point to 130.161.211.245.  Once these two
@@ -162,6 +163,7 @@ class Bootstrap(TaskManager):
                     add_candidate(host, host, port)
                 else:
                     deferred = reactor.resolve(host)
+                    self.register_task("resolve_%s" % host, deferred)
                     deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
                     deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
                     deferreds.append(deferred)
@@ -184,8 +186,11 @@ class Bootstrap(TaskManager):
 
         return self.resolve()
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def stop(self):
         """
         Clears all pending tasks scheduled on the TaskManager
         """
+        yield self.wait_for_deferred_tasks()
         self.cancel_all_pending_tasks()
