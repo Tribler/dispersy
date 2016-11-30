@@ -163,7 +163,7 @@ class Bootstrap(TaskManager):
                     add_candidate(host, host, port)
                 else:
                     deferred = reactor.resolve(host)
-                    self.register_task("resolve_%s" % host, deferred)
+                    self.register_task("resolve_%s_%s" % (host, port), deferred)
                     deferred.addCallback(lambda ip, host=host, port=port: add_candidate(ip, host, port))
                     deferred.addErrback(lambda _, host=host, port=port: no_candidate(host, port))
                     deferreds.append(deferred)
