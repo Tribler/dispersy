@@ -10,6 +10,7 @@ from time import time
 
 from twisted.internet import reactor
 
+from util import is_valid_address_or_log
 from .candidate import Candidate
 
 
@@ -244,7 +245,8 @@ class StandaloneEndpoint(Endpoint):
 
         self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data)
                                             for tunnel, sock_addr, data
-                                            in strip_if_tunnel(packets)],
+                                            in strip_if_tunnel(packets)
+                                            if is_valid_address_or_log(sock_addr, data)],
                                            cache,
                                            timestamp,
                                            u"standalone_ep")

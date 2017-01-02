@@ -289,6 +289,14 @@ def is_valid_address(address):
         return True
 
 
+def is_valid_address_or_log(sock_addr, data):
+    if is_valid_address(sock_addr):
+        return True
+    else:
+        logging.error("Packet contains invalid address: (%s, %d), data: %s" % (sock_addr[0], sock_addr[1], data))
+        return False
+
+
 def get_lan_address_without_netifaces():
     """
     # Get the local ip address by creating a socket for a (random) internet ip
