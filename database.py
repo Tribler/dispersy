@@ -43,6 +43,15 @@ else:
         return func
 
 
+def execute_or_script(cursor, statement):
+    """
+    This workaround is part of the MacOS Sierra bug described at the top of this file.
+    """
+    if sys.platform == "darwin":
+        cursor.executescript(statement)
+    else:
+        cursor.execute(statement)
+
 class IgnoreCommits(Exception):
 
     """
@@ -146,7 +155,7 @@ class Database(object):
                 self._cursor.executescript(u"PRAGMA journal_mode = DELETE")
                 journal_mode = u"DELETE"
             self._cursor.execute(u"PRAGMA page_size = 8192")
-            self._cursor.executescript(u"VACUUM")
+            execute_or_script(self._cursor, u"VACUUM")
             page_size = 8192
 
         else:
@@ -159,7 +168,7 @@ class Database(object):
         if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
             self._logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
             self._cursor.execute(u"PRAGMA locking_mode = EXCLUSIVE")
-            self._cursor.executescript(u"PRAGMA journal_mode = WAL")
+            execute_or_script(self._cursor, u"PRAGMA journal_mode = WAL")
 
         else:
             self._logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
@@ -170,7 +179,7 @@ class Database(object):
         #
         if not synchronous in (u"NORMAL", u"1"):
             self._logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
-            self._cursor.executescript(u"PRAGMA synchronous = NORMAL")
+            execute_or_script(self._cursor, u"PRAGMA synchronous = NORMAL")
 
         else:
             self._logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
