@@ -9,7 +9,13 @@ import logging
 import sys
 import thread
 from abc import ABCMeta, abstractmethod
-from sqlite3 import Connection
+
+if sys.platform == "darwin":
+    # Workaround for annoying MacOS Sierra bug: https://bugs.python.org/issue27126
+    # As fix, we are using pysqlite2 so we can supply our own version of sqlite3.
+    import pysqlite2.dbapi2 as sqlite3
+else:
+    import sqlite3
 
 from .util import attach_runtime_statistics
 
@@ -113,7 +119,7 @@ class Database(object):
         return True
 
     def _connect(self):
-        self._connection = Connection(self._file_path)
+        self._connection = sqlite3.Connection(self._file_path)
         self._cursor = self._connection.cursor()
 
     def _initial_statements(self):
@@ -140,7 +146,7 @@ class Database(object):
                 self._cursor.executescript(u"PRAGMA journal_mode = DELETE")
                 journal_mode = u"DELETE"
             self._cursor.execute(u"PRAGMA page_size = 8192")
-            self._cursor.execute(u"VACUUM")
+            self._cursor.executescript(u"VACUUM")
             page_size = 8192
 
         else:
@@ -153,7 +159,7 @@ class Database(object):
         if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
             self._logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
             self._cursor.execute(u"PRAGMA locking_mode = EXCLUSIVE")
-            self._cursor.execute(u"PRAGMA journal_mode = WAL")
+            self._cursor.executescript(u"PRAGMA journal_mode = WAL")
 
         else:
             self._logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
@@ -164,7 +170,7 @@ class Database(object):
         #
         if not synchronous in (u"NORMAL", u"1"):
             self._logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
-            self._cursor.execute(u"PRAGMA synchronous = NORMAL")
+            self._cursor.executescript(u"PRAGMA synchronous = NORMAL")
 
         else:
             self._logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
