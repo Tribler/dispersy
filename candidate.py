@@ -302,9 +302,9 @@ class WalkCandidate(Candidate):
         assert isinstance(connection_type, unicode), type(connection_type)
         assert connection_type in (u"unknown", u"public", "symmetric-NAT"), connection_type
         self._tunnel = tunnel
-        if lan_address != ("0.0.0.0", 0):
+        if self._lan_address != ("0.0.0.0", 0):
             self._lan_address = lan_address
-        if wan_address != ("0.0.0.0", 0):
+        if self._wan_address != ("0.0.0.0", 0):
             self._wan_address = wan_address
         # someone can also reset from a known connection_type to unknown (i.e. it now believes it is
         # no longer public nor symmetric NAT)
