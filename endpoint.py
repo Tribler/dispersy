@@ -243,13 +243,18 @@ class StandaloneEndpoint(Endpoint):
                 else:
                     yield False, sock_addr, data
 
-        self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data)
-                                            for tunnel, sock_addr, data
-                                            in strip_if_tunnel(packets)
-                                            if is_valid_address_or_log(sock_addr, data)],
-                                           cache,
-                                           timestamp,
-                                           u"standalone_ep")
+        try:
+            self._dispersy.on_incoming_packets([(Candidate(sock_addr, tunnel), data)
+                                                for tunnel, sock_addr, data
+                                                in strip_if_tunnel(packets)
+                                                if is_valid_address_or_log(sock_addr, data)],
+                                               cache,
+                                               timestamp,
+                                               u"standalone_ep")
+        except AssertionError:
+            # TODO(Martijn): this effectively disables all assertions, making it harder to crash Tribler clients with
+            # malformed packets. We should replace this with a more robust design once we redesign Dispersy.
+            self._logger.exception("Ignored assertion error in Dispersy")
 
     def send(self, candidates, packets, prefix=None):
         assert self._dispersy, "Should not be called before open(...)"
