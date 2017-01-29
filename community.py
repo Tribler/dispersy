@@ -2176,7 +2176,10 @@ class Community(TaskManager):
         assert len(possibly_messages) >= 0  # may return zero messages
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage, DispersyInternalMessage)) for message in possibly_messages), possibly_messages
         assert all(message.dropped not in possibly_messages for message in possibly_messages if isinstance(message, DropMessage)), possibly_messages  # dropped messages cannot be accepted
-        assert all(message.delayed not in possibly_messages for message in possibly_messages if isinstance(message, DelayMessage)), possibly_messages  # delayed messages cannot be accepted
+        #assert all(message.delayed not in possibly_messages for message in possibly_messages if isinstance(message, DelayMessage)), possibly_messages  # delayed messages cannot be accepted
+        # TODO(Martijn): we filter out all delayed messages instead of asserting. Should be fixed when we remove the
+        # batching behaviour of Dispersy.
+        possibly_messages = [message for message in possibly_messages if (not isinstance(message, DelayMessage) or (message.delayed not in possibly_messages))]
 
         if len(possibly_messages) == 0:
             self._logger.warning("%s yielded zero messages, drop, or delays. "
