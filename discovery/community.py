@@ -173,6 +173,34 @@ class PossibleTasteBuddy(TasteBuddy):
         return hash(self.candidate_mid)
 
 
+class SimilarityAttempt(RandomNumberCache):
+
+    def __init__(self, community, requested_candidate, preference_list, allow_sync):
+        RandomNumberCache.__init__(self, community.request_cache, u"similarity")
+        assert isinstance(requested_candidate, WalkCandidate), type(requested_candidate)
+        assert isinstance(preference_list, list), type(preference_list)
+        self.community = community
+        self.requested_candidate = requested_candidate
+        self.preference_list = preference_list
+        self.allow_sync = allow_sync
+
+    def on_timeout(self):
+        self.community.send_introduction_request(self.requested_candidate, allow_sync=self.allow_sync)
+        self.community.peer_cache.inc_num_fails(self.requested_candidate)
+
+
+class PingRequestCache(RandomNumberCache):
+
+    def __init__(self, community, requested_candidate):
+        RandomNumberCache.__init__(self, community.request_cache, u"ping")
+        self.community = community
+        self.requested_candidate = requested_candidate
+
+    def on_timeout(self):
+        self._logger.debug("DiscoveryCommunity: no response on ping, removing from taste_buddies %s", self.requested_candidate)
+        self.community.remove_taste_buddy(self.requested_candidate)
+
+
 class DiscoveryCommunity(Community):
 
     def initialize(self, max_prefs=25, max_tbs=25):
@@ -475,21 +503,6 @@ class DiscoveryCommunity(Community):
             return self.taste_buddies[-1]
         return 0
 
-    class SimilarityAttempt(RandomNumberCache):
-
-        def __init__(self, community, requested_candidate, preference_list, allow_sync):
-            RandomNumberCache.__init__(self, community.request_cache, u"similarity")
-            assert isinstance(requested_candidate, WalkCandidate), type(requested_candidate)
-            assert isinstance(preference_list, list), type(preference_list)
-            self.community = community
-            self.requested_candidate = requested_candidate
-            self.preference_list = preference_list
-            self.allow_sync = allow_sync
-
-        def on_timeout(self):
-            self.community.send_introduction_request(self.requested_candidate, allow_sync=self.allow_sync)
-            self.community.peer_cache.inc_num_fails(self.requested_candidate)
-
     def create_introduction_request(self, destination, allow_sync, forward=True, is_fast_walker=False):
         assert isinstance(destination, WalkCandidate), [type(destination), destination]
 
@@ -506,7 +519,7 @@ class DiscoveryCommunity(Community):
     def create_similarity_request(self, destination, allow_sync=True):
         payload = self.my_preferences()[:self.max_prefs]
         if payload:
-            cache = self._request_cache.add(DiscoveryCommunity.SimilarityAttempt(self, destination, payload, allow_sync))
+            cache = self._request_cache.add(SimilarityAttempt(self, destination, payload, allow_sync))
             destination.walk(time())
 
             self._logger.debug("DiscoveryCommunity: create similarity request for %s with identifier %s %s",
@@ -527,7 +540,7 @@ class DiscoveryCommunity(Community):
 
     def check_similarity_request(self, messages):
         for message in messages:
-            accepted, proof = self._timeline.check(message)
+            accepted, _ = self._timeline.check(message)
             if not accepted:
                 yield DelayMessageByProof(message)
                 continue
@@ -590,17 +603,24 @@ class DiscoveryCommunity(Community):
         return len(set(his_prefs) & set(my_prefs or self.my_preferences()))
 
     def check_similarity_response(self, messages):
+        identifiers_seen = {}
         for message in messages:
-            accepted, proof = self._timeline.check(message)
+            accepted, _ = self._timeline.check(message)
             if not accepted:
                 yield DelayMessageByProof(message)
                 continue
 
-            request = self._request_cache.get(u"similarity", message.payload.identifier)
-            if not request:
-                yield DropMessage(message, "unknown identifier")
+            if not self._request_cache.has(u"similarity", message.payload.identifier):
+                yield DropMessage(message, "invalid identifier")
                 continue
 
+            if message.payload.identifier in identifiers_seen:
+                self._logger.error("already seen this identifier in this batch, previous candidate %s this one %s",
+                                   identifiers_seen[message.payload.identifier], message.candidate)
+                yield DropMessage(message, "invalid identifier")
+                continue
+
+            identifiers_seen[message.payload.identifier] = message.candidate
             yield message
 
     def on_similarity_response(self, messages):
@@ -688,22 +708,11 @@ class DiscoveryCommunity(Community):
 
         return super(DiscoveryCommunity, self).dispersy_get_introduce_candidate(exclude_candidate)
 
-    class PingRequestCache(RandomNumberCache):
-
-        def __init__(self, community, requested_candidate):
-            RandomNumberCache.__init__(self, community.request_cache, u"ping")
-            self.community = community
-            self.requested_candidate = requested_candidate
-
-        def on_timeout(self):
-            self._logger.debug("DiscoveryCommunity: no response on ping, removing from taste_buddies %s", self.requested_candidate)
-            self.community.remove_taste_buddy(self.requested_candidate)
-
     def create_ping_requests(self):
         tbs = list(self.yield_taste_buddies())[:self.max_tbs]
         for tb in tbs:
             if tb.time_remaining() < PING_INTERVAL:
-                cache = self._request_cache.add(DiscoveryCommunity.PingRequestCache(self, tb.candidate))
+                cache = self._request_cache.add(PingRequestCache(self, tb.candidate))
                 self._create_pingpong(u"ping", tb.candidate, cache.number)
 
     def on_ping(self, messages):
@@ -722,7 +731,7 @@ class DiscoveryCommunity(Community):
                 continue
 
             if message.payload.identifier in identifiers_seen:
-                self._logger.error("already seen this indentifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
+                self._logger.error("already seen this identifier in this batch, previous candidate %s this one %s", identifiers_seen[message.payload.identifier], message.candidate)
                 yield DropMessage(message, "invalid ping identifier")
                 continue
 
