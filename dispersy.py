@@ -202,7 +202,13 @@ class Dispersy(TaskManager):
                 else:
                     for option in addresses.get(netifaces.AF_INET, []):
                         try:
-                            yield Interface(interface, option.get("addr"), option.get("netmask"), option.get("broadcast"))
+                            # On Windows netifaces currently returns IP addresses as unicode,
+                            # and on *nix it returns str. So, we convert any unicode objects to str.
+                            unicode_to_str = lambda s: s.encode('utf-8') if isinstance(s, unicode) else s
+                            yield Interface(interface,
+                                            unicode_to_str(option.get("addr")),
+                                            unicode_to_str(option.get("netmask")),
+                                            unicode_to_str(option.get("broadcast")))
 
                         except TypeError:
                             # some interfaces have no netmask configured, causing a TypeError when
