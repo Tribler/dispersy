@@ -4,6 +4,9 @@ Usage
 
 To start using Dispersy you need to first have the Dispersy library in your project. You can find instructions for that
 in the installation section.
+This guide explains how to work with Dispersy and highlights some of the concepts in Dispersy like payloads, conversions
+and communities. At the end of this guide, you will be able to run your own Dispersy instances and send messages between
+them.
 
 Payload
 =======
@@ -20,7 +23,7 @@ payload can look like:
     class ExamplePayload(Payload):
         class Implementation(Payload.Implementation):
             def __init__(self, meta, text):
-                assert isinstance(text, string)
+                assert isinstance(text, str)
                 super(ExamplePayload.Implementation, self).__init__(meta)
                 self._text = text
 
@@ -36,8 +39,8 @@ arguments to the *__init__* and making a function to access it. Like showed in t
 .. code-block:: python
 
     def __init__(self, meta, text, amount):
-        assert isinstance(text, string)
-        assert isinstance(amount, integer)
+        assert isinstance(text, str)
+        assert isinstance(amount, int)
         super(ExamplePayload.Implementation, self).__init__(meta)
         self._text = text
         self._amount = amount
@@ -70,7 +73,7 @@ the 'text' attribute or check if the amount is in between two numbers.
             def text(self):
                 return self._text
 
-When a message is received this text property is available at message.payload.text
+When a message is received this text property is available at *message.payload.text*.
 
 Conversion
 ==========
@@ -107,9 +110,9 @@ binary string representation on the wire. It also allows you to convert between 
                 raise DropPacket("Invalid payload type")
 
             text, amount = payload
-            if not isinstance(text, string):
+            if not isinstance(text, str):
                 raise DropPacket("Invalid 'text' type")
-            if not isinstance(amount, integer):
+            if not isinstance(amount, int):
                 raise DropPacket("Invalid 'amount' type")
 
             return offset, placeholder.meta.payload.implement(text, amount)
@@ -121,7 +124,7 @@ binary string representation on the wire. It also allows you to convert between 
 This line marks the version of the community.
 The values '\x00' and '\xff' cannot be used, because they are used to indicate the default conversion and for when
 more than one byte is needed to indicate the version respectively. So you start your conversion with '\x01' and when you
-need to change something when it is already in use, you need to increase your version number to '\x02'
+need to change something when it is already in use, you need to increase your version number to '\x02'.
 
 .. code-block:: python
 
@@ -178,7 +181,7 @@ If the payload has more properties then add these to the tuple. The decode funct
 
         text = payload
 
-        if not isinstance(text, string):
+        if not isinstance(text, str):
             raise DropPacket("Invalid 'text' type")
 
         return offset, placeholder.meta.payload.implement(text)
@@ -197,9 +200,9 @@ If the payload has more properties then add these to the tuple. The decode funct
             raise DropPacket("Invalid payload type")
 
         text, amount = payload
-        if not isinstance(text, string):
+        if not isinstance(text, str):
             raise DropPacket("Invalid 'text' type")
-        if not isinstance(amount, integer):
+        if not isinstance(amount, int):
             raise DropPacket("Invalid 'amount' type")
 
         return offset, placeholder.meta.payload.implement(text, amount)
@@ -271,7 +274,7 @@ A community in Dispersy defines the overlay used for the communication within th
             meta = self.get_meta_message(u"example")
             message = meta.impl(authentication=(self.my_member,),
                                 distribution=(self.claim_global_time(),),
-                                payload=((price, quantity, timeout),))
+                                payload=(text, amount,))
             self.dispersy.store_update_forward([message], store, update, forward)
 
         def on_example(self, messages):
@@ -286,12 +289,19 @@ Master member
 Each community must define a master member. This member is just a normal Dispersy member that is only used to identify
 the community uniquely across the overlay. To create a master member, a public/private cryptography keypair has to be
 generated first, which has to be known to all nodes attempting to join.. This can be done with the *createkey.py* tool
-located under the *tool* package. Using this tool a *curves* argument can be given to create a key to the strength of
-your liking. The recommended curve to use is *high*:
+located under the *tool* package. To use the tool you must first copy it to the base directory of your porject.
+Using this tool a *curves* argument must be given to create a key to the strength of your liking. The recommended curve to use is *high*:
 
-.. code-block:: python
+.. code-block:: console
 
-    python createkey.py curves=high
+    python createkey.py high
+
+You can also create multiple keys at once by passing the curve argument multiple times:
+
+.. code-block:: console
+
+    python createkey.py high low high
+
 
 When the key is generated, the pub 170 bits identifier should be copied and put in place of the *<public-key>* in the
 following template:
@@ -511,7 +521,7 @@ Currently there is one situation where disabling sequence numbers is required.  
 message will be signed by multiple members.  In this case the sequence number is claimed but may
 not be used (if the other members refuse to add their signature).  This causes a missing
 sequence message.  This in turn could be solved by creating a placeholder message, however, this
-is not currently, and my never be, implemented.
+is not currently, and may never be, implemented.
 
 LastSyncDistribution
 """"""""""""""""""""
@@ -559,28 +569,34 @@ having to take care of the reactor lifetime, log rotation, pid file and suchlike
 Run Twisted in the main thread
 ------------------------------
 
-To run Twisted in the main thread, just start Dispersy in your main thread
+Dispersy uses the Twisted reactor, which is an event driven networking framework. In the main function the function that starts Dispersy is passed unto the reactor before start is called.
+
+A LoopingCall has been included to send a message every 1 second to members of the community with a timestamp. If you run this code on two seperate instances
+(if you use the same computer make sure to change the port and database name!) you will be able to see the messages if you add a print statement in the `ExampleCommunity.on_example` method.
+Don't forget to change the port and the public key of the master member in the example below. The variables between <> have to be replaced with values/objects belonging to your own project.
 
 .. code-block:: python
 
     from twisted.internet import reactor
+    from twisted.internet.task import LoopingCall
+    import time
 
-    def main():
-        reactor.exitCode = 0
-        reactor.run()
-
-        dispersy = Dispersy(StandaloneEndpoint(port, '0.0.0.0'), unicode(<data_dir>), u'dispersy.db')
+    def start_dispersy():
+        dispersy = Dispersy(StandaloneEndpoint(<port>, '0.0.0.0'), unicode('.'), u'dispersy.db')
         dispersy.statistics.enable_debug_statistics(True)
         dispersy.start(autoload_discovery=True)
 
-        my_member = self.get_new_member()
-        master_memeber = self.get_member(public_key=<master_key>)
+        my_member = dispersy.get_new_member()
+        master_member = dispersy.get_member(public_key=<master_key>)
 
-        community = <Community>.init_community(self, master_member, my_member)
+        community = ExampleCommunity.init_community(dispersy, master_member, my_member)
 
-        exit(reactor.exitCode)
+        LoopingCall(lambda:community.send_example("Time sent", int(time.time()))).start(1.0)
+
+
+    def main():
+        reactor.callWhenRunning(start_dispersy)
+        reactor.run()
 
     if __name__ == "__main__":
         main()
-
-The variables between <> have to be replaced with values/objects belonging to your own project.
