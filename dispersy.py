@@ -1871,6 +1871,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         Note that messages that are disabled, i.e. not included in community.get_meta_messages(),
         will NOT be checked.
 
+        This check assumes that a community has the my_member attribute and this member in a community has an identity
+        associated to it (i.e. we have created a dispersy-identity message for my member).
+
         - the dispersy-identity for my member must be in the database
         - the dispersy-identity must be in the database for each member that has one or more messages in the database
         - all packets in the database must be valid
