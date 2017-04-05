@@ -2154,8 +2154,7 @@ class Community(TaskManager):
         debug_begin = time()
 
         # drop all duplicate or old messages
-        assert type(meta.distribution) in self._dispersy._check_distribution_batch_map
-        messages = list(self._dispersy._check_distribution_batch_map[type(meta.distribution)](messages))
+        messages = list(meta.distribution.check_batch(self._dispersy, messages))
         # TODO(emilon): This seems iffy
         assert len(messages) > 0  # should return at least one item for each message
         assert all(isinstance(message, (Message.Implementation, DropMessage, DelayMessage)) for message in messages)
