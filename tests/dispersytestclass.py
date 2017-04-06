@@ -1,10 +1,12 @@
 import os
 import logging
+import threading
 from unittest import TestCase
 from tempfile import mkdtemp
 
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.logger import formatEvent, globalLogPublisher, LogLevel
 
 from ..discovery.community import PEERCACHE_FILENAME
 from ..dispersy import Dispersy
@@ -27,13 +29,21 @@ class DispersyTestFunc(TestCase):
     def __init__(self, *args, **kwargs):
         super(DispersyTestFunc, self).__init__(*args, **kwargs)
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._fired_unhandled_exceptions = []
+        self._starting_threads = []
 
     def on_callback_exception(self, exception, is_fatal):
         return True
 
+    def failure_check(self, evt):
+        if evt.get("failure", None):
+            self._fired_unhandled_exceptions.append(formatEvent(evt))
+
     @blocking_call_on_reactor_thread
     @inlineCallbacks
     def setUp(self):
+        self._starting_threads = [t.name for t in threading.enumerate()]
+
         super(DispersyTestFunc, self).setUp()
 
         self.dispersy_objects = []
@@ -46,15 +56,26 @@ class DispersyTestFunc(TestCase):
         self._dispersy = self._mm._dispersy
         self._community = self._mm._community
 
+        self._fired_unhandled_exceptions = []
+
+        globalLogPublisher.addObserver(self.failure_check)
+
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def tearDown(self):
         super(DispersyTestFunc, self).tearDown()
 
         for dispersy in self.dispersy_objects:
-            dispersy.stop()
+            yield dispersy.stop()
 
             peercache = os.path.join(dispersy._working_directory, PEERCACHE_FILENAME)
             if os.path.isfile(peercache):
                 os.unlink(peercache)
+
+        if self._dispersy.running:
+            yield self._dispersy.stop()
+
+        globalLogPublisher.removeObserver(self.failure_check)
 
         pending = reactor.getDelayedCalls()
         if pending:
@@ -63,7 +84,21 @@ class DispersyTestFunc(TestCase):
                 fun = dc.func
                 self._logger.warning("    %s", fun)
             self._logger.warning("Failing")
-        assert not pending, "The reactor was not clean after shutting down all dispersy instances."
+        self.assertFalse(pending, "The reactor was not clean after shutting down all dispersy instances.")
+
+        if self._fired_unhandled_exceptions:
+            self._logger.error("Found %d unhandled exceptions on threads:", len(self._fired_unhandled_exceptions))
+            for exception in self._fired_unhandled_exceptions:
+                self._logger.error(exception)
+        self.assertFalse(self._fired_unhandled_exceptions)
+
+        # We should not have any rogue threads left.
+        rogue_threads = False
+        for thread in threading.enumerate():
+            if thread.name not in self._starting_threads:
+                rogue_threads = True
+                self._logger.error("Found rogue thread: %s", thread)
+        self.assertFalse(rogue_threads, "Rogue threads active, see log")
 
     @blocking_call_on_reactor_thread
     @inlineCallbacks
