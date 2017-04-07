@@ -11,6 +11,8 @@ class TaskManagerTestFunc(DispersyTestFunc):
 
     @blocking_call_on_reactor_thread
     def setUp(self):
+        super(TaskManagerTestFunc, self).setUp()
+
         self.dispersy_objects = []
         self.tm = TaskManager()
         self.tm._reactor = Clock()
