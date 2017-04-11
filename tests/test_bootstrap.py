@@ -16,7 +16,7 @@ from ..candidate import Candidate
 from ..dispersy import Dispersy
 from ..endpoint import StandaloneEndpoint
 from ..message import Message, DropMessage
-from ..util import blockingCallFromThread
+from ..util import blockingCallFromThread, blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
 from .dispersytestclass import DispersyTestFunc
 
@@ -29,6 +29,8 @@ MAX_RTT = 1.0
 
 class TestBootstrapServers(DispersyTestFunc):
 
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
     def test_tracker(self):
         """
         Runs tracker.py and connects to it.
@@ -55,16 +57,8 @@ class TestBootstrapServers(DispersyTestFunc):
                     loggercb(out.rstrip())
                 else:
                     break
-        # Twistd needs to be able to import from dispersy module
-        env = copy(environ)
-        dispersy_path = path.abspath(path.join(tracker_path, 'dispersy'))
-        if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] += ":" + dispersy_path
-        else:
-            env['PYTHONPATH'] = dispersy_path
 
-        self._logger.debug("PYTHONPATH is now: %s", env['PYTHONPATH'])
-        tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT, env=env)
+        tracker = Popen(args, cwd=tracker_path, stdout=PIPE, stderr=STDOUT, env=environ)
         tracker_logging_thread = Thread(name="TrackerLoggingThread", target=logstream,
                                         args=(tracker.stdout, lambda s: self._logger.info("tracker is printing: " + s)))
         tracker_logging_thread.start()
@@ -84,7 +78,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 def dispersy_enable_candidate_walker_responses(self):
                     return True
 
-            node, = self.create_nodes(1, community_class=Community, autoload_discovery=True)
+            node, = yield self.create_nodes(1, community_class=Community)
 
             # node sends introduction request
             destination = Candidate(tracker_address, False)
