@@ -24,13 +24,6 @@ import signal
 import sys
 from time import time
 
-from dispersy.candidate import LoopbackCandidate
-from dispersy.crypto import NoVerifyCrypto, NoCrypto
-from dispersy.discovery.community import DiscoveryCommunity
-from dispersy.dispersy import Dispersy
-from dispersy.endpoint import StandaloneEndpoint
-from dispersy.exception import CommunityNotFoundException
-from dispersy.tracker.community import TrackerCommunity, TrackerHardKilledCommunity
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.conch import manhole_tap
 from twisted.internet import reactor
@@ -43,7 +36,17 @@ from twisted.python.logfile import DailyLogFile
 from twisted.python.threadable import isInIOThread
 from zope.interface import implements
 
-from tool.clean_observers import clean_twisted_observers
+DISPERSY_ROOT_PATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+sys.path.insert(0, DISPERSY_ROOT_PATH)
+
+from dispersy.candidate import LoopbackCandidate
+from dispersy.crypto import NoVerifyCrypto, NoCrypto
+from dispersy.discovery.community import DiscoveryCommunity
+from dispersy.dispersy import Dispersy
+from dispersy.endpoint import StandaloneEndpoint
+from dispersy.exception import CommunityNotFoundException
+from dispersy.tool.clean_observers import clean_twisted_observers
+from dispersy.tracker.community import TrackerCommunity, TrackerHardKilledCommunity
 
 # Register yappi profiler
 from utils import twistd_yappi
