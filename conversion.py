@@ -4,6 +4,8 @@ from socket import inet_ntoa, inet_aton
 from struct import pack, unpack_from, Struct
 import logging
 
+from M2Crypto.EC import ECError
+
 from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .candidate import Candidate
@@ -1073,7 +1075,11 @@ class NoDefBinaryConversion(Conversion):
             member_id = data[offset:offset + 20]
             offset += 20
 
-            member = self._community.get_member(mid=member_id)
+            try:
+                member = self._community.get_member(mid=member_id)
+            except ECError:
+                raise DropPacket("Invalid member authentication")
+
             # If signatures and verification are enabled, verify that the signature matches the member sha1 identifier
             if member:
                 placeholder.offset = offset
