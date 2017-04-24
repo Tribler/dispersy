@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 """
 Create one or more Elliptic Curves.
@@ -39,7 +39,7 @@ def create_key(eccrypto, curves):
         public_pem = ""
 
         ec = eccrypto.generate_key(curve)
-        if getattr(ec, 'key_to_pem'):
+        if hasattr(ec, 'key_to_pem'):
             print "KEP"
             private_pem = ec.key_to_pem()
             public_pem = ec.pub().key_to_pem()
