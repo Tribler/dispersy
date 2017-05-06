@@ -27,6 +27,108 @@ PING_COUNT = 10
 MAX_RTT = 1.0
 
 
+class PingCommunity(DebugCommunity):
+    """
+    This community pings all the available trackers and measure the time it takes until we receive a response.
+    We plot these response times and assert if a response takes too long.
+    """
+
+    def __init__(self, *args, **kargs):
+        super(PingCommunity, self).__init__(*args, **kargs)
+
+        self._pings_done = 0
+        self._request = defaultdict(dict)
+        self._summary = defaultdict(list)
+        self._hostname = {}
+        self._identifiers = defaultdict(str)
+        self.ping_candidates = []
+
+        self.test_d = Deferred().addCallback(lambda _: self.write_results())
+
+    @property
+    def dispersy_enable_candidate_walker(self):
+        # disable candidate walker
+        return True
+
+    @inlineCallbacks
+    def start_walking(self):
+        for _ in xrange(10):
+            if self.dispersy._discovery_community and self.dispersy._discovery_community.bootstrap.all_resolved:
+                self.ping_candidates = [self.get_candidate(address) for address in
+                                        set(self.dispersy._discovery_community.bootstrap.candidate_addresses)]
+                break
+            yield deferLater(reactor, 1, lambda: None)
+        else:
+            raise RuntimeError("No candidates discovered")
+
+        for candidate in self.ping_candidates:
+            for (host, port), b_candidate in self.dispersy._discovery_community.bootstrap._candidates.iteritems():
+                if candidate == b_candidate:
+                    self._hostname[candidate.sock_addr] = host
+        self.ping_candidates.sort(cmp=lambda a, b: cmp(a.sock_addr, b.sock_addr))
+
+        for _ in xrange(PING_COUNT):
+            self.ping(time())
+            yield deferLater(reactor, 1, lambda: None)
+            self.summary()
+        self.test_d.callback(None)
+
+    def on_introduction_response(self, messages):
+        now = time()
+        self._logger.debug("Received introduction response")
+        for message in messages:
+            candidate = message.candidate
+            if candidate.sock_addr in self._request:
+                request_stamp = self._request[candidate.sock_addr].pop(message.payload.identifier, 0.0)
+                self._summary[candidate.sock_addr].append(now - request_stamp)
+                self._identifiers[candidate.sock_addr] = message.authentication.member.mid
+        return super(DebugCommunity, self).on_introduction_response(messages)
+
+    def ping(self, now):
+        self._logger.debug("Will send ping to each tracker")
+        self._pings_done += 1
+        for candidate in self.ping_candidates:
+            request = self.create_introduction_request(candidate, False)
+            self._request[candidate.sock_addr][request.payload.identifier] = now
+
+    def summary(self):
+        for candidate in self.ping_candidates:
+            sock_addr = candidate.sock_addr
+            rtts = self._summary[sock_addr]
+            if rtts:
+                summary_logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
+                                    self._identifiers[sock_addr].encode("HEX"),
+                                    sock_addr[0],
+                                    sock_addr[1],
+                                    self._hostname[sock_addr],
+                                    len(rtts),
+                                    sum(rtts) / len(rtts),
+                                    ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
+            else:
+                summary_logger.warning("%s:%d %s missing",
+                                       sock_addr[0], sock_addr[1], self._hostname[sock_addr])
+
+    def write_results(self):
+        # write graph statistics
+        with open("summary.txt", "w+") as handle:
+            handle.write("HOST_NAME ADDRESS REQUESTS RESPONSES\n")
+            for candidate in self.ping_candidates:
+                sock_addr = candidate.sock_addr
+                rtts = self._summary[sock_addr]
+
+                handle.write("%s %s:%d %d %d\n" %
+                             (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
+
+        with open("walk_rtts.txt", "w+") as handle:
+            handle.write("HOST_NAME ADDRESS RTT\n")
+            for candidate in self.ping_candidates:
+                sock_addr = candidate.sock_addr
+                rtts = self._summary[sock_addr]
+
+                for rtt in rtts:
+                    handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))
+
+
 class TestBootstrapServers(DispersyTestFunc):
 
     @blocking_call_on_reactor_thread
@@ -110,133 +212,30 @@ class TestBootstrapServers(DispersyTestFunc):
             self.assertEqual(tracker.wait(), 0), tracker.returncode
 
     @skipUnless(environ.get("TEST_BOOTSTRAP") == "yes", "This 'unittest' tests the external bootstrap processes, as such, this is not part of the code review process")
-    def test_servers_are_up(self):
+    @blocking_call_on_reactor_thread
+    @inlineCallbacks
+    def test_bootstrap_servers_are_up(self):
         """
-        Sends a dispersy-introduction-request to the trackers and counts how long it takes until the
-        dispersy-introduction-response is received.
+        Sends a dispersy-introduction-request to the trackers and measure the time it takes for a response.
         """
-        class PingCommunity(DebugCommunity):
-
-            def __init__(self, *args, **kargs):
-                super(PingCommunity, self).__init__(*args, **kargs)
-
-                self._pings_done = 0
-                self._request = defaultdict(dict)
-                self._summary = defaultdict(list)
-                self._hostname = {}
-                self._identifiers = defaultdict(str)
-                self._pcandidates = []
-
-                self.test_d = Deferred()
-
-            @property
-            def dispersy_enable_candidate_walker(self):
-                # disable candidate walker
-                return True
-
-            @inlineCallbacks
-            def start_walking(self):
-                for _ in xrange(10):
-                    if self._dispersy._discovery_community and self._dispersy._discovery_community.bootstrap.all_resolved:
-                        self._pcandidates = [self.get_candidate(address) for address in
-                                             set(self._dispersy._discovery_community.bootstrap.candidate_addresses)]
-                        break
-                    yield deferLater(reactor, 1, lambda: None)
-                else:
-                    test.fail("No candidates discovered")
-
-                for candidate in self._pcandidates:
-                    for (host, port), b_candidate in self._dispersy._discovery_community.bootstrap._candidates.iteritems():
-                        if candidate == b_candidate:
-                            self._hostname[candidate.sock_addr] = host
-                self._pcandidates.sort(cmp=lambda a, b: cmp(a.sock_addr, b.sock_addr))
-
-                for _ in xrange(PING_COUNT):
-                    self.ping(time())
-                    yield deferLater(reactor, 1, lambda: None)
-                    self.summary()
-                self.test_d.callback(None)
-
-            def on_introduction_response(self, messages):
-                now = time()
-                self._logger.debug("PONG")
-                for message in messages:
-                    candidate = message.candidate
-                    if candidate.sock_addr in self._request:
-                        request_stamp = self._request[candidate.sock_addr].pop(message.payload.identifier, 0.0)
-                        self._summary[candidate.sock_addr].append(now - request_stamp)
-                        self._identifiers[candidate.sock_addr] = message.authentication.member.mid
-                return super(DebugCommunity, self).on_introduction_response(messages)
-
-            def ping(self, now):
-                self._logger.debug("PING")
-                self._pings_done += 1
-                for candidate in self._pcandidates:
-                    request = self.create_introduction_request(candidate, False)
-                    self._request[candidate.sock_addr][request.payload.identifier] = now
-
-            def summary(self):
-                for candidate in self._pcandidates:
-                    sock_addr = candidate.sock_addr
-                    rtts = self._summary[sock_addr]
-                    if rtts:
-                        summary_logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
-                                            self._identifiers[sock_addr].encode("HEX"),
-                                            sock_addr[0],
-                                            sock_addr[1],
-                                            self._hostname[sock_addr],
-                                            len(rtts),
-                                            sum(rtts) / len(rtts),
-                                            ", ".join(str(round(rtt, 1)) for rtt in rtts[-10:]))
-                    else:
-                        summary_logger.warning("%s:%d %s missing",
-                                               sock_addr[0], sock_addr[1], self._hostname[sock_addr])
-
-            def finish(self, request_count, min_response_count, max_rtt):
-                # write graph statistics
-                handle = open("summary.txt", "w+")
-                handle.write("HOST_NAME ADDRESS REQUESTS RESPONSES\n")
-                for candidate in self._pcandidates:
-                    sock_addr = candidate.sock_addr
-                    rtts = self._summary[sock_addr]
-
-                    handle.write("%s %s:%d %d %d\n" %
-                                 (self._hostname[sock_addr], sock_addr[0], sock_addr[1], self._pings_done, len(rtts)))
-                handle.close()
-
-                handle = open("walk_rtts.txt", "w+")
-                handle.write("HOST_NAME ADDRESS RTT\n")
-                for candidate in self._pcandidates:
-                    sock_addr = candidate.sock_addr
-                    rtts = self._summary[sock_addr]
-
-                    for rtt in rtts:
-                        handle.write("%s %s:%d %f\n" % (self._hostname[sock_addr], sock_addr[0], sock_addr[1], rtt))
-                handle.close()
-
-                for candidate in self._pcandidates:
-                    sock_addr = candidate.sock_addr
-                    rtts = self._summary[sock_addr]
-
-                    test.assertLessEqual(min_response_count, len(rtts), "Only received %d/%d responses from %s:%d" %
-                                         (len(rtts), request_count, sock_addr[0], sock_addr[1]))
-                    test.assertLessEqual(sum(rtts) / len(rtts), max_rtt, "Average RTT %f from %s:%d is more than allowed %f" %
-                                         (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], max_rtt))
-
-        test = self
-
-        @inlineCallbacks
-        def do_pings():
-            dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
-            dispersy.start(autoload_discovery=True)
-            self.dispersy_objects.append(dispersy)
-            community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
-            yield community.test_d
-            returnValue(community)
+        dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
+        dispersy.start(autoload_discovery=True)
+        self.dispersy_objects.append(dispersy)
+        community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
+        yield community.test_d
 
         assert_margin = 0.9
-        community = blockingCallFromThread(reactor, do_pings)
-        community.finish(PING_COUNT, PING_COUNT * assert_margin, MAX_RTT)
+
+        for candidate in community.ping_candidates:
+            sock_addr = candidate.sock_addr
+            rtts = community._summary[sock_addr]
+
+            self.assertLessEqual(PING_COUNT * assert_margin, len(rtts), "Only received %d/%d responses from %s:%d" %
+                                 (len(rtts), PING_COUNT, sock_addr[0], sock_addr[1]))
+            self.assertLessEqual(sum(rtts) / len(rtts), MAX_RTT, "Average RTT %f from %s:%d is more than allowed %f" %
+                                 (sum(rtts) / len(rtts), sock_addr[0], sock_addr[1], MAX_RTT))
+
+        reactor.getThreadPool().stop()
 
     # TODO(emilon): port this to twisted
     @skip("The stress test is not actually a unittest")
