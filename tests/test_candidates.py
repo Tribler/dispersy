@@ -10,7 +10,7 @@
 from itertools import combinations, islice
 from time import time
 
-from ..candidate import CANDIDATE_ELIGIBLE_DELAY
+from ..candidate import CANDIDATE_ELIGIBLE_DELAY, CANDIDATE_LIFETIME
 from ..tracker.community import TrackerCommunity
 from ..util import blocking_call_on_reactor_thread
 from .debugcommunity.community import DebugCommunity
@@ -564,6 +564,45 @@ class TestCandidates(DispersyTestFunc):
         self.assertEquals(expected, got)
 
         return community, candidates
+
+    @blocking_call_on_reactor_thread
+    def test_keep_alive_candidate(self, community_create_method=TrackerCommunity.create_community):
+        community = community_create_method(self._dispersy, self._community._my_member)
+        candidate = self.create_candidates(community, ["r", ])[0]
+        candidate.set_keepalive(community)
+        candidate.associate(self._dispersy.get_new_member(u"very-low"))
+
+        # Make this a walk candidate
+        candidate.walk_response(time())
+        self.assertEqual(u"walk", candidate.get_category(time()))
+
+        # Fake timeout
+        candidate.walk_response(time())
+        category = candidate.get_category(time()+CANDIDATE_LIFETIME+1.0)
+
+        self.assertEqual(u"walk", category)
+        self.assertGreater(candidate.last_walk_reply, -1.0)
+
+    @blocking_call_on_reactor_thread
+    def test_keep_alive_candidate_timeout(self, community_create_method=TrackerCommunity.create_community):
+        community = community_create_method(self._dispersy, self._community._my_member)
+        candidate = self.create_candidates(community, ["r", ])[0]
+        candidate.set_keepalive(community)
+        candidate.associate(self._dispersy.get_new_member(u"very-low"))
+
+        # Make this a walk candidate
+        candidate.walk_response(time())
+        self.assertEqual(u"walk", candidate.get_category(time()))
+
+        # Fake timeout
+        candidate.walk_response(time())
+        candidate.get_category(time()+CANDIDATE_LIFETIME+1.0)
+
+        # Faked timeout again
+        candidate.walk_response(time()+CANDIDATE_LIFETIME+1.0)
+        category = candidate.get_category(time()+2*CANDIDATE_LIFETIME+2.0)
+
+        self.assertIsNone(category)
 
     @blocking_call_on_reactor_thread
     def test_tracker_get_introduce_candidate(self, community_create_method=TrackerCommunity.create_community):
