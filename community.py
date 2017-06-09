@@ -1069,6 +1069,12 @@ class Community(TaskManager):
 
         self.dispersy.detach_community(self)
 
+    def is_loaded(self):
+        """
+        Returns whether this community is attached to Dispersy
+        """
+        return self in self.dispersy.get_communities()
+
     def claim_global_time(self):
         """
         Increments the current global time by one and returns this value.
@@ -2739,6 +2745,26 @@ class Community(TaskManager):
             self._dispersy._forward([request])
 
         return request
+
+    def send_keep_alive(self, candidate):
+        """
+        Request a response from a candidate. If does not answer, let it time out.
+
+        The implementation of this mechanism uses an IntroductionRequest without any
+        piggybacked data. So, we don't receive any introductions or bloomfilters etc.
+        """
+        assert isinstance(candidate, WalkCandidate), [type(candidate), candidate]
+
+        cache = self.request_cache.add(IntroductionRequestCache(self, candidate))
+        args_list = [candidate.sock_addr, self._dispersy._lan_address, self._dispersy._wan_address, False,
+                     self._dispersy._connection_type, None, cache.number]
+
+        meta_request = self.get_meta_message(u"dispersy-introduction-request")
+        request = meta_request.impl(authentication=(self.my_member,),
+                                    distribution=(self.global_time,),
+                                    destination=(candidate,),
+                                    payload=tuple(args_list))
+        self._dispersy._forward([request])
 
     def _get_packets_for_bloomfilters(self, requests, include_inactive=True):
         """

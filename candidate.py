@@ -141,6 +141,11 @@ class WalkCandidate(Candidate):
         self._last_intro = 0.0
         self._last_discovered = 0.0
 
+        # keep alive
+        self._keep_alive_community = None
+        self._previous_property = None
+        self._on_life_support = False
+
         # the highest global time that one of the walks reported from this Candidate
         self._global_time = 0
 
@@ -236,6 +241,12 @@ class WalkCandidate(Candidate):
     def last_discovered(self):
         return self._last_discovered
 
+    def set_keepalive(self, community):
+        """
+        Set a community to try and keep this candidate alive for
+        """
+        self._keep_alive_community = community
+
     def get_category(self, now):
         """
         Returns the category (u"walk", u"stumble", u"intro", or None) depending on the current
@@ -243,19 +254,38 @@ class WalkCandidate(Candidate):
         """
         assert isinstance(now, float), type(now)
 
+        category = None
         if now < self._last_walk_reply + CANDIDATE_WALK_LIFETIME:
             assert self._association, "a candidate in the walk category must have at least one associated member"
-            return u"walk"
-
-        if now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
+            category = u"walk"
+        elif now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
             assert self._association, "a candidate in the stumble category must have at least one associated member"
-            return u"stumble"
+            category = u"stumble"
+        elif now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
+            category = u"intro"
+        elif now < self._last_discovered + CANDIDATE_DISCOVERED_LIFETIME:
+            category = u"discovered"
 
-        if now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
-            return u"intro"
+        if category:
+            # Store the last known category, for if this candidate times out
+            self._previous_property = category
+            # This candidate is live
+            self._on_life_support = False
+            return category
 
-        if now < self._last_discovered + CANDIDATE_DISCOVERED_LIFETIME:
-            return u"discovered"
+        # The candidate timed out, check if we need to keep it alive
+        if self._keep_alive_community and self._keep_alive_community.is_loaded() and not self._on_life_support:
+            # We have reset this candidate and are waiting for a response
+            self._on_life_support = True
+            # Send a keep alive message (introduction request)
+            self._keep_alive_community.send_keep_alive(self)
+            # Reset all timeouts
+            self._last_walk_reply = now
+            self._last_stumble = now
+            self._last_intro = now
+            self._last_discovered = now
+            # Return our last known category
+            return self._previous_property
 
         return None
 
