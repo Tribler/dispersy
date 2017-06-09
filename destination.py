@@ -56,7 +56,7 @@ class CommunityDestination(Destination):
     """
     class Implementation(Destination.Implementation):
 
-        def __init__(self, meta, *candidates):
+        def __init__(self, meta, *candidates, **kwargs):
             """
             Construct a CandidateDestination.Implementation object.
 
@@ -71,29 +71,46 @@ class CommunityDestination(Destination):
             super(CommunityDestination.Implementation, self).__init__(meta)
             self._candidates = candidates
 
+            if 'depth' in kwargs:
+                self._depth = kwargs['depth']
+            else:
+                self._depth = meta.depth
+
         @property
         def node_count(self):
             return self._meta._node_count
 
         @property
+        def depth(self):
+            return self._depth
+
+        @property
         def candidates(self):
             return self._candidates
 
-    def __init__(self, node_count):
+    def __init__(self, node_count, depth=-1):
         """
         Construct a CommunityDestination object.
 
         NODE_COUNT is an integer giving the number of nodes where, when the message is created, the
         message must be sent to.  These nodes are selected using the
         community.yield_random_candidates(...) method.  NODE_COUNT must be zero or higher.
+
+        DEPTH is an integer in [0, 127] v -1, this determines the _remaining_ hop count for this message. If
+        DEPTH is equal to -1, no hop depth will be used.
         """
         assert isinstance(node_count, int)
         assert node_count >= 0
         self._node_count = node_count
+        self._depth = depth
 
     @property
     def node_count(self):
         return self._node_count
+
+    @property
+    def depth(self):
+        return self._depth
 
     def __str__(self):
         return "<%s node_count:%d>" % (self.__class__.__name__, self._node_count)

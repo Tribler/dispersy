@@ -1274,6 +1274,9 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         meta = messages[0].meta
         if isinstance(meta.destination, (CommunityDestination, CandidateDestination)):
             for message in messages:
+                # Don't forward messages with a 0 TTL
+                if isinstance(meta.destination, CommunityDestination) and message.destination.depth == 0:
+                    continue
                 # CandidateDestination.candidates may be empty
                 candidates = set(message.destination.candidates)
                 # CommunityDestination.node_count is allowed to be zero

@@ -160,13 +160,14 @@ class NoDefBinaryConversion(Conversion):
             self.payload = None
 
     class EncodeFunctions(object):
-        __slots__ = ["byte", "authentication", "resolution", "distribution", "payload"]
+        __slots__ = ["byte", "authentication", "resolution", "distribution", "destination", "payload"]
 
-        def __init__(self, byte, authentication, resolution, distribution, payload):
+        def __init__(self, byte, authentication, resolution, distribution, destination, payload):
             self.byte = byte
             self.authentication = authentication
             self.resolution = resolution
             self.distribution = distribution
+            self.destination = destination
             self.payload = payload
 
     class DecodeFunctions(object):
@@ -235,9 +236,12 @@ class NoDefBinaryConversion(Conversion):
 
                    FullSyncDistribution: self._encode_full_sync_distribution,
                    LastSyncDistribution: self._encode_last_sync_distribution,
-                   DirectDistribution: self._encode_direct_distribution}
+                   DirectDistribution: self._encode_direct_distribution,
 
-        self._encode_message_map[meta.name] = self.EncodeFunctions(byte, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], encode_payload_func)
+                   CandidateDestination: self._encode_candidate_destination,
+                   CommunityDestination: self._encode_community_destination}
+
+        self._encode_message_map[meta.name] = self.EncodeFunctions(byte, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], encode_payload_func)
 
         mapping = {MemberAuthentication: self._decode_member_authentication,
                    DoubleMemberAuthentication: self._decode_double_member_authentication,
@@ -251,8 +255,8 @@ class NoDefBinaryConversion(Conversion):
                    FullSyncDistribution: self._decode_full_sync_distribution,
                    LastSyncDistribution: self._decode_last_sync_distribution,
 
-                   CandidateDestination: self._decode_empty_destination,
-                   CommunityDestination: self._decode_empty_destination}
+                   CandidateDestination: self._decode_candidate_destination,
+                   CommunityDestination: self._decode_community_destination}
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 
@@ -967,6 +971,12 @@ class NoDefBinaryConversion(Conversion):
         container.append(chr(index))
         # both the public and the linear resolution do not require any storage
 
+    def _encode_candidate_destination(self, container, message):
+        pass
+
+    def _encode_community_destination(self, container, message):
+        container.append(pack("!b", message.destination.depth))
+
     def can_encode_message(self, message):
         """
         Returns True when MESSAGE can be encoded using this conversion.
@@ -988,6 +998,9 @@ class NoDefBinaryConversion(Conversion):
 
         # resolution
         encode_functions.resolution(container, message)
+
+        # destination
+        encode_functions.destination(container, message)
 
         # distribution
         encode_functions.distribution(container, message)
@@ -1157,8 +1170,15 @@ class NoDefBinaryConversion(Conversion):
         placeholder.authentication = DoubleMemberAuthentication.Implementation(placeholder.meta.authentication, members,
                                                                                signatures=signatures)
 
-    def _decode_empty_destination(self, placeholder):
+    def _decode_candidate_destination(self, placeholder):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
+
+    def _decode_community_destination(self, placeholder):
+        depth, = unpack_from("!b", placeholder.data, placeholder.offset)
+        placeholder.offset += 1
+        new_depth = depth - 1 if depth > 0 else depth
+        placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination,
+                                                                              depth=new_depth)
 
     def can_decode_message(self, data):
         """

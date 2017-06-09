@@ -83,3 +83,65 @@ class TestNeighborhood(DispersyTestFunc):
 
         # We should never send to more than node_count + targeted_node_count nodes
         self.assertEqual(forwarded_node_count, min(total_node_count, meta.destination.node_count + targeted_node_count))
+
+    def test_forward_hop_timeout(self):
+        """
+        Test an n-hop-sync timeout.
+
+        This test uses a CommunityDestination of fan out 1 and depth 1.
+        In other words only 1 candidate should receive this message.
+        """
+        other, another = self.clean_community_candidates(2)
+
+        # Create the message
+        meta = self._community.get_meta_message(u"n-hop-sync-text")
+        message = meta.impl(authentication=(self._mm.my_member,),
+                            distribution=(42,),
+                            payload=("Hello World!",))
+
+        # Forward the message
+        self._mm.community.dispersy._forward([message, ])
+
+        # Check if we did not send to ourselves
+        receive0 = list(self._mm.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
+        self.assertEqual(receive0, [])
+        # Check if this arrived at a single other node
+        receive1 = list(other.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
+        receive2 = list(another.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
+        received = receive1 + receive2
+        _, message = received[0]
+
+        self.assertEqual(message.destination.depth, 0)
+
+        # Forward the message
+        self._mm.community.dispersy._forward([message, ])
+
+        # Check if this message has indeed not been forwarded
+        receive0 = list(self._mm.receive_message(names=[u"n-hop-sync-text", ]))
+        receive1 = list(other.receive_message(names=[u"n-hop-sync-text", ]))
+        receive2 = list(another.receive_message(names=[u"n-hop-sync-text", ]))
+
+        # self._mm has the packet in his database
+        # But only one other node should receive this message
+        self.assertEqual(receive0, [])
+        self.assertEqual(receive1, [])
+        self.assertEqual(receive2, [])
+
+    def clean_community_candidates(self, node_count):
+        """
+        Add certain nodes to the community and disallow walking to other nodes.
+
+        :param nodes: the DebugNodes which should be a part of the community
+        """
+        # Disallow community walking
+        self._community.cancel_pending_task("take step")
+        self._community.candidates.clear()
+
+        # Create the nodes
+        nodes = self.create_nodes(node_count)
+        for node in nodes:
+            self._mm.send_identity(node)
+            node.process_packets()
+        self._mm.process_packets()
+
+        return nodes
