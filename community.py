@@ -2436,7 +2436,28 @@ class Community(TaskManager):
             old_body = old_submsg.packet[:len(old_submsg.packet) - sum([member.signature_length for member in old_submsg.authentication.members])]
             new_body = new_submsg.packet[:len(new_submsg.packet) - sum([member.signature_length for member in new_submsg.authentication.members])]
 
-            result = cache.response_func(old_submsg, new_submsg, old_body != new_body, *cache.response_args)
+            changed = old_body != new_body
+
+            # A CommunityDestination is allowed to have one unsigned changed field: the hop count.
+            # This hop count has the restriction that it must be 1 less in the new message than
+            # in the old message.
+            if changed and isinstance(message.payload.message.meta.destination, CommunityDestination):
+                new_body_len = len(new_body)
+                # Create a list of differing indices
+                diffs = [i for i in xrange(len(old_body)) if (i < new_body_len) and (old_body[i] != new_body[i])]
+                # These indices may not exist if new_body and old_body are not of the same size
+                if diffs:
+                    start_diff = min(diffs)
+                    end_diff = max(diffs)
+                    # We can have exactly a 1 byte difference (start == end)
+                    if start_diff == end_diff:
+                        import struct
+                        i_old = struct.unpack_from("!b", old_body, start_diff)[0]
+                        i_new = struct.unpack_from("!b", new_body, start_diff)[0]
+                        # If this one byte is note 1 less than the new packet, it has changed.
+                        changed = (i_new != (i_old - 1))
+
+            result = cache.response_func(old_submsg, new_submsg, changed, *cache.response_args)
             assert isinstance(result, bool), "RESPONSE_FUNC must return a boolean value!  True to accept the proposed message, False to reject %s %s" % (type(cache), str(cache.response_func))
             if result:
                 # add our own signatures and we can handle the message
