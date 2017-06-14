@@ -57,7 +57,7 @@ from .authentication import MemberAuthentication, DoubleMemberAuthentication
 from .candidate import LoopbackCandidate, WalkCandidate, Candidate
 from .community import Community
 from .crypto import DispersyCrypto, ECCrypto
-from .destination import CommunityDestination, CandidateDestination
+from .destination import CommunityDestination, CandidateDestination, NHopCommunityDestination
 from .discovery.community import DiscoveryCommunity
 from .dispersydatabase import DispersyDatabase
 from .distribution import SyncDistribution, FullSyncDistribution, LastSyncDistribution
@@ -1275,7 +1275,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if isinstance(meta.destination, (CommunityDestination, CandidateDestination)):
             for message in messages:
                 # Don't forward messages with a 0 TTL
-                if isinstance(meta.destination, CommunityDestination) and message.destination.depth == 0:
+                if isinstance(meta.destination, NHopCommunityDestination) and message.destination.depth == 0:
                     continue
                 # CandidateDestination.candidates may be empty
                 candidates = set(message.destination.candidates)

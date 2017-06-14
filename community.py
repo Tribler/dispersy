@@ -24,7 +24,7 @@ from .authentication import NoAuthentication, MemberAuthentication, DoubleMember
 from .bloomfilter import BloomFilter
 from .candidate import Candidate, WalkCandidate
 from .conversion import BinaryConversion, DefaultConversion, Conversion
-from .destination import CommunityDestination, CandidateDestination
+from .destination import CommunityDestination, CandidateDestination, NHopCommunityDestination
 from .distribution import (SyncDistribution, GlobalTimePruning, LastSyncDistribution, DirectDistribution,
                            FullSyncDistribution)
 from .exception import ConversionNotFoundException, MetaNotFoundException
@@ -2438,10 +2438,10 @@ class Community(TaskManager):
 
             changed = old_body != new_body
 
-            # A CommunityDestination is allowed to have one unsigned changed field: the hop count.
+            # A NHopCommunityDestination is allowed to have one unsigned changed field: the hop count.
             # This hop count has the restriction that it must be 1 less in the new message than
             # in the old message.
-            if changed and isinstance(message.payload.message.meta.destination, CommunityDestination):
+            if changed and isinstance(message.payload.message.meta.destination, NHopCommunityDestination):
                 new_body_len = len(new_body)
                 # Create a list of differing indices
                 diffs = [i for i in xrange(len(old_body)) if (i < new_body_len) and (old_body[i] != new_body[i])]

@@ -2,7 +2,7 @@ from ...authentication import DoubleMemberAuthentication, MemberAuthentication
 from ...candidate import Candidate
 from ...community import Community, HardKilledCommunity
 from ...conversion import DefaultConversion
-from ...destination import CommunityDestination
+from ...destination import CommunityDestination, NHopCommunityDestination
 from ...distribution import DirectDistribution, FullSyncDistribution, LastSyncDistribution, GlobalTimePruning
 from ...message import Message, DelayMessageByProof, BatchConfiguration
 from ...resolution import PublicResolution, LinearResolution, DynamicResolution
@@ -56,7 +56,7 @@ class DebugCommunity(Community):
                         DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text),
                         PublicResolution(),
                         LastSyncDistribution(synchronization_direction=u"ASC", priority=128, history_size=1),
-                        CommunityDestination(node_count=10, depth=42),
+                        NHopCommunityDestination(node_count=10, depth=42),
                         TextPayload(),
                         self._generic_timeline_check,
                         self.on_text),
@@ -64,7 +64,7 @@ class DebugCommunity(Community):
                         DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text),
                         PublicResolution(),
                         DirectDistribution(),
-                        CommunityDestination(node_count=10, depth=42),
+                        NHopCommunityDestination(node_count=10, depth=42),
                         TextPayload(),
                         self._generic_timeline_check,
                         self.on_text),
@@ -72,7 +72,7 @@ class DebugCommunity(Community):
                         DoubleMemberAuthentication(allow_signature_func=self.allow_double_signed_text, split_payload_func=self.split_double_payload),
                         PublicResolution(),
                         DirectDistribution(),
-                        CommunityDestination(node_count=10, depth=42),
+                        NHopCommunityDestination(node_count=10, depth=42),
                         TextPayload(),
                         self._generic_timeline_check,
                         self.on_text),
@@ -89,7 +89,7 @@ class DebugCommunity(Community):
                         MemberAuthentication(),
                         PublicResolution(),
                         FullSyncDistribution(enable_sequence_number=False, synchronization_direction=u"ASC", priority=128),
-                        CommunityDestination(node_count=1, depth=1),
+                        NHopCommunityDestination(node_count=1, depth=1),
                         TextPayload(),
                         self._generic_timeline_check,
                         self.on_text,

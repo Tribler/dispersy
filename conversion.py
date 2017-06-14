@@ -9,7 +9,7 @@ from M2Crypto.EC import ECError
 from .authentication import Authentication, NoAuthentication, MemberAuthentication, DoubleMemberAuthentication
 from .bloomfilter import BloomFilter
 from .candidate import Candidate
-from .destination import Destination, CommunityDestination, CandidateDestination
+from .destination import Destination, CommunityDestination, CandidateDestination, NHopCommunityDestination
 from .distribution import Distribution, FullSyncDistribution, LastSyncDistribution, DirectDistribution
 from .exception import MetaNotFoundException
 from .message import DelayPacketByMissingMember, DropPacket, Message
@@ -239,7 +239,8 @@ class NoDefBinaryConversion(Conversion):
                    DirectDistribution: self._encode_direct_distribution,
 
                    CandidateDestination: self._encode_candidate_destination,
-                   CommunityDestination: self._encode_community_destination}
+                   CommunityDestination: self._encode_community_destination,
+                   NHopCommunityDestination: self._encode_community_destination}
 
         self._encode_message_map[meta.name] = self.EncodeFunctions(byte, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], encode_payload_func)
 
@@ -256,7 +257,8 @@ class NoDefBinaryConversion(Conversion):
                    LastSyncDistribution: self._decode_last_sync_distribution,
 
                    CandidateDestination: self._decode_candidate_destination,
-                   CommunityDestination: self._decode_community_destination}
+                   CommunityDestination: self._decode_community_destination,
+                   NHopCommunityDestination: self._decode_community_destination}
 
         self._decode_message_map[byte] = self.DecodeFunctions(meta, mapping[type(meta.authentication)], mapping[type(meta.resolution)], mapping[type(meta.distribution)], mapping[type(meta.destination)], decode_payload_func)
 
@@ -975,7 +977,8 @@ class NoDefBinaryConversion(Conversion):
         pass
 
     def _encode_community_destination(self, container, message):
-        container.append(pack("!b", message.destination.depth))
+        if isinstance(message.meta.destination, NHopCommunityDestination):
+            container.append(pack("!b", message.destination.depth))
 
     def can_encode_message(self, message):
         """
@@ -1174,11 +1177,14 @@ class NoDefBinaryConversion(Conversion):
         placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
     def _decode_community_destination(self, placeholder):
-        depth, = unpack_from("!b", placeholder.data, placeholder.offset)
-        placeholder.offset += 1
-        new_depth = depth - 1 if depth > 0 else depth
-        placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination,
-                                                                              depth=new_depth)
+        if isinstance(placeholder.meta.destination, NHopCommunityDestination):
+            depth, = unpack_from("!b", placeholder.data, placeholder.offset)
+            placeholder.offset += 1
+            new_depth = depth - 1 if depth > 0 else depth
+            placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination,
+                                                                                  depth=new_depth)
+        else:
+            placeholder.destination = placeholder.meta.destination.Implementation(placeholder.meta.destination)
 
     def can_decode_message(self, data):
         """
