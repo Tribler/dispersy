@@ -381,3 +381,15 @@ class ManualEnpoint(StandaloneEndpoint):
     def process_packets(self, packets, cache=True):
         self._logger.debug('processing %d packets', len(packets))
         StandaloneEndpoint.data_came_in(self, packets, cache=cache)
+
+
+class MIMEndpoint(StandaloneEndpoint):
+
+    def __init__(self, port, ip="0.0.0.0"):
+        super(MIMEndpoint, self).__init__(port, ip)
+        self.mim = None
+
+    def data_came_in(self, packets, cache=True):
+        if self.mim:
+            self.mim.data_came_in(packets)
+        super(MIMEndpoint, self).data_came_in(packets, cache)
