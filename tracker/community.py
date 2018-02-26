@@ -1,5 +1,5 @@
 from ..community import Community, HardKilledCommunity
-from ..conversion import BinaryConversion
+from ..conversion import TrackerBinaryConversion
 from ..exception import ConversionNotFoundException
 
 
@@ -41,6 +41,9 @@ class TrackerCommunity(Community):
         # are active candidates, when there are 'strike' is set to zero, otherwise it is incremented
         # by one.  once 'strike' reaches a predefined value the community is cleaned
         self._strikes = 0
+
+        # We keep track of the community versions for which we've added a conversion.
+        self._added_conversions = []
 
         self._walked_stumbled_candidates = self._iter_categories([u'walk', u'stumble'])
 
@@ -89,7 +92,7 @@ class TrackerCommunity(Community):
         return self._strikes
 
     def initiate_conversions(self):
-        return [BinaryConversion(self, "\x00")]
+        return [TrackerBinaryConversion(self, "\x00")]
 
     def get_conversion_for_packet(self, packet):
         try:
@@ -103,8 +106,9 @@ class TrackerCommunity(Community):
 
             # no matching conversion, create one and try again
             else:
-                if packet[0] == "\x00":
-                    self.add_conversion(BinaryConversion(self, packet[1]))
+                if packet[0] == "\x00" and packet[1] not in self._added_conversions:
+                    self.add_conversion(TrackerBinaryConversion(self, packet[1]))
+                    self._added_conversions.append(packet[1])
                     return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
             # cannot decode this message, probably not a intro-request, etc.

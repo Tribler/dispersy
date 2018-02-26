@@ -1315,6 +1315,35 @@ class BinaryConversion(NoDefBinaryConversion):
                 self._logger.debug("unable to define non-available messages %s", debug_non_available)
 
 
+class TrackerBinaryConversion(BinaryConversion):
+    """
+    This conversion makes sure that the tracker works with the tunnel community.
+    """
+
+    TUNNEL_MIDS = ['d241f50f97288ed6b6f5e2fcca6a9021150743b0'.decode('hex'),
+                   'fffcf46ce30b3df5f921ded33436e854bbae6fc4'.decode('hex')]
+
+    def _decode_introduction_request(self, placeholder, offset, data):
+        if self.community.cid in self.TUNNEL_MIDS:
+            offset += 1
+
+        return super(TrackerBinaryConversion, self)._decode_introduction_request(placeholder, offset, data)
+
+    def _decode_introduction_response(self, placeholder, offset, data):
+        if self.community.cid in self.TUNNEL_MIDS:
+            offset += 1
+
+        return super(TrackerBinaryConversion, self)._decode_introduction_response(placeholder, offset, data)
+
+    def _encode_introduction_response(self, message):
+        data = super(TrackerBinaryConversion, self)._encode_introduction_response(message)
+
+        if self.community.cid in self.TUNNEL_MIDS:
+            data = ('\x00', ) + data
+
+        return data
+
+
 class DefaultConversion(BinaryConversion):
 
     """
