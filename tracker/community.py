@@ -1,5 +1,5 @@
 from ..community import Community, HardKilledCommunity
-from ..conversion import BinaryConversion
+from ..conversion import TrackerBinaryConversion
 from ..exception import ConversionNotFoundException
 
 
@@ -92,7 +92,7 @@ class TrackerCommunity(Community):
         return self._strikes
 
     def initiate_conversions(self):
-        return [BinaryConversion(self, "\x00")]
+        return [TrackerBinaryConversion(self, "\x00")]
 
     def get_conversion_for_packet(self, packet):
         try:
@@ -107,7 +107,7 @@ class TrackerCommunity(Community):
             # no matching conversion, create one and try again
             else:
                 if packet[0] == "\x00" and packet[1] not in self._added_conversions:
-                    self.add_conversion(BinaryConversion(self, packet[1]))
+                    self.add_conversion(TrackerBinaryConversion(self, packet[1]))
                     self._added_conversions.append(packet[1])
                     return super(TrackerCommunity, self).get_conversion_for_packet(packet)
 
