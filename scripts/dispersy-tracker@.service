@@ -9,7 +9,7 @@ Environment="PYTHONPATH=/opt/dispersy"
 WorkingDirectory=/opt
 
 ExecStartPre=/bin/mkdir -p ${HOME}/%i
-ExecStart=/usr/bin/twistd --nodaemon --pidfile= tracker --port=%i --statedir=${HOME}/%i
+ExecStart=/usr/bin/twistd --nodaemon --pidfile= tracker --port=%i --statedir=${HOME}/%i --loglevel ${TRACKER_LOGLEVEL}
 
 User=dispersy_tracker
 Group=dispersy_tracker

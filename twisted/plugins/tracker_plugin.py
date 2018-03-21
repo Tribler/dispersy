@@ -19,6 +19,8 @@ Note that there is no output for REQ_IN2 for destroyed overlays.  Instead a DEST
 whenever a introduction request is received for a destroyed overlay.
 """
 import errno
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 import signal
 import sys
@@ -27,12 +29,11 @@ from time import time
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.conch import manhole_tap
 from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks, maybeDeferred, DeferredList
+from twisted.internet.defer import maybeDeferred, DeferredList
 from twisted.internet.task import LoopingCall
 from twisted.plugin import IPlugin
 from twisted.python import usage
-from twisted.python.log import msg, ILogObserver, FileLogObserver
-from twisted.python.logfile import DailyLogFile
+from twisted.python.log import msg
 from twisted.python.threadable import isInIOThread
 from zope.interface import implements
 
@@ -170,22 +171,8 @@ class Options(usage.Options):
         ["crypto"  , "c", "ECCrypto",     "The Crypto object type Dispersy is going to use"              , str],
         ["manhole" , "m", 0         ,     "Enable manhole telnet service listening at the specified port", int],
         ["logfile" , "l", "dispersy.log", "Use an alternate dispersy log file name",                       str],
+        ["loglevel", "v", "DEBUG", "Set the logging level (DEBUG, INFO, WARN, ERROR)", str]
     ]
-
-
-class TrackerMultiService(MultiService):
-
-    def __init__(self, log_file, log_dir):
-        MultiService.__init__(self)
-        self.log_file = log_file
-        self.log_dir = log_dir
-
-    def setServiceParent(self, parent):
-        MultiService.setServiceParent(self, parent)
-        # user daily logging
-        log_file = DailyLogFile(self.log_file, self.log_dir)
-        logger = FileLogObserver(log_file)
-        parent.setComponent(ILogObserver, logger.emit)
 
 
 class TrackerServiceMaker(object):
@@ -198,7 +185,7 @@ class TrackerServiceMaker(object):
         """
         Construct a dispersy service.
         """
-        tracker_service = TrackerMultiService(options["logfile"], options["statedir"])
+        tracker_service = MultiService()
         tracker_service.setName("Dispersy Tracker")
 
         # crypto
@@ -221,6 +208,19 @@ class TrackerServiceMaker(object):
             manhole.startService()
 
         def run():
+            # Setup logging
+            if not options["loglevel"]:
+                options["loglevel"] = "DEBUG"
+
+            print "Using logging level: %s" % options["loglevel"]
+            log_level = getattr(logging, options["loglevel"])
+
+            root = logging.getLogger()
+            root.setLevel(log_level)
+            handler = RotatingFileHandler(os.path.join(options["statedir"], options["logfile"]),
+                                          maxBytes=1024 * 1024 * 100, backupCount=10)
+            root.addHandler(handler)
+
             # setup
             dispersy = TrackerDispersy(StandaloneEndpoint(options["port"],
                                                           options["ip"]),
