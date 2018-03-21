@@ -981,8 +981,8 @@ class Dispersy(TaskManager):
                 except CommunityNotFoundException:
                     packets = list(iterator)
                     candidates = set([candidate for candidate, _ in packets])
-                    self._logger.warning("drop %d packets (received packet(s) for unknown community): %s",
-                                         len(packets), map(str, candidates))
+                    self._logger.debug("drop %d packets (received packet(s) for unknown community): %s",
+                                       len(packets), map(str, candidates))
                     self._statistics.msg_statistics.increase_count(
                         u"drop", u"_convert_packets_into_batch:unknown community")
         else:
