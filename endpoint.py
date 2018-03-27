@@ -391,5 +391,6 @@ class MIMEndpoint(StandaloneEndpoint):
 
     def data_came_in(self, packets, cache=True):
         if self.mim:
-            self.mim.data_came_in(packets)
+            if self.mim.data_came_in(packets):
+                return
         super(MIMEndpoint, self).data_came_in(packets, cache)
