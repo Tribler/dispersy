@@ -7,75 +7,6 @@ import struct
 from twisted.internet import reactor
 
 
-
-class Endpoint(object):
-    """
-    Interface for sending messages over the Internet.
-    """
-
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self):
-        self._logger = logging.getLogger(self.__class__.__name__)
-        self._listeners = []
-
-    def add_listener(self, listener):
-        """
-        Add an EndpointListener to our listeners.
-
-        :raises: IllegalEndpointListenerError if the provided listener is not an EndpointListener
-        """
-        if not isinstance(listener, EndpointListener):
-            raise IllegalEndpointListenerError(listener)
-        self._listeners.append(listener)
-
-    def remove_listener(self, listener):
-        """
-        Remove a listener from our listeners, if it is registered.
-        """
-        self._listeners = [l for l in self._listeners if l != listener]
-
-    def _deliver_later(self, listener, packet):
-        """
-        Ensure that the listener is still loaded when delivering the packet later.
-        """
-        if reactor.running and self.is_open() and listener in self._listeners:
-            listener.on_packet(packet)
-
-    def notify_listeners(self, packet):
-        """
-        Send data to all listeners.
-
-        :param data: the data to send to all listeners.
-        """
-        for listener in self._listeners:
-            reactor.callFromThread(self._deliver_later, listener, packet)
-
-    @abc.abstractmethod
-    def assert_open(self):
-        pass
-
-    @abc.abstractmethod
-    def is_open(self):
-        pass
-
-    @abc.abstractmethod
-    def get_address(self):
-        pass
-
-    @abc.abstractmethod
-    def send(self, socket_address, packet):
-        pass
-
-    @abc.abstractmethod
-    def open(self):
-        pass
-
-    @abc.abstractmethod
-    def close(self, timeout=0.0):
-        pass
-
-
 class EndpointListener(object):
     """
     Handler for messages coming in through an Endpoint.
@@ -83,17 +14,25 @@ class EndpointListener(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, main_thread=True):
         """
         Create a new listener.
 
         """
+        self._use_main_thread = main_thread
 
         self.endpoint = endpoint
 
         self._netifaces_failed = False
         self.my_estimated_lan = (self._get_lan_address(True)[0], self.endpoint._port)
         self.my_estimated_wan = self.my_estimated_lan
+
+    @property
+    def use_main_thread(self):
+        """
+        Does the callback of this listener need to be executed on the main thread.
+        """
+        return self._use_main_thread
 
     @abc.abstractmethod
     def on_packet(self, packet):
