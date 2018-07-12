@@ -1322,7 +1322,8 @@ class TrackerBinaryConversion(BinaryConversion):
 
     TUNNEL_MIDS = ['d241f50f97288ed6b6f5e2fcca6a9021150743b0'.decode('hex'),
                    'fffcf46ce30b3df5f921ded33436e854bbae6fc4'.decode('hex'),
-                   'a52771780e27399502b40d7bd4525d101bdf1888'.decode('hex')]
+                   'a52771780e27399502b40d7bd4525d101bdf1888'.decode('hex'),
+                   '42493fc524ce6ff9c0edbe8c2a810782e271c0ee'.decode('hex')]
     DISCOVERY_MIDS = ['7e313685c1912a141279f8248fc8db5899c5df5a'.decode('hex')]
 
     def _decode_introduction_request(self, placeholder, offset, data):
