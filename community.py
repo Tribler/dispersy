@@ -1892,7 +1892,7 @@ class Community(TaskManager):
                     yield DelayMessageByProof(message)
 
     def _drop(self, drop, packet, candidate):
-        self._logger.warning("drop a %d byte packet %s from %s", len(packet), drop, candidate)
+        self._logger.debug("drop a %d byte packet %s from %s", len(packet), drop, candidate)
         if isinstance(drop, DropPacket):
             self._statistics.increase_msg_count(u"drop", u"drop_packet:%s" % drop)
 
@@ -2031,7 +2031,7 @@ class Community(TaskManager):
 
             except ConversionNotFoundException:
                 for candidate, packet in cur_packets:
-                    self._logger.warning(
+                    self._logger.debug(
                         "_on_incoming_packets: drop a %d byte packet (received packet for unknown conversion) from %s",
                         len(packet), candidate)
                 self._statistics.increase_msg_count(
