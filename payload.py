@@ -74,7 +74,7 @@ class IntroductionRequestPayload(Payload):
             assert is_address(source_lan_address), source_lan_address
             assert is_address(source_wan_address), source_wan_address
             assert isinstance(advice, bool), advice
-            assert isinstance(connection_type, unicode) and connection_type in (u"unknown", u"public", u"symmetric-NAT"), connection_type
+            assert isinstance(connection_type, str) and connection_type in ("unknown", "public", "symmetric-NAT"), connection_type
             assert sync is None or isinstance(sync, tuple), sync
             assert sync is None or len(sync) == 5, sync
             assert isinstance(identifier, int), identifier
@@ -88,9 +88,9 @@ class IntroductionRequestPayload(Payload):
             self._identifier = identifier
             if sync:
                 self._time_low, self._time_high, self._modulo, self._offset, self._bloom_filter = sync
-                assert isinstance(self._time_low, (int, long))
+                assert isinstance(self._time_low, int)
                 assert 0 < self._time_low
-                assert isinstance(self._time_high, (int, long))
+                assert isinstance(self._time_high, int)
                 assert self._time_high == 0 or self._time_low <= self._time_high
                 assert isinstance(self._modulo, int), type(self._modulo)
                 assert 0 < self._modulo < 2 ** 16, self._modulo
@@ -198,7 +198,7 @@ class IntroductionResponsePayload(Payload):
             assert is_address(source_wan_address)
             assert is_address(lan_introduction_address)
             assert is_address(wan_introduction_address)
-            assert isinstance(connection_type, unicode) and connection_type in (u"unknown", u"public", u"symmetric-NAT")
+            assert isinstance(connection_type, str) and connection_type in ("unknown", "public", "symmetric-NAT")
             assert isinstance(tunnel, bool)
             assert isinstance(identifier, int)
             assert 0 <= identifier < 2 ** 16
@@ -352,8 +352,8 @@ class AuthorizePayload(Payload):
                     assert isinstance(triplet[1], Message), triplet[1]
                     assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet[1]
                     assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet[1]
-                    assert isinstance(triplet[2], unicode), triplet[2]
-                    assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet[2]
+                    assert isinstance(triplet[2], str), triplet[2]
+                    assert triplet[2] in ("permit", "authorize", "revoke", "undo"), triplet[2]
             super(AuthorizePayload.Implementation, self).__init__(meta)
             self._permission_triplets = permission_triplets
 
@@ -385,8 +385,8 @@ class RevokePayload(Payload):
                 assert isinstance(triplet[1], Message), triplet
                 assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution)), triplet
                 assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication)), triplet
-                assert isinstance(triplet[2], unicode), triplet
-                assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo"), triplet
+                assert isinstance(triplet[2], str), triplet
+                assert triplet[2] in ("permit", "authorize", "revoke", "undo"), triplet
             super(RevokePayload.Implementation, self).__init__(meta)
             self._permission_triplets = permission_triplets
 
@@ -403,7 +403,7 @@ class UndoPayload(Payload):
             from .member import Member
             from .message import Packet
             assert isinstance(member, Member)
-            assert isinstance(global_time, (int, long))
+            assert isinstance(global_time, int)
             assert packet is None or isinstance(packet, Packet)
             assert global_time > 0
             super(UndoPayload.Implementation, self).__init__(meta)
@@ -453,8 +453,8 @@ class MissingSequencePayload(Payload):
             from .message import Message
             assert isinstance(member, Member)
             assert isinstance(message, Message)
-            assert isinstance(missing_low, (int, long))
-            assert isinstance(missing_high, (int, long))
+            assert isinstance(missing_low, int)
+            assert isinstance(missing_high, int)
             assert 0 < missing_low <= missing_high
             super(MissingSequencePayload.Implementation, self).__init__(meta)
             self._member = member
@@ -539,8 +539,8 @@ class DestroyCommunityPayload(Payload):
     class Implementation(Payload.Implementation):
 
         def __init__(self, meta, degree):
-            assert isinstance(degree, unicode)
-            assert degree in (u"soft-kill", u"hard-kill")
+            assert isinstance(degree, str)
+            assert degree in ("soft-kill", "hard-kill")
             super(DestroyCommunityPayload.Implementation, self).__init__(meta)
             self._degree = degree
 
@@ -550,11 +550,11 @@ class DestroyCommunityPayload(Payload):
 
         @property
         def is_soft_kill(self):
-            return self._degree == u"soft-kill"
+            return self._degree == "soft-kill"
 
         @property
         def is_hard_kill(self):
-            return self._degree == u"hard-kill"
+            return self._degree == "hard-kill"
 
 
 class MissingMessagePayload(Payload):
@@ -565,7 +565,7 @@ class MissingMessagePayload(Payload):
             from .member import Member
             assert isinstance(member, Member)
             assert isinstance(global_times, (tuple, list))
-            assert all(isinstance(global_time, (int, long)) for global_time in global_times)
+            assert all(isinstance(global_time, int) for global_time in global_times)
             assert all(global_time > 0 for global_time in global_times)
             assert len(global_times) > 0
             assert len(set(global_times)) == len(global_times)
@@ -614,7 +614,7 @@ class MissingProofPayload(Payload):
         def __init__(self, meta, member, global_time):
             from .member import Member
             assert isinstance(member, Member)
-            assert isinstance(global_time, (int, long))
+            assert isinstance(global_time, int)
             assert global_time > 0
             super(MissingProofPayload.Implementation, self).__init__(meta)
             self._member = member

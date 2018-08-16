@@ -127,7 +127,7 @@ class WalkCandidate(Candidate):
         assert isinstance(tunnel, bool), type(tunnel)
         assert is_valid_address(lan_address), lan_address
         assert is_valid_address(wan_address) or wan_address == ('0.0.0.0', 0), wan_address
-        assert isinstance(connection_type, unicode) and connection_type in (u"unknown", u"public", u"symmetric-NAT")
+        assert isinstance(connection_type, str) and connection_type in ("unknown", "public", "symmetric-NAT")
 
         super(WalkCandidate, self).__init__(sock_addr, tunnel)
         self._lan_address = lan_address
@@ -186,7 +186,7 @@ class WalkCandidate(Candidate):
     def global_time(self, global_time):
         self._global_time = max(self._global_time, global_time)
 
-    def age(self, now, category=u""):
+    def age(self, now, category=""):
         """
         Returns the time between NOW and the most recent walk, stumble, or intro (depending on
         CATEGORY).
@@ -203,10 +203,10 @@ class WalkCandidate(Candidate):
         if not category:
             category = self.get_category(now)
 
-        mapping = {u"walk": now - self._last_walk,
-                   u"stumble": now - self._last_stumble,
-                   u"intro": now - self._last_intro,
-                   u"discovered": now - self._last_discovered,
+        mapping = {"walk": now - self._last_walk,
+                   "stumble": now - self._last_stumble,
+                   "intro": now - self._last_intro,
+                   "discovered": now - self._last_discovered,
                    None: now - max(self._last_walk, self._last_stumble, self._last_intro, self._last_discovered)}
 
         return mapping[category]
@@ -219,7 +219,7 @@ class WalkCandidate(Candidate):
         - SELF is either walk, stumble, or intro; and
         - the previous step is more than CANDIDATE_ELIGIBLE_DELAY ago.
         """
-        return (self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and self.get_category(now) != u"none")
+        return (self._last_walk + CANDIDATE_ELIGIBLE_DELAY <= now and self.get_category(now) != "none")
 
     @property
     def last_walk(self):
@@ -257,14 +257,14 @@ class WalkCandidate(Candidate):
         category = None
         if now < self._last_walk_reply + CANDIDATE_WALK_LIFETIME:
             assert self._association, "a candidate in the walk category must have at least one associated member"
-            category = u"walk"
+            category = "walk"
         elif now < self._last_stumble + CANDIDATE_STUMBLE_LIFETIME:
             assert self._association, "a candidate in the stumble category must have at least one associated member"
-            category = u"stumble"
+            category = "stumble"
         elif now < self._last_intro + CANDIDATE_INTRO_LIFETIME:
-            category = u"intro"
+            category = "intro"
         elif now < self._last_discovered + CANDIDATE_DISCOVERED_LIFETIME:
-            category = u"discovered"
+            category = "discovered"
 
         if category:
             # Store the last known category, for if this candidate times out
@@ -329,8 +329,8 @@ class WalkCandidate(Candidate):
         assert isinstance(tunnel, bool), tunnel
         assert lan_address == ("0.0.0.0", 0) or is_valid_address(lan_address), lan_address
         assert wan_address == ("0.0.0.0", 0) or is_valid_address(wan_address), wan_address
-        assert isinstance(connection_type, unicode), type(connection_type)
-        assert connection_type in (u"unknown", u"public", "symmetric-NAT"), connection_type
+        assert isinstance(connection_type, str), type(connection_type)
+        assert connection_type in ("unknown", "public", "symmetric-NAT"), connection_type
         self._tunnel = tunnel
         if self._lan_address != ("0.0.0.0", 0):
             self._lan_address = lan_address
@@ -338,7 +338,7 @@ class WalkCandidate(Candidate):
             self._wan_address = wan_address
         # someone can also reset from a known connection_type to unknown (i.e. it now believes it is
         # no longer public nor symmetric NAT)
-        self._connection_type = u"public" if connection_type == u"unknown" and lan_address == wan_address else connection_type
+        self._connection_type = "public" if connection_type == "unknown" and lan_address == wan_address else connection_type
 
         if __debug__:
             if not (self.sock_addr == self._lan_address or self.sock_addr == self._wan_address):

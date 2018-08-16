@@ -84,7 +84,7 @@ class BloomFilter(object):
             prefix = kargs.get("prefix", args[2] if len(args) >= 3 else "")
             assert 0 < len(bytes_), len(bytes_)
             logger.debug("bloom filter based on %d bytes and k_functions %d", len(bytes_), k_functions)
-            filter_ = long(hexlify(bytes_[::-1]), 16)
+            filter_ = int(hexlify(bytes_[::-1]), 16)
 
         # matches: BloomFilter(int:m_size, float:f_error_rate, str:prefix="")
         elif len(args) >= 2 and isinstance(args[0], int) and isinstance(args[1], float):
@@ -129,7 +129,7 @@ class BloomFilter(object):
         assert 0 < self._k_functions <= self._m_size, [self._k_functions, self._m_size]
         assert isinstance(self._prefix, str), type(self._prefix)
         assert 0 <= len(self._prefix) < 256, len(self._prefix)
-        assert isinstance(self._filter, (int, long)), type(self._filter)
+        assert isinstance(self._filter, int), type(self._filter)
 
         # determine hash function
         if self._m_size >= (1 << 31):

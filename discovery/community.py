@@ -89,7 +89,7 @@ class ActualTasteBuddy(TasteBuddy):
 
     def __init__(self, overlap, preferences, timestamp, candidate):
         TasteBuddy.__init__(self, overlap, preferences, candidate.sock_addr)
-        assert isinstance(timestamp, (long, float)), type(timestamp)
+        assert isinstance(timestamp, (int, float)), type(timestamp)
         assert isinstance(candidate, WalkCandidate), type(candidate)
         assert candidate.get_member()
 
@@ -98,7 +98,7 @@ class ActualTasteBuddy(TasteBuddy):
         self.candidate_mid = candidate.get_member().mid
 
     def should_cache(self):
-        return self.candidate.connection_type == u"public"
+        return self.candidate.connection_type == "public"
 
     def time_remaining(self):
         too_old = time() - PING_TIMEOUT
@@ -128,7 +128,7 @@ class ActualTasteBuddy(TasteBuddy):
 class PossibleTasteBuddy(TasteBuddy):
 
     def __init__(self, overlap, preferences, timestamp, candidate_mid, received_from):
-        assert isinstance(timestamp, (long, float)), type(timestamp)
+        assert isinstance(timestamp, (int, float)), type(timestamp)
         assert isinstance(candidate_mid, str), type(candidate_mid)
         assert len(candidate_mid) == 20, len(candidate_mid)
         assert isinstance(received_from, WalkCandidate), type(received_from)
@@ -176,7 +176,7 @@ class PossibleTasteBuddy(TasteBuddy):
 class SimilarityAttempt(RandomNumberCache):
 
     def __init__(self, community, requested_candidate, preference_list, allow_sync):
-        RandomNumberCache.__init__(self, community.request_cache, u"similarity")
+        RandomNumberCache.__init__(self, community.request_cache, "similarity")
         assert isinstance(requested_candidate, WalkCandidate), type(requested_candidate)
         assert isinstance(preference_list, list), type(preference_list)
         self.community = community
@@ -192,7 +192,7 @@ class SimilarityAttempt(RandomNumberCache):
 class PingRequestCache(RandomNumberCache):
 
     def __init__(self, community, requested_candidate):
-        RandomNumberCache.__init__(self, community.request_cache, u"ping")
+        RandomNumberCache.__init__(self, community.request_cache, "ping")
         self.community = community
         self.requested_candidate = requested_candidate
 
@@ -300,17 +300,17 @@ class DiscoveryCommunity(Community):
         meta_messages = super(DiscoveryCommunity, self).initiate_meta_messages()
 
         for i, mm in enumerate(meta_messages):
-            if mm.name == u"dispersy-introduction-request":
+            if mm.name == "dispersy-introduction-request":
                 meta_messages[i] = Message(self, mm.name, mm.authentication, mm.resolution, mm.distribution,
                                            mm.destination, ExtendedIntroPayload(), mm.check_callback, mm.handle_callback)
 
-        return meta_messages + [Message(self, u"similarity-request", MemberAuthentication(), PublicResolution(), DirectDistribution(),
+        return meta_messages + [Message(self, "similarity-request", MemberAuthentication(), PublicResolution(), DirectDistribution(),
                                         CandidateDestination(), SimilarityRequestPayload(), self.check_similarity_request, self.on_similarity_request),
-                                Message(self, u"similarity-response", MemberAuthentication(), PublicResolution(), DirectDistribution(),
+                                Message(self, "similarity-response", MemberAuthentication(), PublicResolution(), DirectDistribution(),
                                         CandidateDestination(), SimilarityResponsePayload(), self.check_similarity_response, self.on_similarity_response),
-                                Message(self, u"ping", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
+                                Message(self, "ping", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
                                         PingPayload(), self._generic_timeline_check, self.on_ping),
-                                Message(self, u"pong", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
+                                Message(self, "pong", NoAuthentication(), PublicResolution(), DirectDistribution(), CandidateDestination(),
                                         PongPayload(), self.check_pong, self.on_pong)]
 
     def initiate_conversions(self):
@@ -335,7 +335,7 @@ class DiscoveryCommunity(Community):
         my_communities = dict((community.cid, community)
                               for community in self._dispersy.get_communities() if community.dispersy_enable_candidate_walker)
 
-        for i in xrange(len(new_taste_buddies) - 1, -1, -1):
+        for i in range(len(new_taste_buddies) - 1, -1, -1):
             new_taste_buddy = new_taste_buddies[i]
             self._logger.debug("DiscoveryCommunity: new taste buddy? %s", new_taste_buddy)
 
@@ -366,7 +366,7 @@ class DiscoveryCommunity(Community):
 
         if DEBUG_VERBOSE:
             self._logger.debug("DiscoveryCommunity: current tastebuddy list %s %s", len(
-                self.taste_buddies), map(str, self.taste_buddies))
+                self.taste_buddies), list(map(str, self.taste_buddies)))
         else:
             self._logger.debug("DiscoveryCommunity: current tastebuddy list %s", len(self.taste_buddies))
 
@@ -429,7 +429,7 @@ class DiscoveryCommunity(Community):
                 assert isinstance(possible, PossibleTasteBuddy), type(possible)
 
         low_sim = self.get_least_similar_tb()
-        for i in xrange(len(possibles) - 1, -1, -1):
+        for i in range(len(possibles) - 1, -1, -1):
             new_possible = possibles[i]
 
             self._logger.debug("DiscoveryCommunity: new possible taste buddy? %s", new_possible)
@@ -456,7 +456,7 @@ class DiscoveryCommunity(Community):
         if possibles:
             if DEBUG_VERBOSE:
                 self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s %s",
-                                   len(self.possible_taste_buddies), map(str, self.possible_taste_buddies))
+                                   len(self.possible_taste_buddies), list(map(str, self.possible_taste_buddies)))
             else:
                 self._logger.debug("DiscoveryCommunity: got possible taste buddies, current list %s",
                                    len(self.possible_taste_buddies))
@@ -525,7 +525,7 @@ class DiscoveryCommunity(Community):
             self._logger.debug("DiscoveryCommunity: create similarity request for %s with identifier %s %s",
                                destination, cache.number, len(payload))
 
-            meta_request = self.get_meta_message(u"similarity-request")
+            meta_request = self.get_meta_message("similarity-request")
             request = meta_request.impl(authentication=(self.my_member,), distribution=(self.global_time,), destination=(destination,), payload=(
                 cache.number, self._dispersy.lan_address, self._dispersy.wan_address, self._dispersy.connection_type, payload))
 
@@ -545,14 +545,14 @@ class DiscoveryCommunity(Community):
                 yield DelayMessageByProof(message)
                 continue
 
-            if self._request_cache.has(u"similarity", message.payload.identifier):
+            if self._request_cache.has("similarity", message.payload.identifier):
                 yield DropMessage(message, "got similarity request issued by myself?")
                 continue
 
             yield message
 
     def on_similarity_request(self, messages):
-        meta = self.get_meta_message(u"similarity-response")
+        meta = self.get_meta_message("similarity-response")
 
         # similar to on_introduction_request, we first add all requests to our taste_buddies
         # and then create the replies
@@ -610,7 +610,7 @@ class DiscoveryCommunity(Community):
                 yield DelayMessageByProof(message)
                 continue
 
-            if not self._request_cache.has(u"similarity", message.payload.identifier):
+            if not self._request_cache.has("similarity", message.payload.identifier):
                 yield DropMessage(message, "invalid identifier")
                 continue
 
@@ -626,7 +626,7 @@ class DiscoveryCommunity(Community):
     def on_similarity_response(self, messages):
         for message in messages:
             # Update possible taste buddies.
-            request = self._request_cache.pop(u"similarity", message.payload.identifier)
+            request = self._request_cache.pop("similarity", message.payload.identifier)
 
             # use walkcandidate stored in request_cache
             w_candidate = request.requested_candidate
@@ -713,11 +713,11 @@ class DiscoveryCommunity(Community):
         for tb in tbs:
             if tb.time_remaining() < PING_INTERVAL:
                 cache = self._request_cache.add(PingRequestCache(self, tb.candidate))
-                self._create_pingpong(u"ping", tb.candidate, cache.number)
+                self._create_pingpong("ping", tb.candidate, cache.number)
 
     def on_ping(self, messages):
         for message in messages:
-            self._create_pingpong(u"pong", message.candidate, message.payload.identifier)
+            self._create_pingpong("pong", message.candidate, message.payload.identifier)
 
             self._logger.debug("DiscoveryCommunity: got ping from %s", message.candidate)
             self.reset_taste_buddy(message.candidate)
@@ -725,7 +725,7 @@ class DiscoveryCommunity(Community):
     def check_pong(self, messages):
         identifiers_seen = {}
         for message in messages:
-            request = self._request_cache.get(u"ping", message.payload.identifier)
+            request = self._request_cache.get("ping", message.payload.identifier)
             if not request:
                 yield DropMessage(message, "invalid ping identifier")
                 continue
@@ -740,7 +740,7 @@ class DiscoveryCommunity(Community):
 
     def on_pong(self, messages):
         for message in messages:
-            self._request_cache.pop(u"ping", message.payload.identifier)
+            self._request_cache.pop("ping", message.payload.identifier)
 
             self._logger.debug("DiscoveryCommunity: got pong from %s", message.candidate)
 
@@ -758,7 +758,7 @@ class DiscoveryCommunity(Community):
 class PeerCache(object):
 
     def __init__(self, filename, community, limit=100):
-        assert isinstance(filename, (str, unicode)), type(filename)
+        assert isinstance(filename, str), type(filename)
 
         super(PeerCache, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -787,24 +787,24 @@ class PeerCache(object):
     def clean_and_save(self):
         old_num_candidates = len(self.walkcandidates)
 
-        for wcandidate, info in self.walkcandidates.items():
+        for wcandidate, info in list(self.walkcandidates.items()):
             if info['num_fails'] > 3:
                 del self.walkcandidates[wcandidate]
 
         if len(self.walkcandidates) > self.walkcandidates_limit:
-            sorted_keys = sorted([(info['last_seen'], wcandidate) for wcandidate, info in self.walkcandidates.iteritems()], reverse=True)
+            sorted_keys = sorted([(info['last_seen'], wcandidate) for wcandidate, info in self.walkcandidates.items()], reverse=True)
             for _, wcandidate in sorted_keys[:self.walkcandidates_limit]:
                 del self.walkcandidates[wcandidate]
 
         self._logger.debug('PeerCache: removed %d peers', old_num_candidates - len(self.walkcandidates))
 
         with open(self.filename, 'w') as fp:
-            print >> fp, '# WAN address\tLAN address\tTunnel',
-            print >> fp, "\t".join(self.info_keys)
+            print('# WAN address\tLAN address\tTunnel', end=' ', file=fp)
+            print("\t".join(self.info_keys), file=fp)
 
-            for wcandidate, info in self.walkcandidates.iteritems():
-                print >> fp, '%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,)),
-                print >> fp, '\t'.join([str(info[key]) for key in self.info_keys])
+            for wcandidate, info in self.walkcandidates.items():
+                print('%s:%d\t%s:%d\t%r\t' % (wcandidate.wan_address + wcandidate.lan_address + (wcandidate.tunnel,)), end=' ', file=fp)
+                print('\t'.join([str(info[key]) for key in self.info_keys]), file=fp)
 
             self._logger.debug('PeerCache: saved %d peers to %s', len(self.walkcandidates), self.filename)
 
@@ -817,7 +817,7 @@ class PeerCache(object):
             self.walkcandidates[wcandidate] = {'last_seen': time(), 'last_checked': 0, 'num_fails': 0}
 
     def get_peer(self):
-        sorted_keys = sorted([(info['last_checked'], wcandidate) for wcandidate, info in self.walkcandidates.iteritems()])
+        sorted_keys = sorted([(info['last_checked'], wcandidate) for wcandidate, info in self.walkcandidates.items()])
         candidate = sorted_keys[0][1] if sorted_keys else None
         self._logger.debug('PeerCache: returning walk candidate %s', candidate)
         return candidate
@@ -859,7 +859,7 @@ class PeerCache(object):
         tunnel = row[2] == 'True'
 
         sock_addr = lan_addr if wan_addr[0] == self.community._dispersy._wan_address[0] else wan_addr
-        wcandidate = self.community.create_or_update_walkcandidate(sock_addr, lan_addr, wan_addr, tunnel, u'public')
+        wcandidate = self.community.create_or_update_walkcandidate(sock_addr, lan_addr, wan_addr, tunnel, 'public')
 
         info_dict = {"last_seen": float(row[3]),
                      "last_checked": float(row[4]),

@@ -12,8 +12,8 @@ class TestTimeline(DispersyTestFunc):
         node.send_identity(other)
 
         # permit NODE
-        proof_msg = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"permit"),
-                                    (node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
+        proof_msg = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("protected-full-sync-text"), "permit"),
+                                    (node.my_member, self._community.get_meta_message("protected-full-sync-text"), "authorize")])
 
         # NODE creates message
         tmessage = node.create_protected_full_sync_text("Protected message", 42)
@@ -26,7 +26,7 @@ class TestTimeline(DispersyTestFunc):
         responses = node.receive_messages()
         self.assertEqual(len(responses), 1)
         for _, message in responses:
-            self.assertEqual(message.name, u"dispersy-missing-proof")
+            self.assertEqual(message.name, "dispersy-missing-proof")
             self.assertEqual(message.payload.member.public_key, node.my_member.public_key)
             self.assertEqual(message.payload.global_time, 42)
 
@@ -44,8 +44,8 @@ class TestTimeline(DispersyTestFunc):
         node.send_identity(other)
 
         # permit NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"permit"),
-                                               (node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("protected-full-sync-text"), "permit"),
+                                               (node.my_member, self._community.get_meta_message("protected-full-sync-text"), "authorize")])
         node.give_message(authorize, self._mm)
 
         protected_text = node.create_protected_full_sync_text("Protected message", 42)
@@ -55,9 +55,9 @@ class TestTimeline(DispersyTestFunc):
         node.give_message(other.create_missing_proof(node.my_member, 42), other)
 
         # NODE sends dispersy-authorize to OTHER
-        _, authorize = other.receive_message(names=[u"dispersy-authorize"]).next()
+        _, authorize = next(other.receive_message(names=["dispersy-authorize"]))
 
-        permission_triplet = (node.my_member.mid, u"protected-full-sync-text", u"permit")
+        permission_triplet = (node.my_member.mid, "protected-full-sync-text", "permit")
         authorize_permission_triplets = [(triplet[0].mid, triplet[1].name, triplet[2]) for triplet in authorize.payload.permission_triplets]
         self.assertIn(permission_triplet, authorize_permission_triplets)
 
@@ -78,16 +78,16 @@ class TestTimeline(DispersyTestFunc):
         node.send_identity(other)
 
         # permit NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"permit"),
-                                             (node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"authorize")])
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("protected-full-sync-text"), "permit"),
+                                             (node.my_member, self._community.get_meta_message("protected-full-sync-text"), "authorize")])
         node.give_message(authorize, self._mm)
 
         # OTHER wants the proof that OWNER is allowed to grant authorization to NODE
         node.give_message(other.create_missing_proof(authorize.authentication.member, authorize.distribution.global_time), other)
 
         # NODE sends dispersy-authorize containing authorize(MASTER, OWNER) to OTHER
-        _, authorize = other.receive_message(names=[u"dispersy-authorize"]).next()
+        _, authorize = next(other.receive_message(names=["dispersy-authorize"]))
 
-        permission_triplet = (self._mm.my_member.mid, u"protected-full-sync-text", u"permit")
+        permission_triplet = (self._mm.my_member.mid, "protected-full-sync-text", "permit")
         authorize_permission_triplets = [(triplet[0].mid, triplet[1].name, triplet[2]) for triplet in authorize.payload.permission_triplets]
         self.assertIn(permission_triplet, authorize_permission_triplets)

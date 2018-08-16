@@ -5,8 +5,8 @@ from ..util import call_on_reactor_thread
 class TestMember(DispersyTestFunc):
 
     def test_verify(self):
-        self._test_verify(u"medium")
-        self._test_verify(u"curve25519")
+        self._test_verify("medium")
+        self._test_verify("curve25519")
 
     @call_on_reactor_thread
     def _test_verify(self, curve):
@@ -70,8 +70,8 @@ class TestMember(DispersyTestFunc):
 
 
     def test_sign(self):
-        self._test_sign(u"medium")
-        self._test_sign(u"curve25519")
+        self._test_sign("medium")
+        self._test_sign("curve25519")
 
     @call_on_reactor_thread
     def _test_sign(self, curve):

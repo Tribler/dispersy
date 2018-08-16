@@ -21,10 +21,10 @@ def print_unittest_combinations():
     """
     Prints combinations of unit tests.
     """
-    print "    def test_no_candidates(self): return self.check_candidates([])"
+    print("    def test_no_candidates(self): return self.check_candidates([])")
     flags = "twresid"
     options = []
-    for length in xrange(len(flags)):
+    for length in range(len(flags)):
         for string in combinations(flags, length):
             # receiving a reply without sending a request cannot happen, don't test
             if 'r' in string and not 'w' in string:
@@ -38,16 +38,16 @@ def print_unittest_combinations():
             s_opt = "".join(string)
             options.append(s_opt)
 
-            print "    def test_one%s_candidate(self): return self.check_candidates([%s])" % \
-                (s_func, s_args)
-            print "    def test_two%s_candidates(self): return self.check_candidates([%s, %s])" % \
-                (s_func, s_args, s_args)
-            print "    def test_many%s_candidates(self): return self.check_candidates([%s] * 22)" % \
-                (s_func, s_args)
+            print("    def test_one%s_candidate(self): return self.check_candidates([%s])" % \
+                (s_func, s_args))
+            print("    def test_two%s_candidates(self): return self.check_candidates([%s, %s])" % \
+                (s_func, s_args, s_args))
+            print("    def test_many%s_candidates(self): return self.check_candidates([%s] * 22)" % \
+                (s_func, s_args))
 
-    for length in xrange(1, len(options) + 1):
-        print "    def test_mixed_%d_candidates(self): return self.check_candidates(%s)" % \
-            (length, options[:length])
+    for length in range(1, len(options) + 1):
+        print("    def test_mixed_%d_candidates(self): return self.check_candidates(%s)" % \
+            (length, options[:length]))
 
 if __name__ == "__main__":
     print_unittest_combinations()
@@ -348,7 +348,7 @@ class TestCandidates(DispersyTestFunc):
             for port, flags in enumerate(all_flags, 1):
                 address = ("127.0.0.1", port)
                 tunnel = "t" in flags
-                yield community.create_candidate(address, tunnel, address, address, u"unknown")
+                yield community.create_candidate(address, tunnel, address, address, "unknown")
 
         with community.dispersy.database:
             return list(generator())
@@ -363,7 +363,7 @@ class TestCandidates(DispersyTestFunc):
 
             def get_member():
                 if not member[0]:
-                    member[0] = self._dispersy.get_new_member(u"very-low")
+                    member[0] = self._dispersy.get_new_member("very-low")
                 return member[0]
 
             if "w" in flags:
@@ -485,7 +485,7 @@ class TestCandidates(DispersyTestFunc):
             selection = set(["%s:%d" % c.sock_addr if c else None for c in selection])
             actual = set(["%s:%d" % c.sock_addr if c else None for c in actual])
             try:
-                self.assertEquals(selection, actual)
+                self.assertEqual(selection, actual)
             except:
                 self._logger.error("FLAGS %s", all_flags)
                 self._logger.error("SELECT %s", sorted(selection))
@@ -508,7 +508,7 @@ class TestCandidates(DispersyTestFunc):
         # yield_candidates
         self.set_timestamps(candidates, all_flags)
         selection = self.select_candidates(candidates, all_flags)
-        actual_list = [islice(community.dispersy_yield_candidates(), max_iterations) for _ in xrange(max_calls)]
+        actual_list = [islice(community.dispersy_yield_candidates(), max_iterations) for _ in range(max_calls)]
         for actual in actual_list:
             compare(selection, actual)
 
@@ -516,21 +516,21 @@ class TestCandidates(DispersyTestFunc):
         self.set_timestamps(candidates, all_flags)
         selection = self.select_verified_candidates(candidates, all_flags)
         actual_list = [islice(community.dispersy_yield_verified_candidates(), max_iterations)
-                       for _ in xrange(max_calls)]
+                       for _ in range(max_calls)]
         for actual in actual_list:
             compare(selection, actual)
 
         # get_introduce_candidate (no exclusion)
         self.set_timestamps(candidates, all_flags)
         selection = self.select_introduce_candidates(candidates, all_flags) or [None]
-        actual = [community.dispersy_get_introduce_candidate() for _ in xrange(max_calls)]
+        actual = [community.dispersy_get_introduce_candidate() for _ in range(max_calls)]
         compare(selection, actual)
 
         # get_introduce_candidate (with exclusion)
         self.set_timestamps(candidates, all_flags)
         for candidate in candidates:
             selection = self.select_introduce_candidates(candidates, all_flags, candidate) or [None]
-            actual = [community.dispersy_get_introduce_candidate(candidate) for _ in xrange(max_calls)]
+            actual = [community.dispersy_get_introduce_candidate(candidate) for _ in range(max_calls)]
             compare(selection, actual)
 
         # get_walk_candidate
@@ -538,16 +538,16 @@ class TestCandidates(DispersyTestFunc):
         # this test must be done last.
         self.set_timestamps(candidates, all_flags)
         selection = self.select_walk_candidates(candidates, all_flags)
-        for _ in xrange(len(selection)):
+        for _ in range(len(selection)):
             candidate = community.dispersy_get_walk_candidate()
-            self.assertNotEquals(candidate, None)
+            self.assertNotEqual(candidate, None)
             self.assertIn("%s:%d" % candidate.sock_addr, ["%s:%d" % c.sock_addr for c in selection])
             candidate.walk(time())
             assert candidate.is_eligible_for_walk(time()) == False
 
         # after walking to all candidates we cannot walk to anyone
         candidate = community.dispersy_get_walk_candidate()
-        self.assertEquals(candidate, None)
+        self.assertEqual(candidate, None)
 
     @blocking_call_on_reactor_thread
     def test_get_introduce_candidate(self, community_create_method=DebugCommunity.create_community):
@@ -557,11 +557,11 @@ class TestCandidates(DispersyTestFunc):
         now = time()
         got = []
         for candidate in candidates:
-            candidate.associate(self._dispersy.get_new_member(u"very-low"))
+            candidate.associate(self._dispersy.get_new_member("very-low"))
             candidate.stumble(now)
             introduce = community.dispersy_get_introduce_candidate(candidate)
             got.append(introduce.sock_addr if introduce else None)
-        self.assertEquals(expected, got)
+        self.assertEqual(expected, got)
 
         return community, candidates
 
@@ -570,17 +570,17 @@ class TestCandidates(DispersyTestFunc):
         community = community_create_method(self._dispersy, self._community._my_member)
         candidate = self.create_candidates(community, ["r", ])[0]
         candidate.set_keepalive(community)
-        candidate.associate(self._dispersy.get_new_member(u"very-low"))
+        candidate.associate(self._dispersy.get_new_member("very-low"))
 
         # Make this a walk candidate
         candidate.walk_response(time())
-        self.assertEqual(u"walk", candidate.get_category(time()))
+        self.assertEqual("walk", candidate.get_category(time()))
 
         # Fake timeout
         candidate.walk_response(time())
         category = candidate.get_category(time()+CANDIDATE_LIFETIME+1.0)
 
-        self.assertEqual(u"walk", category)
+        self.assertEqual("walk", category)
         self.assertGreater(candidate.last_walk_reply, -1.0)
 
     @blocking_call_on_reactor_thread
@@ -588,11 +588,11 @@ class TestCandidates(DispersyTestFunc):
         community = community_create_method(self._dispersy, self._community._my_member)
         candidate = self.create_candidates(community, ["r", ])[0]
         candidate.set_keepalive(community)
-        candidate.associate(self._dispersy.get_new_member(u"very-low"))
+        candidate.associate(self._dispersy.get_new_member("very-low"))
 
         # Make this a walk candidate
         candidate.walk_response(time())
-        self.assertEqual(u"walk", candidate.get_category(time()))
+        self.assertEqual("walk", candidate.get_category(time()))
 
         # Fake timeout
         candidate.walk_response(time())
@@ -617,7 +617,7 @@ class TestCandidates(DispersyTestFunc):
             candidate.stumble(now)
             introduce = community.dispersy_get_introduce_candidate(candidate)
             got.append(introduce.sock_addr if introduce else None)
-        self.assertEquals(expected, got)
+        self.assertEqual(expected, got)
 
     @blocking_call_on_reactor_thread
     def test_introduction_probabilities(self):
@@ -626,8 +626,8 @@ class TestCandidates(DispersyTestFunc):
 
         # fetch candidates
         returned_walked_candidate = 0
-        expected_walked_range = range(4500, 5500)
-        for _ in xrange(10000):
+        expected_walked_range = list(range(4500, 5500))
+        for _ in range(10000):
             candidate = self._community.dispersy_get_introduce_candidate()
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
 
@@ -649,7 +649,7 @@ class TestCandidates(DispersyTestFunc):
         expected_discovered_range = .05
         assert expected_walked_range + expected_stumble_range + expected_intro_range + expected_discovered_range == 1.0
 
-        for i in xrange(10000):
+        for i in range(10000):
             candidate = self._community.dispersy_get_walk_candidate()
 
             returned_walked_candidate += 1 if candidate.sock_addr[1] == 1 else 0
@@ -671,20 +671,20 @@ class TestCandidates(DispersyTestFunc):
         # let's make a list of all possible combinations which should be merged into one candidate
         candidates = []
         candidates.append(self._community.create_candidate(("1.1.1.1", 1), False, ("192.168.0.1", 1),
-                                                           ("1.1.1.1", 1), u"unknown"))
+                                                           ("1.1.1.1", 1), "unknown"))
         candidates.append(self._community.create_candidate(("1.1.1.1", 2), False, ("192.168.0.1", 1),
-                                                           ("1.1.1.1", 2), u"symmetric-NAT"))
+                                                           ("1.1.1.1", 2), "symmetric-NAT"))
         candidates.append(self._community.create_candidate(("1.1.1.1", 3), False, ("192.168.0.1", 1),
-                                                           ("1.1.1.1", 3), u"symmetric-NAT"))
+                                                           ("1.1.1.1", 3), "symmetric-NAT"))
         candidates.append(self._community.create_candidate(("1.1.1.1", 4), False, ("192.168.0.1", 1),
-                                                           ("1.1.1.1", 4), u"unknown"))
+                                                           ("1.1.1.1", 4), "unknown"))
 
         self._community.filter_duplicate_candidate(candidates[0])
 
         expected = [candidates[0].wan_address]
 
         got = []
-        for candidate in self._community._candidates.itervalues():
+        for candidate in self._community._candidates.values():
             got.append(candidate.wan_address)
 
-        self.assertEquals(expected, got)
+        self.assertEqual(expected, got)

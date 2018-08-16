@@ -10,7 +10,7 @@ class TestDynamicSettings(DispersyTestFunc):
         """
         other, = self.create_nodes(1)
 
-        meta = self._community.get_meta_message(u"dynamic-resolution-text")
+        meta = self._community.get_meta_message("dynamic-resolution-text")
 
         # check default policy
         policy, proof = self._mm.get_resolution_policy(meta, self._community.global_time)
@@ -30,7 +30,7 @@ class TestDynamicSettings(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        meta = node._community.get_meta_message(u"dynamic-resolution-text")
+        meta = node._community.get_meta_message("dynamic-resolution-text")
         linear = meta.resolution.policies[1]
 
         # check default policy
@@ -75,7 +75,7 @@ class TestDynamicSettings(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        meta = self._community.get_meta_message(u"dynamic-resolution-text")
+        meta = self._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
@@ -88,7 +88,7 @@ class TestDynamicSettings(DispersyTestFunc):
         check_policy(1, 32, meta, PublicResolution)
 
         # NODE creates a message (should allow)
-        meta = node._community.get_meta_message(u"dynamic-resolution-text")
+        meta = node._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
 
         tmessage = node.create_dynamic_resolution_text("Message #%d" % 25, public.implement(), 25)
@@ -125,7 +125,7 @@ class TestDynamicSettings(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        meta = self._community.get_meta_message(u"dynamic-resolution-text")
+        meta = self._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
@@ -143,13 +143,13 @@ class TestDynamicSettings(DispersyTestFunc):
         check_policy(12, 32, meta, LinearResolution)
 
         # NODE creates a message (should allow)
-        meta = node._community.get_meta_message(u"dynamic-resolution-text")
+        meta = node._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
 
         tmessage = node.create_dynamic_resolution_text("Message #%d" % 25, public.implement(), 25)
         other.give_message(tmessage, node)
 
-        _, message = node.receive_message(names=[u"dispersy-missing-proof"]).next()
+        _, message = next(node.receive_message(names=["dispersy-missing-proof"]))
         other.give_message(policy_public, self._mm)
         other.assert_is_done(tmessage)
 
@@ -165,7 +165,7 @@ class TestDynamicSettings(DispersyTestFunc):
         node, other = self.create_nodes(2)
         other.send_identity(node)
 
-        meta = self._community.get_meta_message(u"dynamic-resolution-text")
+        meta = self._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
         linear = meta.resolution.policies[1]
 
@@ -182,11 +182,11 @@ class TestDynamicSettings(DispersyTestFunc):
         check_policy(22, 32, meta, PublicResolution)
 
         # NODE creates a message (should reject)
-        meta = node._community.get_meta_message(u"dynamic-resolution-text")
+        meta = node._community.get_meta_message("dynamic-resolution-text")
         public = meta.resolution.policies[0]
 
         tmessage = node.create_dynamic_resolution_text("Message #%d" % 12, public.implement(), 12)
         other.give_message(tmessage, node)
 
-        _, message = node.receive_message(names=[u"dispersy-dynamic-settings"]).next()
+        _, message = next(node.receive_message(names=["dispersy-dynamic-settings"]))
         assert message

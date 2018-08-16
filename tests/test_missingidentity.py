@@ -18,7 +18,7 @@ class TestMissingIdentity(DispersyTestFunc):
 
         self.assertEqual(len(responses), 1)
         for _, response in responses:
-            self.assertEqual(response.name, u"dispersy-identity")
+            self.assertEqual(response.name, "dispersy-identity")
             self.assertEqual(response.authentication.member.public_key, other.my_member.public_key)
 
     def test_outgoing_missing_identity(self):
@@ -38,7 +38,7 @@ class TestMissingIdentity(DispersyTestFunc):
         responses = node.receive_messages()
         self.assertEqual(len(responses), 1)
         for _, response in responses:
-            self.assertEqual(response.name, u"dispersy-missing-identity")
+            self.assertEqual(response.name, "dispersy-missing-identity")
             self.assertEqual(response.payload.mid, node.my_member.mid)
 
         # NODE sends the identity to OTHER
@@ -67,7 +67,7 @@ class TestMissingIdentity(DispersyTestFunc):
         responses = node.receive_messages()
         self.assertEqual(len(responses), 1)
         for _, response in responses:
-            self.assertEqual(response.name, u"dispersy-missing-identity")
+            self.assertEqual(response.name, "dispersy-missing-identity")
             self.assertEqual(response.payload.mid, node.my_member.mid)
 
         # NODE sends the identity to OTHER

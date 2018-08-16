@@ -8,7 +8,7 @@ class TestSync(DispersyTestFunc):
         other.send_identity(node)
 
         # other creates messages
-        messages = [getattr(other, messagetype)("Message %d" % i, i + 10) for i in xrange(30)]
+        messages = [getattr(other, messagetype)("Message %d" % i, i + 10) for i in range(30)]
         other.store(messages)
 
         return node, other, messages
@@ -20,15 +20,15 @@ class TestSync(DispersyTestFunc):
         """
         node, other, messages = self._create_nodes_messages()
 
-        for modulo in xrange(0, 10):
-            for offset in xrange(0, modulo):
+        for modulo in range(0, 10):
+            for offset in range(0, modulo):
                 # global times that we should receive
                 global_times = [message.distribution.global_time for message in messages if (message.distribution.global_time + offset) % modulo == 0]
 
                 sync = (1, 0, modulo, offset, [])
-                other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42), node)
+                other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", sync, 42), node)
 
-                responses = node.receive_messages(names=[u"full-sync-text"], return_after=len(global_times))
+                responses = node.receive_messages(names=["full-sync-text"], return_after=len(global_times))
                 response_times = [message.distribution.global_time for _, message in responses]
 
                 self.assertEqual(sorted(global_times), sorted(response_times))
@@ -37,15 +37,15 @@ class TestSync(DispersyTestFunc):
     def test_range(self):
         node, other, messages = self._create_nodes_messages()
 
-        for time_low in xrange(1, 11):
-            for time_high in xrange(20, 30):
+        for time_low in range(1, 11):
+            for time_high in range(20, 30):
                 # global times that we should receive
                 global_times = [message.distribution.global_time for message in messages if time_low <= message.distribution.global_time <= time_high]
 
                 sync = (time_low, time_high, 1, 0, [])
-                other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", sync, 42), node)
+                other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", sync, 42), node)
 
-                responses = node.receive_messages(names=[u"full-sync-text"], return_after=len(global_times))
+                responses = node.receive_messages(names=["full-sync-text"], return_after=len(global_times))
                 response_times = [message.distribution.global_time for _, message in responses]
 
                 self.assertEqual(sorted(global_times), sorted(response_times))
@@ -56,9 +56,9 @@ class TestSync(DispersyTestFunc):
         global_times = [message.distribution.global_time for message in messages]
 
         # send an empty sync message to obtain all messages ASC order
-        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42), node)
+        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", (min(global_times), 0, 1, 0, []), 42), node)
 
-        responses = node.receive_messages(names=[u"ASC-text"], return_after=len(global_times))
+        responses = node.receive_messages(names=["ASC-text"], return_after=len(global_times))
         response_times = [message.distribution.global_time for _, message in responses]
 
         self.assertEqual(sorted(global_times), sorted(response_times))
@@ -69,9 +69,9 @@ class TestSync(DispersyTestFunc):
         global_times = [message.distribution.global_time for message in messages]
 
         # send an empty sync message to obtain all messages DESC order
-        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42), node)
+        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", (min(global_times), 0, 1, 0, []), 42), node)
 
-        responses = node.receive_messages(names=[u"DESC-text"], return_after=len(global_times))
+        responses = node.receive_messages(names=["DESC-text"], return_after=len(global_times))
         response_times = [message.distribution.global_time for _, message in responses]
 
         self.assertEqual(sorted(global_times), sorted(response_times))
@@ -82,9 +82,9 @@ class TestSync(DispersyTestFunc):
         global_times = [message.distribution.global_time for message in messages]
 
         # send an empty sync message to obtain all messages in RANDOM order
-        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (min(global_times), 0, 1, 0, []), 42), node)
+        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", (min(global_times), 0, 1, 0, []), 42), node)
 
-        responses = node.receive_messages(names=[u"RANDOM-text"], return_after=len(global_times))
+        responses = node.receive_messages(names=["RANDOM-text"], return_after=len(global_times))
         response_times = [message.distribution.global_time for _, message in responses]
 
         self.assertNotEqual(response_times, sorted(global_times))
@@ -96,29 +96,29 @@ class TestSync(DispersyTestFunc):
         other.send_identity(node)
 
         # OTHER creates messages
-        in_order_messages = [other.create_in_order_text("Message %d" % i, i + 10) for i in xrange(0, 30, 3)]
-        out_order_messages = [other.create_out_order_text("Message %d" % i, i + 10) for i in xrange(1, 30, 3)]
-        random_order_messages = [other.create_random_order_text("Message %d" % i, i + 10) for i in xrange(2, 30, 3)]
+        in_order_messages = [other.create_in_order_text("Message %d" % i, i + 10) for i in range(0, 30, 3)]
+        out_order_messages = [other.create_out_order_text("Message %d" % i, i + 10) for i in range(1, 30, 3)]
+        random_order_messages = [other.create_random_order_text("Message %d" % i, i + 10) for i in range(2, 30, 3)]
 
         other.store(in_order_messages)
         other.store(out_order_messages)
         other.store(random_order_messages)
 
         # send an empty sync message to obtain all messages ALL messages
-        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (1, 0, 1, 0, []), 42), node)
+        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", (1, 0, 1, 0, []), 42), node)
 
-        received = node.receive_messages(names=[u"ASC-text", u"DESC-text", u"RANDOM-text"], return_after=30)
+        received = node.receive_messages(names=["ASC-text", "DESC-text", "RANDOM-text"], return_after=30)
 
         # all ASC-text must be received in-order of their global time (low to high)
-        received_in_order = [message.distribution.global_time for _, message in received if message.name == u"ASC-text"]
+        received_in_order = [message.distribution.global_time for _, message in received if message.name == "ASC-text"]
         self.assertEqual(received_in_order, sorted(message.distribution.global_time for message in in_order_messages))
 
         # all DESC-text must be received in reversed order of their global time (high to low)
-        received_out_order = [message.distribution.global_time for _, message in received if message.name == u"DESC-text"]
+        received_out_order = [message.distribution.global_time for _, message in received if message.name == "DESC-text"]
         self.assertEqual(received_out_order, sorted([message.distribution.global_time for message in out_order_messages], reverse=True))
 
         # all RANDOM-text must NOT be received in (reversed) order of their global time
-        received_random_order = [message.distribution.global_time for _, message in received if message.name == u"RANDOM-text"]
+        received_random_order = [message.distribution.global_time for _, message in received if message.name == "RANDOM-text"]
         self.assertNotEqual(received_random_order, sorted([message.distribution.global_time for message in random_order_messages]))
         self.assertNotEqual(received_random_order, sorted([message.distribution.global_time for message in random_order_messages], reverse=True))
 
@@ -127,18 +127,18 @@ class TestSync(DispersyTestFunc):
         other.send_identity(node)
 
         # OTHER creates messages
-        high_priority_messages = [other.create_high_priority_text("Message %d" % i, i + 10) for i in xrange(0, 30, 3)]
-        low_priority_messages = [other.create_low_priority_text("Message %d" % i, i + 10) for i in xrange(1, 30, 3)]
-        medium_priority_messages = [other.create_medium_priority_text("Message %d" % i, i + 10) for i in xrange(2, 30, 3)]
+        high_priority_messages = [other.create_high_priority_text("Message %d" % i, i + 10) for i in range(0, 30, 3)]
+        low_priority_messages = [other.create_low_priority_text("Message %d" % i, i + 10) for i in range(1, 30, 3)]
+        medium_priority_messages = [other.create_medium_priority_text("Message %d" % i, i + 10) for i in range(2, 30, 3)]
 
         other.store(high_priority_messages)
         other.store(low_priority_messages)
         other.store(medium_priority_messages)
 
         # send an empty sync message to obtain all messages ALL messages
-        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, u"unknown", (1, 0, 1, 0, []), 42), node)
+        other.give_message(node.create_introduction_request(other.my_candidate, node.lan_address, node.wan_address, False, "unknown", (1, 0, 1, 0, []), 42), node)
 
-        received = node.receive_messages(names=[u"high-priority-text", u"low-priority-text", u"medium-priority-text"], return_after=30)
+        received = node.receive_messages(names=["high-priority-text", "low-priority-text", "medium-priority-text"], return_after=30)
 
         # the first should be the high-priority-text
         offset = 0
@@ -179,11 +179,11 @@ class TestSync(DispersyTestFunc):
         node.assert_not_stored(old_message)
 
         # as proof for the drop, the newest message should be sent back
-        _, message = other.receive_message(names=[u"last-1-test"]).next()
+        _, message = next(other.receive_message(names=["last-1-test"]))
         self.assertEqual(message.distribution.global_time, new_message.distribution.global_time)
 
     def test_last_9(self):
-        message = self._community.get_meta_message(u"last-9-test")
+        message = self._community.get_meta_message("last-9-test")
 
         node, other = self.create_nodes(2)
         other.send_identity(node)
@@ -238,7 +238,7 @@ class TestSync(DispersyTestFunc):
         Currently we only implement option #2.  There currently is no parameter to switch between
         these options.
         """
-        message = self._community.get_meta_message(u"last-1-doublemember-text")
+        message = self._community.get_meta_message("last-1-doublemember-text")
         nodeA, nodeB, nodeC = self.create_nodes(3)
         nodeA.send_identity(nodeB)
         nodeA.send_identity(nodeC)
@@ -255,19 +255,19 @@ class TestSync(DispersyTestFunc):
             assert destination_mid_pre == destination._community.my_member.mid
 
             destination.give_message(origin.create_signature_request(12345, submsg, global_time), origin)
-            _, message = origin.receive_message(names=[u"dispersy-signature-response"]).next()
+            _, message = next(origin.receive_message(names=["dispersy-signature-response"]))
             return (global_time, message.payload.message)
 
         def check_database_contents():
             # TODO(emilon): This could be done better.
             def fetch_rows():
                 return list(nodeA._dispersy.database.execute(
-                    u"SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2, "
-                    u"member1.mid as mid1, member2.mid as mid2 FROM sync "
-                    u"JOIN double_signed_sync ON double_signed_sync.sync = sync.id "
-                    u"JOIN member member1 ON double_signed_sync.member1 = member1.id "
-                    u"JOIN member member2 ON double_signed_sync.member2 = member2.id "
-                    u"WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
+                    "SELECT sync.global_time, sync.member, double_signed_sync.member1, double_signed_sync.member2, "
+                    "member1.mid as mid1, member2.mid as mid2 FROM sync "
+                    "JOIN double_signed_sync ON double_signed_sync.sync = sync.id "
+                    "JOIN member member1 ON double_signed_sync.member1 = member1.id "
+                    "JOIN member member2 ON double_signed_sync.member2 = member2.id "
+                    "WHERE sync.community = ? AND sync.member = ? AND sync.meta_message = ?",
                     (nodeA._community.database_id, nodeA.my_member.database_id, message.database_id)))
 
             entries = []
@@ -334,7 +334,7 @@ class TestSync(DispersyTestFunc):
 
         # as proof for the drop, the more recent messages should be sent back to nodeB
         times = []
-        for _, message in nodeB.receive_message(names=[u"last-1-doublemember-text"]):
+        for _, message in nodeB.receive_message(names=["last-1-doublemember-text"]):
             times.append(message.distribution.global_time)
 
         self.assertEqual(sorted(times), [global_time, other_global_time])

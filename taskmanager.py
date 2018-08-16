@@ -77,9 +77,9 @@ class TaskManager(object):
         This usually should be called when stopping or destroying the object so no tasks are left floating around.
         """
         assert all([isinstance(task, (Deferred, DelayedCall, LoopingCall, tuple))
-                    for task in self._pending_tasks.itervalues()]), self._pending_tasks
+                    for task in self._pending_tasks.values()]), self._pending_tasks
 
-        for name in self._pending_tasks.keys():
+        for name in list(self._pending_tasks.keys()):
             self.cancel_pending_task(name)
 
     def is_pending_task_active(self, name):
@@ -97,7 +97,7 @@ class TaskManager(object):
         return DeferredList(self._iter_deferreds())
 
     def _iter_deferreds(self):
-        for task in self._pending_tasks.itervalues():
+        for task in self._pending_tasks.values():
             if isinstance(task, Deferred):
                 yield task
 
@@ -134,7 +134,7 @@ class TaskManager(object):
             self._cleanup_counter -= 1
         else:
             self._cleaup_counter = CLEANUP_FREQUENCY
-            for name in self._pending_tasks.keys():
+            for name in list(self._pending_tasks.keys()):
                 if not self.is_pending_task_active(name):
                     self._pending_tasks.pop(name)
 

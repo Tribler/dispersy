@@ -1,4 +1,4 @@
-import Queue
+import queue
 import functools
 import logging
 import sys
@@ -6,7 +6,7 @@ import traceback
 import warnings
 from cProfile import Profile
 from socket import inet_aton, error as socket_error
-from thread import get_ident
+from _thread import get_ident
 from threading import current_thread
 from time import time
 from socket import inet_aton, socket, AF_INET, SOCK_DGRAM
@@ -139,7 +139,7 @@ def attach_runtime_statistics(format_):
     Dispersy.statistics.update().  Statistics.runtime is a list (in no particular order) containing
     dictionaries with the keys: count, duration, average, and entry.
     """
-    assert isinstance(format_, basestring), type(format_)
+    assert isinstance(format_, str), type(format_)
 
     def helper(func):
         @functools.wraps(func)
@@ -224,7 +224,7 @@ def blockingCallFromThread(reactor, f, *args, **kwargs):
     if isInIOThread():
             return f(*args, **kwargs)
     else:
-        queue = Queue.Queue()
+        queue = queue.Queue()
 
         def _callFromThread():
             result = defer.maybeDeferred(f, *args, **kwargs)

@@ -12,13 +12,11 @@ from .payload import Payload
 from .resolution import Resolution, DynamicResolution
 
 
-class DelayPacket(Exception):
+class DelayPacket(Exception, metaclass=ABCMeta):
 
     """
     Uses an identifier to match request to response.
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self, community, msg):
         from .community import Community
@@ -80,7 +78,7 @@ class DelayPacketByMissingMember(DelayPacket):
 
     @property
     def match_info(self):
-        return (self._cid, u"dispersy-identity", self._missing_member_id, None, []),
+        return (self._cid, "dispersy-identity", self._missing_member_id, None, []),
 
     def send_request(self, community, candidate):
         return community.create_missing_identity(candidate,
@@ -91,7 +89,7 @@ class DelayPacketByMissingMessage(DelayPacket):
 
     def __init__(self, community, member, global_time):
         assert isinstance(member, Member), type(member)
-        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(global_time, int), type(global_time)
         super(DelayPacketByMissingMessage, self).__init__(community, "Missing message")
         self._member = member
         self._global_time = global_time
@@ -134,7 +132,7 @@ class DelayMessageByProof(DelayMessage):
 
     @property
     def match_info(self):
-        return (self._cid, u"dispersy-authorize", None, None, []), (self._cid, u"dispersy-dynamic-settings", None, None, [])
+        return (self._cid, "dispersy-authorize", None, None, []), (self._cid, "dispersy-dynamic-settings", None, None, [])
 
     @property
     def resume_immediately(self):
@@ -147,8 +145,8 @@ class DelayMessageByProof(DelayMessage):
 class DelayMessageBySequence(DelayMessage):
 
     def __init__(self, delayed, missing_low, missing_high):
-        assert isinstance(missing_low, (int, long)), type(missing_low)
-        assert isinstance(missing_high, (int, long)), type(missing_high)
+        assert isinstance(missing_low, int), type(missing_low)
+        assert isinstance(missing_high, int), type(missing_high)
         assert 0 < missing_low <= missing_high, (missing_low, missing_high)
         super(DelayMessageBySequence, self).__init__(delayed)
         self._missing_low = missing_low
@@ -159,7 +157,7 @@ class DelayMessageBySequence(DelayMessage):
 
     @property
     def match_info(self):
-        return (self._cid, None, self._delayed.authentication.member.mid, None, range(self._missing_low, self._missing_high + 1)),
+        return (self._cid, None, self._delayed.authentication.member.mid, None, list(range(self._missing_low, self._missing_high + 1))),
 
     def send_request(self, community, candidate):
         community.create_missing_sequence(candidate, self._delayed.authentication.member,
@@ -170,7 +168,7 @@ class DelayMessageByMissingMessage(DelayMessage):
 
     def __init__(self, delayed, member, global_time):
         assert isinstance(member, Member), type(member)
-        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(global_time, int), type(global_time)
         super(DelayMessageByMissingMessage, self).__init__(delayed)
         self._member = member
         self._global_time = global_time
@@ -196,7 +194,7 @@ class DropMessage(Exception):
     """
     def __init__(self, dropped, msg):
         assert isinstance(dropped, Message.Implementation), type(dropped)
-        assert isinstance(msg, (str, unicode)), type(msg)
+        assert isinstance(msg, str), type(msg)
         self._dropped = dropped
         super(DropMessage, self).__init__(msg)
 
@@ -248,7 +246,7 @@ class Packet(MetaObject.Implementation):
 
     def __init__(self, meta, packet, packet_id):
         assert isinstance(packet, str), type(packet)
-        assert isinstance(packet_id, (int, long)), type(packet_id)
+        assert isinstance(packet_id, int), type(packet_id)
         super(Packet, self).__init__(meta)
         self._packet = packet
         self._packet_id = packet_id
@@ -299,7 +297,7 @@ class Packet(MetaObject.Implementation):
 
     @packet_id.setter
     def packet_id(self, packet_id):
-        assert isinstance(packet_id, (int, long))
+        assert isinstance(packet_id, int)
         self._packet_id = packet_id
 
     def load_message(self):
@@ -318,7 +316,7 @@ class Message(MetaObject):
 
     class Implementation(Packet):
 
-        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, source=u"unknown", packet="", packet_id=0, sign=True):
+        def __init__(self, meta, authentication, resolution, distribution, destination, payload, conversion=None, candidate=None, source="unknown", packet="", packet_id=0, sign=True):
             from .conversion import Conversion
             assert isinstance(meta, Message), "META has invalid type '%s'" % type(meta)
             assert isinstance(authentication, meta.authentication.Implementation), "AUTHENTICATION has invalid type '%s'" % type(authentication)
@@ -329,7 +327,7 @@ class Message(MetaObject):
             assert conversion is None or isinstance(conversion, Conversion), "CONVERSION has invalid type '%s'" % type(conversion)
             assert candidate is None or isinstance(candidate, Candidate), type(candidate)
             assert isinstance(packet, str), type(packet)
-            assert isinstance(packet_id, (int, long)), type(packet_id)
+            assert isinstance(packet_id, int), type(packet_id)
             super(Message.Implementation, self).__init__(meta, packet, packet_id)
             self._authentication = authentication
             self._resolution = resolution
@@ -425,7 +423,7 @@ class Message(MetaObject):
     def __init__(self, community, name, authentication, resolution, distribution, destination, payload, check_callback, handle_callback, undo_callback=None, batch=None):
         from .community import Community
         assert isinstance(community, Community), "COMMUNITY has invalid type '%s'" % type(community)
-        assert isinstance(name, unicode), "NAME has invalid type '%s'" % type(name)
+        assert isinstance(name, str), "NAME has invalid type '%s'" % type(name)
         assert isinstance(authentication, Authentication), "AUTHENTICATION has invalid type '%s'" % type(authentication)
         assert isinstance(resolution, Resolution), "RESOLUTION has invalid type '%s'" % type(resolution)
         assert isinstance(distribution, Distribution), "DISTRIBUTION has invalid type '%s'" % type(distribution)

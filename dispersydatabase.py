@@ -14,7 +14,7 @@ from .distribution import FullSyncDistribution
 
 LATEST_VERSION = 21
 
-schema = u"""
+schema = """
 CREATE TABLE member(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  mid BLOB,                                      -- member identifier (sha1 of public_key)
@@ -78,7 +78,7 @@ class DispersyDatabase(Database):
         __doc__ = schema
 
     def check_database(self, database_version):
-        assert isinstance(database_version, unicode)
+        assert isinstance(database_version, str)
         assert database_version.isdigit()
         assert int(database_version) >= 0
         database_version = int(database_version)
@@ -91,11 +91,11 @@ class DispersyDatabase(Database):
         else:
             # Check if the version is not higher than our current known version number.
             if database_version > LATEST_VERSION:
-                raise DatabaseVersionTooHighError(u"The database was created with a more recent dispersy version.")
+                raise DatabaseVersionTooHighError("The database was created with a more recent dispersy version.")
 
             # Check if the version is below what we support.
             if database_version < 16:
-                raise DatabaseVersionTooLowError(u"Database version too low to upgrade.")
+                raise DatabaseVersionTooLowError("Database version too low to upgrade.")
 
             # upgrade from version 16 to version 17
             if database_version < 17:
@@ -105,7 +105,7 @@ class DispersyDatabase(Database):
                 # Member instances.  unfortunately this requires the removal of the UNIQUE clause,
                 # however, the python code already guarantees that the public_key remains unique.
                 self._logger.info("upgrade database %d -> %d", database_version, 17)
-                self.executescript(u"""
+                self.executescript("""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
 ALTER TABLE member RENAME TO old_member;
@@ -130,7 +130,7 @@ UPDATE option SET value = '17' WHERE key = 'database_version';
             if database_version < 18:
                 # In version 18, we remove the tags column as we don't have blackisting anymore
                 self._logger.debug("upgrade database %d -> %d", database_version, 18)
-                self.executescript(u"""
+                self.executescript("""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
 ALTER TABLE member RENAME TO old_member;
@@ -158,7 +158,7 @@ UPDATE option SET value = '18' WHERE key = 'database_version';
                 # actually simplify the code.
                 self._logger.debug("upgrade database %d -> %d", database_version, 19)
 
-                self.executescript(u"""
+                self.executescript("""
 -- move / remove old member table
 DROP INDEX IF EXISTS member_mid_index;
 ALTER TABLE member RENAME TO old_member;
@@ -188,24 +188,24 @@ UPDATE option SET value = '19' WHERE key = 'database_version';
                 # Let's store the sequence numbers in the database instead of quessing
                 self._logger.debug("upgrade database %d -> %d", database_version, 20)
 
-                self.executescript(u"""
+                self.executescript("""
 DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
 DROP INDEX IF EXISTS sync_meta_message_member;
 """)
-                old_sync = list(self.execute(u"""
+                old_sync = list(self.execute("""
                     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'old_sync';"""))
                 if old_sync:
                     # delete the sync table and start copying data again
-                    self.executescript(u"""
+                    self.executescript("""
 DROP TABLE IF EXISTS sync;
 DROP INDEX IF EXISTS sync_meta_message_undone_global_time_index;
 DROP INDEX IF EXISTS sync_meta_message_member;
 """)
                 else:
                     # rename sync to old_sync if it is the first time
-                    self.executescript(u"ALTER TABLE sync RENAME TO old_sync;")
+                    self.executescript("ALTER TABLE sync RENAME TO old_sync;")
 
-                self.executescript(u"""
+                self.executescript("""
 CREATE TABLE IF NOT EXISTS sync(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     community INTEGER REFERENCES community(id),
@@ -234,7 +234,7 @@ UPDATE option SET value = '20' WHERE key = 'database_version';
             if database_version < 21:
                 # remove 'cluster' column from meta_message table
                 self._logger.debug("upgrade database %d -> %d", database_version, 21)
-                self.executescript(u"""
+                self.executescript("""
 CREATE TABLE meta_message_new(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  community INTEGER REFERENCES community(id),
@@ -317,7 +317,7 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
             count = 0
             deletes = []
             for meta in metas:
-                i, = next(self.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ?", (meta.database_id,)))
+                i, = next(self.execute("SELECT COUNT(*) FROM sync WHERE meta_message = ?", (meta.database_id,)))
                 count += i
             self._logger.debug("checking %d sequence number enabled messages [%s]", count, community.cid.encode("HEX"))
             if count > 50:
@@ -328,8 +328,8 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
             sequence_updates = []
             for meta in metas:
-                rows = list(self.execute(u"SELECT id, member, packet FROM sync "
-                                         u"WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)))
+                rows = list(self.execute("SELECT id, member, packet FROM sync "
+                                         "WHERE meta_message = ? ORDER BY member, global_time", (meta.database_id,)))
                 groups = groupby(rows, key=lambda tup: tup[1])
                 for member_id, iterator in groups:
                     last_global_time = 0
@@ -362,22 +362,22 @@ UPDATE option SET value = '21' WHERE key = 'database_version';""")
 
             self._logger.debug("will delete %d packets from the database", len(deletes))
             if deletes:
-                self.executemany(u"DELETE FROM sync WHERE id = ?", deletes)
+                self.executemany("DELETE FROM sync WHERE id = ?", deletes)
 
             if sequence_updates:
-                self.executemany(u"UPDATE sync SET sequence = ? WHERE id = ?", sequence_updates)
+                self.executemany("UPDATE sync SET sequence = ? WHERE id = ?", sequence_updates)
 
             # we may have removed some undo-other or undo-own messages.  we must ensure that there
             # are no messages in the database that point to these removed messages
-            updates = list(self.execute(u"""
+            updates = list(self.execute("""
             SELECT a.id
             FROM sync a
             LEFT JOIN sync b ON a.undone = b.id
             WHERE a.community = ? AND a.undone > 0 AND b.id IS NULL""", (community.database_id,)))
             if updates:
-                self.executemany(u"UPDATE sync SET undone = 0 WHERE id = ?", updates)
+                self.executemany("UPDATE sync SET undone = 0 WHERE id = ?", updates)
 
-            self.execute(u"UPDATE community SET database_version = 21 WHERE id = ?", (community.database_id,))
+            self.execute("UPDATE community SET database_version = 21 WHERE id = ?", (community.database_id,))
             self.commit()
 
             for handler in progress_handlers:

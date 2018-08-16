@@ -17,23 +17,23 @@ from ..util import blocking_call_on_reactor_thread
 # attacker to disrupt the DNS servers for both domains at the same time.
 _DEFAULT_ADDRESSES = [
     # DNS entries on tribler.org
-    (u"dispersy1.tribler.org", 6421),
-    (u"130.161.119.206"      , 6421),
-    (u"dispersy2.tribler.org", 6422),
-    (u"130.161.119.206"      , 6422),
-    (u"dispersy3.tribler.org", 6423),
-    (u"131.180.27.155"       , 6423),
-    (u"dispersy4.tribler.org", 6424),
-    (u"83.149.70.6"          , 6424),
-    (u"dispersy7.tribler.org", 6427),
-    (u"95.211.155.142"       , 6427),
-    (u"dispersy8.tribler.org", 6428),
-    (u"95.211.155.131"       , 6428),
+    ("dispersy1.tribler.org", 6421),
+    ("130.161.119.206"      , 6421),
+    ("dispersy2.tribler.org", 6422),
+    ("130.161.119.206"      , 6422),
+    ("dispersy3.tribler.org", 6423),
+    ("131.180.27.155"       , 6423),
+    ("dispersy4.tribler.org", 6424),
+    ("83.149.70.6"          , 6424),
+    ("dispersy7.tribler.org", 6427),
+    ("95.211.155.142"       , 6427),
+    ("dispersy8.tribler.org", 6428),
+    ("95.211.155.131"       , 6428),
 
     # DNS entries on st.tudelft.nl
-    (u"dispersy1.st.tudelft.nl", 6421),
-    (u"dispersy2.st.tudelft.nl", 6422),
-    (u"dispersy3.st.tudelft.nl", 6423),
+    ("dispersy1.st.tudelft.nl", 6421),
+    ("dispersy2.st.tudelft.nl", 6422),
+    ("dispersy3.st.tudelft.nl", 6423),
     #(u"dispersy4.st.tudelft.nl", 6424),
 ]
 # 04/12/13 Boudewijn: We are phasing out the dispersy{1-9}b entries.  Note that older clients will
@@ -80,7 +80,7 @@ class Bootstrap(TaskManager):
         assert isinstance(addresses, (tuple, list)), type(addresses)
         assert all(isinstance(address, tuple) for address in addresses), [type(address) for address in addresses]
         assert all(len(address) == 2 for  address in addresses), [len(address) for address in addresses]
-        assert all(isinstance(host, unicode) for host, _ in addresses), [type(host) for host, _ in addresses]
+        assert all(isinstance(host, str) for host, _ in addresses), [type(host) for host, _ in addresses]
         assert all(isinstance(port, int) for _, port in addresses), [type(port) for _, port in addresses]
         super(Bootstrap, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -96,7 +96,7 @@ class Bootstrap(TaskManager):
         Note: this method is thread safe.
         """
         with self._lock:
-            return all(self._candidates.itervalues())
+            return all(self._candidates.values())
 
     @property
     def candidates(self):
@@ -106,14 +106,14 @@ class Bootstrap(TaskManager):
         Note: this method is thread safe.
         """
         with self._lock:
-            candidates = self._candidates.values()
+            candidates = list(self._candidates.values())
             shuffle(candidates)
             return [candidate for candidate in candidates if candidate]
 
     @property
     def candidate_addresses(self):
         with self._lock:
-            return [candidate.sock_addr for candidate in self._candidates.itervalues() if candidate]
+            return [candidate.sock_addr for candidate in self._candidates.values() if candidate]
 
     @property
     def progress(self):
@@ -123,7 +123,7 @@ class Bootstrap(TaskManager):
         Note: this method is thread safe.
         """
         with self._lock:
-            return (len([candidate for candidate in self._candidates.itervalues() if candidate]),
+            return (len([candidate for candidate in self._candidates.values() if candidate]),
                     len(self._candidates))
 
     def reset(self):
@@ -133,7 +133,7 @@ class Bootstrap(TaskManager):
         Note: this method is thread safe.
         """
         with self._lock:
-            self._candidates = dict((address, None) for address in self._candidates.iterkeys())
+            self._candidates = dict((address, None) for address in self._candidates.keys())
 
     def resolve(self):
         """
@@ -141,13 +141,13 @@ class Bootstrap(TaskManager):
 
         """
         if self.all_resolved:
-            self.cancel_pending_task(u'task_resolving_bootstrap_address')
+            self.cancel_pending_task('task_resolving_bootstrap_address')
             self._logger.debug("Resolved all bootstrap addresses")
             return succeed(None)
         else:
             self._logger.info("Resolving bootstrap addresses")
 
-            addresses = [address for address, candidate in self._candidates.items() if not candidate]
+            addresses = [address for address, candidate in list(self._candidates.items()) if not candidate]
             shuffle(addresses)
 
             def add_candidate(ip, host, port):
@@ -180,8 +180,8 @@ class Bootstrap(TaskManager):
         :return: A deferred which fires once the resolving of the bootstrap servers has been started.
         """
 
-        if not self.is_pending_task_active(u'task_resolving_bootstrap_address'):
-            self.register_task(u'task_resolving_bootstrap_address',
+        if not self.is_pending_task_active('task_resolving_bootstrap_address'):
+            self.register_task('task_resolving_bootstrap_address',
                                LoopingCall(self.resolve)).start(interval, now=False)
 
         return self.resolve()

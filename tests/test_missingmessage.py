@@ -13,7 +13,7 @@ class TestMissingMessage(DispersyTestFunc):
         node.send_identity(other)
 
         # create messages
-        messages = [node.create_full_sync_text("Message #%d" % i, i + 10) for i in xrange(10)]
+        messages = [node.create_full_sync_text("Message #%d" % i, i + 10) for i in range(10)]
         node.give_messages(messages, node)
 
         batches = batchFUNC(messages)

@@ -53,7 +53,7 @@ class TestNeighborhood(DispersyTestFunc):
         self._community.dispersy_yield_verified_candidates = dispersy_yield_verified_candidates
 
         # check configuration
-        meta = self._community.get_meta_message(u"full-sync-text")
+        meta = self._community.get_meta_message("full-sync-text")
         self.assertEqual(meta.destination.node_count, 10)
 
         total_node_count = non_targeted_node_count + targeted_node_count
@@ -69,7 +69,7 @@ class TestNeighborhood(DispersyTestFunc):
         # check if sufficient NODES received the message (at least the first `target_count` ones)
         forwarded_node_count = 0
         for node in nodes:
-            forwarded = [m for _, m in node.receive_messages(names=[u"full-sync-text"], timeout=0.1)]
+            forwarded = [m for _, m in node.receive_messages(names=["full-sync-text"], timeout=0.1)]
             if node in nodes[:targeted_node_count]:
                 # They MUST have received the message
                 self.assertEqual(len(forwarded), 1)
@@ -94,7 +94,7 @@ class TestNeighborhood(DispersyTestFunc):
         other, another = self.clean_community_candidates(2)
 
         # Create the message
-        meta = self._community.get_meta_message(u"n-hop-sync-text")
+        meta = self._community.get_meta_message("n-hop-sync-text")
         message = meta.impl(authentication=(self._mm.my_member,),
                             distribution=(42,),
                             payload=("Hello World!",))
@@ -103,11 +103,11 @@ class TestNeighborhood(DispersyTestFunc):
         self._mm.community.dispersy._forward([message, ])
 
         # Check if we did not send to ourselves
-        receive0 = list(self._mm.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
+        receive0 = list(self._mm.receive_message(names=["n-hop-sync-text", ], timeout=1.0))
         self.assertEqual(receive0, [])
         # Check if this arrived at a single other node
-        receive1 = list(other.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
-        receive2 = list(another.receive_message(names=[u"n-hop-sync-text", ], timeout=1.0))
+        receive1 = list(other.receive_message(names=["n-hop-sync-text", ], timeout=1.0))
+        receive2 = list(another.receive_message(names=["n-hop-sync-text", ], timeout=1.0))
         received = receive1 + receive2
         _, message = received[0]
 
@@ -117,9 +117,9 @@ class TestNeighborhood(DispersyTestFunc):
         self._mm.community.dispersy._forward([message, ])
 
         # Check if this message has indeed not been forwarded
-        receive0 = list(self._mm.receive_message(names=[u"n-hop-sync-text", ]))
-        receive1 = list(other.receive_message(names=[u"n-hop-sync-text", ]))
-        receive2 = list(another.receive_message(names=[u"n-hop-sync-text", ]))
+        receive0 = list(self._mm.receive_message(names=["n-hop-sync-text", ]))
+        receive1 = list(other.receive_message(names=["n-hop-sync-text", ]))
+        receive2 = list(another.receive_message(names=["n-hop-sync-text", ]))
 
         # self._mm has the packet in his database
         # But only one other node should receive this message

@@ -14,7 +14,7 @@ class TestLowLevelCrypto(TestCase):
         """
         Creates each curve, signs some data, and finally verifies the signature.
         """
-        data = "".join(chr(i % 256) for i in xrange(1024))
+        data = "".join(chr(i % 256) for i in range(1024))
         for curve in self.crypto.security_levels:
             ec = self.crypto.generate_key(curve)
             signature = self.crypto.create_signature(ec, data)
@@ -24,7 +24,7 @@ class TestLowLevelCrypto(TestCase):
             self.assertFalse(self.crypto.is_valid_signature(ec, data, "-" * self.crypto.get_signature_length(ec)))
             self.assertFalse(self.crypto.is_valid_signature(ec, "---", signature))
 
-            for i in xrange(len(signature)):
+            for i in range(len(signature)):
                 # invert one bit in the ith character of the signature
                 invalid_signature = list(signature)
                 invalid_signature[i] = chr(ord(invalid_signature[i]) ^ 1)
@@ -36,7 +36,7 @@ class TestLowLevelCrypto(TestCase):
         """
         Creates and serialises each curve.
         """
-        data = "".join(chr(i % 256) for i in xrange(1024))
+        data = "".join(chr(i % 256) for i in range(1024))
         for curve in self.crypto.security_levels:
             ec = self.crypto.generate_key(curve)
             ec_pub = ec.pub()
@@ -63,10 +63,10 @@ class TestLowLevelCrypto(TestCase):
         import sys
         import os
 
-        ec = self.crypto.generate_key(u"very-low")
+        ec = self.crypto.generate_key("very-low")
 
-        data = [os.urandom(1024) for i in xrange(1000)]
-        for curve in [u"very-low", u"low", u"medium", u"high", u"curve25519"]:
+        data = [os.urandom(1024) for i in range(1000)]
+        for curve in ["very-low", "low", "medium", "high", "curve25519"]:
             t1 = time()
             ec = self.crypto.generate_key(curve)
             t2 = time()

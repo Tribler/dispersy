@@ -52,8 +52,8 @@ def main_real(setup=None):
     command_line_parser = optparse.OptionParser()
     command_line_parser.add_option("--profiler", action="store_true", help="use cProfile on the Dispersy thread", default=False)
     command_line_parser.add_option("--memory-dump", action="store_true", help="use meliae to dump the memory periodically", default=False)
-    command_line_parser.add_option("--databasefile", action="store", help="use an alternate databasefile", default=u"dispersy.db")
-    command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=u".")
+    command_line_parser.add_option("--databasefile", action="store", help="use an alternate databasefile", default="dispersy.db")
+    command_line_parser.add_option("--statedir", action="store", type="string", help="Use an alternate statedir", default=".")
     command_line_parser.add_option("--ip", action="store", type="string", default="0.0.0.0", help="Dispersy uses this ip")
     command_line_parser.add_option("--port", action="store", type="int", help="Dispersy uses this UDL port", default=12345)
     command_line_parser.add_option("--script", action="store", type="string", help="Script to execute, i.e. module.module.class", default="")
@@ -79,7 +79,7 @@ def main_real(setup=None):
         addObserver(unhandled_error_observer)
 
     # setup
-    dispersy = Dispersy(StandaloneEndpoint(opt.port, opt.ip), unicode(opt.statedir), unicode(opt.databasefile))
+    dispersy = Dispersy(StandaloneEndpoint(opt.port, opt.ip), str(opt.statedir), str(opt.databasefile))
     dispersy.statistics.enable_debug_statistics(opt.debugstatistics)
 
     def signal_handler(sig, frame):

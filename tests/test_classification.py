@@ -20,10 +20,10 @@ class TestClassification(DispersyTestFunc):
             pass
 
         # create master member
-        master = self._dispersy.get_new_member(u"high")
+        master = self._dispersy.get_new_member("high")
 
         # create community
-        self._dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
+        self._dispersy.database.execute("INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
                                         (master.database_id, self._mm.my_member.database_id, ClassTestA.get_classification()))
 
         # reclassify
@@ -31,8 +31,8 @@ class TestClassification(DispersyTestFunc):
         self.assertIsInstance(community, ClassTestB)
         self.assertEqual(community.cid, master.mid)
         try:
-            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?",
-                                                              (master.database_id,)).next()
+            classification, = next(self._dispersy.database.execute("SELECT classification FROM community WHERE master = ?",
+                                                              (master.database_id,)))
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestB.get_classification())
@@ -51,7 +51,7 @@ class TestClassification(DispersyTestFunc):
 
         # create community
         community_c = ClassTestC.create_community(self._dispersy, self._mm._my_member)
-        self.assertEqual(len(list(self._dispersy.database.execute(u"SELECT * FROM community WHERE classification = ?",
+        self.assertEqual(len(list(self._dispersy.database.execute("SELECT * FROM community WHERE classification = ?",
                                                                   (ClassTestC.get_classification(),)))), 1)
 
         # reclassify
@@ -60,8 +60,8 @@ class TestClassification(DispersyTestFunc):
         self.assertEqual(community_c.cid, community_d.cid)
 
         try:
-            classification, = self._dispersy.database.execute(u"SELECT classification FROM community WHERE master = ?",
-                                                              (community_c.master_member.database_id,)).next()
+            classification, = next(self._dispersy.database.execute("SELECT classification FROM community WHERE master = ?",
+                                                              (community_c.master_member.database_id,)))
         except StopIteration:
             self.fail()
         self.assertEqual(classification, ClassTestD.get_classification())
@@ -76,10 +76,10 @@ class TestClassification(DispersyTestFunc):
             pass
 
         # create master member
-        master = self._dispersy.get_new_member(u"high")
+        master = self._dispersy.get_new_member("high")
 
         # create one community
-        self._dispersy.database.execute(u"INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
+        self._dispersy.database.execute("INSERT INTO community (master, member, classification) VALUES (?, ?, ?)",
                                         (master.database_id, self._mm._my_member.database_id, ClassificationLoadOneCommunities.get_classification()))
 
         # load one community

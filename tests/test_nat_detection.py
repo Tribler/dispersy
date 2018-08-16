@@ -14,7 +14,7 @@ class TestNATDetection(DispersyTestFunc):
     def _emulate_connection_type__unknown(self, community):
         self._logger.debug("Emulating connection type: UNKNOWN")
         address = ("140.0.0.2", 1)
-        candidate = community.create_candidate(address, False, address, address, u"unknown")
+        candidate = community.create_candidate(address, False, address, address, "unknown")
         community._dispersy.wan_address_vote(("1.1.1.1", 1), candidate)
 
         # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
@@ -22,13 +22,13 @@ class TestNATDetection(DispersyTestFunc):
         self.assertIsNone(candidate.get_category(time()))
 
         self.assertNotEqual(community._dispersy.lan_address, community._dispersy.wan_address)
-        self.assertEqual(community._dispersy.connection_type, u"unknown")
+        self.assertEqual(community._dispersy.connection_type, "unknown")
 
     def _emulate_connection_type__public(self, community):
         self._logger.debug("Emulating connection type: PUBLIC")
         for i in range(5):
             address = ("140.0.0.3", i + 1)
-            candidate = community.create_candidate(address, False, address, address, u"unknown")
+            candidate = community.create_candidate(address, False, address, address, "unknown")
             community._dispersy.wan_address_vote(community._dispersy.lan_address, candidate)
 
             # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
@@ -37,13 +37,13 @@ class TestNATDetection(DispersyTestFunc):
 
             # one vote is enough, but more won't hurt
             self.assertEqual(community._dispersy.lan_address, community._dispersy.wan_address)
-            self.assertEqual(community._dispersy.connection_type, u"public")
+            self.assertEqual(community._dispersy.connection_type, "public")
 
     def _emulate_connection_type__symmetric_nat(self, community):
         self._logger.debug("Emulating connection type: SYMMETRIC-NAT")
         for i in range(5):
             address = ("140.0.0.4", i + 1)
-            candidate = community.create_candidate(address, False, address, address, u"unknown")
+            candidate = community.create_candidate(address, False, address, address, "unknown")
             community._dispersy.wan_address_vote(("1.1.1.2", i + 1), candidate)
 
             # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
@@ -53,7 +53,7 @@ class TestNATDetection(DispersyTestFunc):
             if i > 0:
                 # two votes are needed, but more won't hurt
                 self.assertNotEqual(community._dispersy.lan_address, community._dispersy.wan_address)
-                self.assertEqual(community._dispersy.connection_type, u"symmetric-NAT")
+                self.assertEqual(community._dispersy.connection_type, "symmetric-NAT")
 
     def _clear_votes(self, community):
         self._logger.debug("Cleanup votes")
@@ -92,9 +92,9 @@ class TestNATDetection(DispersyTestFunc):
         """
         for i in range(2):
             address = ("140.0.0.2", i + 1)
-            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
+            candidate = self._community.create_candidate(address, False, address, address, "unknown")
             self._dispersy.wan_address_vote(("1.0.0.1", i + 1), candidate)
-        self.assertEqual(self._dispersy.connection_type, u"symmetric-NAT")
+        self.assertEqual(self._dispersy.connection_type, "symmetric-NAT")
 
         # because we CANDIDATE didn't send any messages to COMMUNITY, the CANDIDATE timestamps have never been set.  In
         # the current code this results in the CANDIDATE to remain 'obsolete'.
@@ -103,9 +103,9 @@ class TestNATDetection(DispersyTestFunc):
 
         for i in range(2):
             address = ("140.0.0.3", i + 1)
-            candidate = self._community.create_candidate(address, False, address, address, u"unknown")
+            candidate = self._community.create_candidate(address, False, address, address, "unknown")
             self._dispersy.wan_address_vote(("1.0.0.1", 1), candidate)
-        self.assertEqual(self._dispersy.connection_type, u"unknown")
+        self.assertEqual(self._dispersy.connection_type, "unknown")
 
 
 class TestAddressEstimation(DispersyTestFunc):
@@ -142,14 +142,14 @@ class TestAddressEstimation(DispersyTestFunc):
                                                             incorrect_LAN,
                                                             incorrect_WAN,
                                                             True,
-                                                            u"unknown",
+                                                            "unknown",
                                                             None,
                                                             42,
                                                             42),
                            node)
 
         # NODE should receive an introduction-response with the corrected LAN address
-        responses = node.receive_messages(names=[u"dispersy-introduction-response"])
+        responses = node.receive_messages(names=["dispersy-introduction-response"])
         self.assertEqual(len(responses), 1)
         for _, response in responses:
             self.assertEqual(response.payload.destination_address, node.lan_address)

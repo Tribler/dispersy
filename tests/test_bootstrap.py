@@ -52,7 +52,7 @@ class PingCommunity(DebugCommunity):
 
     @inlineCallbacks
     def start_walking(self):
-        for _ in xrange(10):
+        for _ in range(10):
             if self.dispersy._discovery_community and self.dispersy._discovery_community.bootstrap.all_resolved:
                 self.ping_candidates = [self.get_candidate(address) for address in
                                         set(self.dispersy._discovery_community.bootstrap.candidate_addresses)]
@@ -62,12 +62,12 @@ class PingCommunity(DebugCommunity):
             raise RuntimeError("No candidates discovered")
 
         for candidate in self.ping_candidates:
-            for (host, port), b_candidate in self.dispersy._discovery_community.bootstrap._candidates.iteritems():
+            for (host, port), b_candidate in self.dispersy._discovery_community.bootstrap._candidates.items():
                 if candidate == b_candidate:
                     self._hostname[candidate.sock_addr] = host
         self.ping_candidates.sort(cmp=lambda a, b: cmp(a.sock_addr, b.sock_addr))
 
-        for _ in xrange(PING_COUNT):
+        for _ in range(PING_COUNT):
             self.ping(time())
             yield deferLater(reactor, 1, lambda: None)
             self.summary()
@@ -188,22 +188,22 @@ class TestBootstrapServers(DispersyTestFunc):
                                                                source_lan=node.lan_address,
                                                                source_wan=node.wan_address,
                                                                advice=True,
-                                                               connection_type=u"unknown",
+                                                               connection_type="unknown",
                                                                sync=None,
                                                                identifier=4242,
                                                                global_time=42),
                               destination)
 
             # node receives missing identity
-            _, message = node.receive_message(names=[u"dispersy-missing-identity"]).next()
+            _, message = next(node.receive_message(names=["dispersy-missing-identity"]))
             self.assertEqual(message.payload.mid, node.my_member.mid)
 
-            packet = node.fetch_packets([u"dispersy-identity", ], node.my_member.mid)[0]
+            packet = node.fetch_packets(["dispersy-identity", ], node.my_member.mid)[0]
             node.send_packet(packet, destination)
 
             node.process_packets()
 
-            _, message = node.receive_message(names=[u"dispersy-identity"]).next()
+            _, message = next(node.receive_message(names=["dispersy-identity"]))
 
         finally:
             self._logger.debug("terminate tracker")
@@ -218,7 +218,7 @@ class TestBootstrapServers(DispersyTestFunc):
         """
         Sends a dispersy-introduction-request to the trackers and measure the time it takes for a response.
         """
-        dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
+        dispersy = Dispersy(StandaloneEndpoint(0), ".", ":memory:")
         dispersy.start(autoload_discovery=True)
         self.dispersy_objects.append(dispersy)
         community = PingCommunity.create_community(dispersy, dispersy.get_new_member())
@@ -270,7 +270,7 @@ class TestBootstrapServers(DispersyTestFunc):
                 super(PingCommunity, self)._initialize_meta_messages()
 
                 # replace the callbacks for the dispersy-introduction-response message
-                meta = self._meta_messages[u"dispersy-introduction-response"]
+                meta = self._meta_messages["dispersy-introduction-response"]
                 self._meta_messages[meta.name] = Message(meta.community,
                                                          meta.name,
                                                          meta.authentication,
@@ -341,7 +341,7 @@ class TestBootstrapServers(DispersyTestFunc):
                     self._my_member = self._original_my_member
 
             def summary(self):
-                for sock_addr, rtts in sorted(self._summary.iteritems()):
+                for sock_addr, rtts in sorted(self._summary.items()):
                     if rtts:
                         self._logger.info("%s %15s:%-5d %-30s %dx %.1f avg  [%s]",
                                           self._identifiers[sock_addr].encode("HEX"),
@@ -362,15 +362,15 @@ class TestBootstrapServers(DispersyTestFunc):
         with self._dispersy.database:
             candidates = [Candidate(("130.161.211.245", 6429), False)]
             communities = [PingCommunity.create_community(self._dispersy, self._my_member, candidates)
-                           for _ in xrange(COMMUNITIES)]
-            members = [self._dispersy.get_new_member(u"low") for _ in xrange(MEMBERS)]
+                           for _ in range(COMMUNITIES)]
+            members = [self._dispersy.get_new_member("low") for _ in range(MEMBERS)]
 
             for community in communities:
                 for member in members:
                     community.create_dispersy_identity(member=member)
 
         self._logger.info("prepare request messages")
-        for _ in xrange(ROUNDS):
+        for _ in range(ROUNDS):
             for community in communities:
                 for member in members:
                     community.prepare_ping(member)
@@ -380,9 +380,9 @@ class TestBootstrapServers(DispersyTestFunc):
 
         self._logger.info("ping-ping")
         BEGIN = time()
-        for _ in xrange(ROUNDS):
+        for _ in range(ROUNDS):
             for community in communities:
-                for _ in xrange(MEMBERS / 100):
+                for _ in range(MEMBERS / 100):
                     community.ping_from_queue(100)
                     sleep(0.1)
 
@@ -397,5 +397,5 @@ class TestBootstrapServers(DispersyTestFunc):
             community.summary()
 
         # cleanup
-        community.create_destroy_community(u"hard-kill")
+        community.create_destroy_community("hard-kill")
         yield self._dispersy.get_community(community.cid).unload_community()

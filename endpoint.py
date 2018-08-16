@@ -10,9 +10,9 @@ from time import time
 
 from twisted.internet import reactor
 
-from util import is_valid_address_or_log
+from .util import is_valid_address_or_log
 from .candidate import Candidate
-from ipv8_endpoint import EndpointListener
+from .ipv8_endpoint import EndpointListener
 
 
 if sys.platform == 'win32':
@@ -24,9 +24,7 @@ TUNNEL_PREFIX = "ffffffff".decode("HEX")
 TUNNEL_PREFIX_LENGHT = 4
 
 
-class Endpoint(object):
-    __metaclass__ = ABCMeta
-
+class Endpoint(object, metaclass=ABCMeta):
     def __init__(self):
         self._logger = logging.getLogger(self.__class__.__name__)
         self._dispersy = None
@@ -65,9 +63,9 @@ class Endpoint(object):
                      sock_addr[0], sock_addr[1], len(packet))
 
         if outbound:
-            self._dispersy.statistics.dict_inc(u"endpoint_send", name)
+            self._dispersy.statistics.dict_inc("endpoint_send", name)
         else:
-            self._dispersy.statistics.dict_inc(u"endpoint_recv", name)
+            self._dispersy.statistics.dict_inc("endpoint_recv", name)
 
 
 class NullEndpoint(Endpoint):
@@ -129,7 +127,7 @@ class StandaloneEndpoint(Endpoint):
     def open(self, dispersy):
         super(StandaloneEndpoint, self).open(dispersy)
 
-        for _ in xrange(10000):
+        for _ in range(10000):
             try:
                 self._logger.debug("Listening at %d", self._port)
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -204,7 +202,7 @@ class StandaloneEndpoint(Endpoint):
 
                 except socket.error as e:
                     if e.errno != errno.EAGAIN:
-                        self._dispersy.statistics.dict_inc(u"endpoint_recv", u"socket-error-'%s'" % repr(e))
+                        self._dispersy.statistics.dict_inc("endpoint_recv", "socket-error-'%s'" % repr(e))
 
                 finally:
                     if packets:
@@ -251,7 +249,7 @@ class StandaloneEndpoint(Endpoint):
                                                 if is_valid_address_or_log(sock_addr, data)],
                                                cache,
                                                timestamp,
-                                               u"standalone_ep")
+                                               "standalone_ep")
         except AssertionError:
             # TODO(Martijn): this effectively disables all assertions, making it harder to crash Tribler clients with
             # malformed packets. We should replace this with a more robust design once we redesign Dispersy.
@@ -322,7 +320,7 @@ class StandaloneEndpoint(Endpoint):
 
                 allowed_timestamp = time() - 300
 
-                for i in xrange(NUM_PACKETS):
+                for i in range(NUM_PACKETS):
                     queued_at, sock_addr, data = self._sendqueue[i]
                     if queued_at > allowed_timestamp:
                         try:
@@ -336,10 +334,10 @@ class StandaloneEndpoint(Endpoint):
                             if e[0] != SOCKET_BLOCK_ERRORCODE:
                                 self._logger.warning("could not send %d to %s (%d in sendqueue)",
                                                      len(data), sock_addr, len(self._sendqueue))
-                                self._dispersy.statistics.dict_inc(u"endpoint_send", u"socket-error")
+                                self._dispersy.statistics.dict_inc("endpoint_send", "socket-error")
                             break
                     else:
-                        self._dispersy.statistics.dict_inc(u"endpoint_send", u"packet-expired")
+                        self._dispersy.statistics.dict_inc("endpoint_send", "packet-expired")
                         index += 1
 
                 self._sendqueue = self._sendqueue[index:]
@@ -509,7 +507,7 @@ class IPv8toDispersyAdapter(EndpointListener, Endpoint):
                                                 if is_valid_address_or_log(sock_addr, data)],
                                                cache,
                                                timestamp,
-                                               u"standalone_ep")
+                                               "standalone_ep")
         except AssertionError:
             # TODO(Martijn): this effectively disables all assertions, making it harder to crash Tribler clients with
             # malformed packets. We should replace this with a more robust design once we redesign Dispersy.

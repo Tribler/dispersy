@@ -4,16 +4,14 @@ from threading import RLock
 from time import time
 
 
-class Statistics(object):
-
-    __metaclass__ = ABCMeta
+class Statistics(object, metaclass=ABCMeta):
 
     def __init__(self):
         self._lock = RLock()
 
     def dict_inc(self, dictionary, key, value=1):
         with self._lock:
-            assert hasattr(self, dictionary), u"%s doesn't exist in statistics" % dictionary
+            assert hasattr(self, dictionary), "%s doesn't exist in statistics" % dictionary
             if getattr(self, dictionary) is not None:
                 getattr(self, dictionary)[key] += value
 
@@ -27,13 +25,13 @@ class Statistics(object):
             if isinstance(o, Statistics):
                 return dict((key, clone(value))
                             for key, value
-                            in o.__dict__.items()
+                            in list(o.__dict__.items())
                             if not key.startswith("_"))
 
             if isinstance(o, dict):
                 return dict((clone(key), clone(value))
                             for key, value
-                            in o.items())
+                            in list(o.items()))
 
             if isinstance(o, tuple):
                 return tuple(clone(value) for value in o)
@@ -87,8 +85,8 @@ class MessageStatistics(object):
 
     def increase_count(self, category, name, value=1):
         with self._lock:
-            count_name = u"%s_count" % category
-            dict_name = u"%s_dict" % category
+            count_name = "%s_count" % category
+            dict_name = "%s_dict" % category
             if hasattr(self, count_name):
                 setattr(self, count_name, getattr(self, count_name) + value)
             if getattr(self, dict_name) is not None:
@@ -96,7 +94,7 @@ class MessageStatistics(object):
 
     def increase_delay_count(self, category, value=1):
         with self._lock:
-            count_name = u"delay_%s_count" % category
+            count_name = "delay_%s_count" % category
             setattr(self, count_name, getattr(self, count_name) + value)
 
     def enable(self, enabled):
@@ -245,7 +243,7 @@ class DispersyStatistics(Statistics):
 
         # list with {count=int, duration=float, average=float, entry=str} dictionaries.  each entry
         # represents a key from the attach_runtime_statistics decorator
-        self.runtime = [(statistic.duration, statistic.get_dict(entry=entry)) for entry, statistic in _runtime_statistics.iteritems() if statistic.duration > 1]
+        self.runtime = [(statistic.duration, statistic.get_dict(entry=entry)) for entry, statistic in _runtime_statistics.items() if statistic.duration > 1]
         self.runtime.sort(reverse=True)
         self.runtime = [statistic[1] for statistic in self.runtime]
 
@@ -342,15 +340,15 @@ class CommunityStatistics(Statistics):
         now = time()
         return [(candidate.lan_address, candidate.wan_address, candidate.global_time,
                  candidate.get_member().mid if candidate.get_member() else None)
-                for candidate in self._community.candidates.itervalues()
-                if candidate.get_category(now) in [u'walk', u'stumble', u'intro']]
+                for candidate in self._community.candidates.values()
+                if candidate.get_category(now) in ['walk', 'stumble', 'intro']]
 
     def enable_debug_statistics(self, enabled):
         self.msg_statistics.enable(enabled)
 
     def update(self, database=False):
         if database:
-            self.database = dict(self._community.dispersy.database.execute(u"SELECT meta_message.name, COUNT(sync.id) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? GROUP BY sync.meta_message", (self._community.database_id,)))
+            self.database = dict(self._community.dispersy.database.execute("SELECT meta_message.name, COUNT(sync.id) FROM sync JOIN meta_message ON meta_message.id = sync.meta_message WHERE sync.community = ? GROUP BY sync.meta_message", (self._community.database_id,)))
         else:
             self.database = dict()
 

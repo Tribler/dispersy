@@ -18,7 +18,7 @@ class TestDestroyCommunity(DispersyTestFunc):
 
         node.assert_count(message, 1)
 
-        dmessage = self._mm.create_destroy_community(u"hard-kill")
+        dmessage = self._mm.create_destroy_community("hard-kill")
 
         node.give_message(dmessage, self._mm)
 
@@ -33,7 +33,7 @@ class TestDestroyCommunity(DispersyTestFunc):
 
         node.assert_count(message, 1)
 
-        dmessage = other.create_destroy_community(u"hard-kill")
+        dmessage = other.create_destroy_community("hard-kill")
         node.give_message(dmessage, self._mm)
 
         node.assert_count(message, 1)

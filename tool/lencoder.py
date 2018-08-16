@@ -72,7 +72,7 @@ def _encode_list(l, values):
 def _encode_dict(l, values):
     if values:
         l.extend(("m", str(len(values)), ":", "{"))
-        for key, value in values.iteritems():
+        for key, value in values.items():
             _encode(l, key)
             l.append(":")
             _encode(l, value)
@@ -154,9 +154,9 @@ _valid_key_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ12345678
 _cache = {}
 _encode_initiated = False
 _encode_mapping = {str: _encode_str,
-                   unicode: _encode_unicode,
+                   str: _encode_unicode,
                    int: _encode_int,
-                   long: _encode_long,
+                   int: _encode_long,
                    float: _encode_float,
                    bool: _encode_boolean,
                    type(None): _encode_none,

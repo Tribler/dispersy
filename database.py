@@ -7,7 +7,7 @@ This module provides basic database functionalty and simple version control.
 """
 import logging
 import sys
-import thread
+import _thread
 from abc import ABCMeta, abstractmethod
 
 if sys.platform == "darwin":
@@ -30,7 +30,7 @@ if "--explain-query-plan" in getattr(sys, "argv", []):
                 _explain_query_plan.add(statements)
 
                 _explain_query_plan_logger.info("Explain query plan for <<<%s>>>", statements)
-                for line in self._cursor.execute(u"EXPLAIN QUERY PLAN %s" % statements, bindings):
+                for line in self._cursor.execute("EXPLAIN QUERY PLAN %s" % statements, bindings):
                     _explain_query_plan_logger.info(line)
                 _explain_query_plan_logger.info("--")
 
@@ -68,9 +68,7 @@ class IgnoreCommits(Exception):
         super(IgnoreCommits, self).__init__("Ignore all commits made within __enter__ and __exit__")
 
 
-class Database(object):
-
-    __metaclass__ = ABCMeta
+class Database(object, metaclass=ABCMeta):
 
     def __init__(self, file_path):
         """
@@ -79,7 +77,7 @@ class Database(object):
         @param file_path: the path to the database file.
         @type file_path: unicode
         """
-        assert isinstance(file_path, unicode)
+        assert isinstance(file_path, str)
 
         super(Database, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -106,7 +104,7 @@ class Database(object):
         assert self._cursor is None, "Database.open() has already been called"
         assert self._connection is None, "Database.open() has already been called"
         if __debug__:
-            self._debug_thread_ident = thread.get_ident()
+            self._debug_thread_ident = _thread.get_ident()
         self._logger.debug("open database [%s]", self._file_path)
         self._connect()
         if initial_statements:
@@ -136,9 +134,9 @@ class Database(object):
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
 
         # collect current database configuration
-        page_size = int(next(self._cursor.execute(u"PRAGMA page_size"))[0])
-        journal_mode = unicode(next(self._cursor.execute(u"PRAGMA journal_mode"))[0]).upper()
-        synchronous = unicode(next(self._cursor.execute(u"PRAGMA synchronous"))[0]).upper()
+        page_size = int(next(self._cursor.execute("PRAGMA page_size"))[0])
+        journal_mode = str(next(self._cursor.execute("PRAGMA journal_mode"))[0]).upper()
+        synchronous = str(next(self._cursor.execute("PRAGMA synchronous"))[0]).upper()
 
         #
         # PRAGMA page_size = bytes;
@@ -151,11 +149,11 @@ class Database(object):
             self._logger.debug("PRAGMA page_size = 8192 (previously: %s) [%s]", page_size, self._file_path)
 
             # it is not possible to change page_size when WAL is enabled
-            if journal_mode == u"WAL":
-                self._cursor.executescript(u"PRAGMA journal_mode = DELETE")
-                journal_mode = u"DELETE"
-            self._cursor.execute(u"PRAGMA page_size = 8192")
-            execute_or_script(self._cursor, u"VACUUM")
+            if journal_mode == "WAL":
+                self._cursor.executescript("PRAGMA journal_mode = DELETE")
+                journal_mode = "DELETE"
+            self._cursor.execute("PRAGMA page_size = 8192")
+            execute_or_script(self._cursor, "VACUUM")
             page_size = 8192
 
         else:
@@ -165,10 +163,10 @@ class Database(object):
         # PRAGMA journal_mode = DELETE | TRUNCATE | PERSIST | MEMORY | WAL | OFF
         # http://www.sqlite.org/pragma.html#pragma_page_size
         #
-        if not (journal_mode == u"WAL" or self._file_path == u":memory:"):
+        if not (journal_mode == "WAL" or self._file_path == ":memory:"):
             self._logger.debug("PRAGMA journal_mode = WAL (previously: %s) [%s]", journal_mode, self._file_path)
-            self._cursor.execute(u"PRAGMA locking_mode = EXCLUSIVE")
-            execute_or_script(self._cursor, u"PRAGMA journal_mode = WAL")
+            self._cursor.execute("PRAGMA locking_mode = EXCLUSIVE")
+            execute_or_script(self._cursor, "PRAGMA journal_mode = WAL")
 
         else:
             self._logger.debug("PRAGMA journal_mode = %s (no change) [%s]", journal_mode, self._file_path)
@@ -177,9 +175,9 @@ class Database(object):
         # PRAGMA synchronous = 0 | OFF | 1 | NORMAL | 2 | FULL;
         # http://www.sqlite.org/pragma.html#pragma_synchronous
         #
-        if not synchronous in (u"NORMAL", u"1"):
+        if not synchronous in ("NORMAL", "1"):
             self._logger.debug("PRAGMA synchronous = NORMAL (previously: %s) [%s]", synchronous, self._file_path)
-            execute_or_script(self._cursor, u"PRAGMA synchronous = NORMAL")
+            execute_or_script(self._cursor, "PRAGMA synchronous = NORMAL")
 
         else:
             self._logger.debug("PRAGMA synchronous = %s (no change) [%s]", synchronous, self._file_path)
@@ -190,23 +188,23 @@ class Database(object):
 
         # check is the database contains an 'option' table
         try:
-            count, = next(self.execute(u"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'"))
+            count, = next(self.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'option'"))
         except StopIteration:
             raise RuntimeError()
 
         if count:
             # get version from required 'option' table
             try:
-                version, = next(self.execute(u"SELECT value FROM option WHERE key == 'database_version' LIMIT 1"))
+                version, = next(self.execute("SELECT value FROM option WHERE key == 'database_version' LIMIT 1"))
             except StopIteration:
                 # the 'database_version' key was not found
-                version = u"0"
+                version = "0"
         else:
             # the 'option' table probably hasn't been created yet
-            version = u"0"
+            version = "0"
 
         self._database_version = self.check_database(version)
-        assert isinstance(self._database_version, (int, long)), type(self._database_version)
+        assert isinstance(self._database_version, int), type(self._database_version)
 
     @property
     def database_version(self):
@@ -228,7 +226,7 @@ class Database(object):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         self._logger.debug("disabling commit [%s]", self._file_path)
         self._pending_commits = max(1, self._pending_commits)
@@ -242,7 +240,7 @@ class Database(object):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.execute on the wrong thread"
 
         self._pending_commits, pending_commits = 0, self._pending_commits
 
@@ -263,7 +261,7 @@ class Database(object):
             return False
 
     @attach_explain_query_plan
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def execute(self, statement, bindings=(), get_lastrowid=False):
         """
         Execute one SQL statement.
@@ -292,14 +290,14 @@ class Database(object):
             assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
             assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
             assert self._debug_thread_ident != 0, "please call database.open() first"
-            assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.execute on the wrong thread"
+            assert isinstance(statement, str), "The SQL statement must be given in unicode"
             assert isinstance(bindings, (tuple, list, dict, set)), "The bindings must be a tuple, list, dictionary, or set"
 
             # bindings may not be strings, text must be given as unicode strings while binary data,
             # i.e. blobs, must be given as a buffer(...)
             if isinstance(bindings, dict):
-                tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                tests = (not isinstance(binding, str) for binding in bindings.values())
             else:
                 tests = (not isinstance(binding, str) for binding in bindings)
             assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
@@ -310,19 +308,19 @@ class Database(object):
             result = self._cursor.lastrowid
         return result
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executescript(self, statements):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
-        assert isinstance(statements, unicode), "The SQL statement must be given in unicode"
+        assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert isinstance(statements, str), "The SQL statement must be given in unicode"
 
         self._logger.log(logging.NOTSET, "%s [%s]", statements, self._file_path)
         return self._cursor.executescript(statements)
 
     @attach_explain_query_plan
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1} [{0.file_path}]")
     def executemany(self, statement, sequenceofbindings):
         """
         Execute one SQL statement several times.
@@ -353,7 +351,7 @@ class Database(object):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.execute on the wrong thread"
+        assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.execute on the wrong thread"
         if __debug__:
             # we allow GeneratorType but must convert it to a list in __debug__ mode since a
             # generator can only iterate once
@@ -362,7 +360,7 @@ class Database(object):
             if is_iterator:
                 sequenceofbindings = list(sequenceofbindings)
 
-            assert isinstance(statement, unicode), "The SQL statement must be given in unicode"
+            assert isinstance(statement, str), "The SQL statement must be given in unicode"
             assert isinstance(sequenceofbindings, (tuple, list, set)), "The sequenceofbindings must be a tuple, list, or set"
             assert all(isinstance(x, (tuple, list, dict, set)) for x in sequenceofbindings), "The sequenceofbindings must be a list with tuples, lists, dictionaries, or sets"
 
@@ -370,7 +368,7 @@ class Database(object):
                 # bindings may not be strings, text must be given as unicode strings while binary data,
                 # i.e. blobs, must be given as a buffer(...)
                 if isinstance(bindings, dict):
-                    tests = (not isinstance(binding, str) for binding in bindings.itervalues())
+                    tests = (not isinstance(binding, str) for binding in bindings.values())
                 else:
                     tests = (not isinstance(binding, str) for binding in bindings)
                 assert all(tests), "Bindings may not be strings.  Provide unicode for TEXT and buffer(...) for BLOB\n%s" % (statement,)
@@ -381,12 +379,12 @@ class Database(object):
         self._logger.log(logging.NOTSET, "%s [%s]", statement, self._file_path)
         return self._cursor.executemany(statement, sequenceofbindings)
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} [{0.file_path}]")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} [{0.file_path}]")
     def commit(self, exiting=False):
         assert self._cursor is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._connection is not None, "Database.close() has been called or Database.open() has not been called"
         assert self._debug_thread_ident != 0, "please call database.open() first"
-        assert self._debug_thread_ident == thread.get_ident(), "Calling Database.commit on the wrong thread"
+        assert self._debug_thread_ident == _thread.get_ident(), "Calling Database.commit on the wrong thread"
         assert not (exiting and self._pending_commits), "No pending commits should be present when exiting"
 
         if self._pending_commits:

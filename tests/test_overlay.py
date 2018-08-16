@@ -78,7 +78,7 @@ class TestOverlay(DispersyTestFunc):
         assert isinstance(enable_fast_walker, bool)
         cid = cid_hex.decode("HEX")
 
-        dispersy = Dispersy(StandaloneEndpoint(0), u".", u":memory:")
+        dispersy = Dispersy(StandaloneEndpoint(0), ".", ":memory:")
         dispersy.start(autoload_discovery=True)
         dispersy.statistics.enable_debug_statistics(True)
         self.dispersy_objects.append(dispersy)
@@ -86,12 +86,12 @@ class TestOverlay(DispersyTestFunc):
         summary_logger.info(community.cid.encode("HEX"))
         history = []
         begin = time()
-        for _ in xrange(60 * 15):
+        for _ in range(60 * 15):
             yield deferLater(reactor, 1, lambda: None)
             now = time()
             info = Info()
             info.diff = now - begin
-            info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.itervalues()]
+            info.candidates = [(candidate, candidate.get_category(now)) for candidate in community._candidates.values()]
             info.verified_candidates = [(candidate, candidate.get_category(now)) for candidate in community.dispersy_yield_verified_candidates()]
             info.incoming_walks = dispersy.statistics.incoming_intro_count
             info.outgoing_intro_count = dispersy.statistics.outgoing_intro_count
@@ -103,12 +103,12 @@ class TestOverlay(DispersyTestFunc):
 
             summary_logger.info("after %.1f seconds there are %d verified candidates [e%d:w%d:s%d:i%d:d%d:n%d]",
                                 info.diff,
-                                len([_ for _, category in info.candidates if category in (u"walk", u"stumble")]),
+                                len([_ for _, category in info.candidates if category in ("walk", "stumble")]),
                                 len([_ for candidate,_ in info.candidates if candidate.is_eligible_for_walk(now)]),
-                                len([_ for _, category in info.candidates if category == u"walk"]),
-                                len([_ for _, category in info.candidates if category == u"stumble"]),
-                                len([_ for _, category in info.candidates if category == u"intro"]),
-                                len([_ for _, category in info.candidates if category == u"discovered"]),
+                                len([_ for _, category in info.candidates if category == "walk"]),
+                                len([_ for _, category in info.candidates if category == "stumble"]),
+                                len([_ for _, category in info.candidates if category == "intro"]),
+                                len([_ for _, category in info.candidates if category == "discovered"]),
                                 len([_ for _, category in info.candidates if category is None]))
 
         dispersy.statistics.update()
@@ -121,9 +121,9 @@ class TestOverlay(DispersyTestFunc):
                 handle.write("%f   %d   %d   %d   %d   %d   %d   %d   %d   %s   %s   \"%s\"\n" % (
                         info.diff,
                         len(info.verified_candidates),
-                        len([_ for _, category in info.candidates if category == u"walk"]),
-                        len([_ for _, category in info.candidates if category == u"stumble"]),
-                        len([_ for _, category in info.candidates if category == u"intro"]),
+                        len([_ for _, category in info.candidates if category == "walk"]),
+                        len([_ for _, category in info.candidates if category == "stumble"]),
+                        len([_ for _, category in info.candidates if category == "intro"]),
                         len([_ for _, category in info.candidates if category is None]),
                         info.incoming_walks,
                         info.outgoing_intro_count,
@@ -133,9 +133,9 @@ class TestOverlay(DispersyTestFunc):
                         info.connection_type))
 
         average_verified_candidates = 1.0 * sum(len(info.verified_candidates) for info in history) / len(history)
-        average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"walk"]) for info in history) / len(history)
-        average_stumble_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"stumble"]) for info in history) / len(history)
-        average_intro_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == u"intro"]) for info in history) / len(history)
+        average_walk_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == "walk"]) for info in history) / len(history)
+        average_stumble_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == "stumble"]) for info in history) / len(history)
+        average_intro_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category == "intro"]) for info in history) / len(history)
         average_none_candidates = 1.0 * sum(len([_ for _, category in info.candidates if category is None]) for info in history) / len(history)
 
         # write results for this run

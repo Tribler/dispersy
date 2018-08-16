@@ -26,7 +26,7 @@ class TestSignature(DispersyTestFunc):
         # give invalid message to OTHER
         other.give_packet(invalid_packet, node)
 
-        self.assertEqual(other.fetch_messages([u"bin-key-text", ]), [])
+        self.assertEqual(other.fetch_messages(["bin-key-text", ]), [])
 
     def test_invalid_signature(self):
         """
@@ -46,4 +46,4 @@ class TestSignature(DispersyTestFunc):
         # give invalid message to OTHER
         other.give_packet(invalid_packet, node)
 
-        self.assertEqual(other.fetch_messages([u"full-sync-text", ]), [])
+        self.assertEqual(other.fetch_messages(["full-sync-text", ]), [])

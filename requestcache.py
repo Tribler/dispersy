@@ -10,8 +10,8 @@ from .taskmanager import TaskManager
 class NumberCache(object):
 
     def __init__(self, request_cache, prefix, number):
-        assert isinstance(number, (int, long)), type(number)
-        assert isinstance(prefix, unicode), type(prefix)
+        assert isinstance(number, int), type(number)
+        assert isinstance(prefix, str), type(prefix)
 
         super(NumberCache, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -44,7 +44,7 @@ class NumberCache(object):
 class RandomNumberCache(NumberCache):
 
     def __init__(self, request_cache, prefix):
-        assert isinstance(prefix, unicode), type(prefix)
+        assert isinstance(prefix, str), type(prefix)
 
         # find an unclaimed identifier
         number = RandomNumberCache.find_unclaimed_identifier(request_cache, prefix)
@@ -52,7 +52,7 @@ class RandomNumberCache(NumberCache):
 
     @classmethod
     def find_unclaimed_identifier(cls, request_cache, prefix):
-        for _ in xrange(1000):
+        for _ in range(1000):
             number = int(random() * 2 ** 16)
             if not request_cache.has(prefix, number):
                 break
@@ -65,7 +65,7 @@ class RandomNumberCache(NumberCache):
 class SignatureRequestCache(RandomNumberCache):
 
     def __init__(self, request_cache, members, response_func, response_args, timeout):
-        super(SignatureRequestCache, self).__init__(request_cache, u"signature-request")
+        super(SignatureRequestCache, self).__init__(request_cache, "signature-request")
         self.request = None
         # MEMBERS is a list containing all the members that should add their signature.  currently
         # we only support double signed messages, hence MEMBERS contains only a single Member
@@ -92,7 +92,7 @@ class IntroductionRequestCache(RandomNumberCache):
         return 10.5
 
     def __init__(self, community, helper_candidate):
-        super(IntroductionRequestCache, self).__init__(community.request_cache, u"introduction-request")
+        super(IntroductionRequestCache, self).__init__(community.request_cache, "introduction-request")
         self.community = community
         self.helper_candidate = helper_candidate
         self.response_candidate = None
@@ -108,9 +108,9 @@ class IntroductionRequestCache(RandomNumberCache):
 
             self._logger.debug("walker timeout for %s", self.helper_candidate)
 
-            self.community.statistics.increase_msg_count(u"walk_failure", self.helper_candidate.sock_addr)
+            self.community.statistics.increase_msg_count("walk_failure", self.helper_candidate.sock_addr)
             self.community.dispersy.statistics.walk_failure_count += 1
-            self.community.dispersy.statistics.dict_inc(u"walk_failure_dict", self.helper_candidate.sock_addr)
+            self.community.dispersy.statistics.dict_inc("walk_failure_dict", self.helper_candidate.sock_addr)
 
             # set the walk repsonse to be invalid
             self.helper_candidate.walk_response(-1.0)
@@ -150,8 +150,8 @@ class RequestCache(TaskManager):
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
         assert isinstance(cache, NumberCache), type(cache)
-        assert isinstance(cache.number, (int, long)), type(cache.number)
-        assert isinstance(cache.prefix, unicode), type(cache.prefix)
+        assert isinstance(cache.number, int), type(cache.number)
+        assert isinstance(cache.prefix, str), type(cache.prefix)
         assert isinstance(cache.timeout_delay, float), type(cache.timeout_delay)
         assert cache.timeout_delay > 0.0, cache.timeout_delay
 
@@ -171,8 +171,8 @@ class RequestCache(TaskManager):
         Returns True when IDENTIFIER is part of this RequestCache.
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
-        assert isinstance(number, (int, long)), type(number)
-        assert isinstance(prefix, unicode), type(prefix)
+        assert isinstance(number, int), type(number)
+        assert isinstance(prefix, str), type(prefix)
         return self._create_identifier(number, prefix) in self._identifiers
 
     def get(self, prefix, number):
@@ -180,8 +180,8 @@ class RequestCache(TaskManager):
         Returns the Cache associated with IDENTIFIER when it exists, otherwise returns None.
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
-        assert isinstance(number, (int, long)), type(number)
-        assert isinstance(prefix, unicode), type(prefix)
+        assert isinstance(number, int), type(number)
+        assert isinstance(prefix, str), type(prefix)
         return self._identifiers.get(self._create_identifier(number, prefix))
 
     def pop(self, prefix, number):
@@ -190,8 +190,8 @@ class RequestCache(TaskManager):
         raises a KeyError exception.
         """
         assert isInIOThread(), "RequestCache must be used on the reactor's thread"
-        assert isinstance(number, (int, long)), type(number)
-        assert isinstance(prefix, unicode), type(prefix)
+        assert isinstance(number, int), type(number)
+        assert isinstance(prefix, str), type(prefix)
 
         identifier = self._create_identifier(number, prefix)
         cache = self._identifiers.pop(identifier)
@@ -220,7 +220,7 @@ class RequestCache(TaskManager):
         self.cancel_pending_task(cache)
 
     def _create_identifier(self, number, prefix):
-        return u"%s:%d" % (prefix, number)
+        return "%s:%d" % (prefix, number)
 
     def clear(self):
         """

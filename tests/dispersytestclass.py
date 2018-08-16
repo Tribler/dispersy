@@ -120,8 +120,8 @@ class DispersyTestFunc(TestCase):
         for _ in range(amount):
             # TODO(emilon): do the log observer stuff instead
             # callback.attach_exception_handler(self.on_callback_exception)
-            memory_database_argument = {'database_filename': u":memory:"} if memory_database else {}
-            working_directory = unicode(mkdtemp(suffix="_dispersy_test_session"))
+            memory_database_argument = {'database_filename': ":memory:"} if memory_database else {}
+            working_directory = str(mkdtemp(suffix="_dispersy_test_session"))
 
             dispersy = Dispersy(ManualEnpoint(0), working_directory, **memory_database_argument)
             dispersy.start(autoload_discovery=autoload_discovery)

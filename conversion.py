@@ -18,15 +18,13 @@ from .resolution import Resolution, PublicResolution, LinearResolution, DynamicR
 from .util import attach_runtime_statistics
 
 
-class Conversion(object):
+class Conversion(object, metaclass=ABCMeta):
 
     """
     A Conversion object is used to convert incoming packets to a different, possibly more recent,
     community version.  If also allows outgoing messages to be converted to a different, possibly
     older, community version.
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self, community, dispersy_version, community_version):
         """
@@ -97,7 +95,7 @@ class Conversion(object):
         assert self.can_decode_message(data)
 
     @abstractmethod
-    def decode_message(self, address, data, verify=True, source=u"unknown"):
+    def decode_message(self, address, data, verify=True, source="unknown"):
         """
         DATA is a string, where the first byte is the on-the-wire Dispersy version, the second byte
         is the on-the-wire Community version and the following 20 bytes is the Community Identifier.
@@ -204,17 +202,17 @@ class NoDefBinaryConversion(Conversion):
         # flags that must be set correctly
         # reserve 1st bit for enable/disable advice
         self._encode_advice_map = {True: int("1", 2), False: int("0", 2)}
-        self._decode_advice_map = dict((value, key) for key, value in self._encode_advice_map.iteritems())
+        self._decode_advice_map = dict((value, key) for key, value in self._encode_advice_map.items())
         # reserve 2nd bit for enable/disable sync
         self._encode_sync_map = {True: int("10", 2), False: int("00", 2)}
-        self._decode_sync_map = dict((value, key) for key, value in self._encode_sync_map.iteritems())
+        self._decode_sync_map = dict((value, key) for key, value in self._encode_sync_map.items())
         # reserve 3rd bit for enable/disable tunnel (02/05/12)
         self._encode_tunnel_map = {True: int("100", 2), False: int("000", 2)}
-        self._decode_tunnel_map = dict((value, key) for key, value in self._encode_tunnel_map.iteritems())
+        self._decode_tunnel_map = dict((value, key) for key, value in self._encode_tunnel_map.items())
         # 4th, 5th and 6th bits are currently unused
         # reserve 7th and 8th bits for connection type
-        self._encode_connection_type_map = {u"unknown": int("00000000", 2), u"public": int("10000000", 2), u"symmetric-NAT": int("11000000", 2)}
-        self._decode_connection_type_map = dict((value, key) for key, value in self._encode_connection_type_map.iteritems())
+        self._encode_connection_type_map = {"unknown": int("00000000", 2), "public": int("10000000", 2), "symmetric-NAT": int("11000000", 2)}
+        self._decode_connection_type_map = dict((value, key) for key, value in self._encode_connection_type_map.items())
 
     def define_meta_message(self, byte, meta, encode_payload_func, decode_payload_func):
         assert isinstance(byte, str)
@@ -409,9 +407,9 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Insufficient packet size")
 
         if data[offset] == "s":
-            degree = u"soft-kill"
+            degree = "soft-kill"
         else:
-            degree = u"hard-kill"
+            degree = "hard-kill"
         offset += 1
 
         return offset, placeholder.meta.payload.Implementation(placeholder.meta.payload, degree)
@@ -431,7 +429,7 @@ class NoDefBinaryConversion(Conversion):
            ]
         ]
         """
-        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
+        permission_map = {"permit": int("0001", 2), "authorize": int("0010", 2), "revoke": int("0100", 2), "undo": int("1000", 2)}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
             public_key = member.public_key
@@ -452,15 +450,15 @@ class NoDefBinaryConversion(Conversion):
             members[public_key][message_id] |= permission_bit
 
         data = []
-        for public_key, messages in members.iteritems():
+        for public_key, messages in members.items():
             data.extend((self._struct_H.pack(len(public_key)), public_key, self._struct_B.pack(len(messages))))
-            for message_id, permission_bits in messages.iteritems():
+            for message_id, permission_bits in messages.items():
                 data.extend((message_id, self._struct_B.pack(permission_bits)))
 
         return tuple(data)
 
     def _decode_authorize(self, placeholder, offset, data):
-        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
+        permission_map = {"permit": int("0001", 2), "authorize": int("0010", 2), "revoke": int("0100", 2), "undo": int("1000", 2)}
         permission_triplets = []
 
         while offset < len(data):
@@ -486,7 +484,7 @@ class NoDefBinaryConversion(Conversion):
             if len(data) < offset + messages_length * 2:
                 raise DropPacket("Insufficient packet size")
 
-            for _ in xrange(messages_length):
+            for _ in range(messages_length):
                 message_id = data[offset]
                 offset += 1
                 decode_functions = self._decode_message_map.get(message_id)
@@ -503,9 +501,9 @@ class NoDefBinaryConversion(Conversion):
                 permission_bits, = self._struct_B.unpack_from(data, offset)
                 offset += 1
 
-                for permission, permission_bit in permission_map.iteritems():
+                for permission, permission_bit in permission_map.items():
                     if permission_bit & permission_bits:
-                        if permission == u"undo" and not message.undo_callback:
+                        if permission == "undo" and not message.undo_callback:
                             raise DropPacket("Undo permission without a undo callback")
 
                         permission_triplets.append((member, message, permission))
@@ -527,7 +525,7 @@ class NoDefBinaryConversion(Conversion):
            ]
         ]
         """
-        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
+        permission_map = {"permit": int("0001", 2), "authorize": int("0010", 2), "revoke": int("0100", 2), "undo": int("1000", 2)}
         members = {}
         for member, message, permission in message.payload.permission_triplets:
             public_key = member.public_key
@@ -548,15 +546,15 @@ class NoDefBinaryConversion(Conversion):
             members[public_key][message_id] |= permission_bit
 
         data = []
-        for public_key, messages in members.iteritems():
+        for public_key, messages in members.items():
             data.extend((self._struct_H.pack(len(public_key)), public_key, self._struct_B.pack(len(messages))))
-            for message_id, permission_bits in messages.iteritems():
+            for message_id, permission_bits in messages.items():
                 data.extend((message_id, self._struct_B.pack(permission_bits)))
 
         return tuple(data)
 
     def _decode_revoke(self, placeholder, offset, data):
-        permission_map = {u"permit": int("0001", 2), u"authorize": int("0010", 2), u"revoke": int("0100", 2), u"undo": int("1000", 2)}
+        permission_map = {"permit": int("0001", 2), "authorize": int("0010", 2), "revoke": int("0100", 2), "undo": int("1000", 2)}
         permission_triplets = []
 
         while offset < len(data):
@@ -582,7 +580,7 @@ class NoDefBinaryConversion(Conversion):
             if len(data) < offset + messages_length * 2:
                 raise DropPacket("Insufficient packet size")
 
-            for _ in xrange(messages_length):
+            for _ in range(messages_length):
                 message_id = data[offset]
                 offset += 1
                 decode_functions = self._decode_message_map.get(message_id)
@@ -599,7 +597,7 @@ class NoDefBinaryConversion(Conversion):
                 permission_bits, = self._struct_B.unpack_from(data, offset)
                 offset += 1
 
-                for permission, permission_bit in permission_map.iteritems():
+                for permission, permission_bit in permission_map.items():
                     if permission_bit & permission_bits:
                         permission_triplets.append((member, message, permission))
 
@@ -987,7 +985,7 @@ class NoDefBinaryConversion(Conversion):
         assert isinstance(message, (Message, Message.Implementation)), type(message)
         return message.name in self._encode_message_map
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {1.name}")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {1.name}")
     def encode_message(self, message, sign=True):
         assert isinstance(message, Message.Implementation), message
         assert message.name in self._encode_message_map, message.name
@@ -1205,7 +1203,7 @@ class NoDefBinaryConversion(Conversion):
 
         return self._decode_message_map[data[22]].meta
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}.{function_name} {return_value}")
+    @attach_runtime_statistics("{0.__class__.__name__}.{function_name} {return_value}")
     def decode_message(self, candidate, data, verify=True, allow_empty_signature=False, source="unknown"):
         """
         Decode a binary string into a Message structure, with some
@@ -1255,7 +1253,7 @@ class NoDefBinaryConversion(Conversion):
             raise DropPacket("Invalid packet size (there are unconverted bytes %d-%d)" % (placeholder.offset, placeholder.first_signature_offset))
 
         assert isinstance(placeholder.payload, Payload.Implementation), type(placeholder.payload)
-        assert isinstance(placeholder.offset, (int, long))
+        assert isinstance(placeholder.offset, int)
 
         # verify payload
         if placeholder.verify and not placeholder.authentication.has_valid_signature_for(placeholder, payload):
@@ -1264,7 +1262,7 @@ class NoDefBinaryConversion(Conversion):
         return placeholder.meta.Implementation(placeholder.meta, placeholder.authentication, placeholder.resolution, placeholder.distribution, placeholder.destination, placeholder.payload, conversion=self, candidate=candidate, source=source, packet=placeholder.data)
 
     def __str__(self):
-        return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(self._encode_message_map.iterkeys()))
+        return "<%s %s%s [%s]>" % (self.__class__.__name__, self.dispersy_version.encode("HEX"), self.community_version.encode("HEX"), ", ".join(iter(self._encode_message_map.keys())))
 
 
 class BinaryConversion(NoDefBinaryConversion):
@@ -1289,25 +1287,25 @@ class BinaryConversion(NoDefBinaryConversion):
             debug_non_available = []
 
         # 255 is reserved
-        define(254, u"dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
-        define(253, u"dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
-        define(252, u"dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
-        define(251, u"dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
-        define(250, u"dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
-        define(249, u"dispersy-puncture", self._encode_puncture, self._decode_puncture)
-        define(248, u"dispersy-identity", self._encode_identity, self._decode_identity)
-        define(247, u"dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
-        define(246, u"dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
-        define(245, u"dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
-        define(244, u"dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
-        define(243, u"dispersy-authorize", self._encode_authorize, self._decode_authorize)
-        define(242, u"dispersy-revoke", self._encode_revoke, self._decode_revoke)
+        define(254, "dispersy-missing-sequence", self._encode_missing_sequence, self._decode_missing_sequence)
+        define(253, "dispersy-missing-proof", self._encode_missing_proof, self._decode_missing_proof)
+        define(252, "dispersy-signature-request", self._encode_signature_request, self._decode_signature_request)
+        define(251, "dispersy-signature-response", self._encode_signature_response, self._decode_signature_response)
+        define(250, "dispersy-puncture-request", self._encode_puncture_request, self._decode_puncture_request)
+        define(249, "dispersy-puncture", self._encode_puncture, self._decode_puncture)
+        define(248, "dispersy-identity", self._encode_identity, self._decode_identity)
+        define(247, "dispersy-missing-identity", self._encode_missing_identity, self._decode_missing_identity)
+        define(246, "dispersy-introduction-request", self._encode_introduction_request, self._decode_introduction_request)
+        define(245, "dispersy-introduction-response", self._encode_introduction_response, self._decode_introduction_response)
+        define(244, "dispersy-destroy-community", self._encode_destroy_community, self._decode_destroy_community)
+        define(243, "dispersy-authorize", self._encode_authorize, self._decode_authorize)
+        define(242, "dispersy-revoke", self._encode_revoke, self._decode_revoke)
         # 241 for obsolete dispersy-subjective-set
         # 240 for obsolete dispersy-missing-subjective-set
-        define(239, u"dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
-        define(238, u"dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
-        define(237, u"dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
-        define(236, u"dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
+        define(239, "dispersy-missing-message", self._encode_missing_message, self._decode_missing_message)
+        define(238, "dispersy-undo-own", self._encode_undo_own, self._decode_undo_own)
+        define(237, "dispersy-undo-other", self._encode_undo_other, self._decode_undo_other)
+        define(236, "dispersy-dynamic-settings", self._encode_dynamic_settings, self._decode_dynamic_settings)
         # 235 for obsolete dispersy-missing-last-message
 
         if __debug__:

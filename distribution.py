@@ -23,9 +23,7 @@ from .util import attach_runtime_statistics
 
 class Pruning(MetaObject):
 
-    class Implementation(MetaObject.Implementation):
-
-        __metaclass__ = ABCMeta
+    class Implementation(MetaObject.Implementation, metaclass=ABCMeta):
 
         def __init__(self, meta, distribution):
             assert isinstance(distribution, SyncDistribution.Implementation), type(distribution)
@@ -123,7 +121,7 @@ class Distribution(MetaObject):
 
         def __init__(self, meta, global_time):
             assert isinstance(meta, Distribution)
-            assert isinstance(global_time, (int, long))
+            assert isinstance(global_time, int)
             assert global_time > 0
             super(Distribution.Implementation, self).__init__(meta)
             # the last known global time + 1 (from the user who signed the
@@ -197,8 +195,8 @@ class SyncDistribution(Distribution):
         # value.
         # note: the priority has precedence over the global_time based ordering.
         # note: the default priority should be 127, use higher or lowe values when needed.
-        assert isinstance(synchronization_direction, unicode)
-        assert synchronization_direction in (u"ASC", u"DESC", u"RANDOM")
+        assert isinstance(synchronization_direction, str)
+        assert synchronization_direction in ("ASC", "DESC", "RANDOM")
         assert isinstance(priority, int)
         assert 0 <= priority <= 255
         assert isinstance(pruning, Pruning), type(pruning)
@@ -218,7 +216,7 @@ class SyncDistribution(Distribution):
 
     @property
     def synchronization_direction_value(self):
-        return {u"ASC":1, u"DESC":-1, u"RANDOM":0}[self._synchronization_direction]
+        return {"ASC":1, "DESC":-1, "RANDOM":0}[self._synchronization_direction]
 
     @property
     def priority(self):
@@ -288,8 +286,8 @@ class SyncDistribution(Distribution):
         community = message.community
         # fetch the duplicate binary packet from the database
         try:
-            have_packet, undone = dispersy._database.execute(u"SELECT packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                                        (community.database_id, message.authentication.member.database_id, message.distribution.global_time)).next()
+            have_packet, undone = next(dispersy._database.execute("SELECT packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                                        (community.database_id, message.authentication.member.database_id, message.distribution.global_time)))
         except StopIteration:
             dispersy._logger.debug("this message is not a duplicate")
             return False
@@ -307,7 +305,7 @@ class SyncDistribution(Distribution):
 
                 if undone:
                     try:
-                        proof, = dispersy._database.execute(u"SELECT packet FROM sync WHERE id = ?", (undone,)).next()
+                        proof, = next(dispersy._database.execute("SELECT packet FROM sync WHERE id = ?", (undone,)))
                     except StopIteration:
                         pass
                     else:
@@ -326,7 +324,7 @@ class SyncDistribution(Distribution):
 
                     if have_packet < message.packet:
                         # replace our current message with the other one
-                        dispersy._database.execute(u"UPDATE sync SET packet = ? WHERE community = ? AND member = ? AND global_time = ?",
+                        dispersy._database.execute("UPDATE sync SET packet = ? WHERE community = ? AND member = ? AND global_time = ?",
                                                (buffer(message.packet), community.database_id, message.authentication.member.database_id, message.distribution.global_time))
 
                         # notify that global times have changed
@@ -358,7 +356,7 @@ class FullSyncDistribution(SyncDistribution):
     class Implementation(SyncDistribution.Implementation):
 
         def __init__(self, meta, global_time, sequence_number=0):
-            assert isinstance(sequence_number, (int, long))
+            assert isinstance(sequence_number, int)
             assert (meta._enable_sequence_number and sequence_number > 0) or (not meta._enable_sequence_number and sequence_number == 0), (meta._enable_sequence_number, sequence_number)
             super(FullSyncDistribution.Implementation, self).__init__(meta, global_time)
             self._sequence_number = sequence_number
@@ -385,7 +383,7 @@ class FullSyncDistribution(SyncDistribution):
         self._current_sequence_number += 1
         return self._current_sequence_number
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution full_sync")
+    @attach_runtime_statistics("{0.__class__.__name__}._check_distribution full_sync")
     def check_batch(self, dispersy, messages):
         """
         Ensure that we do not yet have the messages and that, if sequence numbers are enabled, we
@@ -428,9 +426,9 @@ class FullSyncDistribution(SyncDistribution):
             highest = {}
             for message in messages:
                 if not message.authentication.member.database_id in highest:
-                    last_global_time, last_seq, count = execute(
-                        u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
-                        (message.authentication.member.database_id, message.database_id)).next()
+                    last_global_time, last_seq, count = next(execute(
+                        "SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                        (message.authentication.member.database_id, message.database_id)))
                     highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
                     assert last_seq or 0 == count, [last_seq, count, message.name]
 
@@ -457,10 +455,10 @@ class FullSyncDistribution(SyncDistribution):
                     # we already have this message (drop)
 
                     # fetch the corresponding packet from the database (it should be binary identical)
-                    global_time, packet = execute(
-                        u"SELECT global_time, packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time, packet LIMIT 1 OFFSET ?",
+                    global_time, packet = next(execute(
+                        "SELECT global_time, packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time, packet LIMIT 1 OFFSET ?",
                         (message.authentication.member.database_id, message.database_id,
-                         message.distribution.sequence_number - 1)).next()
+                         message.distribution.sequence_number - 1)))
                     packet = str(packet)
                     if message.packet == packet:
                         yield DropMessage(message, "duplicate message by binary packet")
@@ -479,13 +477,13 @@ class FullSyncDistribution(SyncDistribution):
 
                         else:
                             # TODO we should undo the messages that we are about to remove (when applicable)
-                            execute(u"DELETE FROM sync WHERE member = ? AND meta_message = ? AND global_time >= ?",
+                            execute("DELETE FROM sync WHERE member = ? AND meta_message = ? AND global_time >= ?",
                                     (message.authentication.member.database_id, message.database_id, global_time))
 
                             # by deleting messages we changed SEQ and the HIGHEST cache
-                            last_global_time, last_seq, count = execute(
-                                u"SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
-                                (message.authentication.member.database_id, message.database_id)).next()
+                            last_global_time, last_seq, count = next(execute(
+                                "SELECT MAX(global_time), MAX(sequence), COUNT(*) FROM sync WHERE member = ? AND meta_message = ?",
+                                (message.authentication.member.database_id, message.database_id)))
                             highest[message.authentication.member.database_id] = (last_global_time or 0, last_seq or 0)
                             assert last_seq or 0 == count, [last_seq, count, message.name]
                             # we can allow MESSAGE to be processed
@@ -551,7 +549,7 @@ class LastSyncDistribution(SyncDistribution):
     def __init__(self, synchronization_direction, priority, history_size, pruning=NoPruning(), custom_callback=None):
         assert isinstance(history_size, int)
         assert history_size > 0
-        assert not custom_callback or isinstance(custom_callback, tuple), u"callback should tuple of two methods (0) check (1) delete."
+        assert not custom_callback or isinstance(custom_callback, tuple), "callback should tuple of two methods (0) check (1) delete."
         super(LastSyncDistribution, self).__init__(synchronization_direction, priority, pruning)
         self._history_size = history_size
         self._custom_callback = custom_callback
@@ -564,7 +562,7 @@ class LastSyncDistribution(SyncDistribution):
     def custom_callback(self, ):
         return self._custom_callback
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution last_sync")
+    @attach_runtime_statistics("{0.__class__.__name__}._check_distribution last_sync")
     def check_batch(self, dispersy, messages):
         """
         Check that the messages do not violate any database consistency rules.
@@ -624,7 +622,7 @@ class LastSyncDistribution(SyncDistribution):
                 if not message.authentication.member.database_id in times:
                     times[message.authentication.member.database_id] = [global_time for global_time, in
                                                                         dispersy._database.execute(
-                                                                            u"SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
+                                                                            "SELECT global_time FROM sync WHERE community = ? AND member = ? AND meta_message = ?",
                                                                             (message.community.database_id,
                                                                              message.authentication.member.database_id,
                                                                              message.database_id))]
@@ -643,9 +641,9 @@ class LastSyncDistribution(SyncDistribution):
                     # apparently the sender does not have this message yet
                     if message.distribution.history_size == 1:
                         try:
-                            packet, = dispersy._database.execute(
-                                u"SELECT packet FROM sync WHERE community = ? AND member = ? ORDER BY global_time DESC LIMIT 1",
-                                (message.community.database_id, message.authentication.member.database_id)).next()
+                            packet, = next(dispersy._database.execute(
+                                "SELECT packet FROM sync WHERE community = ? AND member = ? ORDER BY global_time DESC LIMIT 1",
+                                (message.community.database_id, message.authentication.member.database_id)))
                         except StopIteration:
                             # TODO can still fail when packet is in one of the received messages
                             # from this batch.
@@ -704,7 +702,7 @@ class LastSyncDistribution(SyncDistribution):
                         # into account.
                         times[members] = dict((global_time, (packet_id, str(packet)))
                                               for global_time, packet_id, packet
-                                              in dispersy._database.execute(u"""
+                                              in dispersy._database.execute("""
     SELECT sync.global_time, sync.id, sync.packet
     FROM sync
     JOIN double_signed_sync ON double_signed_sync.sync = sync.id
@@ -744,7 +742,7 @@ class LastSyncDistribution(SyncDistribution):
 
                                 if have_packet < message.packet:
                                     # replace our current message with the other one
-                                    dispersy._database.execute(u"UPDATE sync SET member = ?, packet = ? WHERE id = ?",
+                                    dispersy._database.execute("UPDATE sync SET member = ?, packet = ? WHERE id = ?",
                                                            (message.authentication.member.database_id,
                                                             buffer(message.packet), packet_id))
 
@@ -766,7 +764,7 @@ class LastSyncDistribution(SyncDistribution):
                         # if the history_size is one, we can sent that on message back because
                         # apparently the sender does not have this message yet
                         if message.distribution.history_size == 1:
-                            packet_id, have_packet = tim.values()[0]
+                            packet_id, have_packet = list(tim.values())[0]
                             dispersy._send_packets([message.candidate], [have_packet],
                                                message.community, "-caused by check_last_sync:check_double_member-")
 
@@ -838,7 +836,7 @@ class DirectDistribution(Distribution):
     class Implementation(Distribution.Implementation):
         pass
 
-    @attach_runtime_statistics(u"{0.__class__.__name__}._check_distribution direct")
+    @attach_runtime_statistics("{0.__class__.__name__}._check_distribution direct")
     def check_batch(self, dispersy, messages):
         """
         Returns the messages in the correct processing order.

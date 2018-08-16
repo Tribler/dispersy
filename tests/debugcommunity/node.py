@@ -30,7 +30,7 @@ class DebugNode(object):
        node.init_my_member()
     """
 
-    def __init__(self, testclass, dispersy, communityclass=DebugCommunity, c_master_member=None, curve=u"low"):
+    def __init__(self, testclass, dispersy, communityclass=DebugCommunity, c_master_member=None, curve="low"):
         super(DebugNode, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
 
@@ -47,7 +47,7 @@ class DebugNode(object):
 
         self._central_node = c_master_member
         self._tunnel = False
-        self._connection_type = u"unknown"
+        self._connection_type = "unknown"
 
     @property
     def community(self):
@@ -122,15 +122,15 @@ class DebugNode(object):
             self.send_identity(self._central_node)
 
             # download mm identity, mm authorizing central_node._my_member
-            packets = self._central_node.fetch_packets([u"dispersy-identity", u"dispersy-authorize"], self._community.master_member.mid)
+            packets = self._central_node.fetch_packets(["dispersy-identity", "dispersy-authorize"], self._community.master_member.mid)
             self.give_packets(packets, self._central_node)
 
             # add this node to candidate list of mm
-            message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, u"unknown", None, 1, 1)
+            message = self.create_introduction_request(self._central_node.my_candidate, self.lan_address, self.wan_address, False, "unknown", None, 1, 1)
             yield self._central_node.give_message(message, self)
 
             # remove introduction responses from socket
-            messages = yield self.receive_messages(names=[u'dispersy-introduction-response'])
+            messages = yield self.receive_messages(names=['dispersy-introduction-response'])
 
             assert len(messages), "No introduction messages received!"
 
@@ -264,7 +264,7 @@ class DebugNode(object):
         Will raise a socket exception when no matching packets are available.
         """
         assert names is None or isinstance(names, list), type(names)
-        assert names is None or all(isinstance(name, unicode) for name in names), [type(name) for name in names]
+        assert names is None or all(isinstance(name, str) for name in names), [type(name) for name in names]
 
         for candidate, packet in self.receive_packet(addresses, timeout):
             try:
@@ -282,9 +282,9 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     @inlineCallbacks
-    def receive_messages(self, addresses=None, names=None, return_after=sys.maxint, timeout=0.5):
+    def receive_messages(self, addresses=None, names=None, return_after=sys.maxsize, timeout=0.5):
         messages = []
-        for _ in xrange(5):
+        for _ in range(5):
             for message_tuple in self.receive_message(addresses, names, timeout):
                 messages.append(message_tuple)
                 if len(messages) == return_after:
@@ -304,10 +304,10 @@ class DebugNode(object):
     @blocking_call_on_reactor_thread
     def fetch_packets(self, message_names, mid=None):
         if mid:
-            return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync, member WHERE sync.member = member.id "
-                                                                                    u"AND mid = ? AND meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+            return [str(packet) for packet, in list(self._dispersy.database.execute("SELECT packet FROM sync, member WHERE sync.member = member.id "
+                                                                                    "AND mid = ? AND meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [buffer(mid), ] + [self._community.get_meta_message(name).database_id for name in message_names]))]
-        return [str(packet) for packet, in list(self._dispersy.database.execute(u"SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
+        return [str(packet) for packet, in list(self._dispersy.database.execute("SELECT packet FROM sync WHERE meta_message IN (" + ", ".join("?" * len(message_names)) + ") ORDER BY global_time, packet",
                                                                                 [self._community.get_meta_message(name).database_id for name in message_names]))]
 
     @blocking_call_on_reactor_thread
@@ -320,7 +320,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def count_messages(self, message):
-        packets_stored, = self._dispersy.database.execute(u"SELECT count(*) FROM sync, member, meta_message WHERE sync.member = member.id AND sync.meta_message = meta_message.id AND sync.community = ? AND mid = ? AND name = ?", (self._community.database_id, buffer(message.authentication.member.mid), message.name)).next()
+        packets_stored, = next(self._dispersy.database.execute("SELECT count(*) FROM sync, member, meta_message WHERE sync.member = member.id AND sync.meta_message = meta_message.id AND sync.community = ? AND mid = ? AND name = ?", (self._community.database_id, buffer(message.authentication.member.mid), message.name)))
         return packets_stored
 
     @blocking_call_on_reactor_thread
@@ -330,8 +330,8 @@ class DebugNode(object):
 
         for message in messages:
             try:
-                undone, packet = self._dispersy.database.execute(u"SELECT undone, packet FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
-                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)).next()
+                undone, packet = next(self._dispersy.database.execute("SELECT undone, packet FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
+                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)))
                 self._testclass.assertEqual(undone, 0, "Message is undone")
                 self._testclass.assertEqual(str(packet), message.packet)
 
@@ -345,8 +345,8 @@ class DebugNode(object):
 
         for message in messages:
             try:
-                packet, = self._dispersy.database.execute(u"SELECT packet FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
-                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)).next()
+                packet, = next(self._dispersy.database.execute("SELECT packet FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
+                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)))
 
                 self._testclass.assertNotEqual(str(packet), message.packet)
             except StopIteration:
@@ -361,13 +361,13 @@ class DebugNode(object):
 
         for message in messages:
             try:
-                undone, = self._dispersy.database.execute(u"SELECT undone FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
-                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)).next()
+                undone, = next(self._dispersy.database.execute("SELECT undone FROM sync, member WHERE sync.member = member.id AND community = ? AND mid = ? AND global_time = ?",
+                                                         (self._community.database_id, buffer(message.authentication.member.mid), message.distribution.global_time)))
                 self._testclass.assertGreater(undone, 0, "Message is not undone")
                 if undone_by:
-                    undone, = self._dispersy.database.execute(
-                        u"SELECT packet FROM sync WHERE id = ? ",
-                        (undone,)).next()
+                    undone, = next(self._dispersy.database.execute(
+                        "SELECT packet FROM sync WHERE id = ? ",
+                        (undone,)))
                     self._testclass.assertEqual(str(undone), undone_by.packet)
 
             except StopIteration:
@@ -378,10 +378,10 @@ class DebugNode(object):
         self._testclass.assertEqual(self.count_messages(message), count)
 
     def send_identity(self, other):
-        packets = self.fetch_packets([u"dispersy-identity", ], self.my_member.mid)
+        packets = self.fetch_packets(["dispersy-identity", ], self.my_member.mid)
         other.give_packets(packets, self)
 
-        packets = other.fetch_packets([u"dispersy-identity", ], other.my_member.mid)
+        packets = other.fetch_packets(["dispersy-identity", ], other.my_member.mid)
         self.give_packets(packets, other)
 
     @blocking_call_on_reactor_thread
@@ -412,7 +412,7 @@ class DebugNode(object):
         """
         Returns a new dispersy-authorize message.
         """
-        meta = self._community.get_meta_message(u"dispersy-authorize")
+        meta = self._community.get_meta_message("dispersy-authorize")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -425,7 +425,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def create_revoke(self, permission_triplets, global_time=None, sequence_number=None):
-        meta = self._community.get_meta_message(u"dispersy-revoke")
+        meta = self._community.get_meta_message("dispersy-revoke")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -438,7 +438,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def create_dynamic_settings(self, policies, global_time=None, sequence_number=None):
-        meta = self._community.get_meta_message(u"dispersy-dynamic-settings")
+        meta = self._community.get_meta_message("dispersy-dynamic-settings")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -452,7 +452,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def create_destroy_community(self, degree, global_time=None):
-        meta = self._community.get_meta_message(u"dispersy-destroy-community")
+        meta = self._community.get_meta_message("dispersy-destroy-community")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -466,7 +466,7 @@ class DebugNode(object):
         """
         Returns a new dispersy-identity message.
         """
-        meta = self._community.get_meta_message(u"dispersy-identity")
+        meta = self._community.get_meta_message("dispersy-identity")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -479,7 +479,7 @@ class DebugNode(object):
         Returns a new dispersy-undo-own message.
         """
         assert message.authentication.member == self._my_member, "use create_dispersy_undo_other"
-        meta = self._community.get_meta_message(u"dispersy-undo-own")
+        meta = self._community.get_meta_message("dispersy-undo-own")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -495,7 +495,7 @@ class DebugNode(object):
         """
         Returns a new dispersy-undo-other message.
         """
-        meta = self._community.get_meta_message(u"dispersy-undo-other")
+        meta = self._community.get_meta_message("dispersy-undo-other")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -512,7 +512,7 @@ class DebugNode(object):
         Returns a new dispersy-missing-identity message.
         """
         assert isinstance(dummy_member, Member), type(dummy_member)
-        meta = self._community.get_meta_message(u"dispersy-missing-identity")
+        meta = self._community.get_meta_message("dispersy-missing-identity")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -527,9 +527,9 @@ class DebugNode(object):
         """
         assert isinstance(missing_member, Member)
         assert isinstance(missing_message, Message)
-        assert isinstance(missing_sequence_low, (int, long))
-        assert isinstance(missing_sequence_high, (int, long))
-        meta = self._community.get_meta_message(u"dispersy-missing-sequence")
+        assert isinstance(missing_sequence_low, int)
+        assert isinstance(missing_sequence_high, int)
+        meta = self._community.get_meta_message("dispersy-missing-sequence")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -543,7 +543,7 @@ class DebugNode(object):
         Returns a new dispersy-signature-request message.
         """
         assert isinstance(message, Message.Implementation)
-        meta = self._community.get_meta_message(u"dispersy-signature-request")
+        meta = self._community.get_meta_message("dispersy-signature-request")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -555,10 +555,10 @@ class DebugNode(object):
         """
         Returns a new dispersy-missing-response message.
         """
-        isinstance(identifier, (int, long))
+        isinstance(identifier, int)
         isinstance(message, Message.Implementation)
 
-        meta = self._community.get_meta_message(u"dispersy-signature-response")
+        meta = self._community.get_meta_message("dispersy-signature-response")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -573,7 +573,7 @@ class DebugNode(object):
         """
         assert isinstance(missing_member, Member)
         assert isinstance(missing_global_times, list)
-        meta = self._community.get_meta_message(u"dispersy-missing-message")
+        meta = self._community.get_meta_message("dispersy-missing-message")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -587,7 +587,7 @@ class DebugNode(object):
         Returns a new dispersy-missing-proof message.
         """
         assert isinstance(member, Member)
-        meta = self._community.get_meta_message(u"dispersy-missing-proof")
+        meta = self._community.get_meta_message("dispersy-missing-proof")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -603,13 +603,13 @@ class DebugNode(object):
         assert isinstance(source_lan, tuple), type(source_lan)
         assert isinstance(source_wan, tuple), type(source_wan)
         assert isinstance(advice, bool), type(advice)
-        assert isinstance(connection_type, unicode), type(connection_type)
+        assert isinstance(connection_type, str), type(connection_type)
         if sync:
             assert isinstance(sync, tuple)
             assert len(sync) == 5
             time_low, time_high, modulo, offset, bloom_packets = sync
-            assert isinstance(time_low, (int, long))
-            assert isinstance(time_high, (int, long))
+            assert isinstance(time_low, int)
+            assert isinstance(time_high, int)
             assert isinstance(modulo, int)
             assert isinstance(offset, int)
             assert isinstance(bloom_packets, list)
@@ -620,7 +620,7 @@ class DebugNode(object):
             sync = (time_low, time_high, modulo, offset, bloom_filter)
         assert isinstance(identifier, int), type(identifier)
 
-        meta = self._community.get_meta_message(u"dispersy-introduction-request")
+        meta = self._community.get_meta_message("dispersy-introduction-request")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -639,11 +639,11 @@ class DebugNode(object):
         assert isinstance(source_wan, tuple), type(source_wan)
         assert isinstance(introduction_lan, tuple), type(introduction_lan)
         assert isinstance(introduction_wan, tuple), type(introduction_wan)
-        assert isinstance(connection_type, unicode), type(connection_type)
+        assert isinstance(connection_type, str), type(connection_type)
         assert isinstance(tunnel, bool), type(tunnel)
         assert isinstance(identifier, int), type(identifier)
 
-        meta = self._community.get_meta_message(u"dispersy-introduction-response")
+        meta = self._community.get_meta_message("dispersy-introduction-response")
 
         if global_time == None:
             global_time = self.claim_global_time()
@@ -655,7 +655,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def _create_text(self, message_name, text, global_time=None, resolution=(), destination=()):
-        assert isinstance(message_name, unicode), type(message_name)
+        assert isinstance(message_name, str), type(message_name)
         assert isinstance(text, str), type(text)
         assert isinstance(resolution, tuple), type(resolution)
         assert isinstance(destination, tuple), destination
@@ -673,7 +673,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def _create_sequence_text(self, message_name, text, global_time=None, sequence_number=None):
-        assert isinstance(message_name, unicode)
+        assert isinstance(message_name, str)
         assert isinstance(text, str)
 
         meta = self._community.get_meta_message(message_name)
@@ -689,7 +689,7 @@ class DebugNode(object):
 
     @blocking_call_on_reactor_thread
     def _create_doublemember_text(self, message_name, other, text, global_time=None):
-        assert isinstance(message_name, unicode)
+        assert isinstance(message_name, str)
         assert isinstance(other, Member)
         assert isinstance(text, str)
 
@@ -711,113 +711,113 @@ class DebugNode(object):
         """
         Returns a new last-1-test message.
         """
-        return self._create_text(u"last-1-test", text, global_time)
+        return self._create_text("last-1-test", text, global_time)
 
     def create_last_9_test(self, text, global_time=None):
         """
         Returns a new last-9-test message.
         """
-        return self._create_text(u"last-9-test", text, global_time)
+        return self._create_text("last-9-test", text, global_time)
 
     def create_last_1_doublemember_text(self, other, text, global_time=None):
         """
         Returns a new last-1-doublemember-text message.
         """
-        return self._create_doublemember_text(u"last-1-doublemember-text", other, text, global_time)
+        return self._create_doublemember_text("last-1-doublemember-text", other, text, global_time)
 
     def create_double_signed_text(self, other, text, global_time=None):
         """
         Returns a new double-signed-text message.
         """
-        return self._create_doublemember_text(u"double-signed-text", other, text, global_time)
+        return self._create_doublemember_text("double-signed-text", other, text, global_time)
 
     def create_double_signed_split_payload_text(self, other, text, global_time=None):
         """
         Returns a new double-signed-text-split message.
         """
-        return self._create_doublemember_text(u"double-signed-text-split", other, text, global_time)
+        return self._create_doublemember_text("double-signed-text-split", other, text, global_time)
 
     def create_full_sync_text(self, text, global_time=None):
         """
         Returns a new full-sync-text message.
         """
-        return self._create_text(u"full-sync-text", text, global_time)
+        return self._create_text("full-sync-text", text, global_time)
 
     def create_bin_key_text(self, text, global_time=None):
         """
         Returns a new full-sync-text message.
         """
-        return self._create_text(u"bin-key-text", text, global_time)
+        return self._create_text("bin-key-text", text, global_time)
 
     def create_targeted_full_sync_text(self, text, destination, global_time=None):
         """
         Returns a new targeted-full-sync-text message.
         """
-        return self._create_text(u"full-sync-text", text, destination=destination, global_time=global_time)
+        return self._create_text("full-sync-text", text, destination=destination, global_time=global_time)
 
     def create_full_sync_global_time_pruning_text(self, text, global_time=None):
         """
         Returns a new full-sync-global-time-pruning-text message.
         """
-        return self._create_text(u"full-sync-global-time-pruning-text", text, global_time)
+        return self._create_text("full-sync-global-time-pruning-text", text, global_time)
 
     def create_in_order_text(self, text, global_time=None):
         """
         Returns a new ASC-text message.
         """
-        return self._create_text(u"ASC-text", text, global_time)
+        return self._create_text("ASC-text", text, global_time)
 
     def create_out_order_text(self, text, global_time=None):
         """
         Returns a new DESC-text message.
         """
-        return self._create_text(u"DESC-text", text, global_time)
+        return self._create_text("DESC-text", text, global_time)
 
     def create_protected_full_sync_text(self, text, global_time=None):
         """
         Returns a new protected-full-sync-text message.
         """
-        return self._create_text(u"protected-full-sync-text", text, global_time)
+        return self._create_text("protected-full-sync-text", text, global_time)
 
     def create_dynamic_resolution_text(self, text, policy, global_time=None):
         """
         Returns a new dynamic-resolution-text message.
         """
         assert isinstance(policy, (PublicResolution.Implementation, LinearResolution.Implementation)), type(policy)
-        return self._create_text(u"dynamic-resolution-text", text, global_time, resolution=(policy,))
+        return self._create_text("dynamic-resolution-text", text, global_time, resolution=(policy,))
 
     def create_sequence_text(self, text, global_time=None, sequence_number=None):
         """
         Returns a new sequence-text message.
         """
-        return self._create_sequence_text(u"sequence-text", text, global_time, sequence_number)
+        return self._create_sequence_text("sequence-text", text, global_time, sequence_number)
 
     def create_high_priority_text(self, text, global_time=None):
         """
         Returns a new high-priority-text message.
         """
-        return self._create_text(u"high-priority-text", text, global_time)
+        return self._create_text("high-priority-text", text, global_time)
 
     def create_low_priority_text(self, text, global_time=None):
         """
         Returns a new low-priority-text message.
         """
-        return self._create_text(u"low-priority-text", text, global_time)
+        return self._create_text("low-priority-text", text, global_time)
 
     def create_medium_priority_text(self, text, global_time=None):
         """
         Returns a new medium-priority-text message.
         """
-        return self._create_text(u"medium-priority-text", text, global_time)
+        return self._create_text("medium-priority-text", text, global_time)
 
     def create_random_order_text(self, text, global_time=None):
         """
         Returns a new RANDOM-text message.
         """
-        return self._create_text(u"RANDOM-text", text, global_time)
+        return self._create_text("RANDOM-text", text, global_time)
 
     def create_batched_text(self, text, global_time=None):
         """
         Returns a new BATCHED-text message.
         """
-        return self._create_text(u"batched-text", text, global_time)
+        return self._create_text("batched-text", text, global_time)

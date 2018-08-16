@@ -13,7 +13,7 @@ class TestUndo(DispersyTestFunc):
         node, = self.create_nodes(1)
 
         # create messages
-        messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
+        messages = [node.create_full_sync_text("Should undo #%d" % i, i + 10) for i in range(10)]
         node.give_messages(messages, node)
 
         # check that they are in the database and are NOT undone
@@ -37,12 +37,12 @@ class TestUndo(DispersyTestFunc):
         other.send_identity(node)
 
         # MM grants undo permission to NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")], self._mm.claim_global_time())
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("full-sync-text"), "undo")], self._mm.claim_global_time())
         node.give_message(authorize, self._mm)
         other.give_message(authorize, self._mm)
 
         # OTHER creates messages
-        messages = [other.create_full_sync_text("Should undo #%d" % i, i + 10) for i in xrange(10)]
+        messages = [other.create_full_sync_text("Should undo #%d" % i, i + 10) for i in range(10)]
         node.give_messages(messages, other)
 
         # check that they are in the database and are NOT undone
@@ -87,7 +87,7 @@ class TestUndo(DispersyTestFunc):
         node.send_identity(other)
 
         # MM grants undo permission to NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")], self._mm.claim_global_time())
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("full-sync-text"), "undo")], self._mm.claim_global_time())
         node.give_message(authorize, self._mm)
         other.give_message(authorize, self._mm)
 
@@ -119,7 +119,7 @@ class TestUndo(DispersyTestFunc):
                 self._logger.debug("loop%d", len(x))
 
         def fetch_all_messages():
-            for row in  list(other._dispersy.database.execute(u"SELECT * FROM sync")):
+            for row in  list(other._dispersy.database.execute("SELECT * FROM sync")):
                 self._logger.debug("_______ %s", row)
         other.call(fetch_all_messages)
 
@@ -128,8 +128,8 @@ class TestUndo(DispersyTestFunc):
         self.assertEqual(undo_packets, [low_message.packet])
 
         # NODE should have both messages on the database and the lowest one should be undone by the highest.
-        messages = other.fetch_messages((u"dispersy-undo-own",))
-        self.assertEquals(len(messages), 2)
+        messages = other.fetch_messages(("dispersy-undo-own",))
+        self.assertEqual(len(messages), 2)
         other.assert_is_done(low_message)
         other.assert_is_undone(high_message)
         other.assert_is_undone(high_message, undone_by=low_message)
@@ -146,7 +146,7 @@ class TestUndo(DispersyTestFunc):
         node.send_identity(other)
 
         # create messages
-        messages = [node.create_full_sync_text("Should undo @%d" % i, i + 10) for i in xrange(10)]
+        messages = [node.create_full_sync_text("Should undo @%d" % i, i + 10) for i in range(10)]
 
         # undo all messages
         undoes = [node.create_undo_own(message, message.distribution.global_time + 100, i + 1) for i, message in enumerate(messages)]
@@ -158,7 +158,7 @@ class TestUndo(DispersyTestFunc):
         global_times = [message.distribution.global_time for message in messages]
         global_time_requests = []
 
-        for _, message in node.receive_messages(names=[u"dispersy-missing-message"]):
+        for _, message in node.receive_messages(names=["dispersy-missing-message"]):
             self.assertEqual(message.payload.member.public_key, node.my_member.public_key)
             global_time_requests.extend(message.payload.global_times)
 
@@ -180,7 +180,7 @@ class TestUndo(DispersyTestFunc):
         node.send_identity(other)
 
         # MM grants undo permission to NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")], self._mm.claim_global_time())
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("full-sync-text"), "undo")], self._mm.claim_global_time())
         node.give_message(authorize, self._mm)
         other.give_message(authorize, self._mm)
 
@@ -196,7 +196,7 @@ class TestUndo(DispersyTestFunc):
         other.assert_is_stored(undo)
 
         # SELF revoke undo permission from NODE, as the globaltime of the mm is lower than 42 the message needs to be done
-        revoke = self._mm.create_revoke([(node.my_member, self._community.get_meta_message(u"full-sync-text"), u"undo")])
+        revoke = self._mm.create_revoke([(node.my_member, self._community.get_meta_message("full-sync-text"), "undo")])
         other.give_message(revoke, self._mm)
         other.assert_is_done(message)
 
@@ -209,12 +209,12 @@ class TestUndo(DispersyTestFunc):
         node.send_identity(other)
 
         # MM grants permit permission to OTHER
-        authorize = self._mm.create_authorize([(other.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"permit")], self._mm.claim_global_time())
+        authorize = self._mm.create_authorize([(other.my_member, self._community.get_meta_message("protected-full-sync-text"), "permit")], self._mm.claim_global_time())
         node.give_message(authorize, self._mm)
         other.give_message(authorize, self._mm)
 
         # MM grants undo permission to NODE
-        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"undo")], self._mm.claim_global_time())
+        authorize = self._mm.create_authorize([(node.my_member, self._community.get_meta_message("protected-full-sync-text"), "undo")], self._mm.claim_global_time())
         node.give_message(authorize, self._mm)
         other.give_message(authorize, self._mm)
 
@@ -230,6 +230,6 @@ class TestUndo(DispersyTestFunc):
         other.assert_is_stored(undo)
 
         # SELF revoke undo permission from NODE, as the globaltime of the mm is lower than 42 the message needs to be done
-        revoke = self._mm.create_revoke([(node.my_member, self._community.get_meta_message(u"protected-full-sync-text"), u"undo")])
+        revoke = self._mm.create_revoke([(node.my_member, self._community.get_meta_message("protected-full-sync-text"), "undo")])
         other.give_message(revoke, self._mm)
         other.assert_is_done(message)

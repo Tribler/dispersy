@@ -34,30 +34,30 @@ class Timeline(object):
         def printer(self):
             for global_time, dic in self._policies:
                 self._logger.debug("policy @%d", global_time)
-                for key, (policy, proofs) in dic.iteritems():
+                for key, (policy, proofs) in dic.items():
                     self._logger.debug("policy %50s  %s based on %d proofs", key, policy, len(proofs))
 
-            for member, lst in self._members.iteritems():
+            for member, lst in self._members.items():
                 self._logger.debug("member %d %s", member.database_id, member.mid.encode("HEX"))
                 for global_time, dic in lst:
                     self._logger.debug("member %d @%d", member.database_id, global_time)
-                    for key, (allowed, proofs) in sorted(dic.iteritems()):
+                    for key, (allowed, proofs) in sorted(dic.items()):
                         if allowed:
-                            assert all(proof.name == u"dispersy-authorize" for proof in proofs)
+                            assert all(proof.name == "dispersy-authorize" for proof in proofs)
                             self._logger.debug("member %d %50s  granted by %s",
                                                member.database_id, key,
                                                ", ".join("%d@%d" % (proof.authentication.member.database_id,
                                                                     proof.distribution.global_time)
                                                          for proof in proofs))
                         else:
-                            assert all(proof.name == u"dispersy-revoke" for proof in proofs)
+                            assert all(proof.name == "dispersy-revoke" for proof in proofs)
                             self._logger.debug("member %d %50s  revoked by %s",
                                                member.database_id, key,
                                                ", ".join("%d@%d" % (proof.authentication.member.database_id,
                                                                     proof.distribution.global_time)
                                                          for proof in proofs))
 
-    def check(self, message, permission=u"permit"):
+    def check(self, message, permission="permit"):
         """
         Check if message is allowed.
 
@@ -68,12 +68,12 @@ class Timeline(object):
         from .message import Message
         assert isinstance(message, Message.Implementation), message
         assert isinstance(message.authentication, (MemberAuthentication.Implementation, DoubleMemberAuthentication.Implementation)), message.authentication
-        assert isinstance(permission, unicode)
-        assert permission in (u"permit", u"authorize", u"revoke", u"undo")
+        assert isinstance(permission, str)
+        assert permission in ("permit", "authorize", "revoke", "undo")
         if isinstance(message.authentication, MemberAuthentication.Implementation):
             # MemberAuthentication
 
-            if message.name == u"dispersy-authorize" or message.name == u"dispersy-revoke":
+            if message.name == "dispersy-authorize" or message.name == "dispersy-revoke":
                 assert isinstance(message.resolution, PublicResolution.Implementation), message
                 if __debug__:
                     self._logger.debug("collecting proof for container message %s", message.name)
@@ -105,7 +105,7 @@ class Timeline(object):
 
                 return any(all_allowed), [proof for proof in all_proofs]
 
-            elif message.name == u"dispersy-undo-other":
+            elif message.name == "dispersy-undo-other":
                 assert isinstance(message.resolution, LinearResolution.Implementation), message
                 if __debug__:
                     self._logger.debug("collecting proof for container message dispersy-undo-other")
@@ -120,7 +120,7 @@ class Timeline(object):
                                        message.payload.packet.name, message.payload.packet.resolution)
                     self.printer()
 
-                return self._check(message.authentication.member, message.distribution.global_time, message.resolution, [(message.payload.packet.meta, u"undo")])
+                return self._check(message.authentication.member, message.distribution.global_time, message.resolution, [(message.payload.packet.meta, "undo")])
 
             else:
                 return self._check(message.authentication.member, message.distribution.global_time, message.resolution, [(message.meta, permission)])
@@ -134,16 +134,16 @@ class Timeline(object):
                     return (False, [proof for proof in all_proofs])
             return (True, [proof for proof in all_proofs])
 
-    def allowed(self, meta, global_time=0, permission=u"permit"):
+    def allowed(self, meta, global_time=0, permission="permit"):
         """
         Check if we are allowed to create a message.
         """
         from .message import Message
         assert isinstance(meta, Message)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         assert global_time >= 0
-        assert isinstance(permission, unicode)
-        assert permission in (u"permit", u"authorize", u"revoke", u"undo")
+        assert isinstance(permission, str)
+        assert permission in ("permit", "authorize", "revoke", "undo")
         return self._check(self._community.my_member, global_time if global_time else self._community.global_time, meta.resolution, [(meta, permission)])
 
     def _check(self, member, global_time, resolution, permission_pairs):
@@ -156,7 +156,7 @@ class Timeline(object):
         from .member import Member
         from .message import Message
         assert isinstance(member, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         assert global_time > 0
         assert isinstance(permission_pairs, list)
         assert len(permission_pairs) > 0
@@ -164,8 +164,8 @@ class Timeline(object):
             assert isinstance(pair, tuple)
             assert len(pair) == 2
             assert isinstance(pair[0], Message), "Requires meta message"
-            assert isinstance(pair[1], unicode)
-            assert pair[1] in (u"permit", u"authorize", u"revoke", u"undo")
+            assert isinstance(pair[1], str)
+            assert pair[1] in ("permit", "authorize", "revoke", "undo")
         assert isinstance(resolution, (PublicResolution.Implementation, LinearResolution.Implementation, DynamicResolution.Implementation, PublicResolution, LinearResolution, DynamicResolution)), resolution
 
         # TODO: we can make this more efficient by changing the loop a bit.  make a shallow copy of
@@ -212,7 +212,7 @@ class Timeline(object):
                         try:
                             # go backwards while time > global_time
                             while True:
-                                time, permissions = iterator.next()
+                                time, permissions = next(iterator)
                                 if time <= global_time:
                                     break
 
@@ -237,7 +237,7 @@ class Timeline(object):
                                                              global_time, member.database_id, key)
                                         return (False, [proofs])
 
-                                time, permissions = iterator.next()
+                                time, permissions = next(iterator)
 
                         except StopIteration:
                             self._logger.warning("FAIL time:%d user:%d -> %s (not authorized)",
@@ -260,7 +260,7 @@ class Timeline(object):
         from .member import Member
         from .message import Message
         assert isinstance(author, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         assert global_time > 0
         assert isinstance(permission_triplets, list)
         assert len(permission_triplets) > 0
@@ -271,14 +271,14 @@ class Timeline(object):
             assert isinstance(triplet[1], Message)
             assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution))
             assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication))
-            assert isinstance(triplet[2], unicode)
-            assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo")
+            assert isinstance(triplet[2], str)
+            assert triplet[2] in ("permit", "authorize", "revoke", "undo")
         assert isinstance(proof, Message.Implementation)
-        assert proof.name in (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other")
+        assert proof.name in ("dispersy-authorize", "dispersy-revoke", "dispersy-undo-own", "dispersy-undo-other")
 
         # check that AUTHOR is allowed to perform authorizations for these messages
         messages = set(message for _, message, _ in permission_triplets)
-        authorize_allowed, authorize_proofs = self._check(author, global_time, LinearResolution(), [(message, u"authorize") for message in messages])
+        authorize_allowed, authorize_proofs = self._check(author, global_time, LinearResolution(), [(message, "authorize") for message in messages])
         if not authorize_allowed:
             self._logger.debug("the author is NOT allowed to perform authorisations"
                                " for one or more of the given permission triplets")
@@ -342,7 +342,7 @@ class Timeline(object):
         from .member import Member
         from .message import Message
         assert isinstance(author, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         assert global_time > 0
         assert isinstance(permission_triplets, list)
         assert len(permission_triplets) > 0
@@ -353,14 +353,14 @@ class Timeline(object):
             assert isinstance(triplet[1], Message)
             assert isinstance(triplet[1].resolution, (PublicResolution, LinearResolution, DynamicResolution))
             assert isinstance(triplet[1].authentication, (MemberAuthentication, DoubleMemberAuthentication))
-            assert isinstance(triplet[2], unicode)
-            assert triplet[2] in (u"permit", u"authorize", u"revoke", u"undo")
+            assert isinstance(triplet[2], str)
+            assert triplet[2] in ("permit", "authorize", "revoke", "undo")
         assert isinstance(proof, Message.Implementation)
-        assert proof.name in (u"dispersy-authorize", u"dispersy-revoke", u"dispersy-undo-own", u"dispersy-undo-other")
+        assert proof.name in ("dispersy-authorize", "dispersy-revoke", "dispersy-undo-own", "dispersy-undo-other")
 
         # TODO: we must remove duplicates in the below permission_pairs list
         # check that AUTHOR is allowed to perform these authorizations
-        revoke_allowed, revoke_proofs = self._check(author, global_time, LinearResolution(), [(message, u"revoke") for _, message, __ in permission_triplets])
+        revoke_allowed, revoke_proofs = self._check(author, global_time, LinearResolution(), [(message, "revoke") for _, message, __ in permission_triplets])
         if not revoke_allowed:
             self._logger.debug("the author is NOT allowed to perform authorizations"
                                " for one or more of the given permission triplets")
@@ -427,9 +427,9 @@ class Timeline(object):
         """
         from .message import Message
         assert isinstance(message, Message)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
 
-        key = u"resolution^" + message.name
+        key = "resolution^" + message.name
         for policy_time, policies in reversed(self._policies):
             if policy_time < global_time and key in policies:
                 self._logger.debug("using %s for time %d (configured at %s)",
@@ -442,7 +442,7 @@ class Timeline(object):
     def change_resolution_policy(self, message, global_time, policy, proof):
         from .message import Message
         assert isinstance(message, Message)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         assert isinstance(policy, (PublicResolution, LinearResolution))
         assert isinstance(proof, Message.Implementation)
 
@@ -455,4 +455,4 @@ class Timeline(object):
             self._policies.sort()
 
         # TODO it is possible that different members set different policies at the same time
-        policies[u"resolution^" + message.name] = (policy, [proof])
+        policies["resolution^" + message.name] = (policy, [proof])

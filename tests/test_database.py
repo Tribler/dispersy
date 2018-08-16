@@ -8,7 +8,7 @@ from ..dispersydatabase import DispersyDatabase, DatabaseVersionTooLowError, Dat
 
 class TestDatabase(TestCase):
     FILE_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
-    TEST_DATA_DIR = os.path.abspath(os.path.join(FILE_DIR, u"data"))
+    TEST_DATA_DIR = os.path.abspath(os.path.join(FILE_DIR, "data"))
     TMP_DATA_DIR = mkdtemp(suffix="dispersy_unit_test")
 
     def setUp(self):
@@ -23,16 +23,16 @@ class TestDatabase(TestCase):
             shutil.rmtree(self.TMP_DATA_DIR, ignore_errors=True)
 
     def test_unsupported_database_version(self):
-        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, u"dispersy_v1.db"))
-        tmp_path = os.path.join(self.TMP_DATA_DIR, u"dispersy.db")
+        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, "dispersy_v1.db"))
+        tmp_path = os.path.join(self.TMP_DATA_DIR, "dispersy.db")
         shutil.copyfile(minimum_version_path, tmp_path)
 
         database = DispersyDatabase(tmp_path)
         self.assertRaises(DatabaseVersionTooLowError, database.open)
 
     def test_upgrade_16_to_latest(self):
-        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, u"dispersy_v16.db"))
-        tmp_path = os.path.join(self.TMP_DATA_DIR, u"dispersy.db")
+        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, "dispersy_v16.db"))
+        tmp_path = os.path.join(self.TMP_DATA_DIR, "dispersy.db")
         shutil.copyfile(minimum_version_path, tmp_path)
 
         database = DispersyDatabase(tmp_path)
@@ -40,8 +40,8 @@ class TestDatabase(TestCase):
         self.assertEqual(database.database_version, 21)
 
     def test_upgrade_version_too_high(self):
-        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, u"dispersy_v1337.db"))
-        tmp_path = os.path.join(self.TMP_DATA_DIR, u"dispersy.db")
+        minimum_version_path = os.path.abspath(os.path.join(self.TEST_DATA_DIR, "dispersy_v1337.db"))
+        tmp_path = os.path.join(self.TMP_DATA_DIR, "dispersy.db")
         shutil.copyfile(minimum_version_path, tmp_path)
 
         database = DispersyDatabase(tmp_path)

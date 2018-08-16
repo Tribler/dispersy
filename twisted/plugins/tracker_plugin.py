@@ -66,7 +66,7 @@ clean_twisted_observers()
 class TrackerDispersy(Dispersy):
 
     def __init__(self, endpoint, working_directory, silent=False, crypto=NoVerifyCrypto()):
-        super(TrackerDispersy, self).__init__(endpoint, working_directory, u":memory:", crypto)
+        super(TrackerDispersy, self).__init__(endpoint, working_directory, ":memory:", crypto)
 
         # location of persistent storage
         self._persistent_storage_filename = os.path.join(working_directory, "persistent-storage.data")
@@ -94,7 +94,7 @@ class TrackerDispersy(Dispersy):
 
     def _create_my_member(self):
         # generate a new my-member
-        ec = self.crypto.generate_key(u"very-low")
+        ec = self.crypto.generate_key("very-low")
         self._my_member = self.get_member(private_key=self.crypto.key_to_bin(ec))
 
     @property
@@ -136,8 +136,8 @@ class TrackerDispersy(Dispersy):
             return False
 
         now = time()
-        inactive = [community for community in self._communities.itervalues() if not is_active(community, now)]
-        print "#cleaned %d/%d communities" % (len(inactive), len(self._communities))
+        inactive = [community for community in self._communities.values() if not is_active(community, now)]
+        print("#cleaned %d/%d communities" % (len(inactive), len(self._communities)))
 
         deferred_list = []
         for community in inactive:
@@ -146,17 +146,17 @@ class TrackerDispersy(Dispersy):
 
     def _report_statistics(self):
         mapping = {TrackerCommunity: [0,0], TrackerHardKilledCommunity: [0,0], DiscoveryCommunity: [0,0]}
-        for community in self._communities.itervalues():
+        for community in self._communities.values():
             mapping[type(community)][0] += 1
             mapping[type(community)][1] += len(list(community.dispersy_yield_verified_candidates())) 
 
-        print "BANDWIDTH", self._statistics.total_up, self._statistics.total_down
-        print "COMMUNITY", mapping[TrackerCommunity][0], mapping[TrackerHardKilledCommunity][0], mapping[DiscoveryCommunity][0]
-        print "CANDIDATE2", mapping[TrackerCommunity][1], mapping[TrackerHardKilledCommunity][1], mapping[DiscoveryCommunity][1]
+        print("BANDWIDTH", self._statistics.total_up, self._statistics.total_down)
+        print("COMMUNITY", mapping[TrackerCommunity][0], mapping[TrackerHardKilledCommunity][0], mapping[DiscoveryCommunity][0])
+        print("CANDIDATE2", mapping[TrackerCommunity][1], mapping[TrackerHardKilledCommunity][1], mapping[DiscoveryCommunity][1])
 
         if self._statistics.msg_statistics.outgoing_dict:
-            for key, value in self._statistics.msg_statistics.outgoing_dict.iteritems():
-                print "OUTGOING", key, value
+            for key, value in self._statistics.msg_statistics.outgoing_dict.items():
+                print("OUTGOING", key, value)
 
 
 class Options(usage.Options):
@@ -212,7 +212,7 @@ class TrackerServiceMaker(object):
             if not options["loglevel"]:
                 options["loglevel"] = "DEBUG"
 
-            print "Using logging level: %s" % options["loglevel"]
+            print("Using logging level: %s" % options["loglevel"])
             log_level = getattr(logging, options["loglevel"])
 
             root = logging.getLogger()
@@ -224,7 +224,7 @@ class TrackerServiceMaker(object):
             # setup
             dispersy = TrackerDispersy(StandaloneEndpoint(options["port"],
                                                           options["ip"]),
-                                       unicode(options["statedir"]),
+                                       str(options["statedir"]),
                                        bool(options["silent"]),
                                        crypto)
             container[0] = dispersy
@@ -237,7 +237,7 @@ class TrackerServiceMaker(object):
                     self._stopping = True
                     try:
                         dispersy.stop()
-                    except Exception, e:
+                    except Exception as e:
                         msg("Got exception when stopping dispersy: %s" % e)
                     reactor.stop()
             signal.signal(signal.SIGINT, signal_handler)

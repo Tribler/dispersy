@@ -39,7 +39,7 @@ class TestWalker(DispersyTestFunc):
                                                               node.lan_address,
                                                               node.wan_address,
                                                               True,
-                                                              u"unknown",
+                                                              "unknown",
                                                               None,
                                                               identifier,
                                                               42)
@@ -56,16 +56,16 @@ class TestWalker(DispersyTestFunc):
         num_non_tunnelled_nodes = len([node for node in nodes if not node.tunnel])
 
         for node in nodes:
-            _, response = node.receive_message().next()
+            _, response = next(node.receive_message())
 
             # MM must not introduce NODE to itself
-            self.assertNotEquals(response.payload.lan_introduction_address, node.lan_address)
-            self.assertNotEquals(response.payload.wan_introduction_address, node.wan_address)
+            self.assertNotEqual(response.payload.lan_introduction_address, node.lan_address)
+            self.assertNotEqual(response.payload.wan_introduction_address, node.wan_address)
 
             if node.tunnel:
                 if num_tunnelled_nodes + num_non_tunnelled_nodes > 1:
-                    self.assertNotEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
-                    self.assertNotEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
+                    self.assertNotEqual(response.payload.lan_introduction_address, ("0.0.0.0", 0))
+                    self.assertNotEqual(response.payload.wan_introduction_address, ("0.0.0.0", 0))
 
                     # it must be any known node
                     self.assertIn(response.payload.lan_introduction_address, is_tunnelled_map)
@@ -76,8 +76,8 @@ class TestWalker(DispersyTestFunc):
                 # prefix.
 
                 if num_non_tunnelled_nodes > 1:
-                    self.assertNotEquals(response.payload.lan_introduction_address, ("0.0.0.0", 0))
-                    self.assertNotEquals(response.payload.wan_introduction_address, ("0.0.0.0", 0))
+                    self.assertNotEqual(response.payload.lan_introduction_address, ("0.0.0.0", 0))
+                    self.assertNotEqual(response.payload.wan_introduction_address, ("0.0.0.0", 0))
 
                     # it may only be non-tunnelled
                     self.assertFalse(is_tunnelled_map[response.payload.lan_introduction_address], response.payload.lan_introduction_address)

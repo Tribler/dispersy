@@ -38,7 +38,7 @@ import sys
 
 # Do not (re)move the reactor import, even if we aren't using it
 # (nose starts the reactor in a separate thread when importing this)\
-if "twisted.internet.reactor" in sys.modules.keys():
+if "twisted.internet.reactor" in list(sys.modules.keys()):
     """ Tribler already imported the reactor. """
     from twisted.internet import reactor
 else:

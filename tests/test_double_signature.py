@@ -58,7 +58,7 @@ class TestDoubleSign(DispersyTestFunc):
         node.call(node._community.create_signature_request, other.my_candidate, message, on_response, timeout=1.0)
 
         # OTHER receives the request
-        _, message = other.receive_message(names=[u"dispersy-signature-request"]).next()
+        _, message = next(other.receive_message(names=["dispersy-signature-request"]))
         submsg = message.payload.message
 
         second_signature_offset = len(submsg.packet) - other.my_member.signature_length
@@ -109,7 +109,7 @@ class TestDoubleSign(DispersyTestFunc):
         node.call(node._community.create_signature_request, other.my_candidate, message, on_response, timeout=1.0)
 
         # OTHER receives the request
-        _, message = other.receive_message(names=[u"dispersy-signature-request"]).next()
+        _, message = next(other.receive_message(names=["dispersy-signature-request"]))
         submsg = message.payload.message
 
         second_signature_offset = len(submsg.packet) - other.my_member.signature_length
@@ -159,7 +159,7 @@ class TestDoubleSign(DispersyTestFunc):
         node.call(node._community.create_signature_request, other.my_candidate, message, on_response, timeout=1.0)
 
         # OTHER receives the request
-        _, message = other.receive_message(names=[u"dispersy-signature-request"]).next()
+        _, message = next(other.receive_message(names=["dispersy-signature-request"]))
         submsg = message.payload.message
 
         second_signature_offset = len(submsg.packet) - other.my_member.signature_length

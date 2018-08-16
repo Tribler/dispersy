@@ -8,10 +8,10 @@ from ..conversion import BinaryConversion
 class DiscoveryConversion(BinaryConversion):
     def __init__(self, community):
         super(DiscoveryConversion, self).__init__(community, "\x02")
-        self.define_meta_message(chr(1), community.get_meta_message(u"similarity-request"), self._encode_similarity_request, self._decode_similarity_request)
-        self.define_meta_message(chr(2), community.get_meta_message(u"similarity-response"), self._encode_similarity_response, self._decode_similarity_response)
-        self.define_meta_message(chr(3), community.get_meta_message(u"ping"), self._encode_ping, self._decode_ping)
-        self.define_meta_message(chr(4), community.get_meta_message(u"pong"), self._encode_pong, self._decode_pong)
+        self.define_meta_message(chr(1), community.get_meta_message("similarity-request"), self._encode_similarity_request, self._decode_similarity_request)
+        self.define_meta_message(chr(2), community.get_meta_message("similarity-response"), self._encode_similarity_response, self._decode_similarity_response)
+        self.define_meta_message(chr(3), community.get_meta_message("ping"), self._encode_ping, self._decode_ping)
+        self.define_meta_message(chr(4), community.get_meta_message("pong"), self._encode_pong, self._decode_pong)
 
     def _encode_similarity_request(self, message):
         preference_list = message.payload.preference_list
@@ -79,7 +79,7 @@ class DiscoveryConversion(BinaryConversion):
         if length:
             hashpack = '20sI' * (length / 24)
             tb_overlap = unpack_from('!' + hashpack, data, offset)
-            tb_overlap = zip(tb_overlap[0::2], tb_overlap[1::2])
+            tb_overlap = list(zip(tb_overlap[0::2], tb_overlap[1::2]))
         offset += length
 
         return offset, placeholder.meta.payload.implement(identifier, preference_list, tb_overlap)

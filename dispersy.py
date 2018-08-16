@@ -85,7 +85,7 @@ class Dispersy(TaskManager):
     outgoing data for, possibly, multiple communities.
     """
 
-    def __init__(self, endpoint, working_directory, database_filename=u"dispersy.db", crypto=ECCrypto()):
+    def __init__(self, endpoint, working_directory, database_filename="dispersy.db", crypto=ECCrypto()):
         """
         Initialise a Dispersy instance.
 
@@ -99,8 +99,8 @@ class Dispersy(TaskManager):
         @type database_filename: unicode
         """
         assert isinstance(endpoint, Endpoint), type(endpoint)
-        assert isinstance(working_directory, unicode), type(working_directory)
-        assert isinstance(database_filename, unicode), type(database_filename)
+        assert isinstance(working_directory, str), type(working_directory)
+        assert isinstance(database_filename, str), type(database_filename)
         assert isinstance(crypto, DispersyCrypto), type(crypto)
         super(Dispersy, self).__init__()
         self._logger = logging.getLogger(self.__class__.__name__)
@@ -118,8 +118,8 @@ class Dispersy(TaskManager):
         self._member_cache_by_hash = OrderedDict()
 
         # our data storage
-        if not database_filename == u":memory:":
-            database_directory = os.path.join(self._working_directory, u"sqlite")
+        if not database_filename == ":memory:":
+            database_directory = os.path.join(self._working_directory, "sqlite")
             if not os.path.isdir(database_directory):
                 os.makedirs(database_directory)
             database_filename = os.path.join(database_directory, database_filename)
@@ -129,7 +129,7 @@ class Dispersy(TaskManager):
 
         # indicates what our connection type is.  currently it can be u"unknown", u"public", or
         # u"symmetric-NAT"
-        self._connection_type = u"unknown"
+        self._connection_type = "unknown"
 
         # our LAN and WAN addresses
         self._netifaces_failed = False
@@ -198,7 +198,7 @@ class Dispersy(TaskManager):
                         try:
                             # On Windows netifaces currently returns IP addresses as unicode,
                             # and on *nix it returns str. So, we convert any unicode objects to str.
-                            unicode_to_str = lambda s: s.encode('utf-8') if isinstance(s, unicode) else s
+                            unicode_to_str = lambda s: s.encode('utf-8') if isinstance(s, str) else s
                             yield Interface(interface,
                                             unicode_to_str(option.get("addr")),
                                             unicode_to_str(option.get("netmask")),
@@ -208,7 +208,7 @@ class Dispersy(TaskManager):
                             # some interfaces have no netmask configured, causing a TypeError when
                             # trying to unpack _l_netmask
                             pass
-        except OSError, e:
+        except OSError as e:
             logger = logging.getLogger("dispersy")
             logger.warning("failed to check network interfaces, error was: %r", e)
 
@@ -303,7 +303,7 @@ class Dispersy(TaskManager):
                 self._lan_address = (self._wan_address[0], self._lan_address[1])
 
         # our address may not be a candidate
-        for community in self._communities.itervalues():
+        for community in self._communities.values():
             community.candidates.pop(self._lan_address, None)
 
     @property
@@ -424,7 +424,7 @@ class Dispersy(TaskManager):
     def attach_community(self, community):
         # add community to communities dict
         self._communities[community.cid] = community
-        self._statistics.dict_inc(u"attachment", community.cid)
+        self._statistics.dict_inc("attachment", community.cid)
 
         # let discovery community know
         if self._discovery_community:
@@ -489,7 +489,7 @@ class Dispersy(TaskManager):
         # both public and private keys are valid at this point
 
         # The member is not cached, let's try to get it from the database
-        row = self.database.execute(u"SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
+        row = self.database.execute("SELECT id, public_key, private_key FROM member WHERE mid = ? LIMIT 1", (buffer(mid),)).fetchone()
 
         if row:
             database_id, public_key_from_db, private_key_from_db = row
@@ -501,7 +501,7 @@ class Dispersy(TaskManager):
             if private_key:
                 assert public_key
                 if private_key_from_db != private_key:
-                    self.database.execute(u"UPDATE member SET public_key = ?, private_key = ? WHERE id = ?",
+                    self.database.execute("UPDATE member SET public_key = ?, private_key = ? WHERE id = ?",
                         (buffer(public_key), buffer(private_key), database_id))
             else:
                 # the private key from the database overrules the public key argument
@@ -511,7 +511,7 @@ class Dispersy(TaskManager):
                 # the public key argument overrules anything in the database
                 elif public_key:
                     if public_key_from_db != public_key:
-                        self.database.execute(u"UPDATE member SET public_key = ? WHERE id = ?",
+                        self.database.execute("UPDATE member SET public_key = ? WHERE id = ?",
                             (buffer(public_key), database_id))
 
                 # no priv/pubkey arguments passed, maybe use the public key from the database
@@ -527,11 +527,11 @@ class Dispersy(TaskManager):
                 assert public_key
             # The MID or public/private keys are not in the database, store them.
             database_id = self.database.execute(
-                u"INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)",
+                "INSERT INTO member (mid, public_key, private_key) VALUES (?, ?, ?)",
                 (buffer(mid), buffer(public_key), buffer(private_key)), get_lastrowid=True)
         else:
             # We could't find the key on the DB, nothing else to do
-            database_id = self.database.execute(u"INSERT INTO member (mid) VALUES (?)",
+            database_id = self.database.execute("INSERT INTO member (mid) VALUES (?)",
                 (buffer(mid),), get_lastrowid=True)
             return DummyMember(self, database_id, mid)
 
@@ -546,11 +546,11 @@ class Dispersy(TaskManager):
 
         return member
 
-    def get_new_member(self, securitylevel=u"medium"):
+    def get_new_member(self, securitylevel="medium"):
         """
         Returns a Member instance created from a newly generated public key.
         """
-        assert isinstance(securitylevel, unicode), type(securitylevel)
+        assert isinstance(securitylevel, str), type(securitylevel)
         key = self.crypto.generate_key(securitylevel)
         return self.get_member(private_key=self.crypto.key_to_bin(key))
 
@@ -559,9 +559,9 @@ class Dispersy(TaskManager):
         Returns a Member instance associated with DATABASE_ID or None when this row identifier is
         not available.
         """
-        assert isinstance(database_id, (int, long)), type(database_id)
+        assert isinstance(database_id, int), type(database_id)
         try:
-            public_key, = next(self._database.execute(u"SELECT public_key FROM member WHERE id = ?", (database_id,)))
+            public_key, = next(self._database.execute("SELECT public_key FROM member WHERE id = ?", (database_id,)))
             return self.get_member(public_key=str(public_key))
         except StopIteration:
             pass
@@ -605,7 +605,7 @@ class Dispersy(TaskManager):
             master = source.master_member
             yield source.unload_community()
 
-        self._database.execute(u"UPDATE community SET classification = ? WHERE master = ?",
+        self._database.execute("UPDATE community SET classification = ? WHERE master = ?",
                                (destination_classification, master.database_id))
 
         if destination_classification in self._auto_load_communities:
@@ -613,8 +613,8 @@ class Dispersy(TaskManager):
             assert cls == destination, [cls, destination]
 
         else:
-            my_member_did, = self._database.execute(u"SELECT member FROM community WHERE master = ?",
-                               (master.database_id,)).next()
+            my_member_did, = next(self._database.execute("SELECT member FROM community WHERE master = ?",
+                               (master.database_id,)))
 
             my_member = self.get_member_from_database_id(my_member_did)
             args = ()
@@ -664,8 +664,8 @@ class Dispersy(TaskManager):
             if load or auto_load:
                 try:
                     # have we joined this community
-                    classification, auto_load_flag, master_public_key = self._database.execute(u"SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
-                                                                                               (buffer(cid),)).next()
+                    classification, auto_load_flag, master_public_key = next(self._database.execute("SELECT community.classification, community.auto_load, member.public_key FROM community JOIN member ON member.id = community.master WHERE mid = ?",
+                                                                                               (buffer(cid),)))
 
                 except StopIteration:
                     pass
@@ -693,7 +693,7 @@ class Dispersy(TaskManager):
         """
         Returns a list with all known Community instances.
         """
-        return self._communities.values()
+        return list(self._communities.values())
 
     def get_message(self, community, member, global_time):
         """
@@ -704,10 +704,10 @@ class Dispersy(TaskManager):
         """
         assert isinstance(community, Community)
         assert isinstance(member, Member)
-        assert isinstance(global_time, (int, long))
+        assert isinstance(global_time, int)
         try:
-            packet, = self._database.execute(u"SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
-                                             (community.database_id, member.database_id, global_time)).next()
+            packet, = next(self._database.execute("SELECT packet FROM sync WHERE community = ? AND member = ? AND global_time = ?",
+                                             (community.database_id, member.database_id, global_time)))
         except StopIteration:
             return None
         else:
@@ -718,8 +718,8 @@ class Dispersy(TaskManager):
         assert isinstance(member, Member)
         assert isinstance(meta, Message)
         try:
-            packet, = self._database.execute(u"SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT 1",
-                                             (member.database_id, meta.database_id)).next()
+            packet, = next(self._database.execute("SELECT packet FROM sync WHERE member = ? AND meta_message = ? ORDER BY global_time DESC LIMIT 1",
+                                             (member.database_id, meta.database_id)))
         except StopIteration:
             return None
         else:
@@ -730,7 +730,7 @@ class Dispersy(TaskManager):
         Removes and returns one vote made by VOTER.
         """
         assert isinstance(voter, Candidate)
-        for vote, voters in self._wan_address_votes.iteritems():
+        for vote, voters in self._wan_address_votes.items():
             if voter.sock_addr in voters:
                 voters.remove(voter.sock_addr)
                 if len(voters) == 0:
@@ -822,7 +822,7 @@ class Dispersy(TaskManager):
                     lan_address = (self._wan_address[0], self._lan_address[1])
                 set_lan_address(lan_address)
                 # remove our lan/wan addresses from all communities candidate lists
-                for community in self._communities.itervalues():
+                for community in self._communities.values():
                     community.remove_candidate(self._wan_address)
                     community.remove_candidate(self._lan_address)
 
@@ -833,20 +833,20 @@ class Dispersy(TaskManager):
         if len(self._wan_address_votes) == 1 and self._lan_address == self._wan_address:
             # external peers are reporting the same WAN address that happens to be our LAN address
             # as well
-            set_connection_type(u"public")
+            set_connection_type("public")
 
         elif len(self._wan_address_votes) > 1:
-            for voters in self._wan_address_votes.itervalues():
+            for voters in self._wan_address_votes.values():
                 if len(set([address[0] for address in voters])) > 1:
                     # A single NAT mapping has more than one destination IP hence
                     # it cannot be a symmetric NAT
-                    set_connection_type(u"unknown")
+                    set_connection_type("unknown")
                     break
             else:
                 # Our nat created a new mapping for each destination IP
-                set_connection_type(u"symmetric-NAT")
+                set_connection_type("symmetric-NAT")
         else:
-            set_connection_type(u"unknown")
+            set_connection_type("unknown")
 
     def load_message(self, community, member, global_time, verify=False):
         """
@@ -859,11 +859,11 @@ class Dispersy(TaskManager):
         """
         assert isinstance(community, Community), type(community)
         assert isinstance(member, DummyMember), type(member)
-        assert isinstance(global_time, (int, long)), type(global_time)
+        assert isinstance(global_time, int), type(global_time)
 
         try:
-            packet_id, packet, undone = self._database.execute(u"SELECT id, packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ? LIMIT 1",
-                                                       (community.database_id, member.database_id, global_time)).next()
+            packet_id, packet, undone = next(self._database.execute("SELECT id, packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ? LIMIT 1",
+                                                       (community.database_id, member.database_id, global_time)))
         except StopIteration:
             return None
 
@@ -883,11 +883,11 @@ class Dispersy(TaskManager):
         this message or it can not be decoded.
         """
         assert isinstance(community, Community), type(community)
-        assert isinstance(packet_id, (int, long)), type(packet_id)
+        assert isinstance(packet_id, int), type(packet_id)
 
         try:
-            packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE id = ?",
-                                                       (packet_id,)).next()
+            packet, undone = next(self._database.execute("SELECT packet, undone FROM sync WHERE id = ?",
+                                                       (packet_id,)))
         except StopIteration:
             return None
 
@@ -934,7 +934,7 @@ class Dispersy(TaskManager):
         assert all(isinstance(packet, str) for packet in packets), [type(packet) for packet in packets]
         return [self.convert_packet_to_message(packet, community, load, auto_load, candidate, verify) for packet in packets]
 
-    def on_incoming_packets(self, packets, cache=True, timestamp=0.0, source=u"unknown"):
+    def on_incoming_packets(self, packets, cache=True, timestamp=0.0, source="unknown"):
         """
         Process incoming UDP packets.
 
@@ -962,7 +962,7 @@ class Dispersy(TaskManager):
             (str(packet[0]), repr(packet[1])) for packet in packets]
         assert isinstance(cache, bool), cache
         assert isinstance(timestamp, float), timestamp
-        assert isinstance(source, unicode), source
+        assert isinstance(source, str), source
 
         if self.running:
             self._statistics.total_received += len(packets)
@@ -982,13 +982,13 @@ class Dispersy(TaskManager):
                     packets = list(iterator)
                     candidates = set([candidate for candidate, _ in packets])
                     self._logger.debug("drop %d packets (received packet(s) for unknown community): %s",
-                                       len(packets), map(str, candidates))
+                                       len(packets), list(map(str, candidates)))
                     self._statistics.msg_statistics.increase_count(
-                        u"drop", u"_convert_packets_into_batch:unknown community")
+                        "drop", "_convert_packets_into_batch:unknown community")
         else:
             self._logger.info("dropping %d packets as dispersy is not running", len(packets))
 
-    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
+    @attach_runtime_statistics("Dispersy.{function_name} {1[0].name}")
     def _store(self, messages):
         """
         Store a message in the database.
@@ -1035,8 +1035,8 @@ class Dispersy(TaskManager):
 
             # add packet to database
             message.packet_id = self._database.execute(
-                u"INSERT INTO sync (community, member, global_time, meta_message, packet, sequence) "
-                u"VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO sync (community, member, global_time, meta_message, packet, sequence) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                (message.community.database_id,
                 message.authentication.member.database_id,
                 message.distribution.global_time,
@@ -1053,7 +1053,7 @@ class Dispersy(TaskManager):
             if is_double_member_authentication:
                 member1 = message.authentication.members[0].database_id
                 member2 = message.authentication.members[1].database_id
-                self._database.execute(u"INSERT INTO double_signed_sync (sync, member1, member2) VALUES (?, ?, ?)",
+                self._database.execute("INSERT INTO double_signed_sync (sync, member1, member2) VALUES (?, ?, ?)",
                                        (message.packet_id, member1, member2) if member1 < member2 else (message.packet_id, member2, member1))
 
             # update global time
@@ -1065,10 +1065,10 @@ class Dispersy(TaskManager):
         if __debug__ and highest_sequence_number:
             # when sequence numbers are enabled, we must have exactly
             # message.distribution.sequence_number messages in the database
-            for member_id, max_sequence_number in highest_sequence_number.iteritems():
-                count_, = self._database.execute(u"SELECT COUNT(*) FROM sync "
-                                                u"WHERE meta_message = ? AND member = ? AND sequence BETWEEN 1 AND ?",
-                                                (message.database_id, member_id, max_sequence_number)).next()
+            for member_id, max_sequence_number in highest_sequence_number.items():
+                count_, = next(self._database.execute("SELECT COUNT(*) FROM sync "
+                                                "WHERE meta_message = ? AND member = ? AND sequence BETWEEN 1 AND ?",
+                                                (message.database_id, member_id, max_sequence_number)))
                 assert count_ == max_sequence_number, [count_, max_sequence_number]
 
         if isinstance(meta.distribution, LastSyncDistribution):
@@ -1084,7 +1084,7 @@ class Dispersy(TaskManager):
                     order = lambda member1, member2: (member1, member2) if member1 < member2 else (member2, member1)
                     for member1, member2 in set(order(message.authentication.members[0].database_id, message.authentication.members[1].database_id) for message in messages):
                         assert member1 < member2, [member1, member2]
-                        all_items = list(self._database.execute(u"""
+                        all_items = list(self._database.execute("""
 SELECT sync.id, sync.global_time
 FROM sync
 JOIN double_signed_sync ON double_signed_sync.sync = sync.id
@@ -1095,7 +1095,7 @@ ORDER BY sync.global_time, sync.packet""", (meta.database_id, member1, member2))
 
                 else:
                     for member_database_id in set(message.authentication.member.database_id for message in messages):
-                        all_items = list(self._database.execute(u"""
+                        all_items = list(self._database.execute("""
 SELECT id, global_time
 FROM sync
 WHERE meta_message = ? AND member = ?
@@ -1104,10 +1104,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                             items.update(all_items[:len(all_items) - meta.distribution.history_size])
 
             if items:
-                self._database.executemany(u"DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
+                self._database.executemany("DELETE FROM sync WHERE id = ?", [(syncid,) for syncid, _ in items])
 
                 if is_double_member_authentication:
-                    self._database.executemany(u"DELETE FROM double_signed_sync WHERE sync = ?", [(syncid,) for syncid, _ in items])
+                    self._database.executemany("DELETE FROM double_signed_sync WHERE sync = ?", [(syncid,) for syncid, _ in items])
 
                 # update_sync_range.update(global_time for _, _, global_time in items)
 
@@ -1115,7 +1115,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             if __debug__:
                 if not is_double_member_authentication and meta.distribution.custom_callback is None:
                     for message in messages:
-                        history_size, = self._database.execute(u"SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)).next()
+                        history_size, = next(self._database.execute("SELECT COUNT(*) FROM sync WHERE meta_message = ? AND member = ?", (message.database_id, message.authentication.member.database_id)))
                         assert history_size <= message.distribution.history_size, [history_size, message.distribution.history_size, message.authentication.member.database_id]
 
         # update the global time
@@ -1224,14 +1224,14 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 self._logger.debug("commit user generated message")
                 self._database.commit()
 
-                messages[0].community.statistics.increase_msg_count(u"created", messages[0].meta.name, my_messages)
+                messages[0].community.statistics.increase_msg_count("created", messages[0].meta.name, my_messages)
 
         if forward:
             return self._forward(messages)
 
         return True
 
-    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
+    @attach_runtime_statistics("Dispersy.{function_name} {1[0].name}")
     def _update(self, messages):
         """
         Call the handle callback of a list of messages of the same type.
@@ -1245,7 +1245,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             self._logger.exception("exception during handle_callback for %s", messages[0].name)
             return False
 
-    @attach_runtime_statistics(u"Dispersy.{function_name} {1[0].name}")
+    @attach_runtime_statistics("Dispersy.{function_name} {1[0].name}")
     def _forward(self, messages):
         """
         Queue a sequence of messages to be sent to other members.
@@ -1298,10 +1298,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             assert len(key) == 5, key
             assert isinstance(key[0], str), type(key[0])
             assert len(key[0]) == 20, len(key[0])
-            assert not key[1] or isinstance(key[1], unicode), type(key[1])
+            assert not key[1] or isinstance(key[1], str), type(key[1])
             assert not key[2] or isinstance(key[2], str), type(key[2])
             assert not key[2] or len(key[2]) == 20, len(key[2])
-            assert not key[3] or isinstance(key[3], (int, long)), type(key[3])
+            assert not key[3] or isinstance(key[3], int), type(key[3])
             assert not key[4] or isinstance(key[4], list), type(key[4])
 
 
@@ -1337,17 +1337,17 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         if messages_send:
             for message in messages:
-                if message.meta.name == u"dispersy-introduction-request":
+                if message.meta.name == "dispersy-introduction-request":
                     for candidate in candidates:
                         message.community.statistics.msg_statistics.walk_attempt_count += 1
-                        message.community.statistics.increase_msg_count(u"outgoing_intro", candidate.sock_addr)
+                        message.community.statistics.increase_msg_count("outgoing_intro", candidate.sock_addr)
 
                         self.statistics.walk_attempt_count += 1
                         self.statistics.outgoing_intro_count += 1
-                        self.statistics.dict_inc(u"outgoing_intro_dict", candidate.sock_addr)
+                        self.statistics.dict_inc("outgoing_intro_dict", candidate.sock_addr)
 
                 message.community.statistics.increase_msg_count(
-                    u"outgoing", message.meta.name, len(candidates))
+                    "outgoing", message.meta.name, len(candidates))
 
         return messages_send
 
@@ -1355,7 +1355,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         """A wrap method to use send() in endpoint.
         """
         self._endpoint.send(candidates, packets)
-        community.statistics.increase_msg_count(u"outgoing", msg_type, len(candidates) * len(packets))
+        community.statistics.increase_msg_count("outgoing", msg_type, len(candidates) * len(packets))
 
     def sanity_check(self, community, test_identity=True, test_undo_other=True, test_binary=False, test_sequence_number=True, test_last_sync=True):
         """
@@ -1374,7 +1374,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         - check history size for LastSyncDistribution
         """
         def select(sql, bindings):
-            assert isinstance(sql, unicode)
+            assert isinstance(sql, str)
             assert isinstance(bindings, tuple)
             limit = 1000
             for offset in (i * limit for i in count()):
@@ -1391,10 +1391,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if test_identity:
             try:
                 # ensure that the dispersy-identity for my member must be in the database
-                meta_identity = community.get_meta_message(u"dispersy-identity")
+                meta_identity = community.get_meta_message("dispersy-identity")
 
                 try:
-                    member_id, = self._database.execute(u"SELECT id FROM member WHERE mid = ?", (buffer(community.my_member.mid),)).next()
+                    member_id, = next(self._database.execute("SELECT id FROM member WHERE mid = ?", (buffer(community.my_member.mid),)))
                 except StopIteration:
                     raise ValueError("unable to find the public key for my member")
 
@@ -1402,12 +1402,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     raise ValueError("my member's database id is invalid", member_id, community.my_member.database_id)
 
                 try:
-                    self._database.execute(u"SELECT 1 FROM member WHERE id = ? AND private_key IS NOT NULL", (member_id,)).next()
+                    next(self._database.execute("SELECT 1 FROM member WHERE id = ? AND private_key IS NOT NULL", (member_id,)))
                 except StopIteration:
                     raise ValueError("unable to find the private key for my member")
 
                 try:
-                    self._database.execute(u"SELECT 1 FROM sync WHERE member = ? AND meta_message = ?", (member_id, meta_identity.database_id)).next()
+                    next(self._database.execute("SELECT 1 FROM sync WHERE member = ? AND meta_message = ?", (member_id, meta_identity.database_id)))
                 except StopIteration:
                     raise ValueError("unable to find the dispersy-identity message for my member")
 
@@ -1417,8 +1417,8 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 # the dispersy-identity must be in the database for each member that has one or more
                 # messages in the database
                 #
-                A = set(id_ for id_, in self._database.execute(u"SELECT member FROM sync WHERE community = ? GROUP BY member", (community.database_id,)))
-                B = set(id_ for id_, in self._database.execute(u"SELECT member FROM sync WHERE meta_message = ?", (meta_identity.database_id,)))
+                A = set(id_ for id_, in self._database.execute("SELECT member FROM sync WHERE community = ? GROUP BY member", (community.database_id,)))
+                B = set(id_ for id_, in self._database.execute("SELECT member FROM sync WHERE meta_message = ?", (meta_identity.database_id,)))
                 if not len(A) == len(B):
                     raise ValueError("inconsistent dispersy-identity messages.", A.difference(B))
 
@@ -1429,10 +1429,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         if test_undo_other:
             try:
                 # ensure that we have proof for every dispersy-undo-other message
-                meta_undo_other = community.get_meta_message(u"dispersy-undo-other")
+                meta_undo_other = community.get_meta_message("dispersy-undo-other")
 
                 # TODO we are not taking into account that undo messages can be undone
-                for undo_packet_id, undo_packet_global_time, undo_packet in select(u"SELECT id, global_time, packet FROM sync WHERE community = ? AND meta_message = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id, meta_undo_other.database_id)):
+                for undo_packet_id, undo_packet_global_time, undo_packet in select("SELECT id, global_time, packet FROM sync WHERE community = ? AND meta_message = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id, meta_undo_other.database_id)):
                     undo_packet = str(undo_packet)
                     undo_message = self.convert_packet_to_message(undo_packet, community, verify=False)
 
@@ -1443,7 +1443,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
                     # get the message that undo_message refers to
                     try:
-                        packet, undone = self._database.execute(u"SELECT packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ?", (community.database_id, undo_message.payload.member.database_id, undo_message.payload.global_time)).next()
+                        packet, undone = next(self._database.execute("SELECT packet, undone FROM sync WHERE community = ? AND member = ? AND global_time = ?", (community.database_id, undo_message.payload.member.database_id, undo_message.payload.global_time)))
                     except StopIteration:
                         raise ValueError("found dispersy-undo-other but not the message that it refers to")
                     packet = str(packet)
@@ -1480,7 +1480,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
             # ensure all packets in the database are valid and that the binary packets are consistent
             # with the information stored in the database
             #
-            for packet_id, member_id, global_time, meta_message_id, packet in select(u"SELECT id, member, global_time, meta_message, packet FROM sync WHERE community = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id,)):
+            for packet_id, member_id, global_time, meta_message_id, packet in select("SELECT id, member, global_time, meta_message, packet FROM sync WHERE community = ? ORDER BY id LIMIT ? OFFSET ?", (community.database_id,)):
                 if meta_message_id in enabled_messages:
                     packet = str(packet)
                     message = self.convert_packet_to_message(packet, community, verify=True)
@@ -1514,7 +1514,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     counter = 0
                     counter_member_id = 0
                     exception = None
-                    for packet_id, member_id, packet in select(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time LIMIT ? OFFSET ?", (meta.database_id,)):
+                    for packet_id, member_id, packet in select("SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member, global_time LIMIT ? OFFSET ?", (meta.database_id,)):
                         packet = str(packet)
                         message = self.convert_packet_to_message(packet, community, verify=False)
                         assert message
@@ -1548,7 +1548,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                     if isinstance(meta.authentication, MemberAuthentication):
                         counter = 0
                         counter_member_id = 0
-                        for packet_id, member_id, packet in select(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member ASC, global_time DESC LIMIT ? OFFSET ?", (meta.database_id,)):
+                        for packet_id, member_id, packet in select("SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member ASC, global_time DESC LIMIT ? OFFSET ?", (meta.database_id,)):
                             message = self.convert_packet_to_message(str(packet), community, verify=False)
                             assert message
 
@@ -1565,12 +1565,12 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
                     else:
                         assert isinstance(meta.authentication, DoubleMemberAuthentication)
-                        for packet_id, member_id, packet in select(u"SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member ASC, global_time DESC LIMIT ? OFFSET ?", (meta.database_id,)):
+                        for packet_id, member_id, packet in select("SELECT id, member, packet FROM sync WHERE meta_message = ? ORDER BY member ASC, global_time DESC LIMIT ? OFFSET ?", (meta.database_id,)):
                             message = self.convert_packet_to_message(str(packet), community, verify=False)
                             assert message
 
                             try:
-                                member1, member2 = self._database.execute(u"SELECT member1, member2 FROM double_signed_sync WHERE sync = ?", (packet_id,)).next()
+                                member1, member2 = next(self._database.execute("SELECT member1, member2 FROM double_signed_sync WHERE sync = ?", (packet_id,)))
                             except StopIteration:
                                 raise ValueError("found double signed message without an entry in the double_signed_sync table")
 
@@ -1618,10 +1618,10 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
 
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
-        results.append((u"database", self._database.open()))
+        results.append(("database", self._database.open()))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
 
-        results.append((u"endpoint", self._endpoint.open(self)))
+        results.append(("endpoint", self._endpoint.open(self)))
         assert all(isinstance(result, bool) for _, result in results), [type(result) for _, result in results]
         self._endpoint_ready()
 
@@ -1704,27 +1704,27 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
         # unload communities that are not defined
         yield unload_communities([community
                             for community
-                            in self._communities.itervalues()
+                            in self._communities.values()
                             if not community.get_classification() in self._auto_load_communities])
 
         # unload communities in reverse auto load order
         for classification in reversed(self._auto_load_communities):
             yield unload_communities([community
                                 for community
-                                in self._communities.itervalues()
+                                in self._communities.values()
                                 if community.get_classification() == classification])
 
 
         # stop endpoint
-        results[u"endpoint"] = maybeDeferred(self._endpoint.close, timeout)
+        results["endpoint"] = maybeDeferred(self._endpoint.close, timeout)
 
         # stop the database
-        results[u"database"] = maybeDeferred(self._database.close)
+        results["database"] = maybeDeferred(self._database.close)
 
         def check_stop_status(return_values):
             failures = []
             self._logger.debug("Checking dispersy stop results")
-            for name, result in zip(results.keys(), return_values):
+            for name, result in zip(list(results.keys()), return_values):
                 if isinstance(result, Failure) or not result:
                     failures.append((name, result))
             if failures:
@@ -1732,7 +1732,7 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 return False
             return True
 
-        success = yield gatherResults(results.values(), consumeErrors=True).addBoth(check_stop_status)
+        success = yield gatherResults(list(results.values()), consumeErrors=True).addBoth(check_stop_status)
         returnValue(success)
 
     def _stats_detailed_candidates(self):
@@ -1754,19 +1754,19 @@ ORDER BY global_time""", (meta.database_id, member_database_id)))
                 self._statistics.walk_success_count,
                 self._statistics.invalid_response_identifier_count)
 
-            for community in sorted(self._communities.itervalues(), key=lambda community: community.cid):
-                if community.get_classification() == u"PreviewChannelCommunity":
+            for community in sorted(iter(self._communities.values()), key=lambda community: community.cid):
+                if community.get_classification() == "PreviewChannelCommunity":
                     continue
 
-                categories = {u"walk": [], u"stumble": [], u"intro": [], u"discovered": [], None: []}
-                for candidate in community.candidates.itervalues():
+                categories = {"walk": [], "stumble": [], "intro": [], "discovered": [], None: []}
+                for candidate in community.candidates.values():
                     if isinstance(candidate, WalkCandidate):
                         categories[candidate.get_category(now)].append(candidate)
 
                 summary.debug("--- %s %s ---", community.cid.encode("HEX"), community.get_classification())
-                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories[u"walk"]), len(categories[u"stumble"]), len(categories[u"intro"]), len(categories[u"discovered"]))
+                summary.debug("--- [%2d:%2d:%2d:%2d]", len(categories["walk"]), len(categories["stumble"]), len(categories["intro"]), len(categories["discovered"]))
 
-                for category, candidates in categories.iteritems():
+                for category, candidates in categories.items():
                     aged = [(candidate.age(now, category), candidate) for candidate in candidates]
                     for age, candidate in sorted(aged):
                         summary.debug("%5.1fs %s%s %-7s %-13s %s",

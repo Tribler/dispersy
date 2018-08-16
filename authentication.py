@@ -20,13 +20,11 @@ class Authentication(MetaObject):
     The Authentication baseclass.
     """
 
-    class Implementation(MetaObject.Implementation):
+    class Implementation(MetaObject.Implementation, metaclass=ABCMeta):
 
         """
         The implementation of an Authentication policy.
         """
-
-        __metaclass__ = ABCMeta
 
         @abstractproperty
         def is_signed(self):

@@ -22,7 +22,7 @@ from M2Crypto import EC
 from dispersy.crypto import ECCrypto, _CURVES
 
 def ec_name(eccrypto, curve):
-    assert isinstance(curve, unicode)
+    assert isinstance(curve, str)
     curve_id = _CURVES[curve]
 
     for name in dir(EC):
@@ -33,28 +33,28 @@ def ec_name(eccrypto, curve):
 def create_key(eccrypto, curves):
     for index, curve in enumerate(curves):
         if index > 0:
-            print
+            print()
 
         private_pem = ""
         public_pem = ""
 
         ec = eccrypto.generate_key(curve)
         if hasattr(ec, 'key_to_pem'):
-            print "KEP"
+            print("KEP")
             private_pem = ec.key_to_pem()
             public_pem = ec.pub().key_to_pem()
 
         private_bin = eccrypto.key_to_bin(ec)
         public_bin = eccrypto.key_to_bin(ec.pub())
-        print "generated:", time.ctime()
-        print "curve:", ec_name(eccrypto, curve)
-        print "len:", len(ec.ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature"
-        print "pub:", len(public_bin), public_bin.encode("HEX")
-        print "prv:", len(private_bin), private_bin.encode("HEX")
-        print "pub-sha1", sha1(public_bin).digest().encode("HEX")
-        print "prv-sha1", sha1(private_bin).digest().encode("HEX")
-        print public_pem.strip()
-        print private_pem.strip()
+        print("generated:", time.ctime())
+        print("curve:", ec_name(eccrypto, curve))
+        print("len:", len(ec.ec), "bits ~", eccrypto.get_signature_length(ec), "bytes signature")
+        print("pub:", len(public_bin), public_bin.encode("HEX"))
+        print("prv:", len(private_bin), private_bin.encode("HEX"))
+        print("pub-sha1", sha1(public_bin).digest().encode("HEX"))
+        print("prv-sha1", sha1(private_bin).digest().encode("HEX"))
+        print(public_pem.strip())
+        print(private_pem.strip())
 
 def main():
     eccrypto = ECCrypto()
@@ -67,7 +67,7 @@ def main():
                         help="EC curves to create")
     args = parser.parse_args()
 
-    create_key(eccrypto, (unicode(curve) for curve in args.curves))
+    create_key(eccrypto, (str(curve) for curve in args.curves))
 
 if __name__ == "__main__":
     main()

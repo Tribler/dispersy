@@ -21,7 +21,7 @@ class TrackerHardKilledCommunity(HardKilledCommunity):
         hex_cid = messages[0].community.cid.encode("HEX")
         for message in messages:
             host, port = message.candidate.sock_addr
-            print "DESTROY_OUT", hex_cid,
+            print("DESTROY_OUT", hex_cid, end=' ')
             message.authentication.member.mid.encode("HEX"),
             ord(message.conversion.dispersy_version),
             ord(message.conversion.community_version), host, port
@@ -45,23 +45,23 @@ class TrackerCommunity(Community):
         # We keep track of the community versions for which we've added a conversion.
         self._added_conversions = []
 
-        self._walked_stumbled_candidates = self._iter_categories([u'walk', u'stumble'])
+        self._walked_stumbled_candidates = self._iter_categories(['walk', 'stumble'])
 
     def initiate_meta_messages(self):
         messages = super(TrackerCommunity, self).initiate_meta_messages()
 
         # remove all messages that we should not be using
-        tracker_messages = [u"dispersy-introduction-request",
-                            u"dispersy-introduction-response",
-                            u"dispersy-puncture-request",
-                            u"dispersy-puncture",
-                            u"dispersy-identity",
-                            u"dispersy-missing-identity",
+        tracker_messages = ["dispersy-introduction-request",
+                            "dispersy-introduction-response",
+                            "dispersy-puncture-request",
+                            "dispersy-puncture",
+                            "dispersy-identity",
+                            "dispersy-missing-identity",
 
-                            u"dispersy-authorize",
-                            u"dispersy-revoke",
-                            u"dispersy-missing-proof",
-                            u"dispersy-destroy-community"]
+                            "dispersy-authorize",
+                            "dispersy-revoke",
+                            "dispersy-missing-proof",
+                            "dispersy-destroy-community"]
 
         messages = [message for message in messages if message.name in tracker_messages]
         return messages
@@ -121,13 +121,13 @@ class TrackerCommunity(Community):
         # since the trackers use in-memory databases, we need to store the destroy-community
         # message, and all associated proof, separately.
         host, port = message.candidate.sock_addr
-        print "DESTROY_IN", self._cid.encode("HEX"), message.authentication.member.mid.encode("HEX"),
+        print("DESTROY_IN", self._cid.encode("HEX"), message.authentication.member.mid.encode("HEX"), end=' ')
         ord(message.conversion.dispersy_version), ord(message.conversion.community_version), host, port
 
         write = open(self._dispersy.persistent_storage_filename, "a+").write
         write("# received dispersy-destroy-community from %s\n" % (str(message.candidate),))
 
-        identity_id = self._meta_messages[u"dispersy-identity"].database_id
+        identity_id = self._meta_messages["dispersy-identity"].database_id
         execute = self._dispersy.database.execute
         messages = [message]
         stored = set()
@@ -140,8 +140,8 @@ class TrackerCommunity(Community):
 
                 if not message.authentication.member.public_key in stored:
                     try:
-                        packet, = execute(u"SELECT packet FROM sync WHERE meta_message = ? AND member = ?", (
-                            identity_id, message.authentication.member.database_id)).next()
+                        packet, = next(execute("SELECT packet FROM sync WHERE meta_message = ? AND member = ?", (
+                            identity_id, message.authentication.member.database_id)))
                     except StopIteration:
                         pass
                     else:
@@ -157,7 +157,7 @@ class TrackerCommunity(Community):
             hex_cid = self.cid.encode("HEX")
             for message in messages:
                 host, port = message.candidate.sock_addr
-                print "REQ_IN2", hex_cid,
+                print("REQ_IN2", hex_cid, end=' ')
                 message.authentication.member.mid.encode("HEX"),
                 ord(message.conversion.dispersy_version),
                 ord(message.conversion.community_version), host, port
@@ -169,7 +169,7 @@ class TrackerCommunity(Community):
             hex_cid = self.cid.encode("HEX")
             for message in messages:
                 host, port = message.candidate.sock_addr
-                print "RES_IN2", hex_cid,
+                print("RES_IN2", hex_cid, end=' ')
                 message.authentication.member.mid.encode("HEX"),
                 ord(message.conversion.dispersy_version),
                 ord(message.conversion.community_version), host, port

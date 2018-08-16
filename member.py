@@ -153,8 +153,8 @@ class Member(DummyMember):
         """
         assert isinstance(data, str), type(data)
         assert isinstance(signature, str), type(signature)
-        assert isinstance(offset, (int, long)), type(offset)
-        assert isinstance(length, (int, long)), type(length)
+        assert isinstance(offset, int), type(offset)
+        assert isinstance(length, int), type(length)
 
         if length == 0:
             # default LENGTH is len(DATA[OFFSET:])
@@ -175,8 +175,8 @@ class Member(DummyMember):
         Will raise a RuntimeError when this we do not have the private key.
         """
         assert isinstance(data, str), type(data)
-        assert isinstance(offset, (int, long)), type(offset)
-        assert isinstance(length, (int, long)), type(length)
+        assert isinstance(offset, int), type(offset)
+        assert isinstance(length, int), type(length)
 
         if length == 0:
             # default LENGTH is len(DATA[OFFSET:])
