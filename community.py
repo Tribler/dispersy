@@ -2728,8 +2728,11 @@ class Community(TaskManager):
                     # BLOOM_FILTER must be the same after transmission
                     test_bloom_filter = BloomFilter(bloom_filter.bytes, bloom_filter.functions, prefix=bloom_filter.prefix)
                     assert bloom_filter.bytes == test_bloom_filter.bytes, "problem with the long <-> binary conversion"
-                    assert list(bloom_filter.not_filter((packet,) for packet in packets)) == [], "does not have all correct bits set before transmission"
-                    assert list(test_bloom_filter.not_filter((packet,) for packet in packets)) == [], "does not have all correct bits set after transmission"
+
+                    # TODO(Martijn): These asserts are flawed since there could be incoming packets between construction
+                    # of the bloomfilter and this test. Also see https://github.com/Tribler/tribler/issues/2726
+                    #assert list(bloom_filter.not_filter((packet,) for packet in packets)) == [], "does not have all correct bits set before transmission"
+                    #assert list(test_bloom_filter.not_filter((packet,) for packet in packets)) == [], "does not have all correct bits set after transmission"
 
                     # BLOOM_FILTER must have been correctly filled
                     test_bloom_filter.clear()
