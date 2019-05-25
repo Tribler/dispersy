@@ -2,6 +2,8 @@
 Dispersy
 ********
 
+**This repository is no longer maintained, in favor of the** `IPv8 networking library <https://github.com/tribler/py-ipv8/>`_.
+
 The **Dis**\ tributed **Per**\ mission **Sy**\ stem, or Dispersy, is a platform to simplify the design of distributed
 communities. At the heart of Dispersy lies a simple identity and message handling system where each community
 and each user is uniquely and securely identified using elliptic curve cryptography.
